@@ -33,10 +33,32 @@ EXAMPLE_EXCHANGE = (
 )
 
 
-def system_message() -> Message:
-    return Message("system", SYSTEM_PROMPT, Category.SYSTEM_PROMPT)
+# What a plain chat (e.g. `jarvis ask`) can really do. Interfaces that wire in tools pass their own list.
+CHAT_ONLY_ABILITIES = (
+    "answer questions and explain things from your general training knowledge, which can be outdated or wrong",
+    "help think through problems, draft text, and do reasoning or arithmetic in the conversation",
+)
+
+# Things people commonly assume an assistant can do. Listed explicitly because small models
+# otherwise claim them.
+NOT_YET = ("email, calendar, reminders or messages", "controlling Mac settings, volume, brightness or media",
+           "browsing the web or reading files in this chat", "remembering previous conversations",
+           "smart-home devices")
 
 
-def priming_messages() -> list[Message]:
-    """System prompt plus the example exchange; prepend to every conversation."""
-    return [system_message(), *(Message(role, text, Category.SYSTEM_PROMPT) for role, text in EXAMPLE_EXCHANGE)]
+def abilities_text(abilities: tuple[str, ...] | list[str]) -> str:
+    lines = "\n".join(f"- {a}" for a in abilities)
+    missing = "; ".join(NOT_YET)
+    return (f"Your abilities right now — this is the COMPLETE list:\n{lines}\n"
+            f"You can NOT currently do anything else, including: {missing}. "
+            "If asked what you can do, describe only the abilities listed above and say more are being built.")
+
+
+def system_message(abilities: tuple[str, ...] | list[str] = CHAT_ONLY_ABILITIES) -> Message:
+    return Message("system", f"{SYSTEM_PROMPT}\n{abilities_text(abilities)}", Category.SYSTEM_PROMPT)
+
+
+def priming_messages(abilities: tuple[str, ...] | list[str] = CHAT_ONLY_ABILITIES) -> list[Message]:
+    """System prompt (with the real ability list) plus the example exchange."""
+    return [system_message(abilities),
+            *(Message(role, text, Category.SYSTEM_PROMPT) for role, text in EXAMPLE_EXCHANGE)]
