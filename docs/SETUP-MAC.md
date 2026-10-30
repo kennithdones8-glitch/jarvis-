@@ -1,11 +1,11 @@
 # Setting up JARVIS on your Mac
 
-Everything here is free. Nothing installs a background service except the two you start yourself
-(Ollama and SearXNG), and you can stop both at any time.
+Everything here is free. Nothing installs a background service except Ollama, which you start yourself
+and can quit at any time.
 
 ## 1. Get the code
 
-From the bundle file:
+Clone the repo:
 ```bash
 git clone https://github.com/kennithdones8-glitch/jarvis-.git ~/jarvis
 ```
