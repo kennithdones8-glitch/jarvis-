@@ -40,15 +40,29 @@ Fixed guarantees, independent of policy:
 | Audit tampering | Triggers + hash chain | ✅ tested (edit, delete) — tail truncation not yet detectable |
 | Secrets in logs | Redaction + bulk content stored as hash/length | ✅ best-effort |
 | Prompt injection | External content treated as data; policy outside model | ⏳ orchestrator milestone |
-| Private data sent to cloud | Egress gate below the orchestrator, ask per transmission | ⏳ M2 |
+| Private data sent to cloud | Egress gate holds all cloud providers; private categories need a grant or a single-use, request-bound approval; local-only categories are never sent; content is never written to the audit log | ✅ tested |
+| Silent provider fallback | Fallback goes through the same gate; approvals are per provider and per request | ✅ tested |
+| Unapproved spending | Budget guard (default $0) checked by router and gate; paid models are excluded | ✅ tested |
+| Local adapter used as a network bypass | Ollama adapter refuses non-loopback hosts | ✅ tested |
 | Unauthorised remote access | Localhost only; Tailscale + passkeys for phone | ⏳ M4/M7 |
 | Unsafe shell | No shell tool exists | ✅ by absence |
 | Supply chain | Kernel has zero runtime dependencies; dev deps locked in `uv.lock` | ✅ |
 | Self-modification | Proposals only in git worktrees; policy/gate/auth files excluded | ⏳ later |
+
+## Data categories
+
+| Category | Default | Can be made local-only |
+|---|---|---|
+| system_prompt, web_content | public (still blocked if they contain secret-looking text) | yes |
+| conversation, file_content, memory, project, screenshot | private: ask per transmission | yes |
+
+Config can only make a category stricter. It can never make one less strict.
 
 ## Known limitations
 
 - A timed-out handler thread cannot be killed in Python. Tools that do slow I/O must enforce their own deadlines.
 - Truncating the newest audit entries is not detectable from the chain alone. Anchoring the head hash externally is planned.
 - Redaction is pattern-based and can miss unusual secret formats. Secrets must not be passed as tool args at all; they will live in the macOS Keychain.
+- Free cloud tiers are configured with $0 prices. If you attach billing to such a key, the provider may charge beyond what the guard estimates. Keep billing off, or set real prices and a budget.
+- Grants and approvals are in-process checks. Python cannot stop other in-process code from reaching a provider object; the boundary is that models and tools never get Python-level access.
 - A crash between "step started" and the gateway's permission check marks a non-idempotent step uncertain even though nothing ran. This is conservative by design.

@@ -29,6 +29,8 @@ class Kernel:
         home: str | Path | None = None,
         *,
         policy_path: str | Path | None = None,
+        config_path: str | Path | None = None,
+        secrets=None,
         registry: ToolRegistry | None = None,
         verifiers: dict[str, Verifier] | None = None,
         **engine_options,
@@ -36,13 +38,14 @@ class Kernel:
         self.home = Path(home) if home else default_home()
         self.home.mkdir(parents=True, exist_ok=True, mode=0o700)
         self.policy_path = Path(policy_path) if policy_path else self.home / "policy.toml"
+        self.config_path = Path(config_path) if config_path else self.home / "jarvis.toml"
 
         self.db = Database(self.home / "jarvis.db")
         self.audit = AuditLog(self.db)
         self.killswitch = KillSwitch(self.db, self.audit)
 
         # JARVIS's own state and its policy are never writable by its tools.
-        protected = [self.home, self.policy_path]
+        protected = [self.home, self.policy_path, self.config_path]
         if self.policy_path.exists():
             self.policy = Policy.load(self.policy_path, protected=protected)
         else:
@@ -54,6 +57,12 @@ class Kernel:
         self.tasks = TaskStore(self.db, self.audit)
         self.engine = TaskEngine(self.tasks, self.gateway, self.killswitch, self.audit, verifiers=verifiers,
                                  **engine_options)
+
+        from ..models import build_model_service, load_model_config  # models depend on core, not vice versa
+
+        self.model_config = load_model_config(self.config_path)
+        self.models = build_model_service(self.model_config, self.db, self.audit, self.approvals, self.killswitch,
+                                          secrets=secrets)
 
     def start(self) -> list[str]:
         """Record startup and recover tasks interrupted by a previous crash or shutdown."""

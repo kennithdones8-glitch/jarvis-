@@ -14,7 +14,9 @@ from pathlib import Path
 
 from .core import Kernel
 
-EXAMPLE_POLICY = Path(__file__).resolve().parents[2] / "config" / "policy.example.toml"
+CONFIG_DIR = Path(__file__).resolve().parents[2] / "config"
+EXAMPLE_POLICY = CONFIG_DIR / "policy.example.toml"
+EXAMPLE_MODELS = CONFIG_DIR / "jarvis.example.toml"
 
 
 def _print(obj) -> None:
@@ -45,15 +47,28 @@ def main(argv: list[str] | None = None) -> int:
     for name in ("cancel", "pause", "resume"):
         p = sub.add_parser(name)
         p.add_argument("task_id")
+    sub.add_parser("models", help="show configured models, availability and budget")
+    p = sub.add_parser("ask", help="one-off question to the best available model")
+    p.add_argument("question")
+    p.add_argument("--min-quality", type=int, default=1)
+    p.add_argument("--local-only", action="store_true")
+    p = sub.add_parser("grant-egress", help="standing permission to send a data category to a cloud provider")
+    p.add_argument("--category", required=True)
+    p.add_argument("--provider", required=True)
+    p.add_argument("--expires", help="ISO timestamp")
+    p = sub.add_parser("revoke-egress")
+    p.add_argument("grant_id")
+    sub.add_parser("grants", help="list egress grants")
     args = parser.parse_args(argv)
 
     kernel = Kernel(args.home)
     try:
         if args.cmd == "init":
-            if not kernel.policy_path.exists():
-                shutil.copyfile(EXAMPLE_POLICY, kernel.policy_path)
-                kernel.policy_path.chmod(0o600)
-                print(f"wrote starter policy to {kernel.policy_path} — review it before use")
+            for src, dst in ((EXAMPLE_POLICY, kernel.policy_path), (EXAMPLE_MODELS, kernel.config_path)):
+                if not dst.exists():
+                    shutil.copyfile(src, dst)
+                    dst.chmod(0o600)
+                    print(f"wrote {dst} — review it before use")
             print(f"data directory: {kernel.home}")
         elif args.cmd == "status":
             counts = {r[0]: r[1] for r in kernel.db.query("SELECT state, COUNT(*) FROM tasks GROUP BY state")}
@@ -87,11 +102,72 @@ def main(argv: list[str] | None = None) -> int:
         elif args.cmd in ("cancel", "pause", "resume"):
             getattr(kernel.engine, args.cmd)(args.task_id, actor="user:cli")
             print(f"{args.cmd}: {kernel.tasks.get(args.task_id)['state']}")
+        elif args.cmd == "models":
+            _print(_models_status(kernel))
+        elif args.cmd == "ask":
+            return _ask(kernel, args)
+        elif args.cmd == "grant-egress":
+            gate = kernel.models.router.gate
+            gid = gate.grants.grant(category=args.category, provider=args.provider, by="user:cli",
+                                    expires_at=args.expires)
+            print(f"granted {gid}: {args.category} -> {args.provider}")
+        elif args.cmd == "revoke-egress":
+            kernel.models.router.gate.grants.revoke(args.grant_id, by="user:cli")
+            print(f"revoked {args.grant_id}")
+        elif args.cmd == "grants":
+            _print(kernel.models.router.gate.grants.list())
     except (KeyError, ValueError, RuntimeError, PermissionError) as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 1
     finally:
         kernel.close()
+    return 0
+
+
+def _models_status(kernel: Kernel) -> dict:
+    from .models.types import ProviderError
+
+    router = kernel.models.router
+    out = {"budget": {"monthly_limit_usd": router.gate.budget.monthly_limit_usd,
+                      "spent_this_month_usd": router.gate.budget.spent_this_month()},
+           "local_only_categories": list(kernel.model_config.local_only_categories), "providers": []}
+    sources = [(p.name, "local", p.models, p.available_models, p.data_use_note) for p in router.local.values()]
+    sources += [(s.name, "cloud", s.models, lambda n=s.name: router.gate.available_models(n), s.data_use_note)
+                for s in router.gate.summaries()]
+    for name, location, models, available_fn, note in sources:
+        try:
+            available, error = sorted(available_fn()), None
+        except ProviderError as exc:
+            available, error = [], str(exc)
+        out["providers"].append({"name": name, "location": location, "configured": sorted(models),
+                                 "available": available, "error": error, "data_use": note})
+    disabled = [p.name for p in kernel.model_config.providers if not p.enabled]
+    out["disabled_providers"] = disabled
+    return out
+
+
+def _ask(kernel: Kernel, args) -> int:
+    from .core.tools import ApprovalRequired
+    from .models import ChatRequest, Message, Need, NoModelAvailable
+    from .models.types import Category
+
+    request = ChatRequest((
+        Message("system", "You are JARVIS: precise, calm, concise. Say when you are unsure.", Category.SYSTEM_PROMPT),
+        Message("user", args.question, Category.CONVERSATION, local_only=args.local_only),
+    ))
+    try:
+        r = kernel.models.complete(Need("chat", min_quality=args.min_quality), request, purpose="cli question")
+    except ApprovalRequired as exc:
+        print(f"needs your approval first: jarvis approvals  (then: jarvis approve {exc.approval_id} and re-ask)")
+        return 3
+    except NoModelAvailable as exc:
+        print(f"no model available: {exc}")
+        for model, reason in exc.reasons.items():
+            print(f"  {model}: {reason}")
+        return 4
+    print(r.text)
+    print(f"\n[{r.provider}/{r.model} · {r.latency_s:.1f}s · {r.usage.output_tokens} tokens · ${r.cost_usd:.4f}]",
+          file=sys.stderr)
     return 0
 
 

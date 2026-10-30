@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.2.0 — Milestone 2: model layer
+
+- Provider adapters: Ollama (loopback-only) and OpenAI-compatible cloud (https-only, Keychain keys).
+- Router with hard constraints and local-first ranking; every exclusion recorded with a reason.
+- Model service with bounded fallback that never bypasses an approval.
+- Egress gate: data-category sensitivity, local-only categories, secret scanning,
+  per-request single-use approvals, revocable standing grants, emergency-stop checks.
+- Budget guard (default $0/month) and usage ledger.
+- Strict `jarvis.toml` config; example ships with cloud disabled.
+- CLI: `models`, `ask`, `grant-egress`, `revoke-egress`, `grants`; `init` writes both configs.
+- 31 new tests against local HTTP servers speaking the Ollama/OpenAI protocols; opt-in live Ollama test.
+
 ## 0.1.0 — Milestone 1: kernel
 
 - SQLite storage (WAL, durable writes, migrations, savepoint-nested transactions).

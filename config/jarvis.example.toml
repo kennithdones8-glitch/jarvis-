@@ -1,0 +1,56 @@
+# JARVIS model configuration (example). Copied to the data directory by `jarvis init`.
+# Contains NO secrets. API keys live in the macOS Keychain:
+#   security add-generic-password -s jarvis -a <api_key_secret> -w
+
+[budget]
+# Hard ceiling on billable model usage per calendar month (USD). 0 = no paid usage at all.
+monthly_limit_usd = 0.0
+
+[privacy]
+# Categories that must never leave this Mac, even with your approval.
+# Choices: conversation, file_content, memory, project, screenshot, web_content, system_prompt
+local_only_categories = []
+# Everything private (conversation, files, memory, project, screenshots) already requires your
+# approval for each transmission unless you create a standing grant (`jarvis grant-egress`).
+
+# ---------------------------------------------------------------- local (Ollama)
+# Only models listed here AND installed in Ollama are routable. `speed` is relative to an
+# Intel Mac running on CPU; benchmark on your Mac and adjust.
+[providers.ollama]
+kind = "ollama"
+enabled = true
+host = "http://127.0.0.1:11434"
+
+[[providers.ollama.models]]
+id = "llama3.2:3b"
+capabilities = ["chat", "classify", "summarize", "extract", "json"]
+context_tokens = 8192
+quality = 2
+speed = 4
+
+[[providers.ollama.models]]
+id = "qwen2.5:7b-instruct"
+capabilities = ["chat", "plan", "summarize", "classify", "extract", "json", "code"]
+context_tokens = 16384
+quality = 3
+speed = 2
+
+# ---------------------------------------------------------------- cloud (disabled)
+# Free tiers have limits that change, and some free tiers let the provider use your data.
+# Verify current terms before enabling. Never attach billing to a key used here unless you
+# also raise the budget above deliberately.
+[providers.groq]
+kind = "openai_compat"
+enabled = false
+base_url = "https://api.groq.com/openai/v1"
+api_key_secret = "groq_api_key"
+data_use_note = "Groq free tier — verify current data-retention terms"
+
+[[providers.groq.models]]
+id = "llama-3.3-70b-versatile"
+capabilities = ["chat", "plan", "summarize", "classify", "extract", "json", "code"]
+context_tokens = 32768
+quality = 4
+speed = 5
+input_cost_per_mtok = 0.0
+output_cost_per_mtok = 0.0

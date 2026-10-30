@@ -52,8 +52,31 @@ automatically.
 **Verification** is a separate stage. A task completes only if its verifier passes; the evidence
 is stored on the task and in the audit trail.
 
+## Model layer (implemented, `src/jarvis/models/`)
+
+| Module | Responsibility |
+|---|---|
+| `types.py` | Messages tagged with a data **category**, capability records, JSON output validation |
+| `providers.py` | `OllamaProvider` (loopback hosts only) and `OpenAICompatProvider` (https only) |
+| `egress.py` | `EgressGate`: the only holder of cloud providers; sensitivity policy, grants, budget guard, usage ledger |
+| `router.py` | `ModelRouter` (hard filters + local-first ranking, reasons for every exclusion) and `ModelService` (bounded fallback) |
+| `config.py` | Strict `jarvis.toml` parsing (no secrets) |
+| `secrets.py` | Keychain lookup (macOS), env fallback for development |
+
+```
+ModelService.complete(need, request)
+   └─ ModelRouter.route ── filters: capability · quality floor · context · availability · local-only · budget
+        ├─ local candidate ──► OllamaProvider (127.0.0.1)            [audited: model.local_call]
+        └─ cloud candidate ──► EgressGate.send ─► stop? enabled? local-only? secrets? budget?
+                                                  private category → grant or single-use approval
+                                                  ─► provider ─► cost ledger      [audited: egress.*]
+```
+
+`ApprovalRequired` from the gate propagates to the caller and pauses the task. The service never
+works around it by trying another provider.
+
 ## Planned components
 
-Model router and provider adapters with an egress (privacy + budget) gate, orchestrator, tools
+Orchestrator, tools
 (files, web), FastAPI + dashboard, memory (FTS5 + vectors with provenance), voice, iPhone web app
 over Tailscale with passkeys, launchd service, backups. See the [roadmap](ROADMAP.md).

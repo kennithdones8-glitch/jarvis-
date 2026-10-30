@@ -94,6 +94,31 @@ MIGRATIONS: list[str] = [
     );
     CREATE INDEX approvals_task ON approvals(task_id, state);
     """,
+    # v2: model layer
+    """
+    CREATE TABLE egress_grants (
+        id         TEXT PRIMARY KEY,
+        category   TEXT NOT NULL,
+        provider   TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        created_by TEXT NOT NULL,
+        expires_at TEXT,
+        revoked_at TEXT
+    );
+    CREATE INDEX egress_grants_lookup ON egress_grants(category, provider);
+
+    CREATE TABLE model_usage (
+        id            INTEGER PRIMARY KEY AUTOINCREMENT,
+        ts            TEXT NOT NULL,
+        provider      TEXT NOT NULL,
+        model         TEXT NOT NULL,
+        task_id       TEXT,
+        input_tokens  INTEGER NOT NULL,
+        output_tokens INTEGER NOT NULL,
+        cost_usd      REAL NOT NULL
+    );
+    CREATE INDEX model_usage_ts ON model_usage(ts);
+    """,
 ]
 
 
