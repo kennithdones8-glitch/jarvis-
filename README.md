@@ -17,7 +17,9 @@ A personal AI system for Mac and iPhone: persistent, permissioned, auditable, lo
 | Model router (local-first) + Ollama and OpenAI-compatible adapters | ✅ implemented, protocol-tested; **not yet run against a real model** |
 | Egress privacy gate (ask per transmission, grants, local-only, secret scan) | ✅ implemented, tested |
 | Budget guard ($0 default) with usage ledger | ✅ implemented, tested |
-| Orchestrator, tools, dashboard, memory, voice, iPhone | ⏳ not started |
+| File tool (read/list/search/write/delete; atomic, versioned, trash) | ✅ implemented, tested |
+| Web fetch tool (SSRF-protected, untrusted-content marking) | ✅ implemented, tested incl. a live fetch |
+| Orchestrator (LLM planning), web search, dashboard, memory, voice, iPhone | ⏳ not started |
 | macOS-specific behaviour (launchd, Keychain, Touch ID) | ⏳ not started; not yet tested on a Mac |
 
 ## Quick start

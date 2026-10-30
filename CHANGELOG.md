@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.3.0 — Milestone 3a: production tools
+
+- `fs` tool: read, list, search (no symlink following, hidden files skipped), mkdir, atomic write
+  with the previous version kept, delete as a Tier 4 move to trash; crash reconciliation for write and delete.
+- `web.fetch`: http(s) only, every hop including redirects checked against loopback/private/link-local
+  addresses, text-only content types, size limits, HTML-to-text, results marked untrusted.
+- 22 new tests.
+
 ## 0.2.0 — Milestone 2: model layer
 
 - Provider adapters: Ollama (loopback-only) and OpenAI-compatible cloud (https-only, Keychain keys).

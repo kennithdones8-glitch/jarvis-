@@ -8,7 +8,8 @@ Claude Pro is a consumer subscription without API access, so it is not used by J
 | M0 | Scaffold, docs, test harness | ✅ done |
 | M1 | Kernel: task engine, permissions, approvals, audit, emergency stop, CLI | ✅ done |
 | M2 | Model router + adapters (Ollama local; free cloud tier adapter **disabled by default**), egress privacy gate (ask per transmission), budget guard at $0 | ✅ done (real-model run pending on Mac) |
-| M3 | Tools (scoped files, web search/fetch, notes) + orchestrator (interpret → plan → check → execute → verify) | next |
+| M3a | Production tools: files, web fetch | ✅ done |
+| M3b | Web search backend + orchestrator (interpret → plan → check → execute → verify) | next |
 | M4 | FastAPI + cinematic dashboard (live state, approvals, chat), passkey auth — **first-release demo: research brief** | |
 | M5 | Memory: originals + derived memories with provenance, FTS5 + local embeddings, deletion propagation, memory center | |
 | M6 | Mac voice: push-to-talk (whisper.cpp), TTS (`say`/Piper), interruption ≠ cancellation, then local wake word | |
