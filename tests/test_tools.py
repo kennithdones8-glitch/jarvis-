@@ -182,3 +182,60 @@ def test_redirect_to_private_network_refused(web, site):
 def test_web_tool_through_gateway_rejects_bad_schemes(tk):
     with pytest.raises(PermissionDenied):
         tk.gateway.invoke("web", "fetch", {"url": "file:///etc/passwd"})
+
+
+# ---- search --------------------------------------------------------------------------------
+@pytest.fixture
+def searx():
+    import json as _json
+    seen = []
+
+    class H(BaseHTTPRequestHandler):
+        def log_message(self, *a):
+            pass
+
+        def do_GET(self):
+            seen.append(self.path)
+            body = _json.dumps({"results": [
+                {"url": "https://en.wikipedia.org/wiki/Mars", "title": "Mars", "content": "Fourth planet", "engine": "wikipedia"},
+                {"url": "javascript:alert(1)", "title": "evil", "content": ""},
+                {"url": "https://nasa.gov/mars", "title": "NASA Mars", "content": "Missions", "engine": "ddg"},
+            ]}).encode()
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.end_headers()
+            self.wfile.write(body)
+
+    server = ThreadingHTTPServer(("127.0.0.1", 0), H)
+    threading.Thread(target=server.serve_forever, kwargs={"poll_interval": 0.02}, daemon=True).start()
+    yield f"http://127.0.0.1:{server.server_address[1]}", seen
+    server.shutdown()
+    server.server_close()
+
+
+def test_search_parses_and_filters_results(searx):
+    from jarvis.tools import SearchTool
+    url, seen = searx
+    out = SearchTool(url).search("mars moons", limit=5)
+    assert [r["title"] for r in out["results"]] == ["Mars", "NASA Mars"] and out["untrusted"]
+    assert "format=json" in seen[0] and "q=mars+moons" in seen[0]
+
+
+def test_search_validation_and_locality(searx):
+    from jarvis.tools import SearchTool
+    url, _ = searx
+    with pytest.raises(ValueError):
+        SearchTool("https://searx.example.org")
+    for bad in ("", "x" * 301, None):
+        with pytest.raises(ToolError):
+            SearchTool(url).search(bad)
+    with pytest.raises(ToolError):
+        SearchTool(url).search("ok", limit=50)
+
+
+def test_search_needs_confirmation_without_policy_rule(make_kernel, tmp_path, searx):
+    url, seen = searx
+    k = make_kernel(registry=default_registry(tmp_path / "home", searxng_url=url))
+    with pytest.raises(ApprovalRequired):
+        k.gateway.invoke("search", "query", {"query": "my private question"}, task_id="t")
+    assert seen == []

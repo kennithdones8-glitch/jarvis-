@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.3.1 — Web search
+
+- `search.query` tool backed by a local SearXNG (loopback only, query length/limit validation,
+  non-http result links dropped, results marked untrusted). Tier 1, so searches need confirmation unless
+  the policy allows them. The example policy allows them and explains why.
+- `[search]` section in `jarvis.toml`; `docs/SETUP-MAC.md` step-by-step setup.
+
 ## 0.3.0 — Milestone 3a: production tools
 
 - `fs` tool: read, list, search (no symlink following, hidden files skipped), mkdir, atomic write

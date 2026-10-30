@@ -19,10 +19,13 @@ A personal AI system for Mac and iPhone: persistent, permissioned, auditable, lo
 | Budget guard ($0 default) with usage ledger | ✅ implemented, tested |
 | File tool (read/list/search/write/delete; atomic, versioned, trash) | ✅ implemented, tested |
 | Web fetch tool (SSRF-protected, untrusted-content marking) | ✅ implemented, tested incl. a live fetch |
-| Orchestrator (LLM planning), web search, dashboard, memory, voice, iPhone | ⏳ not started |
+| Web search via local SearXNG | ✅ implemented, protocol-tested; needs SearXNG on the Mac |
+| Orchestrator (LLM planning), dashboard, memory, voice, iPhone | ⏳ not started |
 | macOS-specific behaviour (launchd, Keychain, Touch ID) | ⏳ not started; not yet tested on a Mac |
 
 ## Quick start
+
+**Setting up on your Mac: follow [docs/SETUP-MAC.md](docs/SETUP-MAC.md).**
 
 Requires Python ≥ 3.11 and [uv](https://docs.astral.sh/uv/).
 

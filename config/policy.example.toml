@@ -21,6 +21,14 @@ tools = ["fs"]
 actions = ["write", "mkdir"]
 resources = ["~/Documents/JARVIS/Notes/**"]
 
+# Web searches send the query text (not your files) to public search engines via SearXNG.
+# Change to "confirm" to approve every search.
+[[rules]]
+id = "web-search"
+effect = "allow"
+tools = ["search"]
+actions = ["query"]
+
 [[rules]]
 id = "no-deletes-yet"
 effect = "deny"

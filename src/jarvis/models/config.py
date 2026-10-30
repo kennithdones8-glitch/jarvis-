@@ -32,6 +32,7 @@ class ModelConfig:
     monthly_limit_usd: float = 0.0
     local_only_categories: tuple[str, ...] = ()
     providers: tuple[ProviderConfig, ...] = field(default_factory=tuple)
+    searxng_url: str | None = None
 
 
 def _check_keys(where: str, data: dict[str, Any], allowed: set[str]) -> None:
@@ -58,7 +59,9 @@ def _model(where: str, raw: dict[str, Any]) -> ModelInfo:
 
 
 def parse_model_config(data: dict[str, Any]) -> ModelConfig:
-    _check_keys("jarvis.toml", data, {"budget", "privacy", "providers"})
+    _check_keys("jarvis.toml", data, {"budget", "privacy", "providers", "search"})
+    search = data.get("search", {})
+    _check_keys("[search]", search, {"searxng_url"})
     budget = data.get("budget", {})
     _check_keys("[budget]", budget, {"monthly_limit_usd"})
     privacy = data.get("privacy", {})
@@ -91,7 +94,8 @@ def parse_model_config(data: dict[str, Any]) -> ModelConfig:
     limit = float(budget.get("monthly_limit_usd", 0.0))
     if limit < 0:
         raise ConfigError("[budget]: monthly_limit_usd cannot be negative")
-    return ModelConfig(monthly_limit_usd=limit, local_only_categories=local_only, providers=tuple(providers))
+    return ModelConfig(monthly_limit_usd=limit, local_only_categories=local_only, providers=tuple(providers),
+                       searxng_url=search.get("searxng_url"))
 
 
 def load_model_config(path: str | Path) -> ModelConfig:
