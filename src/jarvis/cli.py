@@ -150,10 +150,10 @@ def _ask(kernel: Kernel, args) -> int:
     from .core.tools import ApprovalRequired
     from .models import ChatRequest, Message, Need, NoModelAvailable
     from .models.types import Category
-    from .persona import system_message
+    from .persona import priming_messages
 
     request = ChatRequest((
-        system_message(),
+        *priming_messages(),
         Message("user", args.question, Category.CONVERSATION, local_only=args.local_only),
     ))
     try:
