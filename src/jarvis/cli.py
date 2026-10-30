@@ -150,9 +150,10 @@ def _ask(kernel: Kernel, args) -> int:
     from .core.tools import ApprovalRequired
     from .models import ChatRequest, Message, Need, NoModelAvailable
     from .models.types import Category
+    from .persona import system_message
 
     request = ChatRequest((
-        Message("system", "You are JARVIS: precise, calm, concise. Say when you are unsure.", Category.SYSTEM_PROMPT),
+        system_message(),
         Message("user", args.question, Category.CONVERSATION, local_only=args.local_only),
     ))
     try:
