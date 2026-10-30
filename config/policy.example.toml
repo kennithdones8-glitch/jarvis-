@@ -1,0 +1,28 @@
+# JARVIS permission policy (example). Copy with `jarvis init`, then review.
+#
+# Tiers (declared by each tool action, not by this file):
+#   0 read · 1 routine · 2 review · 3 external · 4 high-risk
+#
+# Fixed rules this file cannot change:
+#   - Paths outside [filesystem].roots are always denied.
+#   - JARVIS's data directory and this policy file are never writable by tools.
+#   - Tier 3 and 4 actions always require your confirmation, even with an "allow" rule.
+#   - With no matching rule, Tier 0 reads are allowed and everything else asks you.
+# Precedence among matching rules: deny > confirm > allow.
+
+[filesystem]
+roots = ["~/Documents/JARVIS"]
+protected = []
+
+[[rules]]
+id = "notes-write"
+effect = "allow"
+tools = ["fs"]
+actions = ["write", "mkdir"]
+resources = ["~/Documents/JARVIS/Notes/**"]
+
+[[rules]]
+id = "no-deletes-yet"
+effect = "deny"
+tools = ["*"]
+actions = ["delete"]
