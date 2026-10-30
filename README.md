@@ -39,7 +39,7 @@ uv run jarvis status
 ### Local models on the Mac
 
 ```bash
-brew install ollama && ollama serve        # or the Ollama app
+# install the Ollama app from https://ollama.com/download
 ollama pull llama3.2:3b                    # ~2 GB
 JARVIS_LIVE_OLLAMA=llama3.2:3b uv run pytest tests/test_live_ollama.py -s   # real speed on your hardware
 uv run jarvis ask "What can you do yet?"

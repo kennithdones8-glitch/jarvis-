@@ -7,60 +7,57 @@ Everything here is free. Nothing installs a background service except the two yo
 
 From the bundle file:
 ```bash
-git clone ~/Downloads/jarvis.bundle ~/jarvis && cd ~/jarvis
+git clone https://github.com/kennithdones8-glitch/jarvis-.git ~/jarvis
 ```
-Or, once it's on GitHub:
+If macOS asks to install command line developer tools, accept, then run it again.
+
+## 2. Tools (no Homebrew needed)
+
+Homebrew no longer supports Intel Macs on macOS 14, so use the official installers.
+Run each block on its own. Blocks contain no comments, because zsh does not treat a
+trailing `# ...` as a comment when you paste it.
+
 ```bash
-git clone https://github.com/<you>/jarvis.git ~/jarvis && cd ~/jarvis
+curl -LsSf https://astral.sh/uv/install.sh | sh
 ```
-
-## 2. Tools
-
+Close and reopen Terminal, then:
 ```bash
-xcode-select --install                                  # git, compilers (skip if already installed)
-/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"   # Homebrew, if missing
-brew install uv ollama
-uv sync && uv run pytest                                # expect: all passed, 1 skipped
-uv run jarvis init                                      # writes policy.toml and jarvis.toml — read them
+cd ~/jarvis
+```
+```bash
+uv sync && uv run pytest
+```
+```bash
+uv run jarvis init
+```
+```bash
 mkdir -p ~/Documents/JARVIS/Notes
 ```
 
-## 3. Local models (Ollama)
+## 3. Local models (Ollama app)
 
+Download and install the app from https://ollama.com/download (Mac), open it once, then:
 ```bash
-brew services start ollama          # or: ollama serve  (in its own terminal)
-ollama pull llama3.2:3b             # ~2 GB, fast everyday model
+ollama pull llama3.2:3b
+```
+```bash
 JARVIS_LIVE_OLLAMA=llama3.2:3b uv run pytest tests/test_live_ollama.py -s
 ```
-The live test prints real tokens/second. **Send me that line.** It decides whether the larger model is usable:
+The live test prints real tokens/second. Then try the stronger (slower) planner:
 ```bash
-ollama pull qwen2.5:7b-instruct     # ~4.7 GB, better planner, slower on Intel CPUs
+ollama pull qwen2.5:7b-instruct
+```
+```bash
 JARVIS_LIVE_OLLAMA=qwen2.5:7b-instruct uv run pytest tests/test_live_ollama.py -s
-uv run jarvis models
-uv run jarvis ask "In one sentence, who are you?"
 ```
-
-## 4. Web search (SearXNG in Docker)
-
-Install Docker Desktop (free for personal use), or `brew install colima docker && colima start`.
-
 ```bash
-mkdir -p ~/.jarvis-searxng
-docker run -d --name searxng --restart unless-stopped -p 127.0.0.1:8888:8080 \
-  -v ~/.jarvis-searxng:/etc/searxng searxng/searxng
-sleep 5 && docker stop searxng
-# enable the JSON API that JARVIS uses:
-sed -i '' 's/^  formats:$/  formats:\n    - json/' ~/.jarvis-searxng/settings.yml
-grep -A3 '^  formats:' ~/.jarvis-searxng/settings.yml     # should list html and json
-docker start searxng
-curl -s 'http://127.0.0.1:8888/search?q=test&format=json' | head -c 200
+uv run jarvis models
 ```
-`-p 127.0.0.1:…` keeps SearXNG reachable only from your Mac.
+
+## 4. Web search (later)
+
+Needs Docker or another way to run SearXNG. Deferred until the core runs on your Mac.
 
 ## 5. Report back
 
-Paste the output of:
-```bash
-sw_vers; sysctl -n machdep.cpu.brand_string; uv run jarvis models
-```
-plus the tokens/second lines from step 3.
+Paste the output of `uv run jarvis models` plus the tokens/second lines from step 3.
