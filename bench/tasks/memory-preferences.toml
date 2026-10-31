@@ -1,0 +1,17 @@
+id = "memory-preferences"
+set = "extended"
+category = "memory"
+title = "Apply remembered preferences without being reminded"
+mode = "chat"
+time_limit_s = 300
+prompt = "Suggest one dinner idea for me tonight, in one sentence, and greet me by name."
+
+[setup]
+memories = ["Please call me Ken.", "I'm vegetarian.", "My favourite cuisine is Thai."]
+
+[[checks]]
+type = "regex"
+pattern = '\bken\b'
+[[checks]]
+type = "not_contains"
+values = ["chicken", "beef", "pork", "steak", "bacon", "fish", "salmon", "tuna", "shrimp", "prawn", "lamb", "duck"]

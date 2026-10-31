@@ -1,0 +1,23 @@
+id = "planning-week-ahead"
+set = "extended"
+category = "planning"
+title = "What's due in the next 7 days?"
+mode = "chat"
+time_limit_s = 400
+prompt = "Which of my reminders are due in the next 7 days?"
+
+[setup.mac]
+reminders = [
+  { title = "Renew car insurance", due_day = 3, due_time = "10:00", list = "Admin" },
+  { title = "Call the plumber", due_day = 5, due_time = "09:00", list = "Home" },
+  { title = "Book dentist", due_day = 9, due_time = "09:00", list = "Home" },
+  { title = "Tax return", due_day = 20, due_time = "17:00", list = "Admin" },
+  { title = "Learn Spanish", list = "Someday" },
+]
+
+[[checks]]
+type = "contains_all"
+values = ["renew car insurance", "call the plumber"]
+[[checks]]
+type = "not_contains"
+values = ["book dentist", "tax return", "learn spanish"]

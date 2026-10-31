@@ -55,6 +55,8 @@ def week():
 
 def test_cues():
     assert might_need_lookup("Am I free Thursday afternoon?") and might_need_lookup("what's in my notes about Rome")
+    assert might_need_lookup("Do I have any clashing appointments in the next three days?")  # plurals count
+    assert might_need_lookup("Anything due soon?") and might_need_lookup("Which PDFs are in Downloads?")
     assert not might_need_lookup("Explain how rainbows form")
     assert looks_like_change("Add the dentist on Thursday at 2") and looks_like_change("please remind me to call Sam")
     assert not looks_like_change("When is the dentist?")

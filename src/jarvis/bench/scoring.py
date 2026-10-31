@@ -92,6 +92,8 @@ def _mac_call(o: dict, c: dict) -> Result:
             continue
         if "title_contains" in c and norm(c["title_contains"]) not in norm(args.get("title", "")):
             continue
+        if any(norm(v) not in norm(str(args.get(f, ""))) for f, v in c.get("fields", {}).items()):
+            continue
         if "due_day" in c:
             want = (datetime.now().astimezone() + timedelta(days=int(c["due_day"]))).date().isoformat() + "T" + c["due_time"]
             got = args.get("due")

@@ -1,0 +1,19 @@
+id = "coding-duration"
+set = "extended"
+category = "coding"
+title = "Write a function (hidden tests): parse a duration"
+mode = "chat"
+time_limit_s = 400
+prompt = """
+Write a Python function `seconds(text)` that turns durations like "1h 30m", "45s", "2h5m10s" or "90m" into a
+number of seconds (an int). Units are h, m and s; spaces between parts are optional. Reply with the function in
+one Python code block.
+"""
+
+[[checks]]
+type = "contains_all"
+values = ["def seconds"]
+[[checks]]
+type = "code_tests"
+function = "seconds"
+cases = [[["1h 30m"], 5400], [["45s"], 45], [["2h5m10s"], 7510], [["90m"], 5400], [["1h"], 3600], [["0s"], 0]]

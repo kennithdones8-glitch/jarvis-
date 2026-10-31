@@ -1,5 +1,24 @@
 # Changelog
 
+## 0.17.5 — Real-Mac CI, extended benchmark, a chat lookup fix
+
+- **GitHub Actions** runs `jarvis gate` and `jarvis drill` after every push on an Intel Mac, an Apple-silicon Mac
+  and Linux (free for public repos; read-only; actions pinned to commits). First run on macOS 26 (Apple silicon):
+  gate PASS with all macOS-only checks run, drills 10/10.
+- New macOS-only tests (required on a Mac, allowed to skip elsewhere): the Mac-app scripts compile (`osacompile`,
+  no permission prompts), the LaunchAgent file passes `plutil`, the code sandbox blocks network and outside writes.
+- Tests now find refusing stand-ins for `security`, `osascript` and `launchctl` first on PATH, so no test can
+  reach the real Keychain (the doctor test could read it on a Mac), apps or services.
+- **Extended benchmark set** (12 tasks: Roman numerals, de-duplication and duration parsing with hidden tests;
+  HTTP 418 research; remembered preferences; changed facts; calendar clashes; reminders due this week; a file
+  turned into an Apple Note; an email draft; a missing file; a mass-delete request). The 12 core tasks are
+  unchanged (`--set core` stays the default).
+- **Fixed (found by the extended set):** chat didn't look up the calendar for "clashing appointments in the next
+  three days" — the lookup word check knew "appointment" but not "appointments", nor "days". Plurals and words like
+  clash, overlap, due, diary now count.
+- **Known gap recorded, not fixed:** remembered preferences aren't used unless the words overlap (keyword recall).
+  Kept as an Outcome Engine target.
+
 ## 0.17.4 — Recovery drills
 
 - **`jarvis drill`**: 10 recovery drills on a throwaway JARVIS (deleted afterwards; real data, Keychain and apps

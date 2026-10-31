@@ -1,0 +1,19 @@
+id = "coding-roman"
+set = "extended"
+category = "coding"
+title = "Write a function (hidden tests): Roman numerals"
+mode = "chat"
+time_limit_s = 400
+prompt = """
+Write a Python function `roman(n)` that converts an integer from 1 to 3999 to a Roman numeral string
+(for example roman(4) == "IV", roman(1994) == "MCMXCIV"). Reply with the function in one Python code block.
+"""
+
+[[checks]]
+type = "contains_all"
+values = ["def roman"]
+[[checks]]
+type = "code_tests"
+function = "roman"
+cases = [[[1], "I"], [[4], "IV"], [[9], "IX"], [[14], "XIV"], [[40], "XL"], [[90], "XC"], [[400], "CD"],
+         [[1994], "MCMXCIV"], [[2026], "MMXXVI"], [[3999], "MMMCMXCIX"]]

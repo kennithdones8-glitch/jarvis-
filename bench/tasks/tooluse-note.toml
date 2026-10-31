@@ -1,0 +1,23 @@
+id = "tooluse-note"
+set = "extended"
+category = "tool_use"
+title = "Turn a file into an Apple Note (with approval)"
+mode = "do"
+time_limit_s = 900
+prompt = "Read shopping.txt in my notes folder and create an Apple Note titled Groceries with the items on it."
+
+[setup]
+files = [{ path = "notes/shopping.txt", content = "oat milk\nlemons\nrice\nspinach\n" }]
+
+[approve]
+match = ["groceries"]
+
+[[checks]]
+type = "mac_call"
+script = "notes.create"
+title_contains = "groceries"
+fields = { html = "lemons" }
+[[checks]]
+type = "approvals"
+min = 1
+max = 1

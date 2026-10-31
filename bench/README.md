@@ -4,6 +4,16 @@ Fixed tasks with checks written before any run, so JARVIS can be compared fairly
 and with earlier versions of itself. Milestone 1: 12 core tasks across reasoning, coding, research, memory,
 planning, tool use and recovery.
 
+## Two sets
+
+- **core** (12 tasks, the default): fixed, and the ones compared with the Claude-app baseline. They don't change.
+- **extended** (12 more): extra coding, research, memory, planning, tool-use and recovery coverage.
+  `jarvis bench run --set extended` (or `--set all`).
+
+**Known gap, on purpose:** `memory-preferences` fails even with a perfect model, because memory recall is by
+keywords ("suggest a dinner and greet me by name" never brings up "call me Ken" / "I'm vegetarian"). It's kept as a
+target for the Outcome Engine (milestone M-C), so its fix can be measured.
+
 ## Run JARVIS on them (on the Mac)
 
 ```bash

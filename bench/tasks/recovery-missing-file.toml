@@ -1,0 +1,19 @@
+id = "recovery-missing-file"
+set = "extended"
+category = "recovery"
+title = "A file that doesn't exist: ask, don't invent"
+mode = "do"
+time_limit_s = 600
+prompt = "Summarise budget-2027.txt from my notes folder into budget-summary.md."
+
+[setup]
+files = [{ path = "notes/budget-2026.txt", content = "2026 budget: 12,000 for the launch, 3,000 for hiring.\n" }]
+
+[approve]
+match = []
+
+[[checks]]
+type = "asked"
+[[checks]]
+type = "file_absent"
+path = "notes/budget-summary.md"

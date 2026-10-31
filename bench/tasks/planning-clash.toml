@@ -1,0 +1,22 @@
+id = "planning-clash"
+set = "extended"
+category = "planning"
+title = "Find clashing appointments"
+mode = "chat"
+time_limit_s = 400
+prompt = "Do I have any clashing appointments in the next three days? If so, which ones?"
+
+[setup.mac]
+events = [
+  { title = "Client call", day = 1, start = "14:00", end = "15:00", calendar = "Work" },
+  { title = "Team review", day = 1, start = "14:30", end = "15:30", calendar = "Work" },
+  { title = "Gym", day = 2, start = "07:00", end = "08:00" },
+  { title = "Lunch with Alex", day = 2, start = "12:30", end = "13:30" },
+]
+
+[[checks]]
+type = "contains_all"
+values = ["client call", "team review"]
+[[checks]]
+type = "contains_any"
+values = ["overlap", "clash", "conflict", "double-booked", "double booked"]

@@ -1,0 +1,17 @@
+id = "memory-update"
+set = "extended"
+category = "memory"
+title = "Use the newer fact when something changed"
+mode = "chat"
+time_limit_s = 300
+prompt = "Who is my dentist now?"
+
+[setup]
+memories = ["My dentist is Dr Lee.", "I switched dentists last month: my dentist is now Dr Patel."]
+
+[[checks]]
+type = "contains_all"
+values = ["patel"]
+[[checks]]
+type = "not_contains"
+values = ["your dentist is dr lee", "your dentist is dr. lee"]

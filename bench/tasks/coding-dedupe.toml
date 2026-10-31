@@ -1,0 +1,24 @@
+id = "coding-dedupe"
+set = "extended"
+category = "coding"
+title = "Write a function (hidden tests): case-insensitive de-duplication"
+mode = "chat"
+time_limit_s = 400
+prompt = """
+Write a Python function `dedupe(items)` that takes a list of strings and returns a new list without duplicates,
+treating strings as equal if they match ignoring case and surrounding spaces. Keep the first occurrence exactly as
+it was written, and keep the original order. Reply with the function in one Python code block.
+"""
+
+[[checks]]
+type = "contains_all"
+values = ["def dedupe"]
+[[checks]]
+type = "code_tests"
+function = "dedupe"
+cases = [
+  [[["Apple", "apple", "Banana"]], ["Apple", "Banana"]],
+  [[[" Kiwi", "kiwi ", "KIWI", "lime"]], [" Kiwi", "lime"]],
+  [[[]], []],
+  [[["a", "b", "A", "c", "B"]], ["a", "b", "c"]],
+]

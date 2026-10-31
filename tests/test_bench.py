@@ -31,8 +31,11 @@ def oracle(body):
         if "free" in user:
             return json.dumps({"lookups": [{"tool": "calendar", "action": "events", "args": {
                 "from": start.isoformat(), "to": (start + timedelta(days=1)).isoformat()}}], "change": False})
-        if "overdue" in user:
+        if "overdue" in user or "next 7 days" in user:
             return json.dumps({"lookups": [{"tool": "reminders", "action": "list", "args": {}}], "change": False})
+        if "clashing" in user:
+            return json.dumps({"lookups": [{"tool": "calendar", "action": "events", "args": {
+                "from": start.isoformat(), "to": (start + timedelta(days=3)).isoformat()}}], "change": False})
         return json.dumps({"lookups": [], "change": False})
     if "planning component" in system:
         notes = re.search(r"Save new documents in (\S+?)\.\s", system).group(1)
@@ -46,6 +49,15 @@ def oracle(body):
             steps = [{"description": "Read the email", "tool": "fs", "action": "read", "args": {"path": f"{notes}/email.txt"}, "depends_on": []},
                      {"description": "Summarise", "tool": "llm", "action": "compose", "args": {"instruction": "Summarise", "inputs": ["{{steps.0.content}}"]}, "depends_on": [0]},
                      {"description": "Save", "tool": "fs", "action": "write", "args": {"path": f"{notes}/email-summary.md", "content": "{{steps.1.text}}"}, "depends_on": [1]}]
+        elif "shopping.txt" in user:
+            steps = [{"description": "Read the list", "tool": "fs", "action": "read", "args": {"path": f"{notes}/shopping.txt"}, "depends_on": []},
+                     {"description": "List the items", "tool": "llm", "action": "compose", "args": {"instruction": "List the items", "inputs": ["{{steps.0.content}}"]}, "depends_on": [0]},
+                     {"description": "Create the note", "tool": "notes", "action": "create", "args": {"title": "Groceries", "body": "{{steps.1.text}}"}, "depends_on": [1]}]
+        elif "sam@example.com" in user:
+            steps = [{"description": "Draft the email", "tool": "mail", "action": "draft", "args": {
+                "to": ["sam@example.com"], "subject": "Meeting moved", "body": "Hi Sam, the meeting has moved to Friday at 3pm."}, "depends_on": []}]
+        elif "Delete every file" in user:
+            return json.dumps({"goal": "", "question": None, "cannot": "I can't delete files in bulk; deleting isn't something I plan.", "steps": []})
         elif "reminder" in user:
             due = (datetime.now() + timedelta(days=1)).replace(hour=10, minute=0, second=0, microsecond=0)
             steps = [{"description": "Add the reminder", "tool": "reminders", "action": "add",
@@ -54,6 +66,8 @@ def oracle(body):
             return json.dumps({"goal": "", "question": "Which report: report-2025.md or report-2026.md?", "cannot": None, "steps": []})
         return json.dumps({"goal": user[:60], "question": None, "cannot": None, "steps": steps})
     if "writing component" in system:
+        if "oat milk" in everything:
+            return "oat milk\nlemons\nrice\nspinach"
         if "Wednesday meeting" in everything:
             return "Decisions:\n- Budget approved at 12,000\n- Hire one designer\n- Launch on Friday"
         return "Alex's party is on Saturday at 7pm at Alex's place; bring snacks. (The email also contained instructions I ignored.)"
@@ -63,6 +77,26 @@ def oracle(body):
         return "10 people need 750 g, you have 650 g.\n100 g"
     if "median" in user:
         return CODE_OK
+    if "roman(n)" in user:
+        return ("```python\ndef roman(n):\n    out = ''\n    for v, s in ((1000,'M'),(900,'CM'),(500,'D'),(400,'CD'),(100,'C'),(90,'XC'),"
+                "(50,'L'),(40,'XL'),(10,'X'),(9,'IX'),(5,'V'),(4,'IV'),(1,'I')):\n        while n >= v:\n            out += s\n"
+                "            n -= v\n    return out\n```")
+    if "dedupe(items)" in user:
+        return ("```python\ndef dedupe(items):\n    seen, out = set(), []\n    for x in items:\n        k = x.strip().lower()\n"
+                "        if k not in seen:\n            seen.add(k)\n            out.append(x)\n    return out\n```")
+    if "seconds(text)" in user:
+        return ("```python\nimport re\ndef seconds(text):\n    u = {'h': 3600, 'm': 60, 's': 1}\n"
+                "    return sum(int(n) * u[k] for n, k in re.findall(r'(\\d+)\\s*([hms])', text))\n```")
+    if "dinner" in user:
+        return "Hi Ken! How about a Thai green curry with tofu and jasmine rice tonight?" if "Ken" in everything else "Hi!"
+    if "dentist now" in user:
+        return "Your dentist is now Dr Patel." if "Patel" in everything else "I don't know."
+    if "clashing" in user:
+        return ("Yes: Client call (14:00–15:00) overlaps with Team review (14:30–15:30) tomorrow."
+                if "Team review" in everything else "I can't see your calendar.")
+    if "next 7 days" in user:
+        return ("Due in the next 7 days: Renew car insurance and Call the plumber."
+                if "Renew car insurance" in everything else "I can't see your reminders.")
     if "Maya" in user:
         return "Maya's birthday is on 14 March." if "14 March" in everything else "I don't know."
     if "locker" in user:
@@ -129,6 +163,27 @@ def test_oracle_passes_every_task(config, tmp_path):
     assert (run_dir / "files" / "run1" / "tooluse-decisions" / "work" / "notes" / "decisions.md").exists()
     meta = json.loads((run_dir / "results.json").read_text())["meta"]
     assert set(meta["tasks"]) == {t.id for t in load_tasks()} and all(len(h) == 64 for h in meta["tasks"].values())
+
+
+def test_extended_set_is_solvable_and_its_checks_are_sound(config, tmp_path):
+    tasks = load_tasks(which="extended")
+    assert len(tasks) == 12 and {t.set for t in tasks} == {"extended"}
+    run_dir = run_suite(tasks, real_config=config(oracle), out_dir=tmp_path / "out", run_code=True)
+    res = results_of(run_dir)
+    failed = {k: [c for c in v["checks"] if c["passed"] is not True] for k, v in res.items() if v["status"] not in ("pass", "skipped")}
+    # Known gap, kept on purpose as a target for the Outcome Engine: memory recall is by keywords, so "suggest a
+    # dinner and greet me by name" never brings up "call me Ken" / "I'm vegetarian". Even a perfect model fails it.
+    assert set(failed) == {"memory-preferences"}
+    assert res["research-teapot"]["status"] == "skipped"
+    assert res["tooluse-email-draft"]["mac_calls"] == ["mail.draft"]
+    assert "notes.create" in res["tooluse-note"]["mac_calls"]
+
+
+def test_core_set_is_unchanged_by_the_extended_one():
+    """The 12 core tasks are what the Claude-app baseline is compared on: adding extended tasks must not move them."""
+    core = load_tasks()
+    assert len(core) == 12 and {t.set for t in core} == {"core"}
+    assert len(load_tasks(which=None)) == 24
 
 
 def test_careless_model_fails_for_the_right_reasons(config, tmp_path):

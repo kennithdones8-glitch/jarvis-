@@ -121,6 +121,8 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--repeat", type=int, default=1)
     p.add_argument("--run-code", action="store_true", help="run coding answers against hidden tests (sandboxed)")
     p.add_argument("--b1", action="store_true", help="baseline with the same information JARVIS gets")
+    p.add_argument("--set", choices=["core", "extended", "all"], default="core",
+                   help="core: the 12 compared with the Claude app (default); extended: 12 more; all: both")
     p = sub.add_parser("mac", help="Mac apps (Calendar, Reminders, Notes): check — read-only test that also lets macOS ask for permission")
     p.add_argument("op", choices=["check"])
     p = sub.add_parser("doctor", help="check the whole installation and say what to fix")
@@ -728,8 +730,8 @@ def _bench(kernel: Kernel, args) -> int:
     out = kernel.home / "bench-results"
     try:
         if args.op == "list":
-            for t in load_tasks():
-                print(f"{t.id:<22} {t.category:<10} {t.mode:<9} {t.title}")
+            for t in load_tasks(which=None if args.set == "all" else args.set):
+                print(f"{t.id:<26} {t.set:<9} {t.category:<10} {t.mode:<9} {t.title}")
             return 0
         if args.op == "baseline":
             out.mkdir(parents=True, exist_ok=True)
@@ -750,7 +752,7 @@ def _bench(kernel: Kernel, args) -> int:
             data = _json.loads((Path(args.ids[0]).expanduser() / "results.json").read_text())
             print(report(data["meta"], data["results"]))
             return 0
-        tasks = load_tasks(args.ids or None)
+        tasks = load_tasks(args.ids or None, which=None if args.set == "all" else args.set)
         if args.models == "hybrid":
             print("Hybrid: uses your Claude Pro plan (no money; it counts toward your usage limits). Each task runs in a\n"
                   "throwaway folder with made-up data, which may be sent to Claude without asking. Your real JARVIS\n"

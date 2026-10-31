@@ -1,0 +1,14 @@
+id = "research-teapot"
+set = "extended"
+category = "research"
+title = "A checkable fact, with real sources: HTTP 418"
+mode = "research"
+time_limit_s = 600
+prompt = "Which HTTP status code means \"I'm a teapot\", and which RFC first defined it? Cite your sources."
+
+[[checks]]
+type = "contains_all"
+values = ["418", "2324"]
+[[checks]]
+type = "citations"
+min = 1

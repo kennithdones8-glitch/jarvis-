@@ -30,11 +30,11 @@ MAX_CONTEXT = 8000
 CACHE_S = 120
 LOOKUPS = (("calendar", "events"), ("reminders", "list"), ("notes", "search"), ("notes", "read"),
            ("fs", "search"), ("fs", "list"), ("fs", "read"), ("doc", "read"))
-CUES = re.compile(
-    r"\b(calendar|schedule|free|busy|meeting|meetings|appointment|event|events|agenda|today|tonight|tomorrow|"
-    r"yesterday|week|weekend|morning|afternoon|evening|monday|tuesday|wednesday|thursday|friday|saturday|sunday|"
-    r"remind|reminder|reminders|to-?do|todos|tasks? due|notes?|wrote|file|files|document|documents|pdf|folder|"
-    r"downloads|my)\b", re.I)
+CUES = re.compile(  # plurals matter: "clashing appointments" must count (a benchmark task found it didn't)
+    r"\b(calendars?|schedules?|free|busy|meetings?|appointments?|events?|agenda|diary|booked|clash(es|ing)?|"
+    r"overlap(s|ping)?|conflicts?|today|tonight|tomorrow|yesterday|days?|weeks?|weekend|months?|morning|afternoon|"
+    r"evening|monday|tuesday|wednesday|thursday|friday|saturday|sunday|remind|reminders?|to-?dos?|due|overdue|"
+    r"notes?|wrote|files?|documents?|pdfs?|folders?|downloads|my)\b", re.I)
 CHANGE = re.compile(r"^\s*(please\s+)?(add|create|make|schedule|book|remind|set|send|email|draft|move|rename|"
                     r"delete|remove|cancel|tick|complete|mark|write|save)\b", re.I)
 
