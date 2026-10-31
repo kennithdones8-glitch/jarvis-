@@ -46,9 +46,14 @@ NOT_YET = ("email, calendar, reminders or messages", "controlling Mac settings, 
            "smart-home devices")
 
 
+MEMORY_ABILITY = ("remember what the owner tells you and recall it in later conversations (stored only on their Mac; "
+                  "they can review and delete it in the Memory panel)")
+
+
 def abilities_text(abilities: tuple[str, ...] | list[str]) -> str:
     lines = "\n".join(f"- {a}" for a in abilities)
-    missing = "; ".join(NOT_YET)
+    has_memory = any("remember" in a for a in abilities)
+    missing = "; ".join(n for n in NOT_YET if not (has_memory and "remembering" in n))
     return (f"Your abilities right now — this is the COMPLETE list:\n{lines}\n"
             f"You can NOT currently do anything else, including: {missing}. "
             "If asked what you can do, describe only the abilities listed above and say more are being built.")
@@ -56,6 +61,10 @@ def abilities_text(abilities: tuple[str, ...] | list[str]) -> str:
 
 def system_message(abilities: tuple[str, ...] | list[str] = CHAT_ONLY_ABILITIES) -> Message:
     return Message("system", f"{SYSTEM_PROMPT}\n{abilities_text(abilities)}", Category.SYSTEM_PROMPT)
+
+
+def chat_abilities(memory_enabled: bool) -> tuple[str, ...]:
+    return (*CHAT_ONLY_ABILITIES, MEMORY_ABILITY) if memory_enabled else CHAT_ONLY_ABILITIES
 
 
 def priming_messages(abilities: tuple[str, ...] | list[str] = CHAT_ONLY_ABILITIES) -> list[Message]:

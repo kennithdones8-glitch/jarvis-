@@ -119,6 +119,38 @@ MIGRATIONS: list[str] = [
     );
     CREATE INDEX model_usage_ts ON model_usage(ts);
     """,
+    # v3: memory — original records, derived memories, full-text indexes, deletion tombstones
+    """
+    CREATE TABLE records (
+        id         TEXT PRIMARY KEY,
+        session    TEXT NOT NULL,
+        kind       TEXT NOT NULL,
+        role       TEXT NOT NULL,
+        content    TEXT NOT NULL,
+        created_at TEXT NOT NULL
+    );
+    CREATE INDEX records_session ON records(session, created_at);
+    CREATE VIRTUAL TABLE records_fts USING fts5(id UNINDEXED, content, tokenize = 'porter unicode61');
+
+    CREATE TABLE memories (
+        id            TEXT PRIMARY KEY,
+        text          TEXT NOT NULL,
+        kind          TEXT NOT NULL,
+        origin        TEXT NOT NULL,
+        confidence    REAL NOT NULL,
+        source_record TEXT,
+        created_at    TEXT NOT NULL,
+        verified_at   TEXT,
+        important     INTEGER NOT NULL DEFAULT 0
+    );
+    CREATE INDEX memories_source ON memories(source_record);
+    CREATE VIRTUAL TABLE memories_fts USING fts5(id UNINDEXED, text, tokenize = 'porter unicode61');
+
+    CREATE TABLE tombstones (
+        hash       TEXT PRIMARY KEY,
+        created_at TEXT NOT NULL
+    );
+    """,
 ]
 
 

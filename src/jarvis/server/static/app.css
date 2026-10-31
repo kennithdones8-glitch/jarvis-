@@ -272,3 +272,26 @@ pre.out { background: rgba(0, 0, 0, .35); border: 1px solid var(--gold-line); pa
 .activity time { color: var(--faint); font-variant-numeric: tabular-nums; }
 .job.consent { border-color: var(--arc); background: linear-gradient(180deg, var(--arc-dim), transparent); }
 .job.consent .kicker { color: var(--arc); }
+
+/* ---------- memory ---------- */
+.stack-rail { display: grid; gap: 18px; }
+.memform { display: flex; gap: 8px; margin: 0 0 12px 10px; }
+.memform:last-child { margin: 12px 0 0 10px; }
+.memform input { flex: 1; min-width: 0; background: rgba(0, 0, 0, .35); color: var(--text); border: 1px solid var(--gold-line);
+                 padding: 7px 10px; font: 14px var(--sans); }
+.memform input:focus { outline: none; border-color: var(--gold); }
+.mem { padding: 8px 10px 8px 12px; border-left: 2px solid var(--gold-line); }
+.mem.confirmed { border-left-color: var(--gold); }
+.mem.unconfirmed { border-left-color: var(--arc); border-left-style: dashed; }
+.mem-text { font-size: 14px; overflow-wrap: anywhere; }
+.mem-meta { color: var(--faint); font-size: 12px; margin-top: 2px; }
+.mem-meta b { font-weight: 600; color: var(--muted); }
+.mem.unconfirmed .mem-meta b { color: var(--arc); }
+.mem .row { margin-top: 6px; gap: 4px; }
+.mem .btn-sm { padding: 2px 8px; font-size: 11.5px; }
+.mem-star { color: var(--gold-hi); }
+.rail { min-width: 0; }
+.stack-rail { grid-template-columns: minmax(0, 1fr); }
+.panel { min-width: 0; }
+.memform .btn { flex: none; }
+@media (max-width: 760px) { .stack-rail { display: contents; } .memory-panel { order: 2; } .systems-panel { order: 3; } }

@@ -68,6 +68,10 @@ class Kernel:
         self.models = build_model_service(self.model_config, self.db, self.audit, self.approvals, self.killswitch,
                                           secrets=secrets, workdir=str(self.home / "claude-workdir"))
 
+        from ..memory import MemoryStore, settings_from
+
+        self.memory = MemoryStore(self.db, self.audit, settings_from(self.model_config.memory), self.models)
+
     def start(self) -> list[str]:
         """Record startup and recover tasks interrupted by a previous crash or shutdown."""
         self.audit.record("kernel.started", pid=os.getpid(), policy_loaded=self.policy_path.exists(),

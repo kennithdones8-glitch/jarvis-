@@ -38,7 +38,7 @@ from ..models import ChatRequest, Message, Need, NoModelAvailable
 from ..models.types import Category
 from ..orchestrator import Orchestrator
 from ..orchestrator.planner import describe_args
-from ..persona import priming_messages
+from ..persona import chat_abilities, priming_messages
 from ..status import models_status
 
 STATIC = Path(__file__).parent / "static"
@@ -79,6 +79,11 @@ def describe_event(event: str, p: dict[str, Any]) -> str:
         "approval.approved": lambda: "You approved a request",
         "approval.rejected": lambda: "You rejected a request",
         "approval.consumed": lambda: "Approval used",
+        "memory.added": lambda: f"Remembered a {p.get('kind')} ({'confirmed' if p.get('origin') == 'explicit' else 'unconfirmed'})",
+        "memory.deleted": lambda: "Deleted a memory",
+        "memory.confirmed": lambda: "Confirmed a memory",
+        "memory.edited": lambda: "Corrected a memory",
+        "memory.forget": lambda: f"Forgot {p.get('memories')} memories and {p.get('records')} records",
         "tool.start": lambda: f"Running {call}",
         "tool.result": lambda: f"Finished {call}",
         "tool.error": lambda: f"Tool error: {p.get('error')}",
@@ -248,8 +253,13 @@ class Dashboard:
         return job["task_id"]
 
     # ---- chat --------------------------------------------------------------------------
-    def chat(self, message: str, history: list[dict[str, str]], *, local_only: bool = False) -> dict[str, Any]:
-        msgs = list(priming_messages())
+    def chat(self, message: str, history: list[dict[str, str]], *, local_only: bool = False,
+             session: str = "dashboard") -> dict[str, Any]:
+        memory = self.kernel.memory
+        msgs = list(priming_messages(chat_abilities(memory.settings.enabled)))
+        recalled = memory.recall(message)
+        if context := memory.context_message(recalled):
+            msgs.append(context)
         for turn in history[-10:]:
             if turn.get("role") in ("user", "assistant") and isinstance(turn.get("content"), str):
                 msgs.append(Message(turn["role"], turn["content"][:4000], Category.CONVERSATION))
@@ -263,8 +273,9 @@ class Dashboard:
         except ApprovalRequired as exc:
             appr = self.kernel.approvals.get(exc.approval_id)
             return {"needs_approval": True, "approval_id": exc.approval_id, "summary": appr["summary"]}
+        memory.learn_from(session, message, r.text)
         return {"text": r.text, "model": f"{r.provider}/{r.model}", "seconds": round(time.time() - started, 1),
-                "tokens": r.usage.output_tokens, "note": r.note}
+                "tokens": r.usage.output_tokens, "note": r.note, "memories_used": len(recalled)}
 
     # ---- state snapshot ----------------------------------------------------------------
     def state(self) -> dict[str, Any]:
@@ -317,6 +328,7 @@ class Dashboard:
             "tasks": tasks, "approvals": approvals, "jobs": jobs, "models": self._models_cache[1],
             "audit": list(reversed(audit)), "audit_chain": self._audit_cache[1],
             "roots": [tilde(str(r)) for r in k.policy.roots], "policy_loaded": k.policy_path.exists(),
+            "memory": {**k.memory.counts(), "enabled": k.memory.settings.enabled},
         }
 
     # ---- HTTP plumbing -----------------------------------------------------------------
@@ -390,6 +402,12 @@ class Dashboard:
                                       {"Cache-Control": "max-age=86400"})
                 if url.path == "/api/state":
                     return self._json(h, 200, self.state())
+                if url.path == "/api/memory":
+                    q = parse_qs(url.query).get("q", [""])[0][:200]
+                    mem = self.kernel.memory
+                    items = mem.search(q) if q.strip() else mem.list(limit=50)
+                    return self._json(h, 200, {"memories": items, "counts": mem.counts(),
+                                               "records": mem.search_records(q, limit=10) if q.strip() else []})
                 if m := re.fullmatch(r"/api/tasks/([\w-]+)/audit", url.path):
                     return self._json(h, 200, self.kernel.audit.entries(task_id=m.group(1), limit=300))
                 raise HttpError(404, "not found")
@@ -430,7 +448,25 @@ class Dashboard:
 
         if path == "/api/chat":
             history = body.get("history") if isinstance(body.get("history"), list) else []
-            return self.chat(text("message"), history, local_only=body.get("local_only") is True)
+            session = body.get("session") if isinstance(body.get("session"), str) else "dashboard"
+            return self.chat(text("message"), history, local_only=body.get("local_only") is True,
+                             session=session[:64])
+        if path == "/api/memory/remember":
+            mid = self.kernel.memory.remember(text("text", 500), origin="explicit", by=actor)
+            return {"id": mid, "stored": mid is not None}
+        if m := re.fullmatch(r"/api/memory/([\w-]+)/(confirm|delete|important|edit)", path):
+            mem, op = self.kernel.memory, m.group(2)
+            if op == "confirm":
+                mem.confirm(m.group(1), by=actor)
+            elif op == "delete":
+                mem.delete(m.group(1), by=actor)
+            elif op == "important":
+                mem.set_important(m.group(1), body.get("important") is True, by=actor)
+            else:
+                mem.edit(m.group(1), text("text", 500), by=actor)
+            return {"ok": True}
+        if path == "/api/memory/forget":
+            return self.kernel.memory.forget(text("query", 200), by=actor, dry_run=body.get("confirm") is not True)
         if path == "/api/plan":
             return {"job_id": self.start_plan(text("request"))}
         if m := re.fullmatch(r"/api/plan/(\w+)/(run|discard)", path):

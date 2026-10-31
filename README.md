@@ -22,6 +22,7 @@ A personal AI system for Mac and iPhone: persistent, permissioned, auditable, lo
 | Web search via local SearXNG | ✅ implemented, protocol-tested; needs SearXNG on the Mac |
 | Orchestrator: plan → review → permission-checked execution → verification (`jarvis do`) | ✅ implemented, tested; planning quality on real models being evaluated |
 | Claude as JARVIS's brain via Claude Code on your Pro plan (`jarvis use-claude on`): tools disabled, no API key, asks before sending private content, falls back to local | ✅ implemented, tested with a stand-in CLI; **live check runs on the Mac** |
+| Memory: conversation archive + facts with provenance, recall in chat, review/correct/delete, forget-by-topic, exclusions (local only) | ✅ implemented, tested, browser-checked |
 | Command-centre dashboard (`jarvis dashboard`): chat, plan review, approvals with previews, missions, systems, activity, emergency stop | ✅ implemented, tested, browser-checked |
 | Passkeys / Touch ID, iPhone access, memory, voice, iPhone | ⏳ not started |
 | macOS-specific behaviour (launchd, Keychain, Touch ID) | ⏳ not started; not yet tested on a Mac |
@@ -65,6 +66,8 @@ or `$JARVIS_HOME`. Nothing runs in the background and nothing is sent over the n
 | `jarvis do "…" [--yes]` | Plan a task, show the plan, run it with approvals, verify and report |
 | `jarvis run ID` | Continue a task (after approving, resuming or a restart) |
 | `jarvis use-claude on\|off` | Hybrid brain: simple → local, medium → Claude Haiku, hard → Claude Sonnet (Pro plan); or local-only |
+| `jarvis remember "…"` | Tell JARVIS something to remember |
+| `jarvis memory list\|search Q\|confirm ID\|delete ID\|forget Q [--yes]\|export FILE` | Review and manage memory |
 | `jarvis models` | Configured models, live availability, budget |
 | `jarvis ask "…" [--min-quality N] [--local-only]` | One-off question through the router and privacy gate |
 | `jarvis grant-egress --category C --provider P` / `revoke-egress ID` / `grants` | Standing privacy grants |

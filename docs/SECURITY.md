@@ -54,6 +54,8 @@ Fixed guarantees, independent of policy:
 | Unsafe shell | No shell tool exists | ✅ by absence |
 | SSRF via web fetch (reaching Ollama, router, cloud metadata) | Every hop is resolved and must be a public address | ✅ tested — DNS rebinding remains a residual risk |
 | Destructive file operations | Overwrites keep the previous version; delete is Tier 4 and moves to trash | ✅ tested |
+| Memory poisoning / inferred "facts" | Memories the model noticed are stored as unconfirmed, shown as such to the model and to you; extraction is local-only and limited to things you stated | ✅ tested |
+| Deleted personal data reappearing | Tombstones block re-learning; record deletion cascades to derived memories; audit holds no memory text | ✅ tested — task history and future backups are outside memory deletion (documented) |
 | Supply chain | Kernel has zero runtime dependencies; dev deps locked in `uv.lock` | ✅ |
 | Self-modification | Proposals only in git worktrees; policy/gate/auth files excluded | ⏳ later |
 

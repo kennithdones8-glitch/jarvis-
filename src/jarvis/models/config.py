@@ -35,6 +35,7 @@ class ModelConfig:
     providers: tuple[ProviderConfig, ...] = field(default_factory=tuple)
     searxng_url: str | None = None
     routing_mode: str = "local_first"
+    memory: dict[str, Any] = field(default_factory=dict)
 
 
 def _check_keys(where: str, data: dict[str, Any], allowed: set[str]) -> None:
@@ -61,7 +62,11 @@ def _model(where: str, raw: dict[str, Any]) -> ModelInfo:
 
 
 def parse_model_config(data: dict[str, Any]) -> ModelConfig:
-    _check_keys("jarvis.toml", data, {"budget", "privacy", "providers", "search", "routing"})
+    _check_keys("jarvis.toml", data, {"budget", "privacy", "providers", "search", "routing", "memory"})
+    memory = data.get("memory", {})
+    _check_keys("[memory]", memory, {"enabled", "extract", "exclude_topics", "recall_limit"})
+    if not isinstance(memory.get("exclude_topics", []), list):
+        raise ConfigError("[memory]: exclude_topics must be a list of words")
     routing = data.get("routing", {})
     _check_keys("[routing]", routing, {"mode"})
     if routing.get("mode", "local_first") not in ("local_first", "best", "hybrid"):
@@ -103,7 +108,8 @@ def parse_model_config(data: dict[str, Any]) -> ModelConfig:
     if limit < 0:
         raise ConfigError("[budget]: monthly_limit_usd cannot be negative")
     return ModelConfig(monthly_limit_usd=limit, local_only_categories=local_only, providers=tuple(providers),
-                       searxng_url=search.get("searxng_url"), routing_mode=routing.get("mode", "local_first"))
+                       searxng_url=search.get("searxng_url"), routing_mode=routing.get("mode", "local_first"),
+                       memory=dict(memory))
 
 
 def load_model_config(path: str | Path) -> ModelConfig:

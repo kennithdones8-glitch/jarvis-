@@ -57,6 +57,12 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--no-open", action="store_true", help="do not open the browser")
     p = sub.add_parser("use-claude", help="turn the Claude (Claude Code on your Pro plan) brain on or off")
     p.add_argument("state", choices=["on", "off"])
+    p = sub.add_parser("remember", help="tell JARVIS something to remember")
+    p.add_argument("text")
+    p = sub.add_parser("memory", help="review memory: list | search Q | confirm ID | delete ID | forget Q | export FILE")
+    p.add_argument("op", choices=["list", "search", "confirm", "delete", "forget", "export"])
+    p.add_argument("arg", nargs="?")
+    p.add_argument("--yes", action="store_true", help="for forget: actually delete (default is a preview)")
     sub.add_parser("models", help="show configured models, availability and budget")
     p = sub.add_parser("ask", help="one-off question to the best available model")
     p.add_argument("question")
@@ -112,6 +118,11 @@ def main(argv: list[str] | None = None) -> int:
         elif args.cmd in ("cancel", "pause", "resume"):
             getattr(kernel.engine, args.cmd)(args.task_id, actor="user:cli")
             print(f"{args.cmd}: {kernel.tasks.get(args.task_id)['state']}")
+        elif args.cmd == "remember":
+            mid = kernel.memory.remember(args.text, origin="explicit", by="user:cli")
+            print(f"Remembered ({mid})." if mid else "Not stored (memory is off, or the text matches an excluded topic).")
+        elif args.cmd == "memory":
+            return _memory(kernel, args)
         elif args.cmd == "use-claude":
             return _use_claude(kernel, args.state == "on")
         elif args.cmd == "dashboard":
@@ -351,13 +362,57 @@ def _with_consent(kernel: Kernel, call):
     return call(True)
 
 
+def _memory(kernel: Kernel, args) -> int:
+    import json as _json
+
+    from .memory import iter_lines
+
+    mem = kernel.memory
+    needs_arg = {"search", "confirm", "delete", "forget", "export"}
+    if args.op in needs_arg and not args.arg:
+        print(f"`jarvis memory {args.op}` needs an argument", file=sys.stderr)
+        return 1
+    if args.op == "list":
+        c = mem.counts()
+        print(f"{c['memories']} memories ({c['unconfirmed']} unconfirmed, marked ?), {c['records']} conversation records")
+        for line in iter_lines(mem.list()):
+            print(line)
+    elif args.op == "search":
+        for line in iter_lines(mem.search(args.arg)):
+            print(line)
+        for r in mem.search_records(args.arg, limit=10):
+            print(f"  record {r['id']} ({r['created_at'][:10]}, {r['role']}): {r['snippet']}")
+    elif args.op == "confirm":
+        mem.confirm(args.arg, by="user:cli")
+        print("Confirmed.")
+    elif args.op == "delete":
+        mem.delete(args.arg, by="user:cli")
+        print("Deleted. JARVIS won't re-learn it from conversations.")
+    elif args.op == "forget":
+        res = mem.forget(args.arg, by="user:cli", dry_run=not args.yes)
+        print(f"{'Deleted' if args.yes else 'Would delete'} {len(res['memories'])} memories and "
+              f"{len(res['records'])} conversation records matching {args.arg!r}.")
+        for m in res["memories"][:20]:
+            print(f"  - {m['text']}")
+        if not args.yes:
+            print("Run again with --yes to delete them.")
+    elif args.op == "export":
+        Path(args.arg).expanduser().write_text(_json.dumps(mem.export(), indent=2, default=str))
+        print(f"Exported to {args.arg}")
+    return 0
+
+
 def _ask(kernel: Kernel, args) -> int:
     from .models import ChatRequest, Message, Need, NoModelAvailable
     from .models.types import Category
-    from .persona import priming_messages
+    from .persona import chat_abilities, priming_messages
 
+    mem = kernel.memory
+    recalled = mem.recall(args.question)
+    context = mem.context_message(recalled)
     request = ChatRequest((
-        *priming_messages(),
+        *priming_messages(chat_abilities(mem.settings.enabled)),
+        *([context] if context else []),
         Message("user", args.question, Category.CONVERSATION, local_only=args.local_only),
     ))
     try:
@@ -369,11 +424,14 @@ def _ask(kernel: Kernel, args) -> int:
         for model, reason in exc.reasons.items():
             print(f"  {model}: {reason}")
         return 4
-    print(r.text)
+    print(r.text, flush=True)
+    if recalled:
+        print(f"\n(used {len(recalled)} memor{'y' if len(recalled) == 1 else 'ies'})", file=sys.stderr)
     if r.note:
         print(f"\n({r.note})", file=sys.stderr)
     print(f"\n[{r.provider}/{r.model} · {r.latency_s:.1f}s · {r.usage.output_tokens} tokens · ${r.cost_usd:.4f}]",
-          file=sys.stderr)
+          file=sys.stderr, flush=True)
+    mem.learn_from("cli", args.question, r.text, background=False)  # local model; after you've seen the answer
     return 0
 
 

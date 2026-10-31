@@ -3,7 +3,8 @@
 // (never as HTML), so content from files or web pages cannot inject markup or scripts.
 
 const $ = (s) => document.querySelector(s);
-const ui = { mode: "ask", data: null, convo: [], chatBusy: false, online: true, open: new Set(), lastFeed: "" };
+const ui = { mode: "ask", data: null, convo: [], chatBusy: false, online: true, open: new Set(), lastFeed: "",
+             session: (crypto.randomUUID ? crypto.randomUUID() : String(Math.random()).slice(2)), memQ: "", memKey: "" };
 
 function h(tag, props = {}, ...kids) {
   const el = document.createElement(tag);
@@ -139,7 +140,7 @@ async function submitCommand(ev) {
   const history = ui.convo.filter((m) => !m.error && !m.consent).map((m) => ({ role: m.role, content: m.text }));
   ui.convo.push({ role: "user", text });
   $("#cmd").value = "";
-  await sendChat({ message: text, history });
+  await sendChat({ message: text, history, session: ui.session });
 }
 
 // Sends a chat turn. If the best model is in the cloud and your rule is "ask every time", the server
@@ -151,7 +152,8 @@ async function sendChat(payload) {
     const r = await api("/api/chat", payload);
     if (r.needs_approval) ui.convo.push({ role: "assistant", consent: true, payload, approval_id: r.approval_id, text: r.summary });
     else if (r.error) ui.convo.push({ role: "assistant", text: r.error, error: true });
-    else ui.convo.push({ role: "assistant", text: r.text, meta: [r.model.split("/").pop(), `${r.seconds}s`, r.note].filter(Boolean).join(" · ") });
+    else ui.convo.push({ role: "assistant", text: r.text, meta: [r.model.split("/").pop(), `${r.seconds}s`,
+      r.memories_used ? `used ${plural(r.memories_used, "memory").replace("memorys", "memories")}` : null, r.note].filter(Boolean).join(" · ") });
   } catch (e) {
     ui.convo.push({ role: "assistant", text: `Request failed: ${e.message}`, error: true });
   } finally {
@@ -316,6 +318,48 @@ function renderActivity(entries) {
   $("#activity").replaceChildren(...entries.map((e) => h("li", {}, h("time", {}, clock(e.ts)), h("span", {}, e.detail))));
 }
 
+// ---------------------------------------------------------------- memory
+async function loadMemory(force) {
+  const counts = ui.data && ui.data.memory;
+  const key = JSON.stringify([ui.memQ, counts]);
+  if (!force && key === ui.memKey) return;
+  ui.memKey = key;
+  let res;
+  try { res = await api(`/api/memory?q=${encodeURIComponent(ui.memQ)}`); } catch (e) { return; }
+  const c = res.counts;
+  $("#memcount").textContent = c.memories ? `${c.memories}${c.unconfirmed ? ` · ${c.unconfirmed} to review` : ""}` : "";
+  const items = res.memories.map((m) => {
+    const confirmed = m.origin === "explicit";
+    return h("article", { class: `mem ${confirmed ? "confirmed" : "unconfirmed"}` },
+      h("div", { class: "mem-text" }, m.important ? h("span", { class: "mem-star", title: "Important" }, "★ ") : null, m.text),
+      h("div", { class: "mem-meta" }, h("b", {}, confirmed ? "Confirmed" : "Unconfirmed"), ` · ${m.kind} · ${m.created_at.slice(0, 10)}`),
+      h("div", { class: "row" },
+        confirmed ? null : h("button", { class: "btn btn-sm", type: "button", onclick: () => memAct(`/api/memory/${m.id}/confirm`, {}) }, "Confirm"),
+        h("button", { class: "btn btn-ghost btn-sm", type: "button", onclick: () => {
+          const t = prompt("Correct this memory:", m.text); if (t && t.trim() && t !== m.text) memAct(`/api/memory/${m.id}/edit`, { text: t });
+        } }, "Edit"),
+        h("button", { class: "btn btn-ghost btn-sm", type: "button", onclick: () => memAct(`/api/memory/${m.id}/important`, { important: !m.important }) }, m.important ? "Unstar" : "Star"),
+        h("button", { class: "btn btn-ghost btn-sm", type: "button", onclick: () => confirm("Delete this memory? JARVIS won't re-learn it.") && memAct(`/api/memory/${m.id}/delete`, {}) }, "Delete")));
+  });
+  if (ui.memQ && (res.memories.length || res.records.length)) {
+    items.push(h("div", { class: "row" }, h("span", { class: "mem-meta" }, `${plural(res.records.length, "conversation")} mention this`),
+      h("button", { class: "btn btn-danger btn-sm", type: "button", onclick: forgetMatching }, "Forget all of this")));
+  }
+  $("#memlist").replaceChildren(...(items.length ? items : [h("div", { class: "empty" },
+    ui.memQ ? "Nothing remembered about that." : "Nothing remembered yet. Tell JARVIS something, or say “remember that…” in chat.")]));
+}
+
+async function memAct(path, body) {
+  try { await api(path, body); } catch (e) { note(e.message); }
+  await refresh(); await loadMemory(true);
+}
+
+async function forgetMatching() {
+  const preview = await api("/api/memory/forget", { query: ui.memQ });
+  if (!confirm(`Permanently delete ${plural(preview.memories.length, "memory").replace("memorys", "memories")} and ${plural(preview.records.length, "conversation record")} about “${ui.memQ}”?`)) return;
+  await memAct("/api/memory/forget", { query: ui.memQ, confirm: true });
+}
+
 // ---------------------------------------------------------------- loop
 function render() {
   const d = ui.data;
@@ -326,6 +370,7 @@ function render() {
   renderDecisions(d.approvals);
   renderSystems(d);
   renderActivity(d.audit);
+  loadMemory(false);
 }
 
 async function act(path, body) {
@@ -350,6 +395,16 @@ document.addEventListener("DOMContentLoaded", () => {
   });
   $("#release").addEventListener("click", () => {
     if (confirm("Release the emergency stop? Paused tasks stay paused until you resume them.")) act("/api/release", { confirm: true });
+  });
+  let memTimer;
+  $("#memq").addEventListener("input", () => { clearTimeout(memTimer); memTimer = setTimeout(() => { ui.memQ = $("#memq").value.trim(); loadMemory(true); }, 250); });
+  $("#memsearch").addEventListener("submit", (e) => e.preventDefault());
+  $("#memadd").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const t = $("#memtext").value.trim();
+    if (!t) return;
+    await memAct("/api/memory/remember", { text: t });
+    $("#memtext").value = "";
   });
   $("#logbtn").addEventListener("click", () => $("#logdlg").showModal());
   $("#logclose").addEventListener("click", () => $("#logdlg").close());

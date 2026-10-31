@@ -25,10 +25,23 @@
 </header>
 
 <main class="hud">
-  <aside class="rail rail-left">
+  <aside class="rail rail-left stack-rail">
     <section class="panel missions-panel" aria-labelledby="mis-h">
       <header class="ph"><h2 id="mis-h">Missions</h2><span id="miscount" class="ph-count"></span></header>
       <div id="missions" class="stack"></div>
+    </section>
+    <section class="panel memory-panel" aria-labelledby="mem-h">
+      <header class="ph"><h2 id="mem-h">Memory</h2><span id="memcount" class="ph-count"></span></header>
+      <form id="memsearch" class="memform" role="search">
+        <label for="memq" class="sr">Search memory</label>
+        <input id="memq" type="search" placeholder="Search what JARVIS remembers…" autocomplete="off">
+      </form>
+      <div id="memlist" class="stack"></div>
+      <form id="memadd" class="memform">
+        <label for="memtext" class="sr">Something to remember</label>
+        <input id="memtext" type="text" placeholder="Tell JARVIS something to remember" autocomplete="off" maxlength="500">
+        <button class="btn btn-sm" type="submit">Remember</button>
+      </form>
     </section>
   </aside>
 

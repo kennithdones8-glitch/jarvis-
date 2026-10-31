@@ -1,5 +1,24 @@
 # Changelog
 
+## 0.8.0 — Milestone 5: memory
+
+- Long-term memory stored only in JARVIS's local database: original conversation records (a
+  searchable archive) kept separate from short derived memories with provenance (explicit or observed,
+  confidence, source record, created and verified dates, importance).
+- Learning: "remember that…" in chat, the Remember box, or `jarvis remember` creates confirmed
+  memories. The LOCAL model notices facts you state and saves them as *unconfirmed* until you
+  confirm them. Extraction never uses a cloud model.
+- Recall: relevant memories are added to chat context (category `memory`, so cloud use still asks you),
+  labelled confirmed or unconfirmed and possibly out of date. Replies show "used N memories".
+- Control: Memory panel (search, confirm, edit, star, delete, "forget all of this") and
+  `jarvis memory list|search|confirm|delete|forget|export`.
+- Managed deletion: deletes remove the memory and its index entry; deleting a record removes memories
+  derived from it; tombstones stop deleted or corrected facts from being re-learned (saying it again
+  yourself overrides); the audit log never holds memory text.
+- `[memory]` config: enabled, extract, exclude_topics (never stored), recall_limit.
+- Keyword (full-text) search; search by meaning with local embeddings is planned.
+- 12 new tests.
+
 ## 0.7.2 — Remember sign-in problems
 
 - If Claude Code reports it isn't signed in, JARVIS remembers that for 10 minutes, even across separate

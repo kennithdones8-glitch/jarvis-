@@ -21,6 +21,14 @@ local_only_categories = []
 # `jarvis use-claude on` switches this to "hybrid" and enables Claude.
 mode = "local_first"
 
+[memory]
+# Long-term memory, stored only in JARVIS's database on this Mac.
+enabled = true
+# Let the LOCAL model notice facts you state in chat (saved as "unconfirmed" until you confirm them).
+extract = true
+# Conversations or facts mentioning these words are never stored, e.g. ["medical", "password"].
+exclude_topics = []
+
 [search]
 # Local SearXNG (see docs/SETUP-MAC.md). Comment out to disable web search.
 searxng_url = "http://127.0.0.1:8888"

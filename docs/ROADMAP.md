@@ -14,7 +14,7 @@ Claude Pro is a consumer subscription without API access, so it is not used by J
 | M4 | Local dashboard (live state, plan review, approvals, chat, emergency stop) | ✅ done |
 | M4c | Claude as the main brain via Claude Code (Pro), routing mode "best", consent cards | ✅ done (live check pending on Mac) |
 | M4b | Passkey / Touch ID for sensitive approvals; research-brief demo once SearXNG runs on the Mac | |
-| M5 | Memory: originals + derived memories with provenance, FTS5 + local embeddings, deletion propagation, memory center | |
+| M5 | Memory: originals + derived memories with provenance, full-text search, deletion propagation, memory panel | ✅ done (search by meaning with embeddings: later) |
 | M6 | Mac voice: push-to-talk (whisper.cpp), TTS (`say`/Piper), interruption ≠ cancellation, then local wake word | |
 | M7 | iPhone home-screen web app over Tailscale: pairing, approvals, notifications, task handoff | |
 | M8 | launchd service, health monitor, encrypted backups + restore test, uninstall | |
