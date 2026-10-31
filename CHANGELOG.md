@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.16.1 — Pre-Mac review and `jarvis doctor`
+
+Reviewed the untested v0.13–v0.16 code against whisper.cpp v1.9.4's source and Mac behaviour:
+- **Fixed:** voice readiness used any answer from whisper-server; it now uses its `/health` endpoint (503 while
+  the model loads) and treats its `{"error": …}` replies as errors.
+- **Fixed:** restarting the background service (launchd sends SIGTERM) left whisper-server running. JARVIS now
+  shuts down cleanly on SIGTERM (verified with a real signal).
+- **Fixed:** a negative or malformed `Content-Length` left a dashboard connection waiting forever. Now 400.
+- **Hardened:** HTTPS (Web Push to Apple, web fetch) falls back to macOS's CA bundle if Python's own store is
+  empty (some uv-installed Pythons), instead of failing silently. Push failures are now in the audit log.
+- whisper.cpp setup builds for CPU (Metal off): steadier on Intel Macs.
+- **New: `jarvis doctor`** checks database, audit log, disk, models, dashboard, service, backups (decrypts the
+  newest), HTTPS trust, Touch ID, the full phone path (proves Tailscale keeps the Host header), voice (speaks and
+  transcribes a test sentence on the Mac) and the briefing, with a fix for each problem.
+- Fixed a flaky voice test. 9 new tests.
+
 ## 0.16.0 — Milestone 6: voice
 
 - **Push-to-talk** (Talk button, Mac and iPhone): the page records, converts to 16 kHz mono WAV and JARVIS

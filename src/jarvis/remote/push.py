@@ -28,6 +28,7 @@ from cryptography.hazmat.primitives.kdf.hkdf import HKDF
 
 from ..core.audit import AuditLog
 from ..core.db import Database
+from ..core.tls import client_context
 from ..core.util import new_id, now_iso
 from .webauthn import b64url_decode, b64url_encode
 
@@ -106,7 +107,7 @@ class PushService:
         self.audit = audit
         self.key = load_or_create_vapid(key_path)
         self.hosts = hosts
-        self.opener = opener or urllib.request.build_opener()
+        self.opener = opener or urllib.request.build_opener(urllib.request.HTTPSHandler(context=client_context()))
 
     @property
     def public_key(self) -> str:
@@ -136,7 +137,7 @@ class PushService:
         if not url.startswith("/") or url.startswith("//"):
             raise PushError("notifications only open JARVIS's own pages")
         payload = json.dumps({"title": title, "body": body, "tag": tag, "url": url}).encode()
-        delivered = 0
+        delivered, errors = 0, []
         for sub in self.subscriptions():
             if not allowed_endpoint(sub["endpoint"], self.hosts):
                 continue
@@ -151,9 +152,12 @@ class PushService:
                 if exc.code in (404, 410):  # the phone unsubscribed or reinstalled the app
                     with self.db.tx() as c:
                         c.execute("DELETE FROM push_subscriptions WHERE id = ?", (sub["id"],))
-            except OSError:
-                pass
-        self.audit.record("push.sent", tag=tag, devices=delivered)
+                else:
+                    errors.append(f"HTTP {exc.code}")
+            except OSError as exc:  # e.g. offline, or HTTPS certificate problems
+                reason = getattr(exc, "reason", exc)
+                errors.append(type(reason).__name__ if not isinstance(reason, str) else reason[:60])
+        self.audit.record("push.sent", tag=tag, devices=delivered, **({"errors": errors[:3]} if errors else {}))
         return delivered
 
 

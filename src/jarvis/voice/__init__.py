@@ -89,11 +89,10 @@ class WhisperClient:
         self._opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
 
     def available(self) -> bool:
+        """Ready to transcribe: whisper-server's /health says ok (it answers 503 while the model loads)."""
         try:
-            with self._opener.open(self.url + "/", timeout=2):
-                return True
-        except urllib.error.HTTPError:
-            return True  # it answered
+            with self._opener.open(self.url + "/health", timeout=2) as resp:
+                return resp.status == 200
         except (urllib.error.URLError, OSError):
             return False
 
@@ -110,9 +109,12 @@ class WhisperClient:
         except (urllib.error.URLError, OSError):
             raise VoiceError("the speech recogniser isn't running — see `jarvis voice status`") from None
         try:
-            text = json.loads(raw).get("text", "")
-        except (json.JSONDecodeError, AttributeError):
+            data = json.loads(raw)
+        except json.JSONDecodeError:
             raise VoiceError("the speech recogniser returned something unexpected") from None
+        if not isinstance(data, dict) or "error" in data or not isinstance(data.get("text", ""), str):
+            raise VoiceError("the speech recogniser couldn't read that recording")
+        text = data.get("text", "")
         return clean_transcript(str(text))
 
 

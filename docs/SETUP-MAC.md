@@ -141,6 +141,14 @@ uv run jarvis remote enable
 Lost phone: dashboard → Systems → Phone → Remove, or `uv run jarvis devices` then `uv run jarvis devices revoke ID`.
 Turn phone access off with `uv run jarvis remote disable`.
 
+## Checking everything
+
+```bash
+uv run jarvis doctor
+```
+Each line is ✓ (works), ! (warning), ✗ (problem) or – (not set up), with what to do next. It changes nothing,
+doesn't use your Claude plan, and (if voice is on) speaks a test sentence with `say` and transcribes it locally.
+
 ## Updating
 
 ```bash

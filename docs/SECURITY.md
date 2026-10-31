@@ -60,6 +60,7 @@ Fixed guarantees, independent of policy:
 | Audio leaving the Mac / lingering | Recogniser must be on loopback (config and client refuse anything else; no system proxy); audio held in memory only, never written; audit records only length and timing; phone audio travels inside Tailscale | ✅ tested with a whisper.cpp protocol stand-in — real whisper.cpp **Mac check pending** |
 | Spoken replies sent to a cloud voice | Only voices marked on-device (`localService`) are used; otherwise JARVIS says it can't read aloud | ✅ headless browser (no local voice → refused) |
 | Page features abused (camera, location) | `Permissions-Policy` allows only the microphone, only for JARVIS itself | ✅ tested |
+| HTTPS failing on a Python without CA certificates | JARVIS's HTTPS uses the default store, falling back to macOS's `/etc/ssl/cert.pem` if empty; verification is never disabled; `jarvis doctor` reports it; push failures are recorded in the audit log | ✅ tested — **Mac check pending** |
 | Unsafe shell | No shell tool exists | ✅ by absence |
 | SSRF via web fetch (reaching Ollama, router, cloud metadata) | Each hop resolved once, must be public, and the connection is pinned to that address (no rebinding); ports 80/443 only; no embedded credentials; ≤5 redirects; one overall deadline; system HTTP proxies not used | ✅ tested (v0.12) |
 | Destructive file operations | Overwrites keep the previous version; delete is Tier 4 and moves to trash | ✅ tested |

@@ -105,6 +105,10 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("file", nargs="?")
     p.add_argument("--whisper-dir", default="~/whisper.cpp", help="where you built whisper.cpp")
     p.add_argument("--model", default="base.en", help="model name (default base.en)")
+    p = sub.add_parser("doctor", help="check the whole installation and say what to fix")
+    p.add_argument("--port", type=int, default=8765)
+    p.add_argument("--json", action="store_true")
+    p.add_argument("--no-voice-test", action="store_true", help="skip speaking and transcribing a test sentence")
     sub.add_parser("briefing", help="what needs you, what finished or failed, and any problems")
     p = sub.add_parser("touchid", help="Touch ID for dashboard approvals: list | remove ID | reset --yes (recovery)")
     p.add_argument("op", nargs="?", choices=["list", "remove", "reset"], default="list")
@@ -182,6 +186,12 @@ def main(argv: list[str] | None = None) -> int:
             return _devices(kernel, args)
         elif args.cmd == "voice":
             return _voice(kernel, args)
+        elif args.cmd == "doctor":
+            from .doctor import FAIL, Doctor, as_json, report
+
+            results = Doctor(kernel, port=args.port, voice_test=not args.no_voice_test).run()
+            print(as_json(results) if args.json else report(results))
+            return 1 if any(c.status == FAIL for c in results) else 0
         elif args.cmd == "briefing":
             from .proactive import briefing_text, build_briefing
 
@@ -250,6 +260,12 @@ def _dashboard(kernel: Kernel, args) -> int:
     print("Press Ctrl+C to stop. A task interrupted mid-step is recovered safely the next time JARVIS starts.")
     if not args.no_open:
         webbrowser.open(dash.url)
+
+    def on_term(signum, frame):  # launchd stops the service with SIGTERM: shut down cleanly, like Ctrl+C
+        raise KeyboardInterrupt
+
+    import signal
+    signal.signal(signal.SIGTERM, on_term)
     try:
         dash.serve_forever()
     except KeyboardInterrupt:
@@ -583,11 +599,11 @@ Needs Xcode command line tools (`xcode-select --install`) and about 200 MB of di
 
   uv tool install cmake
   git clone --depth 1 --branch {WHISPER_VERSION} https://github.com/ggml-org/whisper.cpp ~/whisper.cpp
-  cd ~/whisper.cpp && cmake -B build -DCMAKE_BUILD_TYPE=Release && cmake --build build -j --config Release --target whisper-server
+  cd ~/whisper.cpp && cmake -B build -DCMAKE_BUILD_TYPE=Release -DGGML_METAL=OFF && cmake --build build -j --config Release --target whisper-server
   sh ./models/download-ggml-model.sh {args.model}
   cd ~/jarvis && uv run jarvis voice enable
 
-The model download is about 150 MB (base.en). JARVIS then starts and stops whisper-server itself,
+The model download is about 150 MB (base.en). The build uses the CPU (Metal off: steadier on Intel Macs). JARVIS then starts and stops whisper-server itself,
 listening on 127.0.0.1 only.""")
         return 0
     if args.op == "enable":

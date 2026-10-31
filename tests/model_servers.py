@@ -99,10 +99,13 @@ def start_whisper(text: str = " Hello JARVIS.\n") -> FakeServer:
             pass
 
         def do_GET(self) -> None:  # noqa: N802
-            self.send_response(200)
-            self.send_header("Content-Type", "text/html")
+            fake = holder["s"]
+            loading = self.path == "/health" and getattr(fake, "loading", False)
+            self.send_response(503 if loading else 200)
+            self.send_header("Content-Type", "application/json" if self.path == "/health" else "text/html")
             self.end_headers()
-            self.wfile.write(b"<html>whisper.cpp server</html>")
+            self.wfile.write(b'{"status":"loading model"}' if loading else
+                             b'{"status":"ok"}' if self.path == "/health" else b"<html>whisper.cpp server</html>")
 
         def do_POST(self) -> None:  # noqa: N802
             fake = holder["s"]
@@ -114,7 +117,8 @@ def start_whisper(text: str = " Hello JARVIS.\n") -> FakeServer:
             fake.received.append({"path": self.path, "fields": {k: v for k, v in fields.items() if k != "file"},
                                   "file": fields.get("file")})
             status = fake.fail_status or 200
-            body = json.dumps({"text": fake.reply({})}).encode()
+            reply = fake.reply({})
+            body = json.dumps(reply if isinstance(reply, dict) else {"text": reply}).encode()
             self.send_response(status)
             self.send_header("Content-Type", "application/json")
             self.end_headers()

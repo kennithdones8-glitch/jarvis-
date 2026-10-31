@@ -199,3 +199,14 @@ def test_bad_input_rejected(dash):
     assert call(d, "/api/approvals/nope", {"approve": "yes"})[0] == 400
     assert call(d, "/api/approvals/nope", {"approve": True})[0] == 409
     assert call(d, "/api/nothing", {})[0] == 404
+
+
+def test_bad_content_length_refused_quickly(dash):
+    import socket
+    d, *_ = dash
+    for value in ("-5", "abc"):
+        with socket.create_connection(("127.0.0.1", d.port), timeout=5) as sock:
+            sock.sendall((f"POST /api/stop HTTP/1.1\r\nHost: localhost:{d.port}\r\nCookie: jarvis_session=test-token\r\n"
+                          f"X-Requested-By: jarvis\r\nContent-Length: {value}\r\n\r\n").encode())
+            assert sock.recv(64).startswith(b"HTTP/1.0 400")  # answered at once, not left waiting
+    assert d.kernel.killswitch.engaged() is False

@@ -118,7 +118,8 @@ def describe_event(event: str, p: dict[str, Any], *, task_id: str | None = None,
         "device.denied": lambda: f"Phone request refused: {p.get('reason')}",
         "device.revoked": lambda: "A phone was removed",
         "push.subscribed": lambda: "Phone notifications turned on",
-        "push.sent": lambda: f"Notification sent to {p.get('devices')} phone(s)",
+        "push.sent": lambda: f"Notification sent to {p.get('devices')} phone(s)"
+                             + (f" — failed: {', '.join(p['errors'])}" if p.get("errors") else ""),
         "briefing.ready": lambda: "Morning briefing ready",
         "voice.transcribed": lambda: f"Heard you ({p.get('chars')} characters, {p.get('seconds')}s on this Mac)",
         "config.remote": lambda: "Phone access " + ("turned on" if p.get("enabled") else "turned off"),
@@ -129,6 +130,18 @@ def describe_event(event: str, p: dict[str, Any], *, task_id: str | None = None,
     except Exception:
         text = json.dumps(p, ensure_ascii=False)
     return text[:180]
+
+
+def _content_length(h: BaseHTTPRequestHandler) -> int:
+    """A body length we can safely read: a missing, negative or malformed header would otherwise make the
+    read wait until the client hangs up."""
+    try:
+        length = int(h.headers.get("Content-Length") or 0)
+    except ValueError:
+        raise HttpError(400, "bad Content-Length") from None
+    if length < 0:
+        raise HttpError(400, "bad Content-Length")
+    return length
 
 
 def _last_briefing(kernel: Kernel) -> str | None:
@@ -633,7 +646,7 @@ class Dashboard:
             raise HttpError(409, "voice is off — run `jarvis voice enable` on the Mac")
         if (h.headers.get("Content-Type") or "").split(";")[0].strip() != "audio/wav":
             raise HttpError(415, "expected audio/wav")
-        length = int(h.headers.get("Content-Length") or 0)
+        length = _content_length(h)
         if length > MAX_BYTES:
             raise HttpError(413, "recordings are limited to 60 seconds")
         audio = h.rfile.read(length)
@@ -654,7 +667,7 @@ class Dashboard:
             raise HttpError(403, "missing request header")
         if h.headers.get("Origin") not in (None, origin):
             raise HttpError(403, "cross-origin request refused")
-        length = int(h.headers.get("Content-Length") or 0)
+        length = _content_length(h)
         if length > MAX_BODY:
             raise HttpError(413, "request too large")
         try:

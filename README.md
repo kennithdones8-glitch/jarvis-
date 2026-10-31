@@ -66,6 +66,7 @@ is sent over the network without your approval.
 
 | Command | Purpose |
 |---|---|
+| `jarvis doctor [--json]` | Check the whole installation (database, models, service, backups, HTTPS, phone path, Touch ID, voice) and say what to fix |
 | `jarvis status` | Emergency-stop state, task counts, pending approvals |
 | `jarvis tasks` / `jarvis show ID` / `jarvis tasks delete ID` | List tasks / inspect one / delete a finished task's history |
 | `jarvis approvals` / `approve ID` / `reject ID` | Decide pending approvals |

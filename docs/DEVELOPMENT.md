@@ -29,6 +29,7 @@ uv run pytest      # full suite, ~30 s
 | `tests/test_touchid.py` | Touch ID: off by default, setup, request-bound step-up, adding/removing keys, pairing gated, phone keys can't confirm Mac actions, CLI reset |
 | `tests/test_proactive.py` | Quiet hours, briefing timing, briefing from live state (nothing stored), reminders, health alerts, dashboard announcement, CLI |
 | `tests/test_voice.py` | WAV checks, transcript cleaning, loopback-only client (proxies ignored), transcribe endpoint + defences, phone sessions, managed whisper-server process, CLI. Uses a whisper.cpp `/inference` protocol stand-in |
+| `tests/test_doctor.py` | Every doctor check runs without crashing; phone path check (Host preserved vs rewritten); Tailscale name change; voice; HTTPS-trust fallback |
 | `tests/test_backup_service.py` | Encryption, tamper detection, restore with deletions kept, retention, LaunchAgent plist |
 | `tests/test_persona.py` | Persona honesty and ability list |
 | `tests/test_tasks.py` | End-to-end task with approval + verification, retries/backoff, uncertain outcomes, pause/cancel, corrupt checkpoints, **real subprocess crash + recovery** |

@@ -18,6 +18,7 @@ from html.parser import HTMLParser
 from typing import Any, Callable
 from urllib.parse import urljoin, urlsplit
 
+from ..core.tls import client_context
 from ..core.permissions import ResourceKind, Tier
 from ..core.tools import ActionSpec, CallContext, ToolError, ToolSpec
 
@@ -172,7 +173,7 @@ class WebTool:
         try:
             sock = self.connect(ip, port, remaining())  # the validated address — never a fresh lookup
             if https:
-                sock = ssl.create_default_context().wrap_socket(sock, server_hostname=parts.hostname)
+                sock = client_context().wrap_socket(sock, server_hostname=parts.hostname)
             conn.sock = sock
             path = (parts.path or "/") + (f"?{parts.query}" if parts.query else "")
             conn.putrequest("GET", path, skip_host=True, skip_accept_encoding=True)

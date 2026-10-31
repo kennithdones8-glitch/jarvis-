@@ -445,3 +445,24 @@ def test_cli_remote_without_tailscale(tmp_path, monkeypatch, capsys):
     monkeypatch.setattr("jarvis.remote.tailscale.APP_CLI", str(tmp_path / "nope"))
     assert cli_main(["--home", str(tmp_path / "home"), "remote", "enable"]) == 1
     assert "isn't installed" in capsys.readouterr().err
+
+
+def test_push_failures_are_recorded_not_silent(make_kernel, tmp_path):
+    k = make_kernel()
+    store = DeviceStore(k.db, k.audit)
+    did = store.finish_pairing(store.create_pairing(by="t"), name="p", credential_id="c", public_key_pem="x",
+                               sign_count=0)
+
+    class Broken:
+        def open(self, req, timeout=None):
+            raise urllib.error.URLError(ssl_error())
+
+    def ssl_error():
+        import ssl
+        return ssl.SSLCertVerificationError("certificate verify failed")
+    push = PushService(k.db, k.audit, tmp_path / "vapid.pem", opener=Broken())
+    push.subscribe(did, _browser_subscription()["sub"])
+    assert push.send("JARVIS", "x") == 0
+    entry = [e for e in k.audit.entries() if e["event"] == "push.sent"][-1]
+    assert entry["payload"]["errors"] == ["SSLCertVerificationError"]
+    assert push.subscriptions()  # a temporary failure keeps the subscription

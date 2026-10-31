@@ -46,6 +46,9 @@ def post_audio(d, data, *, host=None, headers=None, origin=None, cookie=True):
             return r.status, json.loads(r.read())
     except urllib.error.HTTPError as e:
         return e.code, json.loads(e.read())
+    except (urllib.error.URLError, ConnectionError):
+        # the server refused before reading the whole upload and closed the connection while we were sending
+        return "closed", {}
 
 
 # ---- audio checks -------------------------------------------------------------------------
@@ -84,6 +87,12 @@ def test_client_sends_exact_audio_and_ignores_proxies(monkeypatch):
         got = server.received[0]
         assert got["path"] == "/inference" and got["file"] == audio
         assert got["fields"]["response_format"] == b"json" and got["fields"]["language"] == b"en"
+        server.loading = True                     # whisper-server answers 503 on /health while loading
+        assert client.available() is False
+        server.loading = False
+        server.reply = lambda body: {"error": "failed to read audio data"}  # its error shape
+        with pytest.raises(VoiceError, match="couldn't read"):
+            client.transcribe(audio)
         server.fail_status = 500
         with pytest.raises(VoiceError, match="HTTP 500"):
             client.transcribe(audio)
@@ -123,7 +132,7 @@ def test_transcribe_endpoint_defences(voice_dash):
     assert post_audio(d, wav(1), headers={"X-Requested-By": "x"})[0] == 403
     assert post_audio(d, wav(1), origin="https://evil.example")[0] == 403
     assert post_audio(d, wav(1), headers={"Content-Type": "application/json"})[0] == 415
-    assert post_audio(d, wav(61))[0] == 413
+    assert post_audio(d, wav(61))[0] in (413, "closed")
     assert post_audio(d, wav(1, rate=48000))[0] == 422
     assert server.received == []  # nothing invalid reached the recogniser
 
