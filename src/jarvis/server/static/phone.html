@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="dark">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="JARVIS">
+<meta name="theme-color" content="#070504">
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="apple-touch-icon" href="/static/apple-touch-icon.png">
+<title>JARVIS</title>
+<link rel="stylesheet" href="/static/app.css">
+<script src="/static/phone.js" defer></script>
+</head>
+<body>
+<div class="backdrop" aria-hidden="true"></div>
+<main class="phone-auth">
+  <img src="/static/icon-192.png" alt="" class="phone-logo">
+  <div class="wordmark">J.A.R.V.I.S.<span>Personal systems</span></div>
+  <section id="pair" class="panel phone-card" hidden>
+    <h2>Pair this iPhone</h2>
+    <p class="hl-sub">This creates a passkey protected by Face ID. Only this phone can use it.</p>
+    <label class="phone-label" for="devname">Name this device</label>
+    <input id="devname" class="phone-input" value="iPhone" maxlength="60" autocomplete="off">
+    <button id="pairbtn" class="btn btn-approve phone-btn" type="button">Pair with Face ID</button>
+  </section>
+  <section id="login" class="panel phone-card" hidden>
+    <h2>Sign in</h2>
+    <p class="hl-sub">Use Face ID to open JARVIS.</p>
+    <button id="loginbtn" class="btn btn-approve phone-btn" type="button">Sign in with Face ID</button>
+  </section>
+  <p id="msg" class="phone-msg" role="status" aria-live="polite"></p>
+  <p class="hint">Tip: tap Share → <b>Add to Home Screen</b> to use JARVIS like an app and get notifications.</p>
+</main>
+</body>
+</html>

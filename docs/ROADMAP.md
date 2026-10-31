@@ -20,9 +20,9 @@ Approved model paths and what they cost:
 | M5c | Documents (PDF/Word/text), move/rename, allow-folder | ✅ done · PDF on the Mac |
 | M8 | Background service, health checks, encrypted backups | ✅ done · **Mac check pending** |
 | **v0.12** | **Reliable multi-process core:** task leases, audit privacy, stop kills Claude work, pinned web fetch, atomic approvals, hermetic tests | ✅ done in tests · **Mac checklist pending** |
-| M6 (v0.13) | Mac voice: push-to-talk, local speech recognition, spoken replies, interrupt ≠ cancel | next |
-| M7 | iPhone companion over Tailscale with passkeys: approvals, notifications, task handoff | later |
-| M4b | Touch ID / passkeys for sensitive approvals | with M7 |
+| **M7 (v0.13)** | **iPhone companion:** Tailscale (tailnet only), passkey pairing, Face ID on every approval, private push notifications, Home Screen app | ✅ done in tests + headless browser · **Mac/iPhone check pending** |
+| M6 | Mac voice: push-to-talk, local speech recognition, spoken replies, interrupt ≠ cancel | next |
+| M4b | Touch ID for sensitive approvals on the Mac dashboard | later |
 | M9+ | Mac automation, proactive monitoring, self-improvement proposals (isolated worktrees, owner-approved) | later |
 | — | Search by meaning (embeddings) | only if keyword recall proves weak |
 

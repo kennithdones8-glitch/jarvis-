@@ -37,6 +37,7 @@ class ModelConfig:
     routing_mode: str = "local_first"
     memory: dict[str, Any] = field(default_factory=dict)
     backup: dict[str, Any] = field(default_factory=dict)
+    remote: dict[str, Any] = field(default_factory=dict)
 
 
 def _check_keys(where: str, data: dict[str, Any], allowed: set[str]) -> None:
@@ -63,7 +64,12 @@ def _model(where: str, raw: dict[str, Any]) -> ModelInfo:
 
 
 def parse_model_config(data: dict[str, Any]) -> ModelConfig:
-    _check_keys("jarvis.toml", data, {"budget", "privacy", "providers", "search", "routing", "memory", "backup"})
+    _check_keys("jarvis.toml", data, {"budget", "privacy", "providers", "search", "routing", "memory", "backup",
+                                      "remote"})
+    remote = data.get("remote", {})
+    _check_keys("[remote]", remote, {"enabled", "hostname"})
+    if remote.get("enabled") and not str(remote.get("hostname", "")).endswith(".ts.net"):
+        raise ConfigError("[remote]: hostname must be your Mac's Tailscale name (….ts.net)")
     backup = data.get("backup", {})
     _check_keys("[backup]", backup, {"auto", "keep", "dir"})
     if not 1 <= int(backup.get("keep", 14)) <= 365:
@@ -114,7 +120,7 @@ def parse_model_config(data: dict[str, Any]) -> ModelConfig:
         raise ConfigError("[budget]: monthly_limit_usd cannot be negative")
     return ModelConfig(monthly_limit_usd=limit, local_only_categories=local_only, providers=tuple(providers),
                        searxng_url=search.get("searxng_url"), routing_mode=routing.get("mode", "local_first"),
-                       memory=dict(memory), backup=dict(backup))
+                       memory=dict(memory), backup=dict(backup), remote=dict(remote))
 
 
 def load_model_config(path: str | Path) -> ModelConfig:

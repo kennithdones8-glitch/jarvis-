@@ -1,5 +1,24 @@
 # Changelog
 
+## 0.13.0 — Milestone 7: iPhone companion
+
+- **Use JARVIS from your iPhone** over your private Tailscale network. `jarvis remote enable` runs
+  `tailscale serve` (tailnet only; never `funnel`); the dashboard still listens only on 127.0.0.1.
+- **Passkey pairing:** a one-time code (QR on the Mac, 10 minutes, single use, stored hashed) → a Face ID
+  passkey on the phone. Sign-in with Face ID gives a Secure HttpOnly SameSite=Strict session (12 h idle,
+  30 days max). Pairing more devices is Mac-only.
+- **Face ID on every approval:** approvals, consent, running plans, releasing the stop, memory edits/deletes/
+  forget and removing devices need a fresh passkey assertion bound to that exact request. Phone actions are
+  audited as `user:phone:<name>`. Stopping never needs Face ID.
+- **Private notifications:** Web Push (RFC 8291 + VAPID, matches the RFC test vector) with generic text only
+  ("JARVIS needs a decision", "A task finished"); batched and rate-limited; Apple's push service only.
+- **Home Screen app:** manifest, icons, service worker; phone-sized layout.
+- `jarvis devices [revoke ID]`; dashboard Systems → Phone (pair, remove, notifications, sign out).
+- Database migration v5 (devices, sessions, pairings, push subscriptions). Vendored qrcode-generator 1.4.4 (MIT).
+- New tests: passkeys with a software authenticator, remote routing and step-up, push, CLI with a stand-in
+  `tailscale`; a headless-browser run with Chromium's virtual passkey (pair → approve with Face ID → sign-in page
+  in a fresh browser). Not yet checked on the real Mac and iPhone.
+
 ## 0.12.0 — Reliable multi-process core
 
 From the v0.12 discovery audit (confirmed issues were reproduced before fixing):

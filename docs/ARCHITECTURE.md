@@ -127,6 +127,25 @@ Audit payload fields that carry free text (requests, goals, plans, contents, mod
 `{"chars", "sha256"}` fingerprints; tools, actions, decisions, ids, file paths and URLs stay readable. The
 words themselves live only in deletable tables. Entries written before v0.12 may contain text.
 
+## iPhone companion (`src/jarvis/remote/`, v0.13)
+
+The dashboard still listens only on 127.0.0.1. `jarvis remote enable` runs `tailscale serve`, which forwards
+HTTPS from your tailnet (devices signed in to your Tailscale account) to it; `funnel` (public internet) is
+never used. Requests are told apart by Host: the loopback names get the Mac dashboard (token cookie); the
+Mac's `*.ts.net` name gets the phone path, where the Mac's token cookie is never accepted.
+
+- `webauthn.py`: passkey verification (ES256, "none" attestation, user verification required, exact
+  origin/RP ID/challenge, signature counter).
+- `devices.py`: one-time pairing codes (hash stored, 10 min, single use), paired devices, device sessions
+  (hash stored, 12 h idle / 30 days max, deleted on revoke).
+- `__init__.py` (`RemoteAccess`): pairing, sign-in, and **step-up**: every sensitive phone action
+  (approvals, consent, running a plan, releasing the stop, editing/deleting/forgetting memory, removing a
+  device) needs a fresh Face ID assertion whose challenge is bound to that exact path and body. Pairing new
+  devices is Mac-only. Phone actions are audited as `user:phone:<name>`.
+- `push.py`: Web Push (RFC 8291 encryption, RFC 8292 VAPID) to Apple's push service only, with generic
+  text ("JARVIS needs a decision"); `Notifier` batches and rate-limits.
+- `tailscale.py`: the few `tailscale` commands `jarvis remote` runs.
+
 ## Service and backups
 
 `service.py` writes a per-user LaunchAgent that runs `uv run jarvis dashboard --no-open` at login and after
@@ -135,5 +154,5 @@ each one, prunes to the newest N, and restores with tombstones re-applied.
 
 ## Not built yet
 
-Voice, iPhone companion (Tailscale + passkeys), Touch ID, Mac app automation, proactive monitoring,
+Voice, Touch ID on the Mac dashboard, Mac app automation, proactive monitoring,
 self-improvement proposals. See the [roadmap](ROADMAP.md).

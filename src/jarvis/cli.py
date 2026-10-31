@@ -95,6 +95,13 @@ def main(argv: list[str] | None = None) -> int:
     p = sub.add_parser("revoke-egress")
     p.add_argument("grant_id")
     sub.add_parser("grants", help="list egress grants")
+    p = sub.add_parser("remote", help="use JARVIS from your iPhone over Tailscale: enable | disable | status")
+    p.add_argument("op", choices=["enable", "disable", "status"])
+    p.add_argument("--port", type=int, default=8765)
+    p.add_argument("--hostname", help="this Mac's Tailscale name (default: asked from the Tailscale app)")
+    p = sub.add_parser("devices", help="paired phones: list | revoke ID")
+    p.add_argument("op", nargs="?", choices=["list", "revoke"], default="list")
+    p.add_argument("device_id", nargs="?")
     args = parser.parse_args(argv)
 
     kernel = Kernel(args.home)
@@ -158,6 +165,10 @@ def main(argv: list[str] | None = None) -> int:
             print(url)
         elif args.cmd == "backup":
             return _backup(kernel, args)
+        elif args.cmd == "remote":
+            return _remote(kernel, args)
+        elif args.cmd == "devices":
+            return _devices(kernel, args)
         elif args.cmd == "allow-folder":
             return _allow_folder(kernel, args)
         elif args.cmd == "folders":
@@ -450,6 +461,86 @@ def _service(kernel: Kernel, args) -> int:
     except svc.ServiceError as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 1
+    return 0
+
+
+def _write_remote_config(kernel: Kernel, *, enabled: bool, hostname: str) -> None:
+    import re
+    import tomllib
+
+    from .models.config import parse_model_config
+
+    path = kernel.config_path
+    text = path.read_text() if path.exists() else EXAMPLE_MODELS.read_text()
+    block = f'[remote]\nenabled = {"true" if enabled else "false"}\nhostname = "{hostname}"\n'
+    if re.search(r"(?m)^\[remote\]", text):
+        text = re.sub(r"(?ms)^\[remote\]\n.*?(?=^\[|\Z)", lambda m: block + "\n", text, count=1)
+    else:
+        text = text.rstrip() + "\n\n" + block
+    parse_model_config(tomllib.loads(text))  # never write an invalid config
+    if path.exists():
+        path.with_suffix(".toml.bak").write_text(path.read_text())
+    path.write_text(text)
+    path.chmod(0o600)
+    kernel.audit.record("config.remote", actor="user:cli", enabled=enabled)
+
+
+def _remote(kernel: Kernel, args) -> int:
+    from . import service as svc
+    from .remote import tailscale as ts
+
+    cfg = kernel.model_config.remote
+    try:
+        if args.op == "status":
+            devices = [d for d in _device_store(kernel).list() if not d["revoked_at"]]
+            _print({"enabled": bool(cfg.get("enabled")), "hostname": cfg.get("hostname"),
+                    "phone_url": f"https://{cfg['hostname']}" if cfg.get("enabled") else None,
+                    "paired_devices": len(devices)})
+        elif args.op == "enable":
+            host = (args.hostname or ts.hostname()).rstrip(".")
+            _write_remote_config(kernel, enabled=True, hostname=host)
+            print(f"Sharing the dashboard inside your tailnet only: https://{host}")
+            ts.serve(args.port)
+            if svc.is_loaded():
+                svc.restart()
+                print("Restarted the background service.")
+            else:
+                print("Restart JARVIS (`uv run jarvis service restart`, or stop and start `jarvis dashboard`).")
+            print("Next: open the dashboard on this Mac → Systems → Phone → Pair a phone, and scan the code\n"
+                  "with your iPhone's camera (the iPhone must be signed in to the same Tailscale account).")
+        else:
+            try:
+                ts.unserve()
+            except ts.TailscaleError as exc:
+                print(f"note: {exc}")
+            _write_remote_config(kernel, enabled=False, hostname=cfg.get("hostname") or "")
+            if svc.is_loaded():
+                svc.restart()
+            print("Phone access is off. Paired phones stay listed (remove them with `jarvis devices revoke ID`).")
+    except ts.TailscaleError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 1
+    return 0
+
+
+def _device_store(kernel: Kernel):
+    from .remote.devices import DeviceStore
+
+    return DeviceStore(kernel.db, kernel.audit)
+
+
+def _devices(kernel: Kernel, args) -> int:
+    store = _device_store(kernel)
+    if args.op == "revoke":
+        if not args.device_id:
+            print("usage: jarvis devices revoke DEVICE_ID", file=sys.stderr)
+            return 1
+        store.revoke(args.device_id, by="user:cli")
+        print("Removed. That phone is signed out and its passkey no longer opens JARVIS.")
+        return 0
+    for d in store.list():
+        state = f"removed {d['revoked_at'][:10]}" if d["revoked_at"] else f"last used {(d['last_seen'] or 'never')[:16]}"
+        print(f"{d['id']}  {d['name']:<20} paired {d['created_at'][:10]}  {state}")
     return 0
 
 

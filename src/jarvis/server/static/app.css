@@ -310,3 +310,23 @@ pre.out { background: rgba(0, 0, 0, .35); border: 1px solid var(--gold-line); pa
 .health-head.ok { color: var(--ok); } .health-head.bad { color: var(--red); }
 .health-head small { color: var(--faint); font: 500 11px var(--sans); letter-spacing: 0; text-transform: none; }
 .health .light small { max-width: 60%; text-align: right; }
+
+/* ---------- iPhone companion: sign-in / pairing ---------- */
+.phone-auth { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 16px; padding: 48px 20px;
+              padding-top: max(48px, env(safe-area-inset-top)); text-align: center; }
+.phone-logo { width: 96px; height: 96px; border-radius: 22px; }
+.phone-card { width: 100%; max-width: 380px; display: grid; gap: 12px; text-align: left; padding: 20px 22px; }
+.phone-card[hidden] { display: none; }
+.phone-label { font: 600 12px var(--display); letter-spacing: .22em; text-transform: uppercase; color: var(--muted); }
+.phone-input { background: rgba(0, 0, 0, .35); color: var(--text); border: 1px solid var(--gold-line); padding: 12px; font: 16px var(--sans); }
+.phone-btn { padding: 14px; font-size: 15px; }
+.phone-msg { min-height: 1.5em; color: var(--muted); max-width: 380px; }
+.phone-msg.bad { color: #ffb0b6; }
+/* pairing dialog on the Mac */
+.pairdlg { background: var(--bg2); color: var(--text); border: 1px solid var(--arc); width: min(440px, 92vw); padding: 22px; text-align: center; }
+.pairdlg::backdrop { background: rgba(0, 0, 0, .75); }
+.pairdlg canvas { background: #fff; padding: 12px; margin: 14px auto; display: block; image-rendering: pixelated; }
+.pairdlg .url { font: 12px var(--mono); color: var(--muted); overflow-wrap: anywhere; }
+.devices { display: grid; gap: 6px; padding-left: 10px; margin-top: 10px; }
+.device-row { display: flex; align-items: center; gap: 8px; font-size: 14px; }
+.device-row small { color: var(--faint); margin-left: auto; font-size: 12px; }

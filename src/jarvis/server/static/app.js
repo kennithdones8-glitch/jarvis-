@@ -32,6 +32,29 @@ async function api(path, body) {
   return data;
 }
 
+// ---------------------------------------------------------------- iPhone: Face ID for sensitive actions
+const b64u = {
+  toBuf: (s) => Uint8Array.from(atob(s.replace(/-/g, "+").replace(/_/g, "/") + "===".slice((s.length + 3) % 4)), (c) => c.charCodeAt(0)).buffer,
+  fromBuf: (b) => btoa(String.fromCharCode(...new Uint8Array(b))).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, ""),
+};
+// Must match the server's STEP_UP list; the server enforces it regardless of what this page does.
+const FACE_ID = [/^\/api\/approvals\/[\w-]+$/, /^\/api\/release$/, /^\/api\/plan\/\w+\/run$/,
+                 /^\/api\/memory\/[\w-]+\/(delete|edit)$/, /^\/api\/devices\/[\w-]+\/revoke$/];
+const onPhone = () => !!(ui.data && ui.data.remote && ui.data.remote.this_device);
+
+async function call(path, body) {
+  const needs = onPhone() && (FACE_ID.some((r) => r.test(path)) || (path === "/api/memory/forget" && body.confirm === true));
+  if (!needs) return api(path, body);
+  const o = await api("/api/stepup/options", { path, body });
+  const a = await navigator.credentials.get({ publicKey: {
+    challenge: b64u.toBuf(o.challenge), rpId: o.rpId, timeout: o.timeout, userVerification: o.userVerification,
+    allowCredentials: o.allowCredentials.map((c) => ({ ...c, id: b64u.toBuf(c.id) })) } });
+  return api(path, { ...body, challengeId: o.challengeId, assertion: {
+    id: a.id, rawId: b64u.fromBuf(a.rawId), type: a.type,
+    response: { clientDataJSON: b64u.fromBuf(a.response.clientDataJSON), authenticatorData: b64u.fromBuf(a.response.authenticatorData),
+                signature: b64u.fromBuf(a.response.signature) } } });
+}
+
 // ---------------------------------------------------------------- plain-language helpers
 const clock = (ts) => new Date(typeof ts === "number" ? ts * 1000 : ts).toLocaleTimeString([], { hour12: false, hour: "2-digit", minute: "2-digit" });
 const base = (p) => (p || "").split("/").filter(Boolean).pop() || p || "";
@@ -171,7 +194,8 @@ async function sendChat(payload, endpoint = "/api/chat") {
 
 async function consent(m, approve) {
   ui.convo = ui.convo.filter((x) => x !== m);
-  try { await api(`/api/approvals/${m.approval_id}`, { approve }); } catch (e) { /* already decided in Decisions */ }
+  try { await call(`/api/approvals/${m.approval_id}`, { approve }); }
+  catch (e) { if (e.name === "NotAllowedError") { ui.convo.push(m); render(); return; } /* else: already decided in Decisions */ }
   if (m.endpoint === "/api/research") {
     if (approve) await sendChat(m.payload, m.endpoint);
     else note("Not researched — web research needs to send your question to Claude.");
@@ -324,8 +348,23 @@ function renderSystems(d) {
     health.items.filter((i) => !i.ok || ["Backups"].includes(i.name)).map((i) =>
       h("div", { class: `light${i.ok ? " on" : ""}`, title: i.detail }, h("i"), i.name, h("small", {}, i.detail))))
     : null;
+  const rem = d.remote || { enabled: false, devices: [] };
+  const live = rem.devices.filter((x) => !x.revoked_at);
+  const phone = h("div", { class: "devices" },
+    h("div", { class: "ro" }, h("span", {}, "Phone"),
+      h("b", {}, rem.this_device ? `This device · ${rem.this_device.name}` : !rem.enabled ? "Not set up" : live.length ? plural(live.length, "paired device") : "None paired")),
+    live.map((x) => h("div", { class: "device-row" }, x.name,
+      h("small", {}, x.last_seen ? `seen ${clock(x.last_seen)}` : "never signed in"),
+      h("button", { class: "btn btn-ghost btn-sm", type: "button", onclick: () =>
+        confirm(`Remove ${x.name}? It will be signed out immediately and can't reconnect without pairing again.`) &&
+        act(`/api/devices/${x.id}/revoke`, {}) }, "Remove"))),
+    !rem.this_device && rem.enabled ? h("button", { class: "btn btn-sm mt", type: "button", onclick: pairPhone }, "Pair a phone") : null,
+    !rem.enabled && !rem.this_device ? h("div", { class: "d-why" }, "Run `uv run jarvis remote enable` on the Mac to use JARVIS from your iPhone.") : null,
+    rem.this_device ? h("div", { class: "row mt" },
+      "PushManager" in window ? h("button", { class: "btn btn-sm", type: "button", onclick: enableNotifications }, "Enable notifications") : null,
+      h("button", { class: "btn btn-ghost btn-sm", type: "button", onclick: async () => { await api("/api/logout", {}); location.reload(); } }, "Sign out")) : null);
   $("#system").replaceChildren(
-    healthBlock,
+    healthBlock, phone,
     h("div", { class: "lights" }, lights.length ? lights : h("div", { class: "empty" }, "No models configured")),
     h("div", { class: "readouts" },
       ro("Privacy", (m.disabled_providers || []).length && !m.providers.some((p) => p.location === "cloud") ? "Local only" : "Cloud allowed with approval"),
@@ -336,6 +375,36 @@ function renderSystems(d) {
       ro("Audit log", chain ? (chain.ok ? `Intact · ${chain.checked}` : `Broken at #${chain.first_bad_seq}`) : "Checking…", chain ? (chain.ok ? "ok" : "bad") : null),
       ro("Folders", d.roots.length ? d.roots.map(base).join(", ") : "None approved"),
       ro("Version", d.version)));
+}
+
+async function pairPhone() {
+  let r;
+  try { r = await api("/api/devices/pair", {}); } catch (e) { note(e.message); return; }
+  const qr = qrcode(0, "M");
+  qr.addData(r.url);
+  qr.make();
+  const n = qr.getModuleCount(), scale = 6, canvas = h("canvas", { width: n * scale, height: n * scale, "aria-label": "Pairing QR code" });
+  const ctx = canvas.getContext("2d");
+  ctx.fillStyle = "#fff"; ctx.fillRect(0, 0, n * scale, n * scale); ctx.fillStyle = "#000";
+  for (let y = 0; y < n; y++) for (let x = 0; x < n; x++) if (qr.isDark(y, x)) ctx.fillRect(x * scale, y * scale, scale, scale);
+  const dlg = h("dialog", { class: "pairdlg" },
+    h("h2", {}, "Pair your iPhone"),
+    h("p", { class: "hl-sub" }, "Make sure Tailscale is on on your iPhone, then scan this with the Camera app. Valid for 10 minutes, once."),
+    canvas, h("div", { class: "url" }, r.url),
+    h("button", { class: "btn mt", type: "button", onclick: () => { dlg.close(); dlg.remove(); } }, "Done"));
+  document.body.append(dlg);
+  dlg.showModal();
+}
+
+async function enableNotifications() {
+  try {
+    const reg = await navigator.serviceWorker.ready;
+    if (await Notification.requestPermission() !== "granted") { note("Notifications are off for JARVIS in iPhone Settings."); return; }
+    const { key } = await api("/api/push/key");
+    const sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: b64u.toBuf(key) });
+    await api("/api/push/subscribe", { subscription: sub.toJSON() });
+    note("Notifications on. They only ever say things like “JARVIS needs a decision” — never your content.");
+  } catch (e) { note(`Couldn't turn on notifications: ${e.message}. On iPhone, add JARVIS to your Home Screen first.`); }
 }
 
 function renderActivity(entries) {
@@ -375,7 +444,7 @@ async function loadMemory(force) {
 }
 
 async function memAct(path, body) {
-  try { await api(path, body); } catch (e) { note(e.message); }
+  try { await call(path, body); } catch (e) { note(e.name === "NotAllowedError" ? "Face ID was cancelled." : e.message); }
   await refresh(); await loadMemory(true);
 }
 
@@ -400,7 +469,7 @@ function render() {
 }
 
 async function act(path, body) {
-  try { await api(path, body); } catch (e) { note(e.message); }
+  try { await call(path, body); } catch (e) { note(e.name === "NotAllowedError" ? "Face ID was cancelled." : e.message); }
   await refresh();
 }
 
@@ -438,6 +507,7 @@ document.addEventListener("DOMContentLoaded", () => {
   const tick = () => { $("#clock").textContent = new Date().toLocaleTimeString([], { hour12: false }); };
   tick(); setInterval(tick, 1000);
   setMode("ask");
+  if ("serviceWorker" in navigator && location.protocol === "https:") navigator.serviceWorker.register("/sw.js").catch(() => {});
   refresh();
   setInterval(refresh, 1500);
 });

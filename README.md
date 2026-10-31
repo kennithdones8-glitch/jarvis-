@@ -2,10 +2,11 @@
 
 A personal AI system for Mac and iPhone: persistent, permissioned, auditable, local-first.
 
-**Status: v0.12 — reliable multi-process core.** JARVIS chats (local models + Claude via your Pro plan),
+**Status: v0.13 — iPhone companion.** JARVIS chats (local models + Claude via your Pro plan),
 researches the web with verified sources, reads documents, plans and carries out file tasks with approvals,
-remembers what you tell it, and can run in the background with encrypted backups. **Not built yet:** voice,
-iPhone companion, Touch ID/passkeys, Mac app automation, proactive monitoring. See [ROADMAP](docs/ROADMAP.md).
+remembers what you tell it, runs in the background with encrypted backups, and can be used from your iPhone
+over your private Tailscale network, with Face ID on every approval. **Not built yet:** voice, Touch ID on
+the Mac dashboard, Mac app automation, proactive monitoring. See [ROADMAP](docs/ROADMAP.md).
 
 ## What works today
 
@@ -28,7 +29,8 @@ the owner's Intel Mac (macOS 14.1.1). Untested-on-Mac items may still have Mac-s
 | Memory: archive + facts with provenance, recall, review/correct/delete, forget (incl. task history) | ✅ | not yet |
 | Dashboard (holographic HUD) | ✅ + headless browser | earlier version only |
 | Background service, health checks, encrypted backups | ✅ (plist content, crypto, restore) | **not yet** |
-| Voice, iPhone, Touch ID / passkeys, Mac automation, proactive monitoring, self-improvement | — | ⏳ not started |
+| iPhone companion: Tailscale (tailnet only), passkey pairing, Face ID on every approval, private notifications, Home Screen app | ✅ + headless browser with a virtual passkey | **not yet** |
+| Voice, Touch ID on the Mac, Mac automation, proactive monitoring, self-improvement | — | ⏳ not started |
 
 ## Quick start
 
@@ -74,6 +76,8 @@ is sent over the network without your approval.
 | `jarvis backup now\|list\|verify FILE\|restore FILE --yes` | Encrypted backups of memory, history and settings |
 | `jarvis allow-folder PATH [--remove]` / `jarvis folders` | Let JARVIS read a folder such as Downloads (changes still ask) |
 | `jarvis research "…" [--deep]` | Search the web and read pages, answer with verified sources |
+| `jarvis remote enable\|disable\|status` | Use JARVIS from your iPhone over Tailscale (tailnet only, never the internet) |
+| `jarvis devices [revoke ID]` | List paired phones / remove one (signs it out at once) |
 | `jarvis remember "…"` | Tell JARVIS something to remember |
 | `jarvis memory list\|search Q\|confirm ID\|delete ID\|forget Q [--yes]\|export FILE` | Review and manage memory; `forget` also removes matching finished tasks |
 | `jarvis models` | Configured models, live availability, budget |

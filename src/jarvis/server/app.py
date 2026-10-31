@@ -45,6 +45,10 @@ from ..status import models_status
 
 STATIC = Path(__file__).parent / "static"
 COOKIE = "jarvis_session"
+DEVICE_COOKIE = "jarvis_device"
+PUBLIC_REMOTE_GET = {"/sw.js", "/manifest.webmanifest", "/static/phone.js", "/static/app.css", "/static/icon-192.png",
+                     "/static/icon-512.png", "/static/apple-touch-icon.png"}
+PUBLIC_REMOTE_POST = {"/api/pair/options", "/api/pair/finish", "/api/login/options", "/api/login/finish"}
 MAX_BODY = 64 * 1024
 RUNNER = "dashboard"
 SECURITY_HEADERS = {
@@ -102,6 +106,15 @@ def describe_event(event: str, p: dict[str, Any], *, task_id: str | None = None,
         "emergency_stop.engaged": lambda: f"EMERGENCY STOP: {p.get('reason')}",
         "emergency_stop.released": lambda: "Emergency stop released",
         "kernel.started": lambda: "JARVIS started",
+        "device.pairing_created": lambda: "Made a phone pairing code (valid 10 minutes)",
+        "device.paired": lambda: "A phone was paired",
+        "device.signed_in": lambda: "Phone signed in with Face ID",
+        "device.step_up": lambda: "Face ID confirmed an action from the phone",
+        "device.denied": lambda: f"Phone request refused: {p.get('reason')}",
+        "device.revoked": lambda: "A phone was removed",
+        "push.subscribed": lambda: "Phone notifications turned on",
+        "push.sent": lambda: f"Notification sent to {p.get('devices')} phone(s)",
+        "config.remote": lambda: "Phone access " + ("turned on" if p.get("enabled") else "turned off"),
     }
     goals = goals or {}
     try:
@@ -125,7 +138,7 @@ class HttpError(Exception):
 
 class Dashboard:
     def __init__(self, kernel: Kernel, *, host: str = "127.0.0.1", port: int = 8765, token: str | None = None,
-                 workers: int = 2, poll_s: float = 1.0):
+                 workers: int = 2, poll_s: float = 1.0, remote=None, local_hosts: set[str] | None = None):
         if host not in ("127.0.0.1", "::1"):
             raise ValueError("the dashboard only listens on loopback")
         self.kernel = kernel
@@ -147,6 +160,18 @@ class Dashboard:
         self._health: dict[str, Any] = {}
         self.maintenance_s = 60.0
         self._serving = False
+        # iPhone companion (only when `jarvis remote enable` has configured a Tailscale hostname)
+        if remote is None:
+            cfg = kernel.model_config.remote
+            if cfg.get("enabled") and cfg.get("hostname"):
+                from ..remote import RemoteAccess
+                remote = RemoteAccess(kernel, cfg["hostname"])
+        self.remote = remote or None
+        self._local_hosts = local_hosts or {f"127.0.0.1:{self.port}", f"localhost:{self.port}", f"[::1]:{self.port}"}
+        self.notifier = None
+        if self.remote is not None:
+            from ..remote import Notifier
+            self.notifier = Notifier(kernel, self.remote.push)
 
     # ---- lifecycle ---------------------------------------------------------------------
     @property
@@ -196,6 +221,11 @@ class Dashboard:
                         self._pool.submit(self._drive, tid)
             except Exception as exc:  # keep the loop alive; record what happened
                 self.kernel.audit.record("dashboard.runner_error", error=f"{type(exc).__name__}: {exc}")
+            if self.notifier is not None:
+                try:
+                    self.notifier.poll()
+                except Exception as exc:
+                    self.kernel.audit.record("push.error", error=f"{type(exc).__name__}: {exc}"[:300])
             self._stop.wait(self._poll_s)
 
     # ---- health & automatic backups --------------------------------------------------
@@ -388,7 +418,7 @@ class Dashboard:
         return {**result_payload(r), "seconds": round(time.time() - started, 1), "memories_used": len(recalled)}
 
     # ---- state snapshot ----------------------------------------------------------------
-    def state(self) -> dict[str, Any]:
+    def state(self, device: dict | None = None) -> dict[str, Any]:
         k = self.kernel
         now = time.time()
         if now - self._models_cache[0] > 5:
@@ -445,6 +475,9 @@ class Dashboard:
             "memory": {**k.memory.counts(), "enabled": k.memory.settings.enabled},
             "research_available": self.kernel.registry.get("research") is not None,
             "health": self._health or None,
+            "remote": {"enabled": self.remote is not None, "hostname": self.remote.hostname if self.remote else None,
+                       "this_device": {"id": device["id"], "name": device["name"]} if device else None,
+                       "devices": self.remote.devices.list() if self.remote else []},
         }
 
     # ---- HTTP plumbing -----------------------------------------------------------------
@@ -476,8 +509,16 @@ class Dashboard:
         h.end_headers()
         h.wfile.write(body)
 
-    def _json(self, h: BaseHTTPRequestHandler, status: int, obj: Any) -> None:
-        self._send(h, status, json.dumps(obj, default=str).encode(), "application/json")
+    def _json(self, h: BaseHTTPRequestHandler, status: int, obj: Any, extra: dict[str, str] | None = None) -> None:
+        self._send(h, status, json.dumps(obj, default=str).encode(), "application/json", extra)
+
+    @staticmethod
+    def _cookie(h: BaseHTTPRequestHandler, name: str) -> str | None:
+        for part in (h.headers.get("Cookie") or "").split(";"):
+            key, _, value = part.strip().partition("=")
+            if key == name:
+                return value
+        return None
 
     def _authed(self, h: BaseHTTPRequestHandler) -> bool:
         for part in (h.headers.get("Cookie") or "").split(";"):
@@ -488,10 +529,16 @@ class Dashboard:
 
     def _dispatch(self, h: BaseHTTPRequestHandler, method: str) -> None:
         try:
-            allowed_hosts = {f"127.0.0.1:{self.port}", f"localhost:{self.port}", f"[::1]:{self.port}"}
-            if h.headers.get("Host") not in allowed_hosts:
+            host = h.headers.get("Host")
+            if host in self._local_hosts:
+                is_remote = False
+            elif self.remote is not None and host in self.remote.hosts:
+                is_remote = True
+            else:
                 raise HttpError(403, "unexpected Host header")
             url = urlsplit(h.path)
+            if is_remote:
+                return self._dispatch_remote(h, method, url)
 
             if method == "GET" and url.path == "/":
                 token = parse_qs(url.query).get("token", [""])[0]
@@ -507,54 +554,135 @@ class Dashboard:
 
             if not self._authed(h):
                 raise HttpError(401, "not signed in")
-
             if method == "GET":
-                if url.path in ("/static/app.js", "/static/app.css"):
-                    ctype = "text/javascript" if url.path.endswith(".js") else "text/css"
-                    return self._send(h, 200, (STATIC / url.path.rsplit("/", 1)[1]).read_bytes(),
-                                      f"{ctype}; charset=utf-8")
-                if m := re.fullmatch(r"/static/fonts/(rajdhani-[567]00\.woff2)", url.path):
-                    return self._send(h, 200, (STATIC / "fonts" / m.group(1)).read_bytes(), "font/woff2",
-                                      {"Cache-Control": "max-age=86400"})
-                if url.path == "/api/state":
-                    return self._json(h, 200, self.state())
-                if url.path == "/api/memory":
-                    q = parse_qs(url.query).get("q", [""])[0][:200]
-                    mem = self.kernel.memory
-                    items = mem.search(q) if q.strip() else mem.list(limit=50)
-                    return self._json(h, 200, {"memories": items, "counts": mem.counts(),
-                                               "records": mem.search_records(q, limit=10) if q.strip() else []})
-                if m := re.fullmatch(r"/api/tasks/([\w-]+)/audit", url.path):
-                    return self._json(h, 200, self.kernel.audit.entries(task_id=m.group(1), limit=300))
-                raise HttpError(404, "not found")
-
-            # POST: CSRF defences
-            if h.headers.get("X-Requested-By") != "jarvis":
-                raise HttpError(403, "missing request header")
-            origin = h.headers.get("Origin")
-            if origin is not None and origin != f"http://{h.headers.get('Host')}":
-                raise HttpError(403, "cross-origin request refused")
-            length = int(h.headers.get("Content-Length") or 0)
-            if length > MAX_BODY:
-                raise HttpError(413, "request too large")
-            try:
-                body = json.loads(h.rfile.read(length) or b"{}")
-            except json.JSONDecodeError:
-                raise HttpError(400, "invalid JSON") from None
-            if not isinstance(body, dict):
-                raise HttpError(400, "expected a JSON object")
-            return self._json(h, 200, self._post(url.path, body))
+                return self._get(h, url, device=None)
+            body = self._read_post(h, origin=f"http://{host}")
+            return self._json(h, 200, self._post(url.path, body, actor="user:dashboard", device=None))
         except HttpError as exc:
             self._json(h, exc.status, {"error": str(exc)})
         except (InvalidTransition, ApprovalStateError, KeyError, ValueError, PermissionError) as exc:
-            self._json(h, 409, {"error": str(exc)})
+            self._json(h, 409 if not isinstance(exc, PermissionError) else 403, {"error": str(exc)})
         except Exception as exc:
             self.kernel.audit.record("dashboard.error", error=f"{type(exc).__name__}: {exc}")
             self._json(h, 500, {"error": "internal error (recorded in the audit log)"})
 
-    def _post(self, path: str, body: dict[str, Any]) -> Any:
+    def _read_post(self, h: BaseHTTPRequestHandler, *, origin: str) -> dict[str, Any]:
+        """CSRF defences + body parsing for every state-changing request."""
+        if h.headers.get("X-Requested-By") != "jarvis":
+            raise HttpError(403, "missing request header")
+        if h.headers.get("Origin") not in (None, origin):
+            raise HttpError(403, "cross-origin request refused")
+        length = int(h.headers.get("Content-Length") or 0)
+        if length > MAX_BODY:
+            raise HttpError(413, "request too large")
+        try:
+            body = json.loads(h.rfile.read(length) or b"{}")
+        except json.JSONDecodeError:
+            raise HttpError(400, "invalid JSON") from None
+        if not isinstance(body, dict):
+            raise HttpError(400, "expected a JSON object")
+        return body
+
+    def _get(self, h: BaseHTTPRequestHandler, url, *, device: dict | None) -> None:
+        if url.path in ("/static/app.js", "/static/app.css", "/static/phone.js", "/static/qrcode.js"):
+            ctype = "text/javascript" if url.path.endswith(".js") else "text/css"
+            return self._send(h, 200, (STATIC / url.path.rsplit("/", 1)[1]).read_bytes(), f"{ctype}; charset=utf-8")
+        if m := re.fullmatch(r"/static/fonts/(rajdhani-[567]00\.woff2)", url.path):
+            return self._send(h, 200, (STATIC / "fonts" / m.group(1)).read_bytes(), "font/woff2",
+                              {"Cache-Control": "max-age=86400"})
+        if m := re.fullmatch(r"/static/((?:icon-(?:192|512)|apple-touch-icon)\.png)", url.path):
+            return self._send(h, 200, (STATIC / m.group(1)).read_bytes(), "image/png", {"Cache-Control": "max-age=86400"})
+        if url.path == "/manifest.webmanifest":
+            return self._send(h, 200, (STATIC / "manifest.webmanifest").read_bytes(), "application/manifest+json")
+        if url.path == "/sw.js":
+            return self._send(h, 200, (STATIC / "sw.js").read_bytes(), "text/javascript; charset=utf-8",
+                              {"Service-Worker-Allowed": "/"})
+        if url.path == "/api/state":
+            return self._json(h, 200, self.state(device=device))
+        if url.path == "/api/memory":
+            q = parse_qs(url.query).get("q", [""])[0][:200]
+            mem = self.kernel.memory
+            items = mem.search(q) if q.strip() else mem.list(limit=50)
+            return self._json(h, 200, {"memories": items, "counts": mem.counts(),
+                                       "records": mem.search_records(q, limit=10) if q.strip() else []})
+        if m := re.fullmatch(r"/api/tasks/([\w-]+)/audit", url.path):
+            return self._json(h, 200, self.kernel.audit.entries(task_id=m.group(1), limit=300))
+        if url.path == "/api/push/key" and self.remote is not None:
+            return self._json(h, 200, {"key": self.remote.push.public_key})
+        raise HttpError(404, "not found")
+
+    def _dispatch_remote(self, h: BaseHTTPRequestHandler, method: str, url) -> None:
+        """Requests from the paired iPhone, via Tailscale. A device session is required for everything
+        except the pairing/sign-in ceremonies and static assets; sensitive actions need Face ID."""
+        from ..remote import LOCAL_ONLY, STEP_UP, DeviceError
+        from ..remote.webauthn import WebAuthnError
+
+        remote = self.remote
+        session = self._cookie(h, DEVICE_COOKIE)
+        device = remote.devices.session_device(session)
+        secure_cookie = "; HttpOnly; Secure; SameSite=Strict; Path=/"
+        try:
+            if method == "GET":
+                if url.path == "/":
+                    page = "index.html" if device else "phone.html"
+                    return self._send(h, 200, (STATIC / page).read_bytes(), "text/html; charset=utf-8")
+                if url.path in PUBLIC_REMOTE_GET or url.path.startswith("/static/fonts/"):
+                    return self._get(h, url, device=device)
+                if device is None:
+                    raise HttpError(401, "not signed in")
+                return self._get(h, url, device=device)
+
+            body = self._read_post(h, origin=remote.origin)
+            path = url.path
+            if path in PUBLIC_REMOTE_POST:
+                def text(name: str, limit: int = 200) -> str:
+                    value = body.get(name)
+                    if not isinstance(value, str) or len(value) > limit:
+                        raise HttpError(400, f"'{name}' is required")
+                    return value
+                if path == "/api/pair/options":
+                    return self._json(h, 200, remote.pairing_options(text("code"), body.get("name") or "iPhone"))
+                if path == "/api/pair/finish":
+                    token = remote.pairing_finish(text("code"), str(body.get("name") or "iPhone")[:60],
+                                                  body.get("credential"))
+                    return self._json(h, 200, {"ok": True},
+                                      {"Set-Cookie": f"{DEVICE_COOKIE}={token}; Max-Age=2592000{secure_cookie}"})
+                if path == "/api/login/options":
+                    return self._json(h, 200, remote.login_options())
+                token = remote.login_finish(text("challengeId"), body.get("credential"))
+                return self._json(h, 200, {"ok": True},
+                                  {"Set-Cookie": f"{DEVICE_COOKIE}={token}; Max-Age=2592000{secure_cookie}"})
+
+            if device is None:
+                raise HttpError(401, "not signed in")
+            actor = f"user:phone:{device['name']}"
+            if any(re.fullmatch(p, path) for p in LOCAL_ONLY):
+                raise HttpError(403, "only possible from the Mac")
+            if path == "/api/stepup/options":
+                target, target_body = body.get("path"), body.get("body")
+                if not isinstance(target, str) or not isinstance(target_body, dict):
+                    raise HttpError(400, "path and body are required")
+                return self._json(h, 200, remote.stepup_options(device, target, target_body))
+            if path == "/api/logout":
+                remote.devices.end_session(session)
+                return self._json(h, 200, {"ok": True}, {"Set-Cookie": f"{DEVICE_COOKIE}=; Max-Age=0{secure_cookie}"})
+            if path == "/api/push/subscribe":
+                remote.push.subscribe(device["id"], body.get("subscription") or {})
+                return self._json(h, 200, {"ok": True})
+            needs_face_id = any(re.fullmatch(p, path) for p in STEP_UP)
+            if path == "/api/memory/forget" and body.get("confirm") is not True:
+                needs_face_id = False  # a preview changes nothing
+            if needs_face_id:
+                remote.verify_stepup(device, path, body)
+                body = {k: v for k, v in body.items() if k not in ("assertion", "challengeId")}
+            return self._json(h, 200, self._post(path, body, actor=actor, device=device))
+        except (DeviceError, WebAuthnError) as exc:
+            self.kernel.audit.record("device.denied", path=url.path, reason=str(exc)[:200])
+            raise HttpError(403, str(exc)) from None
+
+    def _post(self, path: str, body: dict[str, Any], *, actor: str = "user:dashboard",
+              device: dict | None = None) -> Any:
         k = self.kernel
-        actor = "user:dashboard"
 
         def text(name: str, limit: int = 4000) -> str:
             value = body.get(name)
@@ -608,5 +736,15 @@ class Dashboard:
             return {"ok": True}
         if path == "/api/release":
             k.killswitch.release(by=actor, confirm=body.get("confirm") is True)
+            return {"ok": True}
+        if path == "/api/devices/pair":
+            if self.remote is None:
+                raise HttpError(409, "phone access isn't set up — run `jarvis remote enable` on the Mac first")
+            code = self.remote.devices.create_pairing(by=actor)
+            return {"url": self.remote.pair_url(code), "expires_in": 600}
+        if m := re.fullmatch(r"/api/devices/([\w-]+)/revoke", path):
+            if self.remote is None:
+                raise HttpError(409, "phone access isn't set up")
+            self.remote.devices.revoke(m.group(1), by=actor)
             return {"ok": True}
         raise HttpError(404, "not found")

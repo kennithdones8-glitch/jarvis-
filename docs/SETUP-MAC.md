@@ -96,6 +96,25 @@ uv run jarvis open
 ```
 Set the Ollama app to launch at login too.
 
+## 7. Your iPhone (optional)
+
+Needs iOS 16.4 or later. Free; nothing is exposed to the internet.
+
+1. Install **Tailscale** (free) from the App Store on the Mac and on the iPhone, and sign in to the same
+   account on both.
+2. In the Tailscale admin console (login.tailscale.com → **DNS**) turn on **MagicDNS** and **HTTPS Certificates**.
+3. On the Mac:
+```bash
+uv run jarvis remote enable
+```
+4. Open the dashboard on the Mac → **Systems → Phone → Pair a phone**. Scan the code with the iPhone camera,
+   tap **Pair with Face ID**.
+5. In Safari on the iPhone: Share → **Add to Home Screen**. Open JARVIS from the Home Screen, then
+   Systems → **Enable notifications**.
+
+Lost phone: dashboard → Systems → Phone → Remove, or `uv run jarvis devices` then `uv run jarvis devices revoke ID`.
+Turn phone access off with `uv run jarvis remote disable`.
+
 ## Updating
 
 ```bash

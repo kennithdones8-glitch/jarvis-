@@ -50,7 +50,11 @@ Fixed guarantees, independent of policy:
 | Unauthorised remote access | Dashboard binds 127.0.0.1 only; per-launch secret link → HttpOnly SameSite=Strict cookie | ✅ tested |
 | Other web pages driving the dashboard | Host-header check (DNS rebinding), custom header + Origin check (CSRF), strict CSP, no framing | ✅ tested |
 | Content from files injecting into the UI | All data rendered as text, never HTML; CSP forbids inline script | ✅ by construction, browser-checked |
-| iPhone / remote access | Tailscale + passkeys | ⏳ M7 |
+| iPhone / remote access | Reachable only inside your tailnet (`tailscale serve`, never `funnel`); dashboard still bound to 127.0.0.1; phone requests identified by the Tailscale Host and never accept the Mac's token cookie; passkey sign-in (Face ID, user verification required) → Secure HttpOnly SameSite=Strict session cookie | ✅ tested + headless browser (virtual passkey) — **Mac/iPhone check pending** |
+| Stolen phone session | Every sensitive action needs a fresh Face ID bound to that exact request (path + body), single use; pairing new devices is Mac-only; `jarvis devices revoke` / dashboard Remove kills sessions at once | ✅ tested |
+| Pairing code interception | Code is random, single use, 10 minutes, stored hashed, only shown on the Mac; the passkey is bound to the Tailscale name | ✅ tested |
+| Notification content leaking (lock screen, Apple) | Payloads are encrypted for the phone only (RFC 8291) and contain only generic text; details need sign-in | ✅ tested (decrypted as the phone would) |
+| Push used to reach arbitrary hosts | Only https endpoints on known push services are accepted | ✅ tested |
 | Unsafe shell | No shell tool exists | ✅ by absence |
 | SSRF via web fetch (reaching Ollama, router, cloud metadata) | Each hop resolved once, must be public, and the connection is pinned to that address (no rebinding); ports 80/443 only; no embedded credentials; ≤5 redirects; one overall deadline; system HTTP proxies not used | ✅ tested (v0.12) |
 | Destructive file operations | Overwrites keep the previous version; delete is Tier 4 and moves to trash | ✅ tested |
@@ -69,7 +73,7 @@ Fixed guarantees, independent of policy:
 | Stop not stopping work in progress | Claude Code runs as a tracked process group, killed on emergency stop (from any process) or deadline | ✅ tested (v0.12) — in-process tools still finish their current call |
 | Spending one approval twice | Find-and-consume in one transaction | ✅ tested (v0.12) |
 | Backup passphrase in the process list | Written to the Keychain via `security -i` on stdin | ✅ tested with a stand-in — **Mac check pending** |
-| Dashboard approvals without step-up auth | Same-user local processes could approve via the dashboard cookie | ⚠ open — Touch ID / passkeys planned |
+| Dashboard approvals without step-up auth | Same-user local processes could approve via the Mac dashboard cookie (the phone path already needs Face ID) | ⚠ open on the Mac — Touch ID planned |
 
 ## Data categories
 
@@ -81,6 +85,11 @@ Fixed guarantees, independent of policy:
 Config can only make a category stricter. It can never make one less strict.
 
 ## Known limitations
+
+- Voice identity is not authentication, and neither is "being on the tailnet": a phone also needs its passkey.
+  Anyone who can unlock your iPhone (Face ID or passcode) can approve from it. Remove a lost phone from the Mac.
+- A process on the Mac itself can send requests with the Tailscale Host header. It still needs a device
+  session and a fresh passkey assertion for sensitive actions, but it can see the sign-in page.
 
 - A timed-out or stopped **in-process** tool call (e.g. a file write, a PDF parse) finishes its current call in the
   background; the task is still marked uncertain/paused and nothing further runs. Claude Code calls are killed.

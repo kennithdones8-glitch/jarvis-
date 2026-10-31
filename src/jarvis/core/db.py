@@ -156,6 +156,42 @@ MIGRATIONS: list[str] = [
     ALTER TABLE tasks ADD COLUMN lease_owner TEXT;
     ALTER TABLE tasks ADD COLUMN lease_until REAL;
     """,
+    # v5: iPhone companion — paired devices (passkeys), their sessions, one-time pairing codes, push subscriptions
+    """
+    CREATE TABLE devices (
+        id            TEXT PRIMARY KEY,
+        name          TEXT NOT NULL,
+        credential_id TEXT NOT NULL UNIQUE,
+        public_key    TEXT NOT NULL,
+        sign_count    INTEGER NOT NULL DEFAULT 0,
+        created_at    TEXT NOT NULL,
+        last_seen     TEXT,
+        revoked_at    TEXT
+    );
+    CREATE TABLE device_sessions (
+        token_hash TEXT PRIMARY KEY,
+        device_id  TEXT NOT NULL REFERENCES devices(id),
+        created_at REAL NOT NULL,
+        expires_at REAL NOT NULL,
+        last_seen  REAL NOT NULL
+    );
+    CREATE TABLE pairings (
+        code_hash  TEXT PRIMARY KEY,
+        challenge  TEXT,
+        user_id    TEXT,
+        created_at REAL NOT NULL,
+        expires_at REAL NOT NULL,
+        used_at    REAL
+    );
+    CREATE TABLE push_subscriptions (
+        id         TEXT PRIMARY KEY,
+        device_id  TEXT NOT NULL REFERENCES devices(id),
+        endpoint   TEXT NOT NULL UNIQUE,
+        p256dh     TEXT NOT NULL,
+        auth       TEXT NOT NULL,
+        created_at TEXT NOT NULL
+    );
+    """,
 ]
 
 
