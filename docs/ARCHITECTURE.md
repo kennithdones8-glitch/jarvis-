@@ -91,6 +91,13 @@ request ─► Planner (quality model, JSON) ─► deterministic validation ─
 - The planner may only use read, list, search, mkdir, write, fetch, search-query and compose. Delete and
   external actions are not plannable yet.
 
+## Dashboard (implemented, `src/jarvis/server/`)
+
+A standard-library HTTP server bound to 127.0.0.1. The page polls `/api/state` every 1.5 s, and that
+snapshot is built from the kernel, so the page never shows simulated data. Actions call the same
+kernel APIs as the CLI, with actor `user:dashboard`. A background runner drives only tasks whose
+`runner` is `dashboard`. Planning runs as a background job because it takes about a minute on the Mac's CPU.
+
 ## Planned components
 
  FastAPI + dashboard, memory (FTS5 + vectors with provenance), voice, iPhone web app

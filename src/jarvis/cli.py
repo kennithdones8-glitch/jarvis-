@@ -52,6 +52,9 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--yes", action="store_true", help="run the plan without asking (approvals are still asked)")
     p = sub.add_parser("run", help="continue a task after approving or resuming it")
     p.add_argument("task_id")
+    p = sub.add_parser("dashboard", help="start the local command centre in your browser")
+    p.add_argument("--port", type=int, default=8765)
+    p.add_argument("--no-open", action="store_true", help="do not open the browser")
     sub.add_parser("models", help="show configured models, availability and budget")
     p = sub.add_parser("ask", help="one-off question to the best available model")
     p.add_argument("question")
@@ -107,12 +110,16 @@ def main(argv: list[str] | None = None) -> int:
         elif args.cmd in ("cancel", "pause", "resume"):
             getattr(kernel.engine, args.cmd)(args.task_id, actor="user:cli")
             print(f"{args.cmd}: {kernel.tasks.get(args.task_id)['state']}")
+        elif args.cmd == "dashboard":
+            return _dashboard(kernel, args)
         elif args.cmd == "do":
             return _do(kernel, args)
         elif args.cmd == "run":
             return _drive(kernel, _orchestrator(kernel), args.task_id)
         elif args.cmd == "models":
-            _print(_models_status(kernel))
+            from .status import models_status
+
+            _print(models_status(kernel))
         elif args.cmd == "ask":
             return _ask(kernel, args)
         elif args.cmd == "grant-egress":
@@ -133,26 +140,24 @@ def main(argv: list[str] | None = None) -> int:
     return 0
 
 
-def _models_status(kernel: Kernel) -> dict:
-    from .models.types import ProviderError
+def _dashboard(kernel: Kernel, args) -> int:
+    import webbrowser
 
-    router = kernel.models.router
-    out = {"budget": {"monthly_limit_usd": router.gate.budget.monthly_limit_usd,
-                      "spent_this_month_usd": router.gate.budget.spent_this_month()},
-           "local_only_categories": list(kernel.model_config.local_only_categories), "providers": []}
-    sources = [(p.name, "local", p.models, p.available_models, p.data_use_note) for p in router.local.values()]
-    sources += [(s.name, "cloud", s.models, lambda n=s.name: router.gate.available_models(n), s.data_use_note)
-                for s in router.gate.summaries()]
-    for name, location, models, available_fn, note in sources:
-        try:
-            available, error = sorted(available_fn()), None
-        except ProviderError as exc:
-            available, error = [], str(exc)
-        out["providers"].append({"name": name, "location": location, "configured": sorted(models),
-                                 "available": available, "error": error, "data_use": note})
-    disabled = [p.name for p in kernel.model_config.providers if not p.enabled]
-    out["disabled_providers"] = disabled
-    return out
+    from .server import Dashboard
+
+    recovered = kernel.start()
+    dash = Dashboard(kernel, port=args.port)
+    print(f"JARVIS dashboard running. Open (keep this link private):\n\n  {dash.url}\n")
+    if recovered:
+        print(f"Recovered {len(recovered)} interrupted task(s).")
+    print("Press Ctrl+C to stop. A task interrupted mid-step is recovered safely the next time JARVIS starts.")
+    if not args.no_open:
+        webbrowser.open(dash.url)
+    try:
+        dash.serve_forever()
+    except KeyboardInterrupt:
+        print("\nDashboard stopped.")
+    return 0
 
 
 def _orchestrator(kernel: Kernel):
@@ -255,7 +260,7 @@ def _ask(kernel: Kernel, args) -> int:
         Message("user", args.question, Category.CONVERSATION, local_only=args.local_only),
     ))
     try:
-        r = kernel.models.complete(Need("chat", min_quality=args.min_quality), request, purpose="cli question")
+        r = kernel.models.complete(Need("chat", min_quality=args.min_quality, prefer="speed"), request, purpose="cli question")
     except ApprovalRequired as exc:
         print(f"needs your approval first: jarvis approvals  (then: jarvis approve {exc.approval_id} and re-ask)")
         return 3

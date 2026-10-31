@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.5.0 — Milestone 4: dashboard
+
+- `jarvis dashboard`: the local command centre. Ask/Do command panel, background planning with plan
+  review, missions with live step progress and verified evidence, approvals showing the exact content
+  to be written, models, budget and audit-chain status, readable activity feed, emergency stop and
+  release. Works at phone width.
+- Security: loopback only, secret launch link to HttpOnly SameSite=Strict cookie, Host check, CSRF
+  header and Origin check, strict CSP, text-only rendering.
+- Task ownership (`runner`): the dashboard and CLI never drive the same task.
+- Chat (`ask`, dashboard) prefers the fastest suitable model.
+- 12 new tests; checked in headless Chromium at desktop and phone sizes with no console errors.
+
 ## 0.4.0 — Milestone 3b: orchestrator
 
 - Planner: the quality model proposes a JSON plan; code validates actions, args, dependencies and

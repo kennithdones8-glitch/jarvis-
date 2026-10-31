@@ -11,7 +11,8 @@ Claude Pro is a consumer subscription without API access, so it is not used by J
 | M3a | Production tools: files, web fetch | ✅ done |
 | M3b | Orchestrator (plan → review → execute → verify), `jarvis do`, persona with real ability list | ✅ done |
 | M3c | Evaluate planning on the Mac's real models; web search (SearXNG) on the Mac | next |
-| M4 | FastAPI + cinematic dashboard (live state, approvals, chat), passkey auth — **first-release demo: research brief** | |
+| M4 | Local dashboard (live state, plan review, approvals, chat, emergency stop) | ✅ done |
+| M4b | Passkey / Touch ID for sensitive approvals; research-brief demo once SearXNG runs on the Mac | |
 | M5 | Memory: originals + derived memories with provenance, FTS5 + local embeddings, deletion propagation, memory center | |
 | M6 | Mac voice: push-to-talk (whisper.cpp), TTS (`say`/Piper), interruption ≠ cancellation, then local wake word | |
 | M7 | iPhone home-screen web app over Tailscale: pairing, approvals, notifications, task handoff | |

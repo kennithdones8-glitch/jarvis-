@@ -2,7 +2,7 @@
 
 A personal AI system for Mac and iPhone: persistent, permissioned, auditable, local-first.
 
-**Status: Milestone 3 — JARVIS can plan and carry out file-based tasks from the terminal. No dashboard, voice or memory yet.** See [ROADMAP](docs/ROADMAP.md).
+**Status: Milestone 4 — local command-centre dashboard plus terminal. JARVIS plans and carries out file-based tasks. No voice or memory yet.** See [ROADMAP](docs/ROADMAP.md).
 
 ## What works today
 
@@ -21,7 +21,8 @@ A personal AI system for Mac and iPhone: persistent, permissioned, auditable, lo
 | Web fetch tool (SSRF-protected, untrusted-content marking) | ✅ implemented, tested incl. a live fetch |
 | Web search via local SearXNG | ✅ implemented, protocol-tested; needs SearXNG on the Mac |
 | Orchestrator: plan → review → permission-checked execution → verification (`jarvis do`) | ✅ implemented, tested; planning quality on real models being evaluated |
-| Dashboard, memory, voice, iPhone | ⏳ not started |
+| Command-centre dashboard (`jarvis dashboard`): chat, plan review, approvals with previews, missions, systems, activity, emergency stop | ✅ implemented, tested, browser-checked |
+| Passkeys / Touch ID, iPhone access, memory, voice, iPhone | ⏳ not started |
 | macOS-specific behaviour (launchd, Keychain, Touch ID) | ⏳ not started; not yet tested on a Mac |
 
 ## Quick start
@@ -59,6 +60,7 @@ or `$JARVIS_HOME`. Nothing runs in the background and nothing is sent over the n
 | `jarvis pause\|resume\|cancel ID` | Task controls |
 | `jarvis stop [--reason]` / `jarvis release --yes` | Emergency stop |
 | `jarvis audit [--task ID]` / `jarvis verify-audit` | Inspect and verify the audit trail |
+| `jarvis dashboard [--port 8765]` | Start the local command centre and open it in your browser |
 | `jarvis do "…" [--yes]` | Plan a task, show the plan, run it with approvals, verify and report |
 | `jarvis run ID` | Continue a task (after approving, resuming or a restart) |
 | `jarvis models` | Configured models, live availability, budget |

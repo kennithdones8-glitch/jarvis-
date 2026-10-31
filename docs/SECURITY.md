@@ -44,7 +44,10 @@ Fixed guarantees, independent of policy:
 | Silent provider fallback | Fallback goes through the same gate; approvals are per provider and per request | ✅ tested |
 | Unapproved spending | Budget guard (default $0) checked by router and gate; paid models are excluded | ✅ tested |
 | Local adapter used as a network bypass | Ollama adapter refuses non-loopback hosts | ✅ tested |
-| Unauthorised remote access | Localhost only; Tailscale + passkeys for phone | ⏳ M4/M7 |
+| Unauthorised remote access | Dashboard binds 127.0.0.1 only; per-launch secret link → HttpOnly SameSite=Strict cookie | ✅ tested |
+| Other web pages driving the dashboard | Host-header check (DNS rebinding), custom header + Origin check (CSRF), strict CSP, no framing | ✅ tested |
+| Content from files injecting into the UI | All data rendered as text, never HTML; CSP forbids inline script | ✅ by construction, browser-checked |
+| iPhone / remote access | Tailscale + passkeys | ⏳ M7 |
 | Unsafe shell | No shell tool exists | ✅ by absence |
 | SSRF via web fetch (reaching Ollama, router, cloud metadata) | Every hop is resolved and must be a public address | ✅ tested — DNS rebinding remains a residual risk |
 | Destructive file operations | Overwrites keep the previous version; delete is Tier 4 and moves to trash | ✅ tested |

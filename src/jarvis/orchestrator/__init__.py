@@ -55,11 +55,13 @@ class Orchestrator:
                                  steps=[f"{s.tool}.{s.action} {describe_args(s.args)}" for s in plan.steps])
         return plan
 
-    def submit(self, request: str, plan: Plan, *, actor: str = "user") -> str:
+    def submit(self, request: str, plan: Plan, *, actor: str = "user", runner: str = "cli") -> str:
+        """``runner`` names the process that drives the task, so two processes never run the same one."""
         if plan.kind != "plan":
             raise ValueError(f"cannot submit a {plan.kind} result")
         return self.kernel.tasks.create(request, goal=plan.goal or request, steps=plan.steps, actor=actor,
-                                        context={"verifier": "writes_verified", "planner": plan.model})
+                                        context={"verifier": "writes_verified", "planner": plan.model,
+                                                 "runner": runner})
 
     def preview_args(self, task_id: str, step_id: str) -> dict[str, Any]:
         """The exact arguments a step will run with (references filled in) — shown when asking for approval."""
