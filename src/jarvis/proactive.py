@@ -108,7 +108,7 @@ def build_briefing(kernel, *, health: dict[str, Any] | None = None, now: float |
 
     tasks = kernel.tasks.list(limit=200)
     approvals = kernel.approvals.pending()
-    sections: list[dict[str, Any]] = []
+    sections: list[dict[str, Any]] = today_sections(kernel, datetime.fromtimestamp(now).astimezone())
 
     home = str(Path.home())
     needs = [f"Approve: {a['summary'].replace(home, '~')}"
@@ -150,6 +150,52 @@ def build_briefing(kernel, *, health: dict[str, Any] | None = None, now: float |
     headline = (f"{n} thing{'s' if n != 1 else ''} need{'s' if n == 1 else ''} you." if n
                 else "Nothing needs you." if not systems else "Nothing needs a decision, but check Systems.")
     return {"headline": headline, "since": since_iso, "generated_at": now, "sections": sections}
+
+
+def today_sections(kernel, now: datetime) -> list[dict[str, Any]]:
+    """Today's calendar and the reminders due by tonight, read on the Mac through the gateway (read-only, tier 0).
+    Absent (not an error) where the Mac apps aren't available; a failed read is reported in the section."""
+    from .core.permissions import Effect, Tier
+
+    def read(tool: str, action: str, args: dict) -> Any:
+        spec = kernel.registry.action(tool, action)
+        if spec is None or spec.tier is not Tier.READ:
+            return None
+        decision = kernel.permissions.evaluate(tool=tool, action=action, tier=spec.tier, resource_kind=None, resource=None)
+        if decision.effect is not Effect.ALLOW:
+            return None
+        return kernel.gateway.invoke(tool, action, args, summary=f"briefing: {tool}")
+
+    start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    end = start + timedelta(days=1)
+    out: list[dict[str, Any]] = []
+    try:
+        cal = read("calendar", "events", {"from": start.isoformat(), "to": end.isoformat()})
+        if cal is not None:
+            items = []
+            for e in cal["events"]:
+                s = datetime.fromisoformat(e["start"].replace("Z", "+00:00")).astimezone()
+                f = datetime.fromisoformat(e["end"].replace("Z", "+00:00")).astimezone()
+                when = "All day" if e["all_day"] else f"{s:%H:%M}–{f:%H:%M}"
+                items.append(f"{when} {e['title']}" + (f" ({e['location']})" if e.get("location") else ""))
+            out.append({"title": f"Today · {now:%A %d %B}", "items": items or ["Nothing on your calendar."]})
+    except Exception as exc:  # Calendar not allowed yet, timed out…
+        out.append({"title": "Today", "items": [f"Couldn't read your calendar: {str(exc)[:160]}"], "alert": True})
+    try:
+        rem = read("reminders", "list", {})
+        if rem is not None:
+            due = []
+            for r in rem["reminders"]:
+                if not r["due"]:
+                    continue
+                d = datetime.fromisoformat(r["due"].replace("Z", "+00:00")).astimezone()
+                if d < end:
+                    due.append(f"{r['title']} — " + (f"overdue since {d:%a %d %b}" if d < start else f"due {d:%H:%M}"))
+            if due:
+                out.append({"title": "Reminders due", "items": due[:20], "alert": any("overdue" in x for x in due)})
+    except Exception as exc:
+        out.append({"title": "Reminders due", "items": [f"Couldn't read your reminders: {str(exc)[:160]}"], "alert": True})
+    return out
 
 
 def briefing_text(b: dict[str, Any]) -> str:

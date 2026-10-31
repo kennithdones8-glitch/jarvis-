@@ -159,3 +159,46 @@ def test_notification_links_stay_inside_jarvis(make_kernel, tmp_path):
         with pytest.raises(PushError):
             push.send("JARVIS", "x", url=bad)
     assert push.send("JARVIS", "x", url="/#briefing") == 0  # no phones subscribed: nothing sent
+
+
+def test_briefing_includes_today_from_the_mac_apps(make_kernel, tmp_path):
+    from test_mac import FakeMac
+
+    from jarvis.tools import default_registry
+    fake = FakeMac()
+    now = datetime.now().astimezone()
+    today = now.replace(hour=9, minute=30, second=0, microsecond=0)
+    fake.events += [{"title": "Standup", "start": today.isoformat(), "end": (today + timedelta(minutes=15)).isoformat(),
+                     "all_day": False, "location": "", "calendar": "Work", "recurrence": None},
+                    {"title": "Next week", "start": (today + timedelta(days=7)).isoformat(),
+                     "end": (today + timedelta(days=7, hours=1)).isoformat(), "all_day": False, "location": "",
+                     "calendar": "Work", "recurrence": None}]
+    fake.reminders += [{"title": "Pay rent", "due": (today - timedelta(days=2)).isoformat(), "completed": False, "notes": "", "list": "Home"},
+                       {"title": "Call Sam", "due": today.replace(hour=17).isoformat(), "completed": False, "notes": "", "list": "Home"},
+                       {"title": "Someday", "due": None, "completed": False, "notes": "", "list": "Home"}]
+    k = make_kernel(registry=default_registry(tmp_path / "home", mac_runner=fake))
+    b = build_briefing(k, now=now.timestamp())
+    titles = [s["title"] for s in b["sections"]]
+    assert titles[0].startswith("Today · ") and "Reminders due" in titles
+    today_items = b["sections"][0]["items"]
+    assert today_items == ["09:30–09:45 Standup"]
+    due = next(s for s in b["sections"] if s["title"] == "Reminders due")
+    assert any(i.startswith("Pay rent — overdue") for i in due["items"]) and "Call Sam — due 17:30" in due["items"]
+    assert due["alert"] is True and not any("Someday" in i for i in due["items"])
+    assert {c[0] for c in fake.calls} == {"calendar.events", "reminders.list"}  # reads only
+    assert k.approvals.pending() == []
+
+
+def test_briefing_reports_a_mac_app_it_cannot_read(make_kernel, tmp_path):
+    from jarvis.tools import default_registry
+    from jarvis.tools.mac import MacError
+
+    def denied(name, args, timeout):
+        raise MacError("macOS hasn't allowed JARVIS to use Calendar")
+    k = make_kernel(registry=default_registry(tmp_path / "home", mac_runner=denied))
+    b = build_briefing(k)
+    assert any("Couldn't read your calendar" in i for s in b["sections"] for i in s["items"])
+
+
+def test_briefing_without_mac_apps_has_no_today_section(make_kernel):
+    assert not any(s["title"].startswith("Today") for s in build_briefing(make_kernel())["sections"])
