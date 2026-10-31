@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.17.2 — Release gate and docs sync (M-B)
+
+- **`jarvis gate`**: runs the full test suite and the linter, then checks 12 security items (normal completion,
+  prompt injection, permission bypass, interrupted tasks, duplicate actions, network limits, corrupted state,
+  resource exhaustion, privacy, honest reporting, emergency stop, budget guard) against the named tests that prove
+  each. A failing, skipped or missing covering test fails the gate; security can't be outweighed by anything else.
+  Fails closed: its first run failed because of a test-name mismatch rather than passing. Checked with a
+  deliberately broken permission test (in a throwaway copy): the gate failed and named it.
+- `ruff` 0.6.9 added as a pinned development dependency (dev only, no cost) so the linter result is the same
+  everywhere; `[tool.ruff]` targets Python 3.12.
+- Docs synced with the code: README status and "On the Mac" column (from what was actually run on the Mac),
+  architecture sections for Mac apps, chat lookups, live replies, benchmark and gate; security threats added in
+  v0.17; roadmap with milestones M-A/M-B/M-C and where each signature system stands; project description.
+
 ## 0.17.1 — Live replies, Help, welcome
 
 - **Live replies:** a local model's answer appears word by word as it's written (`/api/chat/stream`; first words

@@ -81,6 +81,19 @@ Fixed guarantees, independent of policy:
 | Backup passphrase in the process list | Written to the Keychain via `security -i` on stdin | ✅ tested with a stand-in — **Mac check pending** |
 | Dashboard approvals without step-up auth | Optional Touch ID (v0.14): once set up, approvals, consent, running plans, releasing the stop, memory edits/forget, pairing a phone and adding/removing keys need a fresh Touch ID bound to that exact request; the dashboard cookie alone can't approve | ✅ tested + headless browser — **Mac check pending**. Off until you set it up. Does not cover the CLI (see limitations) |
 
+### Added in v0.17
+
+| Threat | Mitigation | Status |
+|---|---|---|
+| Mac-app scripts as an injection path | Arguments passed as JSON data (argv), never pasted into script text; app names and email addresses validated; note bodies HTML-escaped | ✅ tested (stand-in runner) — real scripts **Mac check pending** |
+| JARVIS changing your calendar, reminders, notes or mail without asking | Mac-app changes are tier 1 (approval with an exact preview); no send, delete or settings actions exist | ✅ tested |
+| Duplicate calendar events or reminders after a timeout or crash | Timed-out changes are outcome-unknown and never retried; adds reconcile by title/time | ✅ tested |
+| Chat lookups leaking data or acting | Lookups are chosen by the local model (message local-only), read-only (tier 0), permission-checked before running (no stray approvals), and sent to Claude only through the privacy gate as `file_content` | ✅ tested |
+| Benchmark runs touching real data or spending | Throwaway data folders with made-up data, a Mac-apps stand-in, no standing permissions, unapproved-change detection, refuses a non-zero budget; `hybrid` grants exist only in the throwaway folder | ✅ tested |
+| Benchmark running model-written code | Only with `--run-code`: isolated Python, empty environment, 10 s limit, `sandbox-exec` with no network and writes only to a temp folder on macOS | ✅ tested (Linux, without sandbox-exec) — **Mac check pending** |
+| Tests driving the owner's real Mac | An autouse fixture replaces `launchctl` and disables the Mac apps for every test (found when a test restarted the real service) | ✅ tested (trap binaries logged no calls) |
+| Releasing with a security regression | `jarvis gate`: every security item must pass by its named tests; failing, skipped or missing tests fail the gate | ✅ tested, including a deliberately broken test |
+
 ## Data categories
 
 | Category | Default | Can be made local-only |

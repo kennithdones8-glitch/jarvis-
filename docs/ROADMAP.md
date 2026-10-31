@@ -25,8 +25,27 @@ Approved model paths and what they cost:
 | **v0.15** | **Proactive JARVIS:** morning briefing (live, never stored), quiet hours, reminders, health alerts | ✅ done in tests + headless browser · **Mac check pending** |
 | **M6 (v0.16)** | **Voice:** push-to-talk (Mac + iPhone), local whisper.cpp, on-device spoken replies, interrupt ≠ cancel | ✅ done with a protocol stand-in + headless browser · **real whisper.cpp + Mac check pending** |
 | v0.16.1–2 | Pre-Mac review: fixes found by checking whisper.cpp's source and iPhone Safari's rules; `jarvis doctor` | ✅ done in tests + headless browser · **Mac check pending** |
+| **v0.17** | **Mac apps, smarter chat (lookups), Briefing 2.0, benchmark (milestone 1), live replies, Help** | ✅ in tests · **Mac check pending** |
+| **v0.17.2** | **M-B: release gate (`jarvis gate`) + docs synced with the code** | ✅ |
+| M-A | Verification on the Mac: tests, `mac check`, benchmark (local + hybrid), Claude-app baseline, iPhone pairing and a notification, voice (optional) | **next (needs the Mac)** |
+| M-C | Outcome Engine v1: goal interpretation, context packing, "no downgrades" routing, per-goal acceptance checks, measured on the benchmark before and after | after M-A |
 | M9+ | Mac automation, deeper proactive monitoring (e.g. watched folders), self-improvement proposals (isolated worktrees, owner-approved) | later |
 | — | Search by meaning (embeddings) | only if keyword recall proves weak |
+
+### Signature systems (from the engineering constitution): where they stand
+
+| System | Today | Built from |
+|---|---|---|
+| Flight Recorder | mostly exists | audit hash chain, task steps/checkpoints, approvals, evidence, model routes · missing: one timeline per task, external anchor |
+| Outcome Engine | partial | planner + task engine + writes_verified + bench checks · missing: per-goal criteria, broader verification, replanning (M-C) |
+| Intelligence Tournament | missing | research source verification only |
+| Opportunity Radar | minimal | morning briefing |
+| Personal Knowledge Graph | partial | memories with provenance, records, full-text search · no relations |
+| Simulation Lab | partial | benchmark throwaway folders, stand-ins |
+| Trust Contract | partial | global policy, tiers, privacy gate, budget, approvals · no per-task contract |
+| Initiative Engine | missing | notifications only |
+| Personal Operations Model | missing | on-demand calendar/reminder reads |
+| Self-Test & Recovery Lab | partial | 350+ tests incl. real crash recovery, `jarvis doctor`, `jarvis bench`, `jarvis gate` · no recovery drills on a live install |
 
 Superseded: M3c/SearXNG web search (research now goes through Claude Code; the SearXNG tool is optional and
 off by default).

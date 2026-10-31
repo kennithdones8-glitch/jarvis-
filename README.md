@@ -2,12 +2,15 @@
 
 A personal AI system for Mac and iPhone: persistent, permissioned, auditable, local-first.
 
-**Status: v0.16 — voice.** JARVIS chats (local models + Claude via your Pro plan),
-researches the web with verified sources, reads documents, plans and carries out file tasks with approvals,
-remembers what you tell it, runs in the background with encrypted backups, and can be used from your iPhone
-over your private Tailscale network, with Face ID on every approval, and can require Touch ID for approvals on
-the Mac. Each morning it tells you what needs you, what happened overnight and what's wrong. You can talk to it (speech recognition on your Mac with whisper.cpp) and have replies read aloud with
-on-device voices. **Not built yet:** Mac app automation, deeper monitoring. See [ROADMAP](docs/ROADMAP.md).
+**Status: v0.17 — Mac apps, smarter chat, benchmark, release gate.** JARVIS chats (local models + Claude via
+your Pro plan) and looks things up in your calendar, reminders, notes and files before answering; researches the
+web with verified sources; reads documents; plans and carries out tasks with approvals (files, Calendar, Reminders,
+Notes, Mail drafts); remembers what you tell it; runs in the background with encrypted backups; works from your
+iPhone over your private Tailscale network with Face ID on every approval, and can require Touch ID on the Mac.
+Each morning it tells you what's on today, what needs you and what's wrong. You can talk to it (whisper.cpp on your
+Mac). `jarvis bench` measures it on fixed tasks; `jarvis gate` must pass before a release.
+**Much of v0.12–v0.17 is not yet confirmed on the Mac** (see the table). **Not built yet:** watched folders,
+self-improvement proposals, a personal operations model. See [ROADMAP](docs/ROADMAP.md).
 
 ## What works today
 
@@ -18,7 +21,7 @@ the owner's Intel Mac (macOS 14.1.1). Untested-on-Mac items may still have Mac-s
 |---|---|---|
 | Task engine: state machine, checkpoints, retries, crash recovery, **one process per task (leases)** | ✅ | ✅ basic tasks · leases not yet |
 | Permission engine: tiers, approved folders, deny/confirm/allow; approvals bound to exact arguments, single-use | ✅ | ✅ |
-| Audit log: hash-chained, append-only, secrets redacted, **free text stored only as fingerprints** | ✅ | not yet (v0.12) |
+| Audit log: hash-chained, append-only, secrets redacted, **free text stored only as fingerprints** | ✅ | ✅ chain intact (`jarvis doctor`) · fingerprinting not checked by hand |
 | Emergency stop: blocks new actions; **kills Claude work in progress** | ✅ | not yet (v0.12) |
 | Model routing (local-first / best / hybrid) with Ollama | ✅ (stand-in + opt-in live) | ✅ llama3.2:3b 12.7 tok/s, qwen2.5:7b 6.4 tok/s |
 | Claude via Claude Code on your Pro plan (tools off, personal settings isolated, asks before private data leaves) | ✅ (stand-in CLI) | ✅ chat · settings isolation not yet |
@@ -28,14 +31,18 @@ the owner's Intel Mac (macOS 14.1.1). Untested-on-Mac items may still have Mac-s
 | Documents: PDF / Word / text; move & rename with approval | ✅ (real generated files) | ✅ PDF summary · move not yet |
 | Web fetch (pinned to the checked address, ports 80/443, one deadline) | ✅ | not yet |
 | Memory: archive + facts with provenance, recall, review/correct/delete, forget (incl. task history) | ✅ | not yet |
-| Dashboard (holographic HUD) | ✅ + headless browser | earlier version only |
-| Background service, health checks, encrypted backups | ✅ (plist content, crypto, restore) | **not yet** |
+| Dashboard (holographic HUD), live replies, Help and welcome | ✅ + headless browser | ✅ opens (v0.16.x) · live replies not yet |
+| Background service, health checks, encrypted backups | ✅ (plist content, crypto, restore) | ✅ service installed, backup saved + verified, passphrase in Keychain · restore not yet |
 | iPhone companion: Tailscale (tailnet only), passkey pairing, Face ID on every approval, private notifications, Home Screen app | ✅ + headless browser with a virtual passkey | **not yet** |
-| Touch ID for dashboard approvals on the Mac (optional; recovery via Terminal) | ✅ + headless browser with a virtual passkey | **not yet** |
-| Morning briefing (built live, never stored), quiet hours, waiting-decision reminders, health alerts | ✅ + headless browser | **not yet** |
+| Touch ID for dashboard approvals on the Mac (optional; recovery via Terminal) | ✅ + headless browser with a virtual passkey | ✅ set up · approving with it not yet |
+| Morning briefing (built live, never stored) incl. today's calendar and reminders due, quiet hours, reminders, health alerts | ✅ + headless browser | **not yet** |
 | Voice: push-to-talk on Mac and iPhone, local whisper.cpp (loopback only, audio never stored), on-device spoken replies | ✅ protocol stand-in + headless browser with a fake microphone | **not yet** (real whisper.cpp not built here) |
-| `jarvis doctor`: one-command check of the whole installation | ✅ | **not yet** |
-| Mac automation, watched folders, self-improvement proposals | — | ⏳ not started |
+| `jarvis doctor`: one-command check of the whole installation | ✅ | ✅ (v0.16.4) |
+| Mac apps: Calendar, Reminders, Notes, Mail drafts, open apps (reads free; changes ask first) | ✅ (osascript stand-in) | **not yet** (`jarvis mac check`) |
+| Smarter chat: read-only lookups chosen by the local model; "Make a plan" for changes | ✅ (stand-in models) | **not yet** |
+| Benchmark `jarvis bench` (12 tasks, isolated runs, Claude-app baseline) | ✅ (oracle/careless stand-ins) | **not yet** (first run pending) |
+| Release gate `jarvis gate` (full suite + linter + 12 security items) | ✅ | n/a (runs from the repo) |
+| Watched folders, self-improvement proposals, personal operations model | — | ⏳ not started |
 
 ## Quick start
 
@@ -70,6 +77,7 @@ is sent over the network without your approval.
 |---|---|
 | `jarvis bench list\|run\|baseline\|score-baseline\|report` | Benchmark JARVIS on fixed tasks, and the Claude app on the same tasks ([bench/README](bench/README.md)) |
 | `jarvis mac check` | Read-only test of Calendar, Reminders and Notes access (lets macOS ask for permission) |
+| `jarvis gate [--json]` | Release gate: full tests, linter and every security item; must pass before a release |
 | `jarvis doctor [--json]` | Check the whole installation (database, models, service, backups, HTTPS, phone path, Touch ID, voice) and say what to fix |
 | `jarvis status` | Emergency-stop state, task counts, pending approvals |
 | `jarvis tasks` / `jarvis show ID` / `jarvis tasks delete ID` | List tasks / inspect one / delete a finished task's history |

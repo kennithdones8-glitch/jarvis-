@@ -1,8 +1,9 @@
 # Development
 
 ```bash
-uv sync            # creates .venv (runtime deps: pypdf, cryptography; dev: pytest)
-uv run pytest      # full suite, ~30 s
+uv sync            # creates .venv (runtime: pypdf, cryptography, python-dateutil; dev: pytest, ruff 0.6.9)
+uv run pytest      # full suite, ~1 min
+uv run jarvis gate # release gate: full suite + linter + every security item, by name
 ```
 
 ## Test layout
@@ -33,6 +34,8 @@ uv run pytest      # full suite, ~30 s
 | `tests/test_mac.py` | Mac apps through the real gateway with an osascript stand-in: tiers, approvals and previews, argument checks, repeating events, injection-safe arguments, error messages, reconcile |
 | `tests/test_lookup.py` | Smarter chat: lookups chosen locally, read-only only, outside-folder reads refused, no stray approvals, plan offers, persona |
 | `tests/test_bench.py` | Benchmark harness end to end: an oracle model passes every task, a careless one fails for the right reasons, unapproved changes caught, isolation, baseline scoring, sandboxed code checks |
+| `tests/test_streaming.py` | Live replies: same answer streamed or not, closed page stops generation without a retry, emergency stop cuts off, usual protections |
+| `tests/test_gate.py` | The release gate: failing/skipped/missing security tests fail it, nothing outweighs them, every listed test exists |
 | `tests/test_backup_service.py` | Encryption, tamper detection, restore with deletions kept, retention, LaunchAgent plist |
 | `tests/test_persona.py` | Persona honesty and ability list |
 | `tests/test_tasks.py` | End-to-end task with approval + verification, retries/backoff, uncertain outcomes, pause/cancel, corrupt checkpoints, **real subprocess crash + recovery** |
@@ -52,3 +55,10 @@ folder or real services. On macOS a test that does can pass in CI and fail on th
 - Schema changes go in a new entry in `db.MIGRATIONS`. Never edit an existing migration.
 - Never log secrets or write them into tool arguments.
 - Commits are scoped to one milestone or fix.
+
+## Release gate
+
+A milestone is done only when `uv run jarvis gate` passes. Security items are gates, not scores: each lists the
+tests that prove it (in `src/jarvis/gate.py`), and any of them failing, being skipped or no longer existing fails
+the gate. When you add a security-relevant test, add it to the right item; when you rename one, update the list
+(`tests/test_gate.py` catches a stale name). Only the opt-in live tests may be skipped.

@@ -105,6 +105,8 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("file", nargs="?")
     p.add_argument("--whisper-dir", default="~/whisper.cpp", help="where you built whisper.cpp")
     p.add_argument("--model", default="base.en", help="model name (default base.en)")
+    p = sub.add_parser("gate", help="release gate: full tests, linter, and every security item (run from the repo)")
+    p.add_argument("--json", action="store_true")
     p = sub.add_parser("bench", help="benchmark: list | run [IDS] | baseline | score-baseline FILE | report RUN_DIR")
     p.add_argument("op", choices=["list", "run", "baseline", "score-baseline", "report"])
     p.add_argument("ids", nargs="*", help="task ids (run), or the file / folder (score-baseline, report)")
@@ -200,6 +202,13 @@ def main(argv: list[str] | None = None) -> int:
             return _devices(kernel, args)
         elif args.cmd == "voice":
             return _voice(kernel, args)
+        elif args.cmd == "gate":
+            from . import gate
+
+            print("Running the full test suite and linter (about a minute)…", file=sys.stderr)
+            result = gate.run()
+            print(gate.as_json(result) if args.json else gate.report(result))
+            return 0 if result.passed else 1
         elif args.cmd == "bench":
             return _bench(kernel, args)
         elif args.cmd == "mac":

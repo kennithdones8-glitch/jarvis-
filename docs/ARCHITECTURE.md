@@ -88,8 +88,10 @@ request ─► Planner (quality model, JSON) ─► deterministic validation ─
 - `llm.compose` writes from earlier results with the fast model. Inputs are wrapped as untrusted data blocks.
 - References are resolved just before a step runs. Approvals therefore cover, and display, the
   exact content that will be written.
-- The planner may only use read, list, search, mkdir, write, fetch, search-query and compose. Delete and
-  external actions are not plannable yet.
+- The planner may use file read/list/search/mkdir/write/move, document read, web fetch, research, compose, and the
+  Mac-app actions (calendar events/add, reminders list/add/complete, notes search/read/create, mail draft, open
+  app). Delete, sending mail or messages, and other external actions are not plannable. The planner prompt
+  includes the current local date and time.
 
 ## Dashboard (implemented, `src/jarvis/server/`)
 
@@ -170,6 +172,39 @@ to `/api/voice/transcribe` (same CSRF/Origin checks; Mac cookie or phone session
 loopback enforced, no system proxy) and returns the cleaned transcript, which the page sends like typed text.
 With `whisper_binary` and `model` configured, the dashboard process starts `whisper-server` and stops it on
 exit (no extra LaunchAgent). Spoken replies use `speechSynthesis` with on-device (`localService`) voices only.
+
+## Mac apps (`src/jarvis/tools/mac.py`, v0.17)
+
+Five small tools (calendar, reminders, notes, mail, apps) run JavaScript-for-Automation scripts with
+`osascript -l JavaScript`; arguments go as one JSON argv string, never into script text. Reads are tier 0; adding
+or changing is tier 1 (asks, with a plain-words preview built by `mac_preview`). Nothing sends, deletes or changes
+settings. Calendar scripting returns repeating events as one master with an RRULE, so `expand()` turns them into
+occurrences (python-dateutil). Changes that time out are marked outcome-unknown (never retried); adds have
+reconcile checks. Registered only on macOS; tests use a stand-in runner.
+
+## Smarter chat (`src/jarvis/orchestrator/lookup.py`, v0.17)
+
+Before a chat answer, a word check decides whether a lookup could help. If so, the local model (message marked
+local-only) picks up to three **read-only** lookups (calendar, reminders, notes, files). Each is checked with the
+permission engine first (anything not plainly allowed is skipped, so no approval is ever left behind) and run
+through the gateway. Results go to the answering model as a private `file_content` message inside `<lookup>`
+tags; if that model is Claude, the privacy gate asks first. Requests to change something get a "Make a plan" offer
+instead (the plan then goes through approvals). The persona's can/can't list changes with the ability.
+
+## Live replies (v0.17.1)
+
+`POST /api/chat/stream` returns newline-delimited JSON: `{"t": piece}` as a local model writes, then
+`{"done": result}` with exactly what `/api/chat` returns. Only Ollama streams (`OllamaProvider.chat(on_token=…)`);
+routing, lookups and the privacy gate are unchanged and cloud replies arrive whole. The emergency stop is checked on
+every piece; a closed page aborts generation without being treated as a model failure.
+
+## Benchmark and release gate (`src/jarvis/bench/`, `src/jarvis/gate.py`, v0.17)
+
+`jarvis bench` runs fixed tasks (`bench/tasks/*.toml`) through the real chat, research and plan→task→approval
+paths, each in a throwaway data folder with made-up data, a Mac-apps stand-in and no standing permissions; an
+audit-log check fails any change made without an approval. `jarvis gate` runs the full suite (JUnit XML) and the
+pinned linter, and maps each security item to the specific tests that prove it: any of those failing, being
+skipped or missing fails the gate.
 
 ## Service and backups
 

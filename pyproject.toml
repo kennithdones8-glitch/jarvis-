@@ -1,9 +1,10 @@
 [project]
 name = "jarvis"
-version = "0.17.1"
-description = "JARVIS personal AI system: kernel (tasks, permissions, audit, kill switch)"
+version = "0.17.2"
+description = "JARVIS: a permissioned, auditable personal AI system for Mac and iPhone"
 requires-python = ">=3.12"
-# The kernel deliberately has no runtime dependencies beyond the standard library.
+# The kernel (src/jarvis/core) uses only the standard library; these serve documents, passkeys/push/backups and
+# calendar repeat rules.
 dependencies = [
     "cryptography>=42",
     "pypdf>=5",
@@ -14,7 +15,7 @@ dependencies = [
 jarvis = "jarvis.cli:main"
 
 [dependency-groups]
-dev = ["pytest>=8.3"]
+dev = ["pytest>=8.3", "ruff==0.6.9"]  # ruff pinned: `jarvis gate` must give the same answer everywhere
 
 [build-system]
 requires = ["hatchling>=1.25"]
@@ -26,3 +27,6 @@ packages = ["src/jarvis"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-q"
+
+[tool.ruff]
+target-version = "py312"
