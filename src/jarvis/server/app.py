@@ -66,7 +66,8 @@ def tilde(value: Any) -> Any:
 def describe_event(event: str, p: dict[str, Any]) -> str:
     """One readable line per audit event, for the Activity panel. The full record stays in the log."""
     call = f"{p.get('tool')}.{p.get('action')}" if p.get("tool") else ""
-    res = tilde(p.get("resource")) or ""
+    res = p.get("resource") or ""
+    res = Path(res).name if isinstance(res, str) and "/" in res else res
     lines = {
         "task.created": lambda: f"New task: {p.get('goal')}",
         "task.state": lambda: f"Task {p.get('frm', '').replace('_', ' ')} → {p.get('to', '').replace('_', ' ')}"
@@ -357,6 +358,9 @@ class Dashboard:
                     ctype = "text/javascript" if url.path.endswith(".js") else "text/css"
                     return self._send(h, 200, (STATIC / url.path.rsplit("/", 1)[1]).read_bytes(),
                                       f"{ctype}; charset=utf-8")
+                if m := re.fullmatch(r"/static/fonts/(rajdhani-[567]00\.woff2)", url.path):
+                    return self._send(h, 200, (STATIC / "fonts" / m.group(1)).read_bytes(), "font/woff2",
+                                      {"Cache-Control": "max-age=86400"})
                 if url.path == "/api/state":
                     return self._json(h, 200, self.state())
                 if m := re.fullmatch(r"/api/tasks/([\w-]+)/audit", url.path):

@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.5.1 — Dashboard redesign
+
+- Holographic HUD in Stark gold & red with an animated arc-reactor core in the centre that changes
+  with JARVIS's state (idle, thinking, executing, needs-you, stopped, offline).
+- Plain-language status headline ("Executing · Step 2 of 3 · Save the brief"), stat readouts, a
+  prominent Decision card with the exact content to be written, and segmented mission progress.
+- Technical detail (tool calls, IDs, full paths) moved behind "details"; files shown by name.
+- Plans appear in the conversation feed; the activity ticker opens a full log.
+- Arc blue is reserved for "needs your decision", red for danger, green for verified results.
+- Bundled Rajdhani display font (SIL Open Font License, `server/static/fonts/OFL-Rajdhani.txt`);
+  nothing is loaded from the internet.
+
 ## 0.5.0 — Milestone 4: dashboard
 
 - `jarvis dashboard`: the local command centre. Ask/Do command panel, background planning with plan

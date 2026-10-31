@@ -9,62 +9,91 @@
 <script src="/static/app.js" defer></script>
 </head>
 <body>
-<div id="stopbar" class="stopbar" hidden>
+<div class="backdrop" aria-hidden="true"></div>
+
+<div id="stopbar" class="stopbar" role="alert" hidden>
   <span id="stoptext"></span>
-  <button id="release" class="btn btn-ghost">Release stop</button>
+  <button id="release" class="btn btn-outline">Release stop</button>
 </div>
+
 <header class="top">
-  <div class="brand">
-    <div id="orb" class="orb" data-state="online" aria-hidden="true"><i></i><i></i><i></i></div>
-    <div>
-      <div class="wordmark">J.A.R.V.I.S.</div>
-      <div id="statusline" class="statusline" role="status" aria-live="polite">Connecting…</div>
-    </div>
-  </div>
+  <div class="wordmark">J.A.R.V.I.S.<span>Personal systems</span></div>
   <div class="top-right">
-    <span id="clock" class="mono muted"></span>
-    <button id="estop" class="btn btn-danger" title="Stop all tasks and block new actions">Emergency stop</button>
+    <span id="clock" class="clock"></span>
+    <button id="estop" class="btn btn-danger" title="Pause every task and block new actions">Emergency stop</button>
   </div>
 </header>
 
-<main class="grid">
-  <section class="panel command" aria-labelledby="cmd-h">
-    <div class="panel-head">
-      <h2 id="cmd-h">Command</h2>
-      <div class="tabs" role="tablist" aria-label="Mode">
-        <button role="tab" id="tab-ask" aria-selected="true" class="tab">Ask</button>
-        <button role="tab" id="tab-do" aria-selected="false" class="tab">Do</button>
-      </div>
+<main class="hud">
+  <aside class="rail rail-left">
+    <section class="panel missions-panel" aria-labelledby="mis-h">
+      <header class="ph"><h2 id="mis-h">Missions</h2><span id="miscount" class="ph-count"></span></header>
+      <div id="missions" class="stack"></div>
+    </section>
+  </aside>
+
+  <section class="center" aria-label="JARVIS">
+    <div class="core-wrap">
+      <svg id="core" class="core" viewBox="0 0 240 240" data-state="online" aria-hidden="true">
+        <defs>
+          <radialGradient id="arcglow">
+            <stop offset="0%" stop-color="#ffffff" stop-opacity="1"/>
+            <stop offset="35%" stop-color="#bff3ff" stop-opacity=".95"/>
+            <stop offset="70%" stop-color="#5fd6ff" stop-opacity=".35"/>
+            <stop offset="100%" stop-color="#5fd6ff" stop-opacity="0"/>
+          </radialGradient>
+        </defs>
+        <circle class="r-ticks" cx="120" cy="120" r="112"/>
+        <circle class="r-a1" cx="120" cy="120" r="98"/>
+        <circle class="r-a2" cx="120" cy="120" r="84"/>
+        <circle class="r-thin" cx="120" cy="120" r="70"/>
+        <circle class="r-a3" cx="120" cy="120" r="58"/>
+        <circle class="glow" cx="120" cy="120" r="46" fill="url(#arcglow)"/>
+        <circle class="heart" cx="120" cy="120" r="20"/>
+      </svg>
     </div>
-    <p id="modehint" class="hint"></p>
-    <form id="cmdform" class="cmdform">
-      <label for="cmd" class="sr">Message</label>
-      <textarea id="cmd" rows="3" placeholder="Ask JARVIS…" autocomplete="off"></textarea>
+    <div class="headline" role="status" aria-live="polite">
+      <div id="hl-kicker" class="kicker">Status</div>
+      <div id="hl-main" class="hl">Connecting…</div>
+      <div id="hl-sub" class="hl-sub"></div>
+    </div>
+    <div id="stats" class="stats"></div>
+
+    <div id="feed" class="feed" aria-live="polite"></div>
+
+    <form id="cmdform" class="cmd panel">
+      <div class="tabs" role="tablist" aria-label="Mode">
+        <button type="button" role="tab" id="tab-ask" aria-selected="true" class="tab">Ask</button>
+        <button type="button" role="tab" id="tab-do" aria-selected="false" class="tab">Do</button>
+      </div>
+      <label for="cmd" class="sr">Message to JARVIS</label>
+      <textarea id="cmd" rows="2" autocomplete="off"></textarea>
       <button class="btn btn-primary" id="send" type="submit">Send</button>
     </form>
-    <div id="jobs" class="stack"></div>
-    <div id="convo" class="convo" aria-live="polite"></div>
+    <p id="modehint" class="hint"></p>
   </section>
 
-  <section class="panel missions-panel" aria-labelledby="mis-h">
-    <div class="panel-head"><h2 id="mis-h">Missions</h2><span id="miscount" class="muted mono"></span></div>
-    <div id="missions" class="stack"></div>
-  </section>
-
-  <div class="col">
-    <section class="panel attention-panel" aria-labelledby="ap-h">
-      <div class="panel-head"><h2 id="ap-h">Approvals</h2><span id="apcount" class="muted mono"></span></div>
+  <aside class="rail rail-right">
+    <section id="decision-panel" class="panel decision-panel" aria-labelledby="ap-h">
+      <header class="ph"><h2 id="ap-h">Decisions</h2><span id="apcount" class="ph-count"></span></header>
       <div id="approvals" class="stack"></div>
     </section>
     <section class="panel systems-panel" aria-labelledby="sys-h">
-      <div class="panel-head"><h2 id="sys-h">Systems</h2></div>
+      <header class="ph"><h2 id="sys-h">Systems</h2></header>
       <div id="system"></div>
     </section>
-    <section class="panel activity-panel" aria-labelledby="act-h">
-      <div class="panel-head"><h2 id="act-h">Activity</h2></div>
-      <ol id="activity" class="activity"></ol>
-    </section>
-  </div>
+  </aside>
 </main>
+
+<footer class="ticker">
+  <span class="ticker-label">Activity</span>
+  <ol id="ticker" class="ticker-list"></ol>
+  <button id="logbtn" class="btn btn-ghost btn-sm" type="button">Full log</button>
+</footer>
+
+<dialog id="logdlg" class="logdlg" aria-labelledby="log-h">
+  <header class="ph"><h2 id="log-h">Activity log</h2><button id="logclose" class="btn btn-ghost btn-sm" type="button">Close</button></header>
+  <ol id="activity" class="activity"></ol>
+</dialog>
 </body>
 </html>
