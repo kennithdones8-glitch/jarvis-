@@ -376,3 +376,20 @@ def test_failure_reason_is_visible_in_fallback_note(brain, fake_claude, monkeypa
     r = k.models.complete(Need("chat", prefer="auto"), PRIVATE, purpose="chat")
     assert r.provider == "ollama" and "cloud model failed" in r.note and "exit 1" in r.note
     TRIAGE["word"] = "MEDIUM"
+
+
+def test_not_signed_in_is_remembered_so_no_pointless_approval(brain, fake_claude, tmp_path):
+    """Seen on the Mac: you approved, then Claude Code said 'Not logged in'. Don't ask next time."""
+    exe = tmp_path / "bin" / "claude"
+    exe.write_text(exe.read_text().replace('mode = os.environ.get("FAKE_CLAUDE_MODE", "ok")',
+        'print(json.dumps({"type": "result", "is_error": True, "result": "Not logged in · Please run /login"})); sys.exit(1)'))
+    k, _ = brain("hybrid")
+    k.models.router.gate.grants.grant(category="conversation", provider="claude", by="user:test")
+    TRIAGE["word"] = "HARD"
+    r = k.models.complete(Need("chat", prefer="auto"), PRIVATE, purpose="chat")
+    assert r.provider == "ollama" and "Not logged in" in r.note
+    calls = len(fake_claude())
+    k2, _ = brain("hybrid")                      # a new process, same data directory
+    r2 = k2.models.complete(Need("chat", prefer="auto"), PRIVATE, purpose="chat")
+    assert r2.provider == "ollama" and len(fake_claude()) == calls   # no call, and no approval prompt
+    TRIAGE["word"] = "MEDIUM"

@@ -159,6 +159,23 @@ class ClaudeCodeProvider:
         self.data_use_note = data_use_note or "Anthropic, via your Claude Pro plan (Anthropic's consumer terms apply)"
         # While the plan limit is in force, don't call Claude at all (saves time and noise).
         self.limited_until: float | None = None
+        # A sign-in problem is remembered on disk (each CLI run is a new process), so JARVIS doesn't ask
+        # you to approve sending something that can't be sent anyway.
+        self._status_file = self.workdir / ".claude-status.json"
+
+    def _blocked(self) -> str | None:
+        try:
+            status = json.loads(self._status_file.read_text())
+        except (OSError, ValueError):
+            return None
+        return status.get("reason") if status.get("until", 0) > time.time() else None
+
+    def _remember_blocked(self, reason: str, seconds: float = 600) -> None:
+        self.workdir.mkdir(parents=True, exist_ok=True)
+        self._status_file.write_text(json.dumps({"reason": reason, "until": time.time() + seconds}))
+
+    def clear_status(self) -> None:
+        self._status_file.unlink(missing_ok=True)
 
     @staticmethod
     def parse_reset(message: str, now: float | None = None) -> float | None:
@@ -184,6 +201,8 @@ class ClaudeCodeProvider:
 
     def available_models(self) -> set[str]:
         self._binary()
+        if blocked := self._blocked():
+            raise ProviderUnavailable(f"{blocked} (fix it, then run `jarvis use-claude on`)")
         if self.limited_until and time.time() < self.limited_until:
             raise UsageLimited("Claude is at its usage limit", self.limited_until)
         return set(self.models)
@@ -220,6 +239,7 @@ class ClaudeCodeProvider:
         except json.JSONDecodeError:
             tail = (proc.stderr or proc.stdout or "").strip()[-300:]
             if "login" in tail.lower() or "auth" in tail.lower():
+                self._remember_blocked(f"Claude Code is not signed in: {tail[:120]}")
                 raise ProviderUnavailable(f"Claude Code is not logged in — run `claude` once and sign in ({tail})") from None
             raise ProviderError(f"Claude Code failed (exit {proc.returncode}): {tail}", retryable=False) from None
         text = data.get("result") if isinstance(data, dict) else None
@@ -234,6 +254,7 @@ class ClaudeCodeProvider:
                 self.limited_until = reset or time.time() + 900
                 raise UsageLimited(f"Claude usage limit reached: {message}", reset)
             if "login" in lowered or "auth" in lowered or "credit" in lowered:
+                self._remember_blocked(f"Claude Code is not signed in: {message}")
                 raise ProviderUnavailable(f"Claude unavailable: {message}")
             raise ProviderError(f"Claude Code error: {message}", retryable=False)
         usage = data.get("usage") or {}

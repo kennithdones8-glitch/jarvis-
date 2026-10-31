@@ -228,12 +228,15 @@ def _use_claude(kernel: Kernel, on: bool) -> int:
     reloaded = parse_model_config(tomllib.loads(text))
     pc = next(p for p in reloaded.providers if p.name == "claude")
     probe = ClaudeCodeProvider("claude", pc.models, workdir=kernel.home / "claude-workdir", command=pc.command)
+    probe.clear_status()
     try:
         r = probe.chat("haiku" if "haiku" in pc.models else next(iter(pc.models)), ChatRequest((
             Message("system", "Reply with exactly: JARVIS link online.", Category.SYSTEM_PROMPT),
             Message("user", "Status check.", Category.SYSTEM_PROMPT))))
     except ProviderError as exc:
         print(f"Claude Code did not answer: {exc}\nJARVIS will keep using local models until it does.")
+        if "login" in str(exc).lower():
+            print("Sign in: run `claude`, type /login, choose your Claude account (Pro), then /exit and re-run this.")
         return 7
     print(f"Claude replied: {r.text.strip()!r} ({r.latency_s:.1f}s)")
     return 0

@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.7.2 — Remember sign-in problems
+
+- If Claude Code reports it isn't signed in, JARVIS remembers that for 10 minutes, even across separate
+  `jarvis` commands, and routes locally without asking you to approve a send that can't happen.
+  `jarvis use-claude on` clears it, tests again, and explains how to sign in.
+
 ## 0.7.1 — Fix repeated approval prompts
 
 - Found on the Mac: after you approved sending a question to Claude Haiku, Haiku failed, JARVIS tried
