@@ -37,26 +37,40 @@ PRELUDE = "function run(argv) { const a = JSON.parse(argv[0]); return JSON.strin
 SCRIPTS: dict[str, str] = {
     "calendar.events": """
 function main(a) {
+  // Never ask for all events before a date: a calendar's whole history (and subscribed holiday/birthday calendars)
+  // can be thousands of events and take minutes. Two bounded questions per calendar instead:
+  //  1) events that overlap the window;  2) repeating events that began before it (their later dates may fall in it).
   const Cal = Application("Calendar");
   const from = new Date(a.from), to = new Date(a.to);
   const cals = a.calendar ? [Cal.calendars.byName(a.calendar)] : Cal.calendars();
-  const out = [];
-  for (const c of cals) {
-    const sel = c.events.whose({startDate: {_lessThan: to}});
+  const out = [], timing = [];
+  const take = (sel, cname, withExcluded) => {
     const n = sel.summary(), s = sel.startDate(), e = sel.endDate(), ad = sel.alldayEvent(), loc = sel.location(),
           rec = sel.recurrence();
     let ex = [];
-    try { ex = sel.excludedDates(); } catch (err) { ex = []; }
-    const cname = c.name();
+    if (withExcluded) { try { ex = sel.excludedDates(); } catch (err) { ex = []; } }
     for (let i = 0; i < n.length; i++) {
       const recurring = !!rec[i];
-      if (!recurring && e[i] <= from) continue;
       out.push({title: n[i] || "", start: s[i].toISOString(), end: e[i].toISOString(), all_day: !!ad[i],
                 location: loc[i] || "", calendar: cname, recurrence: recurring ? rec[i] : null,
                 excluded: recurring && ex[i] ? ex[i].map((d) => d.toISOString()) : []});
     }
+    return n.length;
+  };
+  for (const c of cals) {
+    const t0 = Date.now(), cname = c.name(), row = {calendar: cname};
+    try {
+      row.overlapping = take(c.events.whose({_and: [{startDate: {_lessThan: to}}, {endDate: {_greaterThan: from}}]}),
+                             cname, true);
+    } catch (err) { row.error = "overlap: " + String(err).slice(0, 120); }
+    try {
+      row.repeating = take(c.events.whose({_and: [{startDate: {_lessThan: from}}, {recurrence: {_beginsWith: "FREQ"}}]}),
+                           cname, true);
+    } catch (err) { row.error = (row.error ? row.error + "; " : "") + "repeating: " + String(err).slice(0, 120); }
+    row.seconds = (Date.now() - t0) / 1000;
+    timing.push(row);
   }
-  return out;
+  return {events: out, timing: timing};
 }""",
     "calendar.add": """
 function main(a) {
@@ -320,8 +334,21 @@ class MacTool:
             if end <= start or end - start > timedelta(days=MAX_RANGE_DAYS):
                 raise MacError(f"the date range must be forward and at most {MAX_RANGE_DAYS} days")
             raw = self.run("calendar.events", {"from": _iso(start), "to": _iso(end), "calendar": cal})
-            events = expand(raw, start, end)
-            return {"from": _iso(start), "to": _iso(end), "count": len(events), "events": events}
+            timing = raw.get("timing", []) if isinstance(raw, dict) else []
+            raw = raw["events"] if isinstance(raw, dict) else raw
+            seen, unique = set(), []
+            for ev in raw:  # an event can come back from both questions; keep it once
+                key = (ev["title"], ev["start"], ev["calendar"])
+                if key not in seen:
+                    seen.add(key)
+                    unique.append(ev)
+            events = expand(unique, start, end)
+            out = {"from": _iso(start), "to": _iso(end), "count": len(events), "events": events}
+            problems = [f"{t['calendar']}: {t['error']}" for t in timing if t.get("error")]
+            if problems:
+                out["incomplete"] = problems  # say so instead of silently missing events
+            out["timing"] = timing
+            return out
         title = _text(args, "title", 200)
         start, end = _when(args, "start"), _when(args, "end")
         if end <= start or end - start > timedelta(days=14):

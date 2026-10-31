@@ -782,7 +782,9 @@ def _mac_check(runner=None) -> int:
     checks = [
         ("Calendar", "calendar", "events", {"from": now.replace(hour=0, minute=0).isoformat(),
                                              "to": (now + timedelta(days=7)).isoformat()},
-         lambda r: f"{r['count']} event(s) in the next 7 days"),
+         lambda r: f"{r['count']} event(s) in the next 7 days" + "".join(
+             f"\n    {t['calendar']}: {t.get('overlapping', '?')} in range + {t.get('repeating', '?')} repeating · "
+             f"{t['seconds']:.1f}s" + (f" · {t['error']}" if t.get("error") else "") for t in r.get("timing", []))),
         ("Reminders", "reminders", "list", {}, lambda r: f"{r['count']} open reminder(s)"),
         ("Notes", "notes", "search", {"query": "a", "limit": 1}, lambda r: f"{r['total']} note(s) contain the letter a"),
     ]
