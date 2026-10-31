@@ -223,6 +223,19 @@ Kernel on the same database, approvals are raced from four threads, a checkpoint
 and the database is deleted and restored from an encrypted backup (throwaway passphrase; the Keychain is never
 used). Tests prove each protection drill fails when its protection is disabled.
 
+## Outcome Engine v1 (branch `outcome-engine-v1`, not merged)
+
+- **Goal reader:** the chat lookup call (local model, message local-only) also rates difficulty in hybrid mode,
+  replacing the separate triage call; `ModelService.complete(level=…)` uses it.
+- **No downgrades:** `hard_signals()` (code, reasoning words, high-stakes topics, 3+ questions, long requests) forces
+  "hard" whatever a small model said, in both the goal reader and triage paths.
+- **Profile memories:** `MemoryStore.recall()` always includes up to 8 confirmed profile facts (marked important,
+  or phrased "call me…", "I'm…", "I prefer…", "my sister…"), plus the keyword matches. Still `Category.MEMORY`, so the
+  privacy gate decides whether Claude may see them.
+- **Grounding check:** answers built on calendar or reminder lookups may only mention times found in that data or
+  in the question; otherwise one retry with the problem pointed out, then the reply is marked "Unverified". Logged
+  as `chat.grounding` (outcome and counts only).
+
 ## Service and backups
 
 `service.py` writes a per-user LaunchAgent that runs `uv run jarvis dashboard --no-open` at login and after

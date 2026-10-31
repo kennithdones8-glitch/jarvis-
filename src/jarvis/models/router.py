@@ -11,6 +11,7 @@ request is never "worked around" by trying another provider; it pauses the task.
 
 from __future__ import annotations
 
+import re
 import time
 from dataclasses import dataclass, field, replace
 from typing import Iterable, Literal
@@ -74,6 +75,18 @@ TRIAGE_PROMPT = """Classify how demanding the user's message is for an AI assist
 SIMPLE - greetings, small talk, quick facts, short rewrites, simple arithmetic
 MEDIUM - explanations, summaries, everyday advice, moderate writing
 HARD - multi-step reasoning, coding, analysis, planning, long or careful writing, high-stakes questions"""
+
+
+# Signs a request needs the strongest model, whatever a small model thinks ("no downgrades").
+HARD_SIGNALS = re.compile(
+    r"```|\b(prove|proof|derive|debug|refactor|algorithm|complexity|step[- ]by[- ]step|trade-?offs?|analy[sz]e|"
+    r"analysis|strategy|architecture|contract|legal|lawsuit|medical|diagnos\w*|tax(es)?|invest\w*|mortgage|"
+    r"compare and|pros and cons)\b", re.I)
+
+
+def hard_signals(text: str) -> bool:
+    """Deterministic: code, reasoning words, high-stakes topics, several questions, or a long request."""
+    return bool(HARD_SIGNALS.search(text)) or text.count("?") >= 3 or len(text) > 1200
 
 
 class ModelRouter:
@@ -158,11 +171,12 @@ class ModelService:
             raise
 
     def complete(self, need: Need, request: ChatRequest, *, purpose: str, task_id: str | None = None,
-                 step_id: str | None = None, allow_fallback: bool = True, on_token=None) -> ChatResponse:
+                 step_id: str | None = None, allow_fallback: bool = True, on_token=None,
+                 level: str | None = None) -> ChatResponse:
         """``allow_fallback``: if the chosen tier is unavailable (e.g. Claude's usage limit), answer with a
         local model and say so. Background tasks pass False and instead wait for the reset (UsageLimited)."""
         self.killswitch.check()
-        need = self._apply_hybrid(need, request, task_id)
+        need = self._apply_hybrid(need, request, task_id, level)
         try:
             return self._complete(need, request, purpose=purpose, task_id=task_id, step_id=step_id, on_token=on_token)
         except NoModelAvailable as exc:
@@ -188,10 +202,19 @@ class ModelService:
             self.audit.record("model.fallback", task_id=task_id, model=f"{r.provider}/{r.model}", reason=why)
             return replace(r, note=note)
 
-    def _apply_hybrid(self, need: Need, request: ChatRequest, task_id: str | None) -> Need:
+    def _apply_hybrid(self, need: Need, request: ChatRequest, task_id: str | None, level: str | None = None) -> Need:
+        """``level``: already rated by the caller (e.g. the goal reader), so no second local call."""
         if self.router.mode != "hybrid" or need.prefer != "auto" or need.local_only:
             return need
-        level = self.triage(request, task_id) if need.capability == "chat" else "medium"
+        if need.capability != "chat":
+            level = "medium"
+        elif level not in ("simple", "medium", "hard"):
+            level = self.triage(request, task_id)
+        else:
+            last = next((m.content for m in reversed(request.messages) if m.role == "user"), "")
+            if hard_signals(last):
+                level = "hard"
+            self.audit.record("model.triage", task_id=task_id, level=level, raw="goal reader")
         if level == "simple":
             return replace(need, local_only=True, prefer="speed")
         if level == "medium":  # lightest cloud model that is clearly better than local (e.g. Haiku)
@@ -201,6 +224,9 @@ class ModelService:
     def triage(self, request: ChatRequest, task_id: str | None = None) -> str:
         """Rate the latest user message SIMPLE / MEDIUM / HARD with a fast local model (never leaves the Mac)."""
         last = next((m.content for m in reversed(request.messages) if m.role == "user"), "")[:1500]
+        if hard_signals(last):  # no downgrades: obvious hard work never depends on a small model's guess
+            self.audit.record("model.triage", task_id=task_id, level="hard", raw="signals")
+            return "hard"
         word = ""
         try:
             r = self._complete(Need("classify", prefer="speed", local_only=True), ChatRequest((

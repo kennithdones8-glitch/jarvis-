@@ -1,5 +1,16 @@
 # Changelog
 
+## Unreleased — Outcome Engine v1 (branch `outcome-engine-v1`)
+
+Merged into main only after the benchmark (core + extended, 3 runs, same models) shows net +2 tasks, no new
+failures and Claude calls within +25%.
+- One local "goal reader" call picks lookups and rates difficulty (hybrid: one local call instead of two).
+- No downgrades: clear signs of hard work (code, "prove", "debug", money/legal/medical, several questions, long
+  requests) always route as hard.
+- Profile memories (name, diet, family, preferences, anything marked important) are always used, not only when
+  words overlap. Closes the `memory-preferences` gap found by the extended benchmark (the oracle now passes all 24).
+- Grounding check: calendar/reminder answers that mention a time not in the data get one retry, then "Unverified".
+
 ## 0.17.5 — Real-Mac CI, extended benchmark, a chat lookup fix
 
 - **GitHub Actions** runs `jarvis gate` and `jarvis drill` after every push on an Intel Mac, an Apple-silicon Mac

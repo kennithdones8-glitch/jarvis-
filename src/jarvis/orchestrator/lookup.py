@@ -53,8 +53,12 @@ Rules:
 - For "free/busy/what's on" questions use calendar.events covering exactly the time asked about.
 - Set "change" to true if the owner asks you to add, create, schedule, remind, send, move, delete or change \
 something. Never try to do it with a lookup.
+- Rate how demanding answering is: "simple" (greetings, quick facts, small talk), "medium" (explanations, \
+summaries, everyday advice) or "hard" (multi-step reasoning, coding, analysis, planning, careful writing, \
+high-stakes questions).
 
-JSON format: {{"lookups": [{{"tool": "<tool>", "action": "<action>", "args": {{}}}}], "change": false}}"""
+JSON format: {{"lookups": [{{"tool": "<tool>", "action": "<action>", "args": {{}}}}], "change": false, \
+"difficulty": "medium"}}"""
 
 
 @dataclass
@@ -63,6 +67,7 @@ class Lookup:
     checked: list[str] = field(default_factory=list)
     change: bool = False
     notes: list[str] = field(default_factory=list)
+    level: str | None = None  # simple / medium / hard, when the goal reader rated it
 
 
 def might_need_lookup(message: str) -> bool:
@@ -87,27 +92,33 @@ class LookupService:
                 out.append((tool, action))
         return out
 
-    def run(self, message: str) -> Lookup:
-        """What to look up for ``message``, looked up. Never raises: a failed lookup just isn't used."""
-        if not might_need_lookup(message):
+    def run(self, message: str, *, rate: bool = False) -> Lookup:
+        """What to look up for ``message``, looked up. With ``rate`` (hybrid routing), the same local call also
+        rates difficulty, replacing a separate triage call. Never raises: a failed lookup just isn't used."""
+        cued = might_need_lookup(message)
+        if not cued and not rate:
             return Lookup(change=looks_like_change(message))
-        hit = self._cache.get(message)
+        key = f"{rate}:{message}"
+        hit = self._cache.get(key)
         if hit and time.monotonic() - hit[0] < CACHE_S:  # the same message re-sent after a consent question
             return hit[1]
-        actions = self.available()
+        actions = self.available() if cued else []
         result = Lookup(change=looks_like_change(message))
-        if actions:
+        if actions or rate:
             plan = self._choose(message, actions)
             result.change = result.change or plan.get("change") is True
-            result.context, result.checked, result.notes = self._execute(plan.get("lookups"), actions)
+            if plan.get("difficulty") in ("simple", "medium", "hard"):
+                result.level = plan["difficulty"]
+            if actions:
+                result.context, result.checked, result.notes = self._execute(plan.get("lookups"), actions)
         self._cache = {k: v for k, v in self._cache.items() if time.monotonic() - v[0] < CACHE_S}
-        self._cache[message] = (time.monotonic(), result)
+        self._cache[key] = (time.monotonic(), result)
         return result
 
     # ---- choose (local model only) ------------------------------------------------------------------------
     def _choose(self, message: str, actions: list[tuple[str, str]]) -> dict[str, Any]:
         prompt = ROUTER_PROMPT.format(now=now_text(), roots=", ".join(self.roots) or "(none)", max=MAX_LOOKUPS,
-                                      catalog="\n".join(f"- {ACTION_DOCS[a]}" for a in actions))
+                                      catalog="\n".join(f"- {ACTION_DOCS[a]}" for a in actions) or "(none needed)")
         request = ChatRequest((Message("system", prompt, Category.SYSTEM_PROMPT),
                                Message("user", message, Category.CONVERSATION, local_only=True)),
                               max_tokens=300, temperature=0.0)

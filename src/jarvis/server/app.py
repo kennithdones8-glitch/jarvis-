@@ -27,6 +27,7 @@ import secrets
 import threading
 import time
 import traceback
+from dataclasses import replace
 from datetime import datetime
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -39,6 +40,7 @@ from ..core.approvals import ApprovalStateError
 from ..core.killswitch import EmergencyStop
 from ..core.tasks import InvalidTransition, TaskState
 from ..core.tools import ApprovalRequired
+from ..orchestrator.grounding import applies, unsupported_times
 from ..models import ChatRequest, Message, Need, NoModelAvailable
 from ..models.types import Category
 from ..orchestrator import Orchestrator
@@ -486,7 +488,9 @@ class Dashboard:
              session: str = "dashboard", on_token=None) -> dict[str, Any]:
         memory = self.kernel.memory
         started = time.time()
-        found = self.lookup.run(message)  # calendar / reminders / notes / files, read-only, chosen locally
+        # Goal reader: one local call picks read-only lookups (calendar, reminders, notes, files) and, in hybrid mode,
+        # rates difficulty so routing needs no second call.
+        found = self.lookup.run(message, rate=self.kernel.models.router.mode == "hybrid")
         msgs = list(priming_messages(chat_abilities(memory.settings.enabled, lookups=bool(self.lookup.available()))))
         recalled = memory.recall(message)
         if context := memory.context_message(recalled):
@@ -498,9 +502,28 @@ class Dashboard:
             msgs.append(found.context)
         msgs.append(Message("user", message, Category.CONVERSATION))
         try:
-            r = self.kernel.models.complete(Need("chat", prefer="auto", local_only=local_only),
-                                            ChatRequest(tuple(msgs), max_tokens=600), purpose="dashboard chat",
-                                            on_token=on_token)
+            need = Need("chat", prefer="auto", local_only=local_only)
+            r = self.kernel.models.complete(need, ChatRequest(tuple(msgs), max_tokens=600), purpose="dashboard chat",
+                                            on_token=on_token, level=found.level)
+            grounded, retried = None, False
+            if found.context is not None and applies(found.checked):
+                bad = unsupported_times(r.text, found.context.content, message)
+                # One retry with the problem pointed out, then show it as unverified rather than hide it. Only for a
+                # local answer: retrying a Claude answer would be a new request needing your consent again.
+                if bad and r.provider in self.kernel.models.router.local:
+                    retried = True
+                    retry = msgs + [Message("assistant", r.text, Category.CONVERSATION),
+                                    Message("user", f"Check: your answer mentions {', '.join(bad)}, which isn't in the "
+                                            "looked-up data. Answer again using only times from the <lookup> data.",
+                                            Category.CONVERSATION)]
+                    r = self.kernel.models.complete(need, ChatRequest(tuple(retry), max_tokens=600),
+                                                    purpose="dashboard chat (grounding retry)", level=found.level)
+                    bad = unsupported_times(r.text, found.context.content, message)
+                grounded = not bad
+                self.kernel.audit.record("chat.grounding", ok=grounded, unsupported_times=len(bad), retried=retried)
+                if bad:
+                    r = replace(r, note=((r.note + " ") if r.note else "")
+                                + f"⚠ Unverified: mentions {', '.join(bad)}, not found in your calendar or reminders.")
         except NoModelAvailable as exc:
             return {"error": f"No model available: {exc}", "reasons": exc.reasons}
         except ApprovalRequired as exc:
@@ -509,7 +532,7 @@ class Dashboard:
         memory.learn_from(session, message, r.text)
         return {"text": r.text, "model": f"{r.provider}/{r.model}", "seconds": round(time.time() - started, 1),
                 "tokens": r.usage.output_tokens, "note": r.note, "memories_used": len(recalled),
-                "checked": found.checked, "offer_plan": found.change}
+                "checked": found.checked, "offer_plan": found.change, "grounded": grounded}
 
     def research(self, question: str, *, deep: bool = False, session: str = "dashboard") -> dict[str, Any]:
         from ..orchestrator.research import research_request, result_payload

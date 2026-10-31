@@ -100,7 +100,8 @@ SECURITY: dict[str, tuple[str, list[str]]] = {
         "test_lookup::lookup_results_are_private_and_the_question_stays_local",
         "test_research::asks_before_researching_and_never_falls_back_to_local",
         "test_audit::secrets_redacted_in_audit", "test_bench::runs_never_touch_the_real_jarvis",
-        "test_flight::holds_no_private_text"]),
+        "test_flight::holds_no_private_text", "test_outcome::profile_reaches_the_answering_model_as_private_memory",
+        "test_outcome::forgotten_profile_facts_stay_forgotten"]),
     "Honest reporting": ("Failures and unverified results are reported as such", [
         "test_tasks::failed_verification_is_not_reported_as_complete", "test_tasks::rejection_fails_task_honestly",
         "test_orchestrator::invalid_plan_gets_one_repair_then_fails_honestly",
@@ -108,7 +109,8 @@ SECURITY: dict[str, tuple[str, list[str]]] = {
         "test_lookup::persona_matches_the_new_abilities",
         "test_claude_code::failure_reason_is_visible_in_fallback_note",
         "test_research::research_brief_end_to_end_requires_a_verified_source",
-        "test_remote::push_failures_are_recorded_not_silent", "test_flight::a_rejection_is_shown_as_a_problem"]),
+        "test_remote::push_failures_are_recorded_not_silent", "test_flight::a_rejection_is_shown_as_a_problem",
+        "test_outcome::a_made_up_time_is_retried_then_flagged"]),
     "Emergency stop (protected)": ("One stop halts everything, including work in progress", [
         "test_gateway::emergency_stop_blocks_everything", "test_tasks::emergency_stop_pauses_then_requires_explicit_resume",
         "test_stop::stop_kills_running_claude_and_its_children", "test_models::emergency_stop_blocks_model_calls",
