@@ -20,6 +20,26 @@ function h(tag, props = {}, ...kids) {
   return el;
 }
 
+// In-page confirm/prompt. The browser's own dialogs are unreliable in the iPhone Home Screen app and blocked in
+// embedded previews. Resolves to true/false, or to the typed text / null when `input` is given.
+function ask(message, { input = null, ok = "OK", danger = false } = {}) {
+  return new Promise((resolve) => {
+    const field = input === null ? null : h("input", { class: "ask-input", id: "ask-input", autocomplete: "off", "aria-label": message });
+    if (field) field.value = input;
+    const finish = (v) => { dlg.close(); dlg.remove(); resolve(v); };
+    const yes = h("button", { class: `btn ${danger ? "btn-danger" : "btn-approve"}`, type: "submit" }, ok);
+    const dlg = h("dialog", { class: "pairdlg askdlg", "aria-label": message },
+      h("form", { onsubmit: (e) => { e.preventDefault(); finish(field ? field.value : true); } },
+        h("p", { class: "ask-msg" }, message), field,
+        h("div", { class: "row mt center" }, yes,
+          h("button", { class: "btn btn-ghost", type: "button", onclick: () => finish(field ? null : false) }, "Cancel"))));
+    dlg.addEventListener("cancel", (e) => { e.preventDefault(); finish(field ? null : false); });
+    document.body.append(dlg);
+    dlg.showModal();
+    (field || yes).focus();
+  });
+}
+
 async function api(path, body) {
   const opts = body === undefined ? {} : {
     method: "POST",
@@ -466,7 +486,7 @@ function missionCard(t) {
   const controls = [];
   if (["queued", "running", "awaiting_approval"].includes(t.state)) controls.push(h("button", { class: "btn btn-ghost btn-sm", type: "button", onclick: () => act(`/api/tasks/${t.id}/pause`, {}) }, "Pause"));
   if (["paused", "blocked"].includes(t.state)) controls.push(h("button", { class: "btn btn-sm", type: "button", onclick: () => act(`/api/tasks/${t.id}/resume`, {}) }, "Resume"));
-  if (!["completed", "failed", "cancelled"].includes(t.state)) controls.push(h("button", { class: "btn btn-ghost btn-sm", type: "button", onclick: () => confirm("Cancel this task? Steps already done are not undone.") && act(`/api/tasks/${t.id}/cancel`, {}) }, "Cancel"));
+  if (!["completed", "failed", "cancelled"].includes(t.state)) controls.push(h("button", { class: "btn btn-ghost btn-sm", type: "button", onclick: async () => (await ask("Cancel this task? Steps already done are not undone.", { ok: "Cancel task", danger: true })) && act(`/api/tasks/${t.id}/cancel`, {}) }, "Cancel"));
 
   const details = h("details", { class: "more" }, h("summary", {}, `${done}/${t.steps.length} steps · details`),
     h("ol", { class: "steps" }, t.steps.map((s) => h("li", { class: s.state }, h("span", { class: "ic" }, ICON[s.state] || "·"),
@@ -546,8 +566,8 @@ function renderSystems(d) {
       h("b", {}, rem.this_device ? `This device · ${rem.this_device.name}` : !rem.enabled ? "Not set up" : live.length ? plural(live.length, "paired device") : "None paired")),
     live.map((x) => h("div", { class: "device-row" }, x.name,
       h("small", {}, x.last_seen ? `seen ${clock(x.last_seen)}` : "never signed in"),
-      h("button", { class: "btn btn-ghost btn-sm", type: "button", onclick: () =>
-        confirm(`Remove ${x.name}? It will be signed out immediately and can't reconnect without pairing again.`) &&
+      h("button", { class: "btn btn-ghost btn-sm", type: "button", onclick: async () =>
+        (await ask(`Remove ${x.name}? It will be signed out immediately and can't reconnect without pairing again.`, { ok: "Remove", danger: true })) &&
         act(`/api/devices/${x.id}/revoke`, {}) }, "Remove"))),
     !rem.this_device && rem.enabled ? h("button", { class: "btn btn-sm mt", type: "button", onclick: pairPhone }, "Pair a phone") : null,
     !rem.enabled && !rem.this_device ? h("div", { class: "d-why" }, "Run `uv run jarvis remote enable` on the Mac to use JARVIS from your iPhone.") : null,
@@ -560,8 +580,8 @@ function renderSystems(d) {
       h("b", { class: tid.enabled ? "ok" : null }, tid.enabled ? `On · ${plural(tid.keys.length, "key")}` : "Off")),
     tid.keys.map((k) => h("div", { class: "device-row" }, k.name,
       h("small", {}, k.last_seen ? `used ${clock(k.last_seen)}` : "not used yet"),
-      h("button", { class: "btn btn-ghost btn-sm", type: "button", onclick: () =>
-        confirm(tid.keys.length === 1 ? "Remove your only Touch ID key? Approvals will stop asking for Touch ID." : `Remove ${k.name}?`) &&
+      h("button", { class: "btn btn-ghost btn-sm", type: "button", onclick: async () =>
+        (await ask(tid.keys.length === 1 ? "Remove your only Touch ID key? Approvals will stop asking for Touch ID." : `Remove ${k.name}?`, { ok: "Remove", danger: true })) &&
         act(`/api/touchid/${k.id}/remove`, {}) }, "Remove"))),
     h("button", { class: "btn btn-sm mt", type: "button", onclick: setupTouchId }, tid.enabled ? "Add another key" : "Set up Touch ID"),
     tid.enabled ? null : h("div", { class: "d-why" }, "Then every approval here asks for your fingerprint, not just this browser's sign-in."));
@@ -581,7 +601,7 @@ function renderSystems(d) {
 
 async function setupTouchId() {
   if (!window.PublicKeyCredential) { note("This browser can't use Touch ID passkeys. Try Safari or Chrome."); return; }
-  const name = (prompt("Name this key (e.g. Safari on MacBook):", "This Mac") || "").trim();
+  const name = ((await ask("Name this key (e.g. Safari on MacBook):", { input: "This Mac", ok: "Continue" })) || "").trim();
   if (!name) return;
   try {
     const o = await call("/api/touchid/enroll/options", { name });
@@ -651,10 +671,10 @@ async function loadMemory(force) {
       h("div", { class: "row" },
         confirmed ? null : h("button", { class: "btn btn-sm", type: "button", onclick: () => memAct(`/api/memory/${m.id}/confirm`, {}) }, "Confirm"),
         h("button", { class: "btn btn-ghost btn-sm", type: "button", onclick: () => {
-          const t = prompt("Correct this memory:", m.text); if (t && t.trim() && t !== m.text) memAct(`/api/memory/${m.id}/edit`, { text: t });
+          ask("Correct this memory:", { input: m.text, ok: "Save" }).then((t) => { if (t && t.trim() && t !== m.text) memAct(`/api/memory/${m.id}/edit`, { text: t }); });
         } }, "Edit"),
         h("button", { class: "btn btn-ghost btn-sm", type: "button", onclick: () => memAct(`/api/memory/${m.id}/important`, { important: !m.important }) }, m.important ? "Unstar" : "Star"),
-        h("button", { class: "btn btn-ghost btn-sm", type: "button", onclick: () => confirm("Delete this memory? JARVIS won't re-learn it.") && memAct(`/api/memory/${m.id}/delete`, {}) }, "Delete")));
+        h("button", { class: "btn btn-ghost btn-sm", type: "button", onclick: async () => (await ask("Delete this memory? JARVIS won't re-learn it.", { ok: "Delete", danger: true })) && memAct(`/api/memory/${m.id}/delete`, {}) }, "Delete")));
   });
   if (ui.memQ && (res.memories.length || res.records.length)) {
     items.push(h("div", { class: "row" }, h("span", { class: "mem-meta" }, `${plural(res.records.length, "conversation")} mention this`),
@@ -672,7 +692,7 @@ async function memAct(path, body) {
 async function forgetMatching() {
   const preview = await api("/api/memory/forget", { query: ui.memQ });
   const tasks = (preview.tasks || []).filter((t) => t.deletable).length;
-  if (!confirm(`Permanently delete ${plural(preview.memories.length, "memory").replace("memorys", "memories")}, ${plural(preview.records.length, "conversation record")} and ${plural(tasks, "finished task")} about “${ui.memQ}”?`)) return;
+  if (!await ask(`Permanently delete ${plural(preview.memories.length, "memory").replace("memorys", "memories")}, ${plural(preview.records.length, "conversation record")} and ${plural(tasks, "finished task")} about “${ui.memQ}”?`, { ok: "Forget", danger: true })) return;
   await memAct("/api/memory/forget", { query: ui.memQ, confirm: true });
 }
 
@@ -708,17 +728,16 @@ document.addEventListener("DOMContentLoaded", () => {
   $("#tab-research").addEventListener("click", () => setMode("research"));
   $("#cmdform").addEventListener("submit", submitCommand);
   $("#cmd").addEventListener("keydown", (e) => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) submitCommand(e); });
-  $("#estop").addEventListener("click", () => {
-    const reason = prompt("Emergency stop — pause every task and block new actions.\nReason (optional):", "");
-    if (reason !== null) act("/api/stop", { reason: reason || "stopped from dashboard" });
-  });
+  // One tap, no questions: stopping is always safe (releasing it is what asks for confirmation).
+  $("#estop").addEventListener("click", () => act("/api/stop", { reason: "stopped from the dashboard" }));
   $("#briefbtn").addEventListener("click", showBriefing);
   $("#mic").addEventListener("click", toggleMic);
   $("#speak").addEventListener("click", toggleSpeak);
   document.addEventListener("keydown", (e) => { if (e.key === "Escape") stopSpeaking(); });
   window.addEventListener("hashchange", () => maybeAutoBriefing(ui.data));
   $("#release").addEventListener("click", () => {
-    if (confirm("Release the emergency stop? Paused tasks stay paused until you resume them.")) act("/api/release", { confirm: true });
+    ask("Release the emergency stop? Paused tasks stay paused until you resume them.", { ok: "Release" })
+      .then((yes) => yes && act("/api/release", { confirm: true }));
   });
   let memTimer;
   $("#memq").addEventListener("input", () => { clearTimeout(memTimer); memTimer = setTimeout(() => { ui.memQ = $("#memq").value.trim(); loadMemory(true); }, 250); });

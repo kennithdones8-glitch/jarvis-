@@ -12,3 +12,5 @@ build/
 .jarvis-home/
 config/policy.toml
 .env
+
+demo/dist/

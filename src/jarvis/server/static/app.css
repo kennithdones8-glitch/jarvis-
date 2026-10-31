@@ -355,3 +355,10 @@ pre.out { background: rgba(0, 0, 0, .35); border: 1px solid var(--gold-line); pa
 
 .row.center { justify-content: center; }
 .pairdlg .phone-btn { margin-top: 10px; }
+
+/* in-page confirm / prompt */
+.askdlg { text-align: left; }
+.askdlg .ask-msg { white-space: pre-line; margin: 0 0 12px; line-height: 1.45; }
+.ask-input { width: 100%; box-sizing: border-box; background: var(--bg); color: var(--text); border: 1px solid var(--gold-line);
+             padding: 10px 12px; font: inherit; }
+.ask-input:focus-visible { outline: 2px solid var(--arc); outline-offset: 1px; }

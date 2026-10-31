@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.16.4 — Phone preview (simulation) and in-page dialogs
+
+- **Phone preview:** `demo/` builds the real dashboard with a simulated JARVIS running in the browser, plus a
+  Simulation lab (task editor, permissions explainer, example commands). Published as a private link to try on the
+  iPhone without the Mac. Clearly labelled; no AI, no Mac, no network. See `demo/README.md`.
+- **Dashboard:** browser `confirm()` / `prompt()` replaced by in-page dialogs (they're unreliable in the iPhone
+  Home Screen app and blocked in embedded previews). **Emergency stop is now one tap** with no reason box:
+  stopping is always safe; releasing still asks.
+
 ## 0.16.3 — Polish (no new features)
 
 - A broken `jarvis.toml` or `policy.toml` now gives a plain message naming the file, the problem and how to put
