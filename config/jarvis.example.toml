@@ -37,8 +37,9 @@ keep = 14
 # dir = "~/Library/Mobile Documents/com~apple~CloudDocs/JARVIS Backups"   # e.g. iCloud Drive (still encrypted)
 
 [search]
-# Local SearXNG (see docs/SETUP-MAC.md). Comment out to disable web search.
-searxng_url = "http://127.0.0.1:8888"
+# Optional: a self-hosted SearXNG search engine (needs Docker). Off by default — JARVIS researches the web
+# through Claude Code instead (`jarvis research`). Uncomment only if SearXNG is actually running.
+# searxng_url = "http://127.0.0.1:8888"
 
 # ---------------------------------------------------------------- local (Ollama)
 # Only models listed here AND installed in Ollama are routable. `speed` is relative to an

@@ -54,6 +54,20 @@ class Approvals:
         )
         return row["id"] if row else None
 
+    def claim(self, *, task_id: str | None, tool: str, action: str, resource: str | None, digest: str) -> str | None:
+        """Find a matching approved request and mark it used in ONE transaction, so two concurrent callers
+        can never both spend the same single-use approval. Returns its id, or None."""
+        with self.db.tx() as conn:
+            row = conn.execute(
+                "SELECT id FROM approvals WHERE state = ? AND task_id IS ? AND tool = ? AND action = ? "
+                "AND resource IS ? AND args_hash = ? ORDER BY created_at LIMIT 1",
+                (APPROVED, task_id, tool, action, resource, digest)).fetchone()
+            if row is None:
+                return None
+            conn.execute("UPDATE approvals SET state = ? WHERE id = ? AND state = ?", (CONSUMED, row["id"], APPROVED))
+            self.audit.record("approval.consumed", approval_id=row["id"])
+            return row["id"]
+
     def is_rejected(self, *, task_id: str | None, tool: str, action: str, resource: str | None) -> bool:
         if task_id is None:
             return False

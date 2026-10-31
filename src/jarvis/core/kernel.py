@@ -73,6 +73,21 @@ class Kernel:
 
         self.memory = MemoryStore(self.db, self.audit, settings_from(self.model_config.memory), self.models)
 
+    def forget(self, query: str, *, by: str, dry_run: bool = True) -> dict:
+        """Everything JARVIS keeps that mentions ``query``: memories, conversation records and finished
+        task history. Preview with dry_run; delete otherwise. Running tasks are listed, not touched."""
+        from .tasks import TERMINAL, TaskState
+
+        out = self.memory.forget(query, by=by, dry_run=dry_run)
+        tasks = self.tasks.find(query)
+        out["tasks"] = [{**t, "deletable": TaskState(t["state"]) in TERMINAL} for t in tasks]
+        if not dry_run:
+            for t in out["tasks"]:
+                if t["deletable"]:
+                    self.tasks.delete(t["id"], by=by)
+            self.db.checkpoint()  # with secure_delete, no copy of the deleted text is left in the files
+        return out
+
     def start(self) -> list[str]:
         """Record startup and recover tasks interrupted by a previous crash or shutdown."""
         self.audit.record("kernel.started", pid=os.getpid(), policy_loaded=self.policy_path.exists(),

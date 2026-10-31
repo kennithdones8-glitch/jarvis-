@@ -12,6 +12,9 @@
 from __future__ import annotations
 
 import json
+import os
+import secrets
+import socket
 import threading
 import time
 from dataclasses import asdict, dataclass, field
@@ -76,6 +79,10 @@ INTERRUPTIBLE = (S.PLANNING, S.RUNNING, S.VERIFYING, S.RECOVERING)
 
 class InvalidTransition(RuntimeError):
     pass
+
+
+class TaskBusy(RuntimeError):
+    """Another live JARVIS process (e.g. the background dashboard) is running this task."""
 
 
 class ConcurrentModification(RuntimeError):
@@ -205,6 +212,63 @@ class TaskStore:
             self.audit.record("task.state", actor=actor, task_id=tid, frm=frm.value, to=to.value, reason=reason,
                               **{k: v for k, v in fields.items() if k in ("error", "next_action")})
 
+    def delete(self, tid: str, *, by: str) -> None:
+        """Remove a finished task and everything stored with it (steps, results, checkpoints, approvals).
+        The audit log keeps only ids and fingerprints of its text."""
+        task = self.get(tid)
+        if TaskState(task["state"]) not in TERMINAL:
+            raise InvalidTransition(f"task {tid} is {task['state']}; cancel it before deleting")
+        with self.db.tx() as conn:
+            conn.execute("DELETE FROM checkpoints WHERE task_id = ?", (tid,))
+            conn.execute("DELETE FROM steps WHERE task_id = ?", (tid,))
+            conn.execute("DELETE FROM approvals WHERE task_id = ?", (tid,))
+            conn.execute("DELETE FROM tasks WHERE id = ?", (tid,))
+            self.audit.record("task.deleted", actor=by, task_id=tid)
+
+    def find(self, text: str, *, limit: int = 200) -> list[dict[str, Any]]:
+        """Tasks whose request, goal, steps or results mention ``text`` (case-insensitive)."""
+        like = f"%{text}%"
+        rows = self.db.query(
+            "SELECT DISTINCT t.id, t.goal, t.state FROM tasks t LEFT JOIN steps s ON s.task_id = t.id "
+            "WHERE t.request LIKE ? OR t.goal LIKE ? OR t.result LIKE ? OR t.error LIKE ? OR t.next_action LIKE ? "
+            "OR s.description LIKE ? OR s.args LIKE ? OR s.result LIKE ? OR s.error LIKE ? LIMIT ?",
+            (like,) * 9 + (limit,))
+        return [dict(r) for r in rows]
+
+    # ---- leases: at most one process runs a task at a time ------------------------------
+    def lease(self, tid: str) -> tuple[str | None, float | None]:
+        row = self.db.one("SELECT lease_owner, lease_until FROM tasks WHERE id = ?", (tid,))
+        if row is None:
+            raise KeyError(tid)
+        return row["lease_owner"], row["lease_until"]
+
+    def claim(self, tid: str, owner: str, ttl: float, *, now: float | None = None,
+              dead_owner: Callable[[str], bool] | None = None) -> bool:
+        """Atomically take the lease if it's free, ours, expired, or held by a process that has died."""
+        now = time.time() if now is None else now
+        with self.db.tx() as conn:
+            row = conn.execute("SELECT lease_owner, lease_until FROM tasks WHERE id = ?", (tid,)).fetchone()
+            if row is None:
+                raise KeyError(tid)
+            holder, until = row["lease_owner"], row["lease_until"]
+            free = holder is None or holder == owner or until is None or until < now
+            if not free and dead_owner is not None and dead_owner(holder):
+                free = True
+            if not free:
+                return False
+            conn.execute("UPDATE tasks SET lease_owner = ?, lease_until = ? WHERE id = ?", (owner, now + ttl, tid))
+            return True
+
+    def renew(self, tid: str, owner: str, ttl: float) -> bool:
+        with self.db.tx() as conn:
+            return conn.execute("UPDATE tasks SET lease_until = ? WHERE id = ? AND lease_owner = ?",
+                                (time.time() + ttl, tid, owner)).rowcount == 1
+
+    def release(self, tid: str, owner: str) -> None:
+        with self.db.tx() as conn:
+            conn.execute("UPDATE tasks SET lease_owner = NULL, lease_until = NULL WHERE id = ? AND lease_owner = ?",
+                         (tid, owner))
+
     def set_next_action(self, tid: str, text: str | None) -> None:
         with self.db.tx() as conn:
             conn.execute("UPDATE tasks SET next_action = ?, version = version + 1, updated_at = ? WHERE id = ?",
@@ -287,6 +351,7 @@ class TaskEngine:
         backoff_cap: float = 300.0,
         clock: Callable[[], float] = time.time,
         arg_resolver: Callable[[dict[str, Any], list[dict[str, Any]]], dict[str, Any]] | None = None,
+        lease_ttl: float = 30.0,
     ):
         self.store = store
         self.gateway = gateway
@@ -299,6 +364,9 @@ class TaskEngine:
         # Fills references to earlier step results into a step's args just before it runs, so
         # approvals are bound to the real content being written or sent.
         self.arg_resolver = arg_resolver
+        # Identifies this process as a lease holder: host, pid (to detect a dead holder), random suffix.
+        self.owner = f"{socket.gethostname()}:{os.getpid()}:{secrets.token_hex(4)}"
+        self.lease_ttl = lease_ttl
         self._active: set[str] = set()
         self._active_lock = threading.Lock()
 
@@ -307,7 +375,7 @@ class TaskEngine:
         state = TaskState(self.store.get(tid)["state"])
         if state in TERMINAL:
             raise InvalidTransition(f"task {tid} is already {state}")
-        if self._is_active(tid):
+        if self._is_active(tid) or self.held_elsewhere(tid):
             self.store.set_control(tid, "cancel", actor=actor)  # the running loop stops after the current step
             return
         self._cancel_now(tid, actor=actor)
@@ -316,7 +384,7 @@ class TaskEngine:
         state = TaskState(self.store.get(tid)["state"])
         if state in (S.PAUSED,) or state in TERMINAL:
             raise InvalidTransition(f"task {tid} is {state}")
-        if self._is_active(tid):
+        if self._is_active(tid) or self.held_elsewhere(tid):
             self.store.set_control(tid, "pause", actor=actor)
             return
         if state in (S.RECOVERING, S.BLOCKED):
@@ -350,44 +418,73 @@ class TaskEngine:
     def emergency_stop(self, *, by: str, reason: str) -> None:
         self.killswitch.engage(by=by, reason=reason)
         for task in self.store.list([S.QUEUED, S.RUNNING, S.AWAITING_APPROVAL]):
-            if task["state"] == S.RUNNING and not self._is_active(task["id"]):
+            if task["state"] == S.RUNNING and not self._is_active(task["id"]) and not self.held_elsewhere(task["id"]):
                 self.store.transition(task["id"], S.PAUSED, actor=by, reason="emergency stop")
 
     # ---- recovery ----------------------------------------------------------------------
+    @staticmethod
+    def owner_dead(owner: str) -> bool:
+        """True if the lease holder is a process on this machine that no longer exists."""
+        try:
+            host, pid, _ = owner.rsplit(":", 2)
+            if host != socket.gethostname():
+                return False
+            os.kill(int(pid), 0)
+        except ProcessLookupError:
+            return True
+        except (ValueError, PermissionError, OSError):
+            return False
+        return False
+
+    def held_elsewhere(self, tid: str) -> bool:
+        holder, until = self.store.lease(tid)
+        return (holder is not None and holder != self.owner and until is not None and until > time.time()
+                and not self.owner_dead(holder))
+
     def recover(self) -> list[str]:
-        """Run at startup. Reconcile tasks a previous process left mid-flight."""
+        """Run at startup. Reconcile tasks left mid-flight by a process that is gone — never tasks that
+        another live process is still running (they hold an unexpired lease)."""
         recovered = []
         for task in self.store.list(INTERRUPTIBLE):
             tid = task["id"]
             if self._is_active(tid):
                 continue
-            if task["state"] != S.RECOVERING:
-                self.store.transition(tid, S.RECOVERING, reason="process restarted while task was in flight")
-            uncertain = []
-            for step in self.store.steps(tid):
-                if step["state"] != StepState.STARTED:
-                    continue
-                outcome = self._reconcile(step)
-                if outcome == RECONCILE_DONE:
-                    self.store.update_step(step["id"], state=StepState.DONE, result={"reconciled": True},
-                                           finished_at=now_iso())
-                elif outcome == RECONCILE_NOT_DONE:
-                    self.store.update_step(step["id"], state=StepState.PENDING)
-                else:
-                    self.store.update_step(step["id"], state=StepState.UNCERTAIN,
-                                           error="interrupted; outcome unknown")
-                    uncertain.append(step)
-                self.audit.record("step.reconciled", task_id=tid, step_id=step["id"], op_id=step["op_id"],
-                                  outcome=outcome)
-            if uncertain:
-                self.store.transition(
-                    tid, S.BLOCKED, reason="interrupted operation may or may not have completed",
-                    next_action="confirm whether: " + "; ".join(s["description"] for s in uncertain),
-                )
-            else:
-                self.store.transition(tid, S.QUEUED, reason="recovered; resuming from first incomplete step")
+            if not self.store.claim(tid, self.owner, self.lease_ttl, dead_owner=self.owner_dead):
+                continue
+            try:
+                self._recover_one(self.store.get(tid))
+            finally:
+                self.store.release(tid, self.owner)
             recovered.append(tid)
         return recovered
+
+    def _recover_one(self, task: dict[str, Any]) -> None:
+        tid = task["id"]
+        if task["state"] != S.RECOVERING:
+            self.store.transition(tid, S.RECOVERING, reason="process restarted while task was in flight")
+        uncertain = []
+        for step in self.store.steps(tid):
+            if step["state"] != StepState.STARTED:
+                continue
+            outcome = self._reconcile(step)
+            if outcome == RECONCILE_DONE:
+                self.store.update_step(step["id"], state=StepState.DONE, result={"reconciled": True},
+                                       finished_at=now_iso())
+            elif outcome == RECONCILE_NOT_DONE:
+                self.store.update_step(step["id"], state=StepState.PENDING)
+            else:
+                self.store.update_step(step["id"], state=StepState.UNCERTAIN,
+                                       error="interrupted; outcome unknown")
+                uncertain.append(step)
+            self.audit.record("step.reconciled", task_id=tid, step_id=step["id"], op_id=step["op_id"],
+                              outcome=outcome)
+        if uncertain:
+            self.store.transition(
+                tid, S.BLOCKED, reason="interrupted operation may or may not have completed",
+                next_action="confirm whether: " + "; ".join(s["description"] for s in uncertain),
+            )
+        else:
+            self.store.transition(tid, S.QUEUED, reason="recovered; resuming from first incomplete step")
 
     def _reconcile(self, step: dict[str, Any]) -> str:
         act = self.gateway.registry.action(step["tool"], step["action"])
@@ -403,18 +500,41 @@ class TaskEngine:
 
     # ---- execution ---------------------------------------------------------------------
     def run(self, tid: str, *, max_iterations: int = 10_000) -> TaskState:
+        """Drive a task. Takes the task's lease first (raises TaskBusy if another live process holds it),
+        keeps it alive with a heartbeat during long steps, and releases it when done or waiting."""
         with self._active_lock:
             if tid in self._active:
                 raise RuntimeError(f"task {tid} is already running in this process")
             self._active.add(tid)
+        stop_beat = threading.Event()
+        claimed = False
         try:
+            previous, _ = self.store.lease(tid)
+            if not self.store.claim(tid, self.owner, self.lease_ttl, dead_owner=self.owner_dead):
+                raise TaskBusy(f"task {tid} is being run by another JARVIS process ({previous})")
+            claimed = True
+            beat = threading.Thread(target=self._heartbeat, args=(tid, stop_beat), daemon=True)
+            beat.start()
+            task = self.store.get(tid)
+            if previous and previous != self.owner and TaskState(task["state"]) in INTERRUPTIBLE:
+                self._recover_one(task)  # its previous runner died mid-flight: reconcile before continuing
             for _ in range(max_iterations):
                 if not self._advance(tid):
                     break
             return TaskState(self.store.get(tid)["state"])
         finally:
+            stop_beat.set()
+            if claimed:
+                self.store.release(tid, self.owner)
             with self._active_lock:
                 self._active.discard(tid)
+
+    def _heartbeat(self, tid: str, stop: threading.Event) -> None:
+        while not stop.wait(self.lease_ttl / 3):
+            try:
+                self.store.renew(tid, self.owner, self.lease_ttl)
+            except Exception:
+                pass
 
     def _is_active(self, tid: str) -> bool:
         with self._active_lock:

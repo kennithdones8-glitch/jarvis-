@@ -236,8 +236,9 @@ class EgressGate:
             resource = ",".join(ungranted)
             if self.approvals.is_rejected(task_id=task_id, tool=EGRESS_TOOL, action=provider, resource=resource):
                 self._deny(task_id, provider, model, "you rejected sending this data to this provider in this task")
-            approval_id = self.approvals.find_usable(task_id=task_id, tool=EGRESS_TOOL, action=provider,
-                                                     resource=resource, digest=digest)
+            self.killswitch.check()
+            approval_id = self.approvals.claim(task_id=task_id, tool=EGRESS_TOOL, action=provider,
+                                               resource=resource, digest=digest)
             if approval_id is None:
                 decision = Decision(Effect.CONFIRM, Tier.EXTERNAL, "private data would leave this Mac",
                                     resource=resource)
@@ -247,9 +248,12 @@ class EgressGate:
                 )
                 raise ApprovalRequired(aid, decision)
 
-        self.killswitch.check()
-        if approval_id:
-            self.approvals.consume(approval_id)
+        try:
+            self.killswitch.check()
+        except Exception:
+            if approval_id:
+                self.approvals.restore(approval_id)
+            raise
         self.audit.record("egress.send", task_id=task_id, provider=provider, model=model, purpose=purpose,
                           categories=sorted({c.value for c, _ in levels}), chars=request.chars(),
                           request_sha256=digest, estimated_cost_usd=estimate, approval_id=approval_id)

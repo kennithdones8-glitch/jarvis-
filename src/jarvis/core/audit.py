@@ -19,6 +19,36 @@ from .util import canonical_json, now_iso, sha256_hex
 GENESIS = "0" * 64
 MAX_STRING = 4000
 
+# Payload keys that carry free text you may later want deleted (requests, plans, file contents, model
+# output…). Since v0.12 their text is stored only as {"chars", "sha256"}: the log still proves what
+# happened and that nothing was altered, but the words themselves live only in deletable tables.
+# File paths and URLs stay readable (you can see what JARVIS touched); ids, numbers, tools stay as-is.
+FREE_TEXT_KEYS = frozenset({
+    "request", "goal", "description", "summary", "message", "next_action", "plan", "steps", "content",
+    "args", "result", "text", "question", "instruction", "inputs", "title", "snippet", "preview", "answer",
+})
+
+
+def fingerprint(text: str) -> dict[str, Any]:
+    return {"chars": len(text), "sha256": sha256_hex(text)[:16]}
+
+
+def _keep_readable(text: str) -> bool:
+    if text == "[REDACTED]" or "\n" in text or len(text) > 1024:
+        return text == "[REDACTED]"
+    return text.startswith(("/", "~/")) or text.startswith(("http://", "https://"))
+
+
+def minimise(value: Any, *, private: bool = False) -> Any:
+    """Replace free text with fingerprints; keep paths/URLs, numbers, booleans and structure."""
+    if isinstance(value, dict):
+        return {k: minimise(v, private=private or k in FREE_TEXT_KEYS) for k, v in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [minimise(v, private=private) for v in value]
+    if isinstance(value, str) and private and not _keep_readable(value):
+        return fingerprint(value)
+    return value
+
 
 def _truncate(value: Any) -> Any:
     if isinstance(value, str) and len(value) > MAX_STRING:
@@ -48,7 +78,7 @@ class AuditLog:
         self.db = db
 
     def record(self, event: str, *, actor: str = "system", task_id: str | None = None, **payload: Any) -> str:
-        clean = canonical_json(_truncate(redact(payload)))
+        clean = canonical_json(_truncate(minimise(redact(payload))))
         with self.db.tx() as conn:
             row = conn.execute("SELECT hash FROM audit ORDER BY seq DESC LIMIT 1").fetchone()
             prev = row["hash"] if row else GENESIS

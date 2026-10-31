@@ -1,8 +1,8 @@
 [project]
 name = "jarvis"
-version = "0.11.0"
+version = "0.12.0"
 description = "JARVIS personal AI system: kernel (tasks, permissions, audit, kill switch)"
-requires-python = ">=3.11"
+requires-python = ">=3.12"
 # The kernel deliberately has no runtime dependencies beyond the standard library.
 dependencies = [
     "cryptography>=42",

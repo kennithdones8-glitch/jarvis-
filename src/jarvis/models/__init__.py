@@ -27,8 +27,10 @@ def build_model_service(config: ModelConfig, db: Database, audit: AuditLog, appr
         elif pc.kind == "claude_code":
             if workdir is None:
                 raise ValueError("Claude Code provider needs a working directory")
-            cloud.append(ClaudeCodeProvider(pc.name, pc.models, workdir=workdir, command=pc.command,
-                                            data_use_note=pc.data_use_note))
+            claude = ClaudeCodeProvider(pc.name, pc.models, workdir=workdir, command=pc.command,
+                                        data_use_note=pc.data_use_note)
+            claude.cancel_check = killswitch.engaged
+            cloud.append(claude)
         else:
             cloud.append(OpenAICompatProvider(pc.name, pc.base_url, pc.models, api_key_secret=pc.api_key_secret,
                                               secrets=secrets, data_use_note=pc.data_use_note))

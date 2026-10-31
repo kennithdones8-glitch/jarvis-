@@ -110,3 +110,47 @@ def test_audit_records_checks_without_bulk_content_or_secrets(make_kernel, root)
     assert start["payload"]["args"]["content"]["chars"] == len(body)
     assert start["payload"]["args"]["api_key"] == "[REDACTED]"
     assert k.audit.verify().ok
+
+
+def test_concurrent_callers_cannot_both_spend_one_approval(make_kernel, root):
+    """F8: find-and-consume is atomic; the loser is asked again instead of crashing mid-step."""
+    import threading
+    k = make_kernel()
+    args = {"path": f"{root}/race.md", "content": "once"}
+    with pytest.raises(ApprovalRequired) as ei:
+        k.gateway.invoke("fs", "write", args, task_id="t")
+    k.approvals.decide(ei.value.approval_id, approve=True, by="user:test")
+    outcomes, barrier = [], threading.Barrier(8)
+
+    def go():
+        barrier.wait()
+        try:
+            k.gateway.invoke("fs", "write", args, task_id="t")
+            outcomes.append("ran")
+        except ApprovalRequired:
+            outcomes.append("asked")
+    threads = [threading.Thread(target=go) for _ in range(8)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+    assert sorted(outcomes) == ["asked"] * 7 + ["ran"]
+
+
+def test_emergency_stop_after_claim_restores_the_approval(make_kernel, root, monkeypatch):
+    k = make_kernel()
+    args = {"path": f"{root}/x.md", "content": "c"}
+    with pytest.raises(ApprovalRequired) as ei:
+        k.gateway.invoke("fs", "write", args, task_id="t")
+    k.approvals.decide(ei.value.approval_id, approve=True, by="user:test")
+    real_claim = k.approvals.claim
+
+    def claim_then_stop(**kw):
+        aid = real_claim(**kw)
+        k.killswitch.engage(by="user:test", reason="stop")   # pressed at exactly the wrong moment
+        return aid
+    monkeypatch.setattr(k.approvals, "claim", claim_then_stop)
+    with pytest.raises(EmergencyStop):
+        k.gateway.invoke("fs", "write", args, task_id="t")
+    assert k.approvals.get(ei.value.approval_id)["state"] == "approved"   # still usable after you resume
+    assert not (root / "x.md").exists()

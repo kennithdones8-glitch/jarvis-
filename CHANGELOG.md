@@ -1,5 +1,31 @@
 # Changelog
 
+## 0.12.0 — Reliable multi-process core
+
+From the v0.12 discovery audit (confirmed issues were reproduced before fixing):
+- **Fixed (high): two processes could run the same task.** A second process's start-up recovery took over a
+  task the background service was still running, ran a step twice and failed the task. Tasks now have
+  leases (migration v4) with a heartbeat. Recovery only reclaims expired or dead holders, and `jarvis run`
+  reports when another process owns a task.
+- **Fixed (high, privacy): private text kept in the append-only audit log.** Free text is now stored only
+  as fingerprints (paths/URLs stay readable). `forget` also deletes matching finished task history, and
+  `jarvis tasks delete ID` exists. `secure_delete` + WAL checkpoint leave no copy in the database files.
+  Entries written before v0.12 are left as they were (by choice).
+- **Fixed: the emergency stop didn't stop Claude work in progress.** Claude Code now runs as a tracked
+  process group, killed on stop (pressed in any JARVIS process) or deadline. The task pauses with the step
+  ready to re-run.
+- **Fixed: web fetch DNS rebinding.** Connections are pinned to the checked address; ports 80/443 only; no
+  embedded credentials; ≤5 redirects; one overall deadline (drip-feeding servers are cut off).
+- Claude Code no longer loads `~/.claude/settings.json` (`--setting-sources project`), so `env`/`apiKeyHelper`
+  can't switch it to API billing.
+- Approvals are claimed atomically (no double spend); an approval claimed just as Stop is pressed is restored.
+- Backup passphrase written to the Keychain via stdin, not the command line.
+- Tests made hermetic (no real Keychain or port 8765). The SearXNG search tool is off by default and only
+  offered if SearXNG is reachable. Python ≥ 3.12.
+- Documentation corrected against the code (README status and verification columns, roadmap model policy,
+  architecture, development test table, security claims, Mac setup).
+- 21 new tests.
+
 ## 0.11.0 — Milestone 8: always-on service, health, encrypted backups
 
 - `jarvis service install|uninstall|status|restart|rotate-link`: a per-user macOS LaunchAgent starts the

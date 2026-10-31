@@ -4,18 +4,19 @@ Fetches public http(s) pages as text. Every hop (including redirects) is checked
 tool cannot reach this Mac, the local network or cloud metadata endpoints (SSRF). Page text
 is returned marked untrusted: it is data for the model, never instructions.
 
-Residual risk: DNS can change between our check and the connection (rebinding).
+Each hop is resolved once and the connection is pinned to that checked address, so DNS rebinding\ncan't swap in a private one. Only ports 80/443; one overall deadline; at most 5 redirects.
 """
 
 from __future__ import annotations
 
+import http.client
 import ipaddress
 import socket
-import urllib.error
-import urllib.request
+import ssl
+import time
 from html.parser import HTMLParser
 from typing import Any, Callable
-from urllib.parse import urlsplit
+from urllib.parse import urljoin, urlsplit
 
 from ..core.permissions import ResourceKind, Tier
 from ..core.tools import ActionSpec, CallContext, ToolError, ToolSpec
@@ -32,10 +33,30 @@ def system_resolver(host: str) -> list[str]:
     return list({info[4][0] for info in socket.getaddrinfo(host, None)})
 
 
-def check_public_url(url: str, resolve: Resolver = system_resolver) -> None:
+ALLOWED_PORTS = frozenset({80, 443})
+MAX_REDIRECTS = 5
+Connector = Callable[[str, int, float], socket.socket]
+
+
+def system_connect(ip: str, port: int, timeout: float) -> socket.socket:
+    return socket.create_connection((ip, port), timeout=timeout)
+
+
+def check_public_url(url: str, resolve: Resolver = system_resolver,
+                     ports: frozenset[int] = ALLOWED_PORTS) -> tuple[Any, str]:
+    """Validate one hop and return (parsed URL, the public IP to connect to). The caller must connect to
+    exactly that IP — resolving again would let DNS rebinding swap in a private address."""
     parts = urlsplit(url)
     if parts.scheme not in ("http", "https") or not parts.hostname:
         raise ToolError("only http(s) URLs with a host are allowed")
+    if parts.username or parts.password:
+        raise ToolError("URLs with embedded credentials are not allowed")
+    try:
+        port = parts.port or (443 if parts.scheme == "https" else 80)
+    except ValueError:
+        raise ToolError("invalid port in URL") from None
+    if port not in ports:
+        raise ToolError(f"port {port} is not allowed (web pages only: {', '.join(map(str, sorted(ports)))})")
     try:
         addresses = resolve(parts.hostname)
     except OSError as exc:
@@ -46,6 +67,7 @@ def check_public_url(url: str, resolve: Resolver = system_resolver) -> None:
         ip = ipaddress.ip_address(addr.split("%")[0])
         if not ip.is_global or ip.is_multicast:
             raise ToolError(f"refusing to fetch non-public address {ip} ({parts.hostname})")
+    return parts, addresses[0]
 
 
 class _TextExtractor(HTMLParser):
@@ -93,9 +115,15 @@ def html_to_text(html: str) -> tuple[str, str]:
 
 
 class WebTool:
-    def __init__(self, *, resolve: Resolver = system_resolver, timeout: float = 20.0):
+    """Fetches public pages over direct connections pinned to the address that passed the check.
+    System HTTP proxies are not used (a proxy would do its own DNS lookup, defeating the check)."""
+
+    def __init__(self, *, resolve: Resolver = system_resolver, timeout: float = 20.0,
+                 connect: Connector = system_connect, ports: frozenset[int] = ALLOWED_PORTS):
         self.resolve = resolve
         self.timeout = timeout
+        self.connect = connect
+        self.ports = frozenset(ports)
 
     def spec(self) -> ToolSpec:
         return ToolSpec("web", "Fetch public web pages as text", {
@@ -108,31 +136,75 @@ class WebTool:
         return self.fetch(str(ctx.resource))
 
     def fetch(self, url: str) -> dict[str, Any]:
-        check_public_url(url, self.resolve)
-        tool = self
+        deadline = time.monotonic() + self.timeout  # one budget for every hop, redirect and byte read
+        current = url
+        for hop in range(MAX_REDIRECTS + 1):
+            parts, ip = check_public_url(current, self.resolve, self.ports)
+            status, headers, raw, truncated = self._get(parts, ip, deadline)
+            if status in (301, 302, 303, 307, 308):
+                location = headers.get("Location")
+                if not location:
+                    raise ToolError(f"redirect from {current} has no destination")
+                current = urljoin(current, location)
+                continue
+            if status >= 400:
+                raise ToolError(f"HTTP {status} fetching {url}", retryable=status in (429, 502, 503, 504))
+            ctype = headers.get_content_type()
+            charset = headers.get_content_charset() or "utf-8"
+            body = raw.decode(charset, errors="replace")
+            title, text = html_to_text(body) if "html" in ctype else ("", body)
+            return {"url": url, "final_url": current, "status": status, "content_type": ctype, "title": title,
+                    "text": text[:MAX_TEXT_CHARS], "truncated": truncated or len(text) > MAX_TEXT_CHARS,
+                    "redirects": hop, "untrusted": True}
+        raise ToolError(f"too many redirects (more than {MAX_REDIRECTS})")
 
-        class CheckedRedirect(urllib.request.HTTPRedirectHandler):
-            def redirect_request(self, req, fp, code, msg, headers, newurl):  # noqa: N802 (stdlib name)
-                check_public_url(newurl, tool.resolve)
-                return super().redirect_request(req, fp, code, msg, headers, newurl)
+    def _get(self, parts: Any, ip: str, deadline: float) -> tuple[int, Any, bytes, bool]:
+        def remaining() -> float:
+            left = deadline - time.monotonic()
+            if left <= 0:
+                raise ToolError("timed out fetching the page", retryable=True)
+            return left
 
-        opener = urllib.request.build_opener(CheckedRedirect)
-        request = urllib.request.Request(url, headers={"User-Agent": USER_AGENT, "Accept": "text/html,text/plain;q=0.9"})
+        https = parts.scheme == "https"
+        port = parts.port or (443 if https else 80)
+        sock = None
+        conn = http.client.HTTPConnection(parts.hostname, port, timeout=remaining())
         try:
-            with opener.open(request, timeout=self.timeout) as resp:
-                ctype = resp.headers.get_content_type()
-                if ctype not in TEXT_TYPES:
-                    raise ToolError(f"unsupported content type {ctype}")
-                raw = resp.read(MAX_BYTES + 1)
-                charset = resp.headers.get_content_charset() or "utf-8"
-                final_url, status = resp.geturl(), resp.status
-        except urllib.error.HTTPError as exc:
-            raise ToolError(f"HTTP {exc.code} fetching {url}", retryable=exc.code in (429, 502, 503, 504)) from None
-        except (urllib.error.URLError, TimeoutError, ConnectionError) as exc:
-            raise ToolError(f"could not fetch {url}: {getattr(exc, 'reason', exc)}", retryable=True) from None
-
-        body = raw[:MAX_BYTES].decode(charset, errors="replace")
-        title, text = html_to_text(body) if "html" in ctype else ("", body)
-        return {"url": url, "final_url": final_url, "status": status, "content_type": ctype, "title": title,
-                "text": text[:MAX_TEXT_CHARS], "truncated": len(raw) > MAX_BYTES or len(text) > MAX_TEXT_CHARS,
-                "untrusted": True}
+            sock = self.connect(ip, port, remaining())  # the validated address — never a fresh lookup
+            if https:
+                sock = ssl.create_default_context().wrap_socket(sock, server_hostname=parts.hostname)
+            conn.sock = sock
+            path = (parts.path or "/") + (f"?{parts.query}" if parts.query else "")
+            conn.putrequest("GET", path, skip_host=True, skip_accept_encoding=True)
+            conn.putheader("Host", parts.netloc)
+            for name, value in (("User-Agent", USER_AGENT), ("Accept", "text/html,text/plain;q=0.9"),
+                                ("Accept-Encoding", "identity"), ("Connection", "close")):
+                conn.putheader(name, value)
+            conn.endheaders()
+            sock.settimeout(remaining())
+            resp = conn.getresponse()
+            if resp.status in (301, 302, 303, 307, 308) or resp.status >= 400:
+                return resp.status, resp.headers, b"", False
+            ctype = resp.headers.get_content_type()
+            if ctype not in TEXT_TYPES:
+                raise ToolError(f"unsupported content type {ctype}")
+            chunks, total = [], 0
+            while True:
+                sock.settimeout(remaining())
+                chunk = resp.read1(min(65536, MAX_BYTES + 1 - total))  # returns what has arrived
+                if not chunk:
+                    break
+                chunks.append(chunk)
+                total += len(chunk)
+                if total > MAX_BYTES:
+                    break
+            data = b"".join(chunks)
+            return resp.status, resp.headers, data[:MAX_BYTES], total > MAX_BYTES
+        except ToolError:
+            raise
+        except (OSError, ssl.SSLError, http.client.HTTPException) as exc:
+            raise ToolError(f"could not fetch {parts.geturl()}: {exc}", retryable=True) from None
+        finally:
+            conn.close()
+            if sock is not None:
+                sock.close()

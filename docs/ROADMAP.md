@@ -1,24 +1,30 @@
 # Roadmap
 
-Constraints: Intel Mac with 32 GB RAM, the iPhone, a $0 budget, free and local models only for now.
-Claude Pro is a consumer subscription without API access, so it is not used by JARVIS.
+Constraints: Intel Mac (i7-9750H, 32 GB, macOS 14.1.1), an iPhone, and a **$0 budget**.
+
+Approved model paths and what they cost:
+- **Local (Ollama):** llama3.2:3b and qwen2.5:7b. Free; nothing leaves the Mac.
+- **Claude via Claude Code on the owner's Claude Pro plan:** no extra charge, but every call counts toward the
+  Pro usage limits shared with claude.ai, and Anthropic's consumer terms apply. Not the paid API; API-key
+  billing is blocked (environment variables stripped, personal Claude Code settings not loaded).
+- **Paid APIs:** none enabled. The budget guard is $0.
 
 | # | Milestone | Status |
 |---|---|---|
-| M0 | Scaffold, docs, test harness | ✅ done |
-| M1 | Kernel: task engine, permissions, approvals, audit, emergency stop, CLI | ✅ done |
-| M2 | Model router + adapters (Ollama local; free cloud tier adapter **disabled by default**), egress privacy gate (ask per transmission), budget guard at $0 | ✅ done, running on the Mac (llama3.2:3b ≈ 8–10 tok/s) |
-| M3a | Production tools: files, web fetch | ✅ done |
-| M3b | Orchestrator (plan → review → execute → verify), `jarvis do`, persona with real ability list | ✅ done |
-| M3c | Evaluate planning on the Mac's real models; web search (SearXNG) on the Mac | next |
-| M4 | Local dashboard (live state, plan review, approvals, chat, emergency stop) | ✅ done |
-| M4c | Claude as the main brain via Claude Code (Pro), routing mode "best", consent cards | ✅ done (live check pending on Mac) |
-| M4b | Passkey / Touch ID for sensitive approvals; research-brief demo once SearXNG runs on the Mac | |
-| M5 | Memory: originals + derived memories with provenance, full-text search, deletion propagation, memory panel | ✅ done (search by meaning with embeddings: later) |
-| M6 | Mac voice: push-to-talk (whisper.cpp), TTS (`say`/Piper), interruption ≠ cancellation, then local wake word | |
-| M7 | iPhone home-screen web app over Tailscale: pairing, approvals, notifications, task handoff | |
-| M8 | launchd service, health monitor, encrypted backups + restore test, uninstall | ✅ done (launchd live check on the Mac) |
-| M9+ | Mac automation (Shortcuts/AppleScript/Playwright), proactive monitoring, self-improvement proposals | |
+| M0–M1 | Scaffold; kernel (tasks, permissions, approvals, audit, emergency stop, CLI) | ✅ done |
+| M2 | Model router, Ollama + OpenAI-compatible adapters, egress privacy gate, $0 budget guard | ✅ done · on the Mac |
+| M3 | Files, web fetch, orchestrator (plan → review → execute → verify), persona | ✅ done · on the Mac |
+| M4 | Dashboard (HUD), Claude via Claude Code (hybrid routing, consent, usage limits) | ✅ done · Claude on the Mac |
+| M5 | Memory: archive + facts with provenance, full-text search, deletion with tombstones | ✅ done · Mac check pending |
+| M5b | Web research through Claude Code's read-only web tools, with source verification | ✅ done · on the Mac |
+| M5c | Documents (PDF/Word/text), move/rename, allow-folder | ✅ done · PDF on the Mac |
+| M8 | Background service, health checks, encrypted backups | ✅ done · **Mac check pending** |
+| **v0.12** | **Reliable multi-process core:** task leases, audit privacy, stop kills Claude work, pinned web fetch, atomic approvals, hermetic tests | ✅ done in tests · **Mac checklist pending** |
+| M6 (v0.13) | Mac voice: push-to-talk, local speech recognition, spoken replies, interrupt ≠ cancel | next |
+| M7 | iPhone companion over Tailscale with passkeys: approvals, notifications, task handoff | later |
+| M4b | Touch ID / passkeys for sensitive approvals | with M7 |
+| M9+ | Mac automation, proactive monitoring, self-improvement proposals (isolated worktrees, owner-approved) | later |
+| — | Search by meaning (embeddings) | only if keyword recall proves weak |
 
-Things that must be validated on the real Mac: local model speed (benchmark before choosing),
-whisper latency, Keychain, launchd, microphone, and Touch ID availability.
+Superseded: M3c/SearXNG web search (research now goes through Claude Code; the SearXNG tool is optional and
+off by default).

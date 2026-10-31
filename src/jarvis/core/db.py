@@ -151,6 +151,11 @@ MIGRATIONS: list[str] = [
         created_at TEXT NOT NULL
     );
     """,
+    # v4: task leases — which process is running a task, until when (nullable; old rows unaffected)
+    """
+    ALTER TABLE tasks ADD COLUMN lease_owner TEXT;
+    ALTER TABLE tasks ADD COLUMN lease_until REAL;
+    """,
 ]
 
 
@@ -173,7 +178,9 @@ class Database:
         self._conn.row_factory = sqlite3.Row
         self._lock = threading.RLock()
         self._depth = 0
-        for pragma in ("journal_mode=WAL", "foreign_keys=ON", "synchronous=FULL", "busy_timeout=5000"):
+        # secure_delete: deleted rows are overwritten with zeros, so forgotten text doesn't linger on disk.
+        for pragma in ("journal_mode=WAL", "foreign_keys=ON", "synchronous=FULL", "busy_timeout=5000",
+                       "secure_delete=ON"):
             self._conn.execute(f"PRAGMA {pragma}")
         self._migrate()
 
@@ -191,6 +198,11 @@ class Database:
                     if self._conn.in_transaction:
                         self._conn.execute("ROLLBACK")
                     raise
+
+    def checkpoint(self) -> None:
+        """Fold the write-ahead log into the main file and truncate it (removes old page copies)."""
+        with self._lock:
+            self._conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")
 
     @property
     def schema_version(self) -> int:

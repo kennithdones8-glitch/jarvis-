@@ -19,6 +19,7 @@ from ..core.audit import AuditLog
 from ..core.killswitch import KillSwitch
 from ..core.tools import ApprovalRequired
 from .egress import BudgetExceeded, EgressDenied, EgressGate
+from .providers import Cancelled
 from .types import Category, ChatRequest, ChatResponse, Message, ModelInfo, Provider, ProviderError, UsageLimited
 
 CAPABILITIES = frozenset({"chat", "plan", "code", "summarize", "classify", "json", "extract", "research"})
@@ -238,6 +239,9 @@ class ModelService:
                                                       task_id=task_id, step_id=step_id, research=op == "research")
                 return response
             except ApprovalRequired:
+                raise
+            except Cancelled:
+                self.killswitch.check()  # raises EmergencyStop if that's why we were cancelled
                 raise
             except (ProviderError, EgressDenied) as exc:
                 failures[key] = str(exc)

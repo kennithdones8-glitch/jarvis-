@@ -1,7 +1,7 @@
 # Setting up JARVIS on your Mac
 
-Everything here is free. Nothing installs a background service except Ollama, which you start yourself
-and can quit at any time.
+Everything here is free. Nothing runs in the background except Ollama and, if you install it in step 6,
+JARVIS's own per-user service (`uv run jarvis service uninstall` removes it).
 
 ## 1. Get the code
 
@@ -70,10 +70,38 @@ cd ~/jarvis && uv run jarvis use-claude on
 ```
 It should print `Claude replied: 'JARVIS link online.'`. To go back to local-only: `uv run jarvis use-claude off`.
 
-## 5. Web search (later)
+## 5. Research, memory and documents
 
-Needs Docker or another way to run SearXNG. Deferred until the core runs on your Mac.
+```bash
+uv run jarvis research "What changed in the latest macOS release?"
+```
+```bash
+uv run jarvis remember "I prefer email over phone calls"
+```
+```bash
+uv run jarvis allow-folder ~/Downloads
+```
 
-## 6. Report back
+## 6. Backups and the background service
 
-Paste the output of `uv run jarvis models` plus the tokens/second lines from step 3.
+```bash
+uv run jarvis backup now
+```
+Save the passphrase it prints (password manager). Then:
+```bash
+uv run jarvis service install
+```
+```bash
+uv run jarvis open
+```
+Set the Ollama app to launch at login too.
+
+## Updating
+
+```bash
+uv run jarvis backup now
+```
+```bash
+cd ~/jarvis && git pull && uv sync -q && uv run jarvis service restart
+```
+To roll back, see "Rolling back" in the README.

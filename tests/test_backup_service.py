@@ -11,6 +11,15 @@ from jarvis.service import build_plist, dashboard_token
 PHRASE = "test-passphrase-0001"
 
 
+@pytest.fixture(autouse=True)
+def hermetic(monkeypatch):
+    """Tests must not depend on this machine: no real Keychain, no real JARVIS service on port 8765."""
+    import jarvis.service
+    monkeypatch.setattr(bk, "_keychain_get", lambda: None)
+    monkeypatch.setattr(bk, "_keychain_set", lambda value: False)
+    monkeypatch.setattr(jarvis.service, "responding", lambda port=8765: False)
+
+
 @pytest.fixture
 def k(make_kernel, monkeypatch):
     monkeypatch.setenv("JARVIS_BACKUP_PASSPHRASE", PHRASE)
@@ -134,3 +143,27 @@ def test_service_refuses_off_macos(tmp_path):
     if sys.platform != "darwin":
         with pytest.raises(service.ServiceError, match="macOS"):
             service.install(tmp_path)
+
+
+def test_passphrase_goes_to_keychain_via_stdin_not_process_arguments(tmp_path, monkeypatch):
+    import os
+    import stat
+    import sys
+    import importlib
+    real = importlib.reload(bk)                       # undo the hermetic stub for this one test
+    bindir = tmp_path / "bin"
+    bindir.mkdir()
+    fake = bindir / "security"
+    log = tmp_path / "security.log"
+    fake.write_text(f"#!{sys.executable}\nimport sys, json\nopen({str(log)!r}, 'w').write(json.dumps("
+                    "{'argv': sys.argv[1:], 'stdin': sys.stdin.read()}))\n")
+    fake.chmod(fake.stat().st_mode | stat.S_IEXEC)
+    monkeypatch.setenv("PATH", f"{bindir}{os.pathsep}{os.environ['PATH']}")
+    monkeypatch.setattr(real.sys, "platform", "darwin")
+    assert real._keychain_set("abcd-1234-ef56")
+    import json
+    rec = json.loads(log.read_text())
+    assert rec["argv"] == ["-i"] and "abcd-1234-ef56" not in " ".join(rec["argv"])
+    assert "add-generic-password -U -s jarvis -a backup_passphrase -w abcd-1234-ef56" in rec["stdin"]
+    with pytest.raises(real.BackupError):
+        real._keychain_set("evil; delete-keychain")

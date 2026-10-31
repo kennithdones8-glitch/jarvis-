@@ -14,7 +14,7 @@ from typing import Any, Callable
 
 from .approvals import Approvals, args_hash
 from .audit import AuditLog
-from .killswitch import KillSwitch
+from .killswitch import EmergencyStop, KillSwitch
 from .permissions import Decision, Effect, PermissionEngine, ResourceKind, Tier
 from .util import canonical_json, sha256_hex
 
@@ -180,7 +180,8 @@ class ToolGateway:
 
         approval_id = None
         if decision.effect is Effect.CONFIRM:
-            approval_id = self.approvals.find_usable(
+            self.killswitch.check()
+            approval_id = self.approvals.claim(
                 task_id=task_id, tool=tool, action=action, resource=decision.resource, digest=digest
             )
             if approval_id is None:
@@ -190,9 +191,12 @@ class ToolGateway:
                 )
                 raise ApprovalRequired(aid, decision)
 
-        self.killswitch.check()
-        if approval_id:
-            self.approvals.consume(approval_id)
+        try:
+            self.killswitch.check()
+        except EmergencyStop:
+            if approval_id:
+                self.approvals.restore(approval_id)  # not used after all; still valid when you resume
+            raise
 
         ctx = CallContext(task_id=task_id, step_id=step_id, op_id=op_id, resource=decision.resource)
         self.audit.record("tool.start", task_id=task_id, step_id=step_id, op_id=op_id, tool=tool, action=action,
@@ -204,8 +208,8 @@ class ToolGateway:
             # The worker thread cannot be killed; tools doing slow I/O must enforce their own deadlines.
             self.audit.record("tool.timeout", task_id=task_id, step_id=step_id, op_id=op_id, timeout_s=act.timeout_s)
             raise ToolTimeout(f"{tool}.{action} timed out after {act.timeout_s}s") from None
-        except ApprovalRequired:
-            raise  # nothing left the machine; the task pauses for the user's decision
+        except (ApprovalRequired, EmergencyStop):
+            raise  # nothing left the machine / the stop interrupted it; the task pauses either way
         except ToolError as exc:
             self.audit.record("tool.error", task_id=task_id, step_id=step_id, op_id=op_id, error=str(exc),
                               retryable=exc.retryable, outcome_unknown=exc.outcome_unknown)

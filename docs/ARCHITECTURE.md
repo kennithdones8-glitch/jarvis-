@@ -98,7 +98,42 @@ snapshot is built from the kernel, so the page never shows simulated data. Actio
 kernel APIs as the CLI, with actor `user:dashboard`. A background runner drives only tasks whose
 `runner` is `dashboard`. Planning runs as a background job because it takes about a minute on the Mac's CPU.
 
-## Planned components
+## Several processes, one database (v0.12)
 
- FastAPI + dashboard, memory (FTS5 + vectors with provenance), voice, iPhone web app
-over Tailscale with passkeys, launchd service, backups. See the [roadmap](ROADMAP.md).
+The background service, the dashboard and terminal commands are separate processes sharing one SQLite
+file. Each task has a **lease** (`tasks.lease_owner`, `lease_until`, migration v4): `TaskEngine.run` claims
+it atomically and renews it with a heartbeat thread, so only one process executes a task. Start-up
+recovery only reclaims tasks whose lease expired or whose holder process is gone (same host, pid not alive);
+a live task in another process is never touched. Pause/cancel from another process set a control flag the
+owner obeys. The emergency stop is a database flag read by every process.
+
+## Memory (`src/jarvis/memory/`)
+
+Original conversation **records** and derived **memories** (explicit or observed, confidence, source,
+dates) in the same database, each with an FTS5 index (keyword search with stemming; no embeddings).
+Deletions leave **tombstones** so facts aren't re-learned and restores re-apply them. `Kernel.forget`
+removes matching memories, records and finished task history, then checkpoints the WAL; `secure_delete`
+overwrites freed pages.
+
+## Research and documents
+
+`research.web` runs Claude Code with only its read-only `WebSearch`/`WebFetch` tools and parses the event
+stream to record searches and pages read; cited sources count as verified only if seen there. `doc.read`
+handles PDF (pypdf), .docx and text formats with size/page/decompression caps.
+
+## Audit privacy (v0.12)
+
+Audit payload fields that carry free text (requests, goals, plans, contents, model output…) are stored as
+`{"chars", "sha256"}` fingerprints; tools, actions, decisions, ids, file paths and URLs stay readable. The
+words themselves live only in deletable tables. Entries written before v0.12 may contain text.
+
+## Service and backups
+
+`service.py` writes a per-user LaunchAgent that runs `uv run jarvis dashboard --no-open` at login and after
+crashes. `backup.py` makes AES-256-GCM encrypted archives (SQLite snapshot + configs + manifest), test-restores
+each one, prunes to the newest N, and restores with tombstones re-applied.
+
+## Not built yet
+
+Voice, iPhone companion (Tailscale + passkeys), Touch ID, Mac app automation, proactive monitoring,
+self-improvement proposals. See the [roadmap](ROADMAP.md).

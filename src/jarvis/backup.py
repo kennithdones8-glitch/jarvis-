@@ -20,6 +20,7 @@ import hashlib
 import io
 import json
 import os
+import re
 import secrets
 import shutil
 import sqlite3
@@ -60,9 +61,12 @@ def _keychain_set(value: str) -> bool:
     if sys.platform != "darwin" or not shutil.which("security"):
         return False
     import subprocess
-    p = subprocess.run(["security", "add-generic-password", "-U", "-s", "jarvis", "-a", SECRET_NAME, "-w", value],
+    # `security -i` reads commands from stdin, so the passphrase never appears in the process list.
+    if not re.fullmatch(r"[A-Za-z0-9-]+", value):
+        raise BackupError("passphrase contains unsupported characters")
+    p = subprocess.run(["security", "-i"], input=f"add-generic-password -U -s jarvis -a {SECRET_NAME} -w {value}\n",
                        capture_output=True, text=True, timeout=10)
-    return p.returncode == 0
+    return p.returncode == 0 and "error" not in (p.stdout + p.stderr).lower()
 
 
 def get_passphrase() -> str | None:

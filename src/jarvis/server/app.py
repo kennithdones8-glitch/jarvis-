@@ -65,13 +65,15 @@ def tilde(value: Any) -> Any:
     return value.replace(HOME, "~", 1) if isinstance(value, str) and value.startswith(HOME) else value
 
 
-def describe_event(event: str, p: dict[str, Any]) -> str:
+def describe_event(event: str, p: dict[str, Any], *, task_id: str | None = None,
+                   goals: dict[str, str] | None = None) -> str:
     """One readable line per audit event, for the Activity panel. The full record stays in the log."""
     call = f"{p.get('tool')}.{p.get('action')}" if p.get("tool") else ""
     res = p.get("resource") or ""
     res = Path(res).name if isinstance(res, str) and "/" in res else res
     lines = {
-        "task.created": lambda: f"New task: {p.get('goal')}",
+        "task.created": lambda: "New task" + (f": {goals.get(task_id)}" if goals.get(task_id) else ""),
+        "task.deleted": lambda: "Deleted a task and its history",
         "task.state": lambda: f"Task {p.get('frm', '').replace('_', ' ')} → {p.get('to', '').replace('_', ' ')}"
                               + (f" ({p['reason']})" if p.get("reason") else ""),
         "task.verified": lambda: "Verification " + ("passed" if p.get("ok") else "FAILED"),
@@ -96,11 +98,12 @@ def describe_event(event: str, p: dict[str, Any]) -> str:
         "model.local_call": lambda: f"{p.get('model')} answered ({p.get('output_tokens')} tokens, {p.get('latency_s')}s)",
         "egress.send": lambda: f"Sent {p.get('chars')} chars to {p.get('provider')}",
         "egress.denied": lambda: f"Blocked sending to {p.get('provider')}: {p.get('reason')}",
-        "orchestrator.planned": lambda: f"Plan ({p.get('kind')}) by {p.get('model')}: {p.get('goal') or p.get('message')}",
+        "orchestrator.planned": lambda: f"Plan ({p.get('kind')}) by {p.get('model')}",
         "emergency_stop.engaged": lambda: f"EMERGENCY STOP: {p.get('reason')}",
         "emergency_stop.released": lambda: "Emergency stop released",
         "kernel.started": lambda: "JARVIS started",
     }
+    goals = goals or {}
     try:
         text = lines[event]() if event in lines else json.dumps(p, ensure_ascii=False)
     except Exception:
@@ -270,8 +273,12 @@ class Dashboard:
             self._stop.wait(self.maintenance_s)
 
     def _drive(self, tid: str) -> None:
+        from ..core.tasks import TaskBusy
+
         try:
             self.kernel.engine.run(tid)
+        except TaskBusy:
+            pass  # another JARVIS process (e.g. a terminal command) is running it; it will finish there
         except Exception as exc:
             self.kernel.audit.record("dashboard.runner_error", task_id=tid, error=f"{type(exc).__name__}: {exc}",
                                      trace=traceback.format_exc()[-1500:])
@@ -425,8 +432,9 @@ class Dashboard:
             if j["state"] in ("planning", "waiting_approval"):
                 j["elapsed"] = round(now - j["started"])
 
+        goals = {t["id"]: t["goal"] for t in tasks}
         audit = [{"seq": e["seq"], "ts": e["ts"], "actor": e["actor"], "event": e["event"], "task_id": e["task_id"],
-                  "detail": describe_event(e["event"], e["payload"])}
+                  "detail": describe_event(e["event"], e["payload"], task_id=e["task_id"], goals=goals)}
                  for e in k.audit.entries(limit=40) if e["event"] not in ("approval.consumed",)]
         return {
             "version": __version__, "time": now,
@@ -577,7 +585,7 @@ class Dashboard:
                 mem.edit(m.group(1), text("text", 500), by=actor)
             return {"ok": True}
         if path == "/api/memory/forget":
-            return self.kernel.memory.forget(text("query", 200), by=actor, dry_run=body.get("confirm") is not True)
+            return self.kernel.forget(text("query", 200), by=actor, dry_run=body.get("confirm") is not True)
         if path == "/api/plan":
             return {"job_id": self.start_plan(text("request"))}
         if m := re.fullmatch(r"/api/plan/(\w+)/(run|discard)", path):

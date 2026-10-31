@@ -29,7 +29,9 @@ def main(argv: list[str] | None = None) -> int:
     sub = parser.add_subparsers(dest="cmd", required=True)
     sub.add_parser("init", help="create the data directory and a starter policy")
     sub.add_parser("status", help="show emergency-stop state, task counts and pending approvals")
-    sub.add_parser("tasks", help="list recent tasks")
+    p = sub.add_parser("tasks", help="list recent tasks, or delete a finished one: tasks [delete ID]")
+    p.add_argument("op", nargs="?", choices=["list", "delete"], default="list")
+    p.add_argument("task_id", nargs="?")
     p = sub.add_parser("show", help="show a task with its steps and audit history")
     p.add_argument("task_id")
     p = sub.add_parser("audit", help="show recent audit entries")
@@ -109,6 +111,12 @@ def main(argv: list[str] | None = None) -> int:
             _print({"home": str(kernel.home), "emergency_stop": kernel.killswitch.state(),
                     "policy_loaded": kernel.policy_path.exists(), "tasks": counts,
                     "pending_approvals": len(kernel.approvals.pending())})
+        elif args.cmd == "tasks" and args.op == "delete":
+            if not args.task_id:
+                print("usage: jarvis tasks delete TASK_ID", file=sys.stderr)
+                return 1
+            kernel.tasks.delete(args.task_id, by="user:cli")
+            print("Deleted the task and its steps, results and approvals. The audit log keeps only ids and fingerprints.")
         elif args.cmd == "tasks":
             for t in kernel.tasks.list(limit=50):
                 print(f"{t['id']}  {t['state']:<17} p{t['priority']:<3} {t['goal'][:70]}")
@@ -352,10 +360,15 @@ def _do(kernel: Kernel, args) -> int:
 def _drive(kernel: Kernel, orch, task_id: str) -> int:
     import time
 
-    from .core.tasks import TaskState
+    from .core.tasks import TaskBusy, TaskState
 
     while True:
-        state = kernel.engine.run(task_id)
+        try:
+            state = kernel.engine.run(task_id)
+        except TaskBusy:
+            print("This task is being run by another JARVIS process (probably the dashboard / background service).\n"
+                  "Follow it there, or try again once it finishes.")
+            return 8
         if state is TaskState.AWAITING_APPROVAL:
             for appr in kernel.approvals.pending(task_id=task_id):
                 print(f"\nApproval needed (tier {appr['tier']}): {appr['summary']}\n  reason: {appr['reason']}")
@@ -605,9 +618,13 @@ def _memory(kernel: Kernel, args) -> int:
         mem.delete(args.arg, by="user:cli")
         print("Deleted. JARVIS won't re-learn it from conversations.")
     elif args.op == "forget":
-        res = mem.forget(args.arg, by="user:cli", dry_run=not args.yes)
-        print(f"{'Deleted' if args.yes else 'Would delete'} {len(res['memories'])} memories and "
-              f"{len(res['records'])} conversation records matching {args.arg!r}.")
+        res = kernel.forget(args.arg, by="user:cli", dry_run=not args.yes)
+        deletable = [t for t in res["tasks"] if t["deletable"]]
+        print(f"{'Deleted' if args.yes else 'Would delete'} {len(res['memories'])} memories, "
+              f"{len(res['records'])} conversation records and {len(deletable)} finished tasks matching {args.arg!r}.")
+        for t in res["tasks"]:
+            if not t["deletable"]:
+                print(f"  (still {t['state']}, not touched: {t['id']} — cancel it first)")
         for m in res["memories"][:20]:
             print(f"  - {m['text']}")
         if not args.yes:

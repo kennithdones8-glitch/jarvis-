@@ -24,6 +24,62 @@ from .secrets import SecretStore
 from .types import ChatRequest, ChatResponse, ModelInfo, ProviderError, ProviderUnavailable, Usage, UsageLimited
 
 
+# Load settings only from the (empty) working folder — not from ~/.claude/settings.json, whose "env" or
+# "apiKeyHelper" entries could otherwise switch Claude Code to API-key billing. The sign-in itself is
+# stored separately (macOS Keychain), so the Pro login keeps working. Verify on the Mac.
+SETTINGS_ISOLATION = ("--setting-sources", "project")
+
+
+class Cancelled(ProviderError):
+    """The call was stopped (emergency stop) before it finished."""
+
+    def __init__(self, message: str):
+        super().__init__(message, retryable=False)
+
+
+def run_tracked(args: list[str], *, input: str, timeout: float, cwd: Path, env: dict[str, str],
+                cancel_check=None, poll_s: float = 0.5) -> subprocess.CompletedProcess:
+    """Like subprocess.run, but the child runs in its own process group and is killed (with any
+    children it started) if ``cancel_check()`` turns true — e.g. the emergency stop — or the deadline
+    passes. The stop is read from the shared database, so a stop pressed in any JARVIS process works."""
+    import signal
+
+    proc = subprocess.Popen(args, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                            text=True, cwd=cwd, env=env, start_new_session=True)
+    deadline = time.monotonic() + timeout
+    data: str | None = input
+
+    def kill() -> None:
+        for sig in (signal.SIGTERM, signal.SIGKILL):
+            try:
+                os.killpg(proc.pid, sig)
+            except (ProcessLookupError, PermissionError):
+                return
+            try:
+                proc.wait(timeout=2)
+                return
+            except subprocess.TimeoutExpired:
+                continue
+
+    while True:
+        try:
+            out, err = proc.communicate(input=data, timeout=poll_s)
+            return subprocess.CompletedProcess(args, proc.returncode, out, err)
+        except subprocess.TimeoutExpired:
+            data = None  # stdin was already sent
+        if cancel_check is not None:
+            try:
+                stop = cancel_check()
+            except Exception:
+                stop = False
+            if stop:
+                kill()
+                raise Cancelled("stopped by the emergency stop")
+        if time.monotonic() > deadline:
+            kill()
+            raise subprocess.TimeoutExpired(args, timeout)
+
+
 def is_loopback_url(url: str) -> bool:
     host = urlsplit(url).hostname
     if host == "localhost":
@@ -162,6 +218,8 @@ class ClaudeCodeProvider:
         self.data_use_note = data_use_note or "Anthropic, via your Claude Pro plan (Anthropic's consumer terms apply)"
         # While the plan limit is in force, don't call Claude at all (saves time and noise).
         self.limited_until: float | None = None
+        # Set by the kernel to "is the emergency stop engaged?" so running calls can be killed.
+        self.cancel_check = None
         # A sign-in problem is remembered on disk (each CLI run is a new process), so JARVIS doesn't ask
         # you to approve sending something that can't be sent anyway.
         self._status_file = self.workdir / ".claude-status.json"
@@ -229,13 +287,14 @@ class ClaudeCodeProvider:
         system, prompt = self._split(request)
         args = [binary, "-p", "--output-format", "json", "--model", model,
                 "--tools", "", "--strict-mcp-config", "--disable-slash-commands", "--no-session-persistence",
+                *SETTINGS_ISOLATION,
                 "--system-prompt", system or "You are a helpful assistant."]
         env = {k: v for k, v in os.environ.items() if k not in self._STRIP_ENV}
         self.workdir.mkdir(parents=True, exist_ok=True)
         started = time.monotonic()
         try:
-            proc = subprocess.run(args, input=prompt, capture_output=True, text=True, timeout=self.timeout,
-                                  cwd=self.workdir, env=env)
+            proc = run_tracked(args, input=prompt, timeout=self.timeout, cwd=self.workdir, env=env,
+                               cancel_check=self.cancel_check)
         except subprocess.TimeoutExpired:
             raise ProviderError(f"Claude Code did not answer within {self.timeout:.0f}s", retryable=True) from None
         except OSError as exc:
@@ -287,14 +346,14 @@ def research_on(provider: "ClaudeCodeProvider", model: str, request: ChatRequest
     system, prompt = provider._split(request)
     args = [binary, "-p", "--output-format", "stream-json", "--verbose", "--model", model,
             "--tools", "WebSearch,WebFetch", "--allowedTools", "WebSearch,WebFetch", "--permission-mode", "dontAsk",
-            "--strict-mcp-config", "--disable-slash-commands", "--no-session-persistence",
+            "--strict-mcp-config", "--disable-slash-commands", "--no-session-persistence", *SETTINGS_ISOLATION,
             "--system-prompt", system or "You are a careful research assistant."]
     env = {k: v for k, v in os.environ.items() if k not in provider._STRIP_ENV}
     provider.workdir.mkdir(parents=True, exist_ok=True)
     started = time.monotonic()
     try:
-        proc = subprocess.run(args, input=prompt, capture_output=True, text=True, timeout=max(provider.timeout, 600),
-                              cwd=provider.workdir, env=env)
+        proc = run_tracked(args, input=prompt, timeout=max(provider.timeout, 600), cwd=provider.workdir, env=env,
+                           cancel_check=provider.cancel_check)
     except subprocess.TimeoutExpired:
         raise ProviderError("Claude research did not finish in time", retryable=True) from None
     except OSError as exc:

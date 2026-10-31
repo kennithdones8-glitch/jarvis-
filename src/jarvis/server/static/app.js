@@ -381,7 +381,8 @@ async function memAct(path, body) {
 
 async function forgetMatching() {
   const preview = await api("/api/memory/forget", { query: ui.memQ });
-  if (!confirm(`Permanently delete ${plural(preview.memories.length, "memory").replace("memorys", "memories")} and ${plural(preview.records.length, "conversation record")} about “${ui.memQ}”?`)) return;
+  const tasks = (preview.tasks || []).filter((t) => t.deletable).length;
+  if (!confirm(`Permanently delete ${plural(preview.memories.length, "memory").replace("memorys", "memories")}, ${plural(preview.records.length, "conversation record")} and ${plural(tasks, "finished task")} about “${ui.memQ}”?`)) return;
   await memAct("/api/memory/forget", { query: ui.memQ, confirm: true });
 }
 

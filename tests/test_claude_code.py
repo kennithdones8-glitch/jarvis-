@@ -82,6 +82,7 @@ def test_safety_flags_env_and_stdin(fake_claude, tmp_path, monkeypatch):
     for flag in ("--strict-mcp-config", "--disable-slash-commands", "--no-session-persistence"):
         assert flag in a
     assert "--bare" not in a                                    # --bare would ignore the Pro login
+    assert a[a.index("--setting-sources") + 1] == "project"     # not ~/.claude/settings.json (env / apiKeyHelper)
     assert a[a.index("--system-prompt") + 1] == "SYS"
     assert "private question" not in " ".join(a)                # private text only via stdin
     assert call["stdin"] == "private question"

@@ -2,39 +2,39 @@
 
 A personal AI system for Mac and iPhone: persistent, permissioned, auditable, local-first.
 
-**Status: Milestone 4 — local command-centre dashboard plus terminal. JARVIS plans and carries out file-based tasks. No voice or memory yet.** See [ROADMAP](docs/ROADMAP.md).
+**Status: v0.12 — reliable multi-process core.** JARVIS chats (local models + Claude via your Pro plan),
+researches the web with verified sources, reads documents, plans and carries out file tasks with approvals,
+remembers what you tell it, and can run in the background with encrypted backups. **Not built yet:** voice,
+iPhone companion, Touch ID/passkeys, Mac app automation, proactive monitoring. See [ROADMAP](docs/ROADMAP.md).
 
 ## What works today
 
-| Capability | Status |
-|---|---|
-| Durable task engine (state machine, checkpoints, retries, crash recovery) | ✅ implemented, tested |
-| Permission engine (tiers, approved roots, deny/confirm/allow rules) | ✅ implemented, tested |
-| Approvals bound to exact arguments, single-use; rejections not bypassable | ✅ implemented, tested |
-| Hash-chained, append-only audit log with secret redaction | ✅ implemented, tested |
-| Global emergency stop | ✅ implemented, tested |
-| Operator CLI (`jarvis status`, `approve`, `stop`, …) | ✅ implemented, smoke-tested |
-| Model router (local-first) + Ollama and OpenAI-compatible adapters | ✅ running on the Mac with llama3.2:3b and qwen2.5:7b |
-| Egress privacy gate (ask per transmission, grants, local-only, secret scan) | ✅ implemented, tested |
-| Budget guard ($0 default) with usage ledger | ✅ implemented, tested |
-| File tool (read/list/search/write/delete; atomic, versioned, trash) | ✅ implemented, tested |
-| Web fetch tool (SSRF-protected, untrusted-content marking) | ✅ implemented, tested incl. a live fetch |
-| Web search via local SearXNG | ✅ implemented, protocol-tested; needs SearXNG on the Mac |
-| Orchestrator: plan → review → permission-checked execution → verification (`jarvis do`) | ✅ implemented, tested; planning quality on real models being evaluated |
-| Claude as JARVIS's brain via Claude Code on your Pro plan (`jarvis use-claude on`): tools disabled, no API key, asks before sending private content, falls back to local | ✅ implemented, tested with a stand-in CLI; **live check runs on the Mac** |
-| Memory: conversation archive + facts with provenance, recall in chat, review/correct/delete, forget-by-topic, exclusions (local only) | ✅ implemented, tested, browser-checked |
-| Web research via Claude Code's read-only web tools (Pro plan): sourced answers, cited sources verified against what was actually read, sourced briefs | ✅ implemented, tested with a stand-in CLI; **live check on the Mac** |
-| Documents: read PDF / Word / text, summarise and compare, move and rename files with approval | ✅ implemented, tested with real generated files |
-| Always-on background service (`jarvis service install`), health checks, encrypted verified backups with deletion-respecting restore | ✅ implemented, tested; **launchd part verified only on the Mac** |
-| Command-centre dashboard (`jarvis dashboard`): chat, plan review, approvals with previews, missions, systems, activity, emergency stop | ✅ implemented, tested, browser-checked |
-| Passkeys / Touch ID, iPhone access, memory, voice, iPhone | ⏳ not started |
-| macOS-specific behaviour (launchd, Keychain, Touch ID) | ⏳ not started; not yet tested on a Mac |
+"Tests" = automated tests in this repo (some use stand-ins for Ollama/Claude). "On the Mac" = confirmed on
+the owner's Intel Mac (macOS 14.1.1). Untested-on-Mac items may still have Mac-specific problems.
+
+| Capability | Tests | On the Mac |
+|---|---|---|
+| Task engine: state machine, checkpoints, retries, crash recovery, **one process per task (leases)** | ✅ | ✅ basic tasks · leases not yet |
+| Permission engine: tiers, approved folders, deny/confirm/allow; approvals bound to exact arguments, single-use | ✅ | ✅ |
+| Audit log: hash-chained, append-only, secrets redacted, **free text stored only as fingerprints** | ✅ | not yet (v0.12) |
+| Emergency stop: blocks new actions; **kills Claude work in progress** | ✅ | not yet (v0.12) |
+| Model routing (local-first / best / hybrid) with Ollama | ✅ (stand-in + opt-in live) | ✅ llama3.2:3b 12.7 tok/s, qwen2.5:7b 6.4 tok/s |
+| Claude via Claude Code on your Pro plan (tools off, personal settings isolated, asks before private data leaves) | ✅ (stand-in CLI) | ✅ chat · settings isolation not yet |
+| Privacy gate, $0 budget guard, usage meter | ✅ | ✅ approval prompts |
+| Planning + execution (`jarvis do`, dashboard Do) with verification | ✅ | ✅ text and PDF summaries |
+| Web research with source verification (`jarvis research`) | ✅ (stand-in CLI) | ✅ 3/3 sources verified |
+| Documents: PDF / Word / text; move & rename with approval | ✅ (real generated files) | ✅ PDF summary · move not yet |
+| Web fetch (pinned to the checked address, ports 80/443, one deadline) | ✅ | not yet |
+| Memory: archive + facts with provenance, recall, review/correct/delete, forget (incl. task history) | ✅ | not yet |
+| Dashboard (holographic HUD) | ✅ + headless browser | earlier version only |
+| Background service, health checks, encrypted backups | ✅ (plist content, crypto, restore) | **not yet** |
+| Voice, iPhone, Touch ID / passkeys, Mac automation, proactive monitoring, self-improvement | — | ⏳ not started |
 
 ## Quick start
 
 **Setting up on your Mac: follow [docs/SETUP-MAC.md](docs/SETUP-MAC.md).**
 
-Requires Python ≥ 3.11 and [uv](https://docs.astral.sh/uv/).
+Requires Python ≥ 3.12 and [uv](https://docs.astral.sh/uv/).
 
 ```bash
 uv sync
@@ -53,14 +53,15 @@ uv run jarvis ask "What can you do yet?"
 ```
 
 Data lives in `~/Library/Application Support/JARVIS` on macOS (`~/.local/share/jarvis` on Linux),
-or `$JARVIS_HOME`. Nothing runs in the background and nothing is sent over the network.
+or `$JARVIS_HOME`. Nothing runs in the background unless you run `jarvis service install`, and nothing private
+is sent over the network without your approval.
 
 ## CLI
 
 | Command | Purpose |
 |---|---|
 | `jarvis status` | Emergency-stop state, task counts, pending approvals |
-| `jarvis tasks` / `jarvis show ID` | List tasks / inspect one with steps and checkpoint |
+| `jarvis tasks` / `jarvis show ID` / `jarvis tasks delete ID` | List tasks / inspect one / delete a finished task's history |
 | `jarvis approvals` / `approve ID` / `reject ID` | Decide pending approvals |
 | `jarvis pause\|resume\|cancel ID` | Task controls |
 | `jarvis stop [--reason]` / `jarvis release --yes` | Emergency stop |
@@ -74,7 +75,7 @@ or `$JARVIS_HOME`. Nothing runs in the background and nothing is sent over the n
 | `jarvis allow-folder PATH [--remove]` / `jarvis folders` | Let JARVIS read a folder such as Downloads (changes still ask) |
 | `jarvis research "…" [--deep]` | Search the web and read pages, answer with verified sources |
 | `jarvis remember "…"` | Tell JARVIS something to remember |
-| `jarvis memory list\|search Q\|confirm ID\|delete ID\|forget Q [--yes]\|export FILE` | Review and manage memory |
+| `jarvis memory list\|search Q\|confirm ID\|delete ID\|forget Q [--yes]\|export FILE` | Review and manage memory; `forget` also removes matching finished tasks |
 | `jarvis models` | Configured models, live availability, budget |
 | `jarvis ask "…" [--min-quality N] [--local-only]` | One-off question through the router and privacy gate |
 | `jarvis grant-egress --category C --provider P` / `revoke-egress ID` / `grants` | Standing privacy grants |
@@ -94,3 +95,12 @@ rm -rf ~/jarvis
 ```
 Your data stays in `~/Library/Application Support/JARVIS` (memory, history, backups) until you delete that
 folder too. The backup passphrase is in Keychain Access under "jarvis".
+
+## Rolling back
+
+Every release is a commit on `main`. Before updating, run `uv run jarvis backup now`. To return to v0.11.0:
+```bash
+cd ~/jarvis && git checkout 0ad2093 && uv sync -q
+```
+then restore the backup you made before updating (`uv run jarvis backup restore FILE --yes`), because a newer
+database schema can't be opened by older code.

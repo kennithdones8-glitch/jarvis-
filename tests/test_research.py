@@ -117,6 +117,7 @@ def test_only_read_only_web_tools_and_sources_verified(env):
     assert a[a.index("--allowedTools") + 1] == "WebSearch,WebFetch"
     assert a[a.index("--permission-mode") + 1] == "dontAsk"       # anything else is denied, not prompted
     assert "--strict-mcp-config" in a and a[a.index("--model") + 1] == "haiku"
+    assert a[a.index("--setting-sources") + 1] == "project"
     assert calls()[-1]["env_keys"] == [] and calls()[-1]["stdin"] == "How high does the ISS orbit?"
     m = r.meta
     assert m["searches"] == ["ISS altitude"] and m["fetched"] == ["https://www.nasa.gov/iss/"]
