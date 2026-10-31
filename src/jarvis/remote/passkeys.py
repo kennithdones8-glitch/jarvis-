@@ -19,6 +19,7 @@ from .devices import DeviceError, DeviceStore
 from .webauthn import b64url_encode, verify_assertion, verify_registration
 
 CHALLENGE_TTL = 120
+MAX_OUTSTANDING = 256  # sign-in challenges can be requested before sign-in; keep memory bounded
 
 # Requests to these need a fresh passkey assertion bound to the exact request (path + body).
 STEP_UP = (
@@ -50,6 +51,8 @@ class PasskeyRP:
         now = time.time()
         with self._lock:
             self._challenges = {k: v for k, v in self._challenges.items() if v[1] > now}
+            while len(self._challenges) >= MAX_OUTSTANDING:  # drop the oldest
+                self._challenges.pop(next(iter(self._challenges)))
             self._challenges[cid] = (challenge, now + CHALLENGE_TTL, binding)
         return cid, challenge
 

@@ -27,6 +27,12 @@ class DeviceError(PermissionError):
     pass
 
 
+def clean_name(name: str, default: str) -> str:
+    """Device names are chosen on the phone: printable text only, one line, at most 60 characters."""
+    text = "".join(ch if ch.isprintable() else " " for ch in str(name or ""))
+    return " ".join(text.split())[:60] or default
+
+
 def _h(token: str) -> str:
     return hashlib.sha256(token.encode()).hexdigest()
 
@@ -77,7 +83,7 @@ class DeviceStore:
                 raise DeviceError("this pairing code is invalid, expired or already used")
             did = new_id("dev")
             c.execute("INSERT INTO devices (id, name, credential_id, public_key, sign_count, created_at) VALUES (?,?,?,?,?,?)",
-                      (did, name[:60] or "iPhone", credential_id, public_key_pem, sign_count, now_iso()))
+                      (did, clean_name(name, "iPhone"), credential_id, public_key_pem, sign_count, now_iso()))
             self.audit.record("device.paired", actor="user:phone", device_id=did)
         return did
 
@@ -103,7 +109,7 @@ class DeviceStore:
         with self.db.tx() as c:
             c.execute("INSERT INTO devices (id, name, kind, credential_id, public_key, sign_count, created_at) "
                       "VALUES (?,?,?,?,?,?,?)",
-                      (did, name[:60] or "This Mac", "mac", credential_id, public_key_pem, sign_count, now_iso()))
+                      (did, clean_name(name, "This Mac"), "mac", credential_id, public_key_pem, sign_count, now_iso()))
             self.audit.record("touchid.added", actor=by, key_id=did)
         return did
 

@@ -11,6 +11,10 @@
   (JARVIS fetches a challenge first). If that happens, JARVIS shows a "Confirm with Face ID" button and retries
   from that tap. Checked in a headless browser made to refuse the first prompt (pairing and approval).
 - Setup steps: the Home Screen app signs in separately from Safari (once, with Face ID).
+- Security review of everything reachable from the phone: every action needs a signed-in device, pairing and
+  Touch ID changes are Mac-only, Face ID covers every approval-type action, and actors can't be spoofed by device
+  names. Hardening: device names are cleaned (printable, one line, 60 characters); sign-in challenges (requestable
+  before sign-in) are capped at 256 in memory. 2 new tests.
 
 ## 0.16.1 — Pre-Mac review and `jarvis doctor`
 

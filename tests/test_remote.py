@@ -479,3 +479,26 @@ def test_vapid_subject_is_one_apple_accepts(make_kernel):
     header = vapid_header(PUSH_URL, remote.push.key, subject=remote.push.subject)
     claims = json.loads(b64url_decode(header.split("t=")[1].split(".")[1]))
     assert claims["sub"] == f"https://{HOST}" and claims["aud"] == "https://web.push.apple.com"
+
+
+def test_device_names_cleaned(make_kernel):
+    k = make_kernel()
+    store = DeviceStore(k.db, k.audit)
+    did = store.finish_pairing(store.create_pairing(by="t"), name="Ken's\niPhone\x1b[31m  " + "x" * 80,
+                               credential_id="c", public_key_pem="x", sign_count=0)
+    name = store.get(did)["name"]
+    assert "\n" not in name and "\x1b" not in name and len(name) == 60 and name.startswith("Ken's iPhone [31m")
+
+
+def test_unauthenticated_challenges_are_bounded(make_kernel):
+    from jarvis.remote.passkeys import MAX_OUTSTANDING
+    k = make_kernel()
+    remote = RemoteAccess(k, HOST)
+    store = remote.devices
+    store.finish_pairing(store.create_pairing(by="t"), name="p", credential_id="c", public_key_pem="x", sign_count=0)
+    first = remote.login_options()["challengeId"]
+    for _ in range(MAX_OUTSTANDING + 50):
+        remote.login_options()
+    assert len(remote._challenges) == MAX_OUTSTANDING
+    with pytest.raises(DeviceError):  # the oldest was dropped
+        remote._take(first, ("login",))
