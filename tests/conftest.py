@@ -31,6 +31,22 @@ actions = ["post"]
 """
 
 
+@pytest.fixture(autouse=True)
+def _never_touch_the_real_mac(monkeypatch):
+    """Tests run on the owner's Mac too, so they must never reach the real machine: no launchctl (it would restart
+    the owner's background service) and no Mac apps (their real Calendar, Reminders and Notes). Tests that need
+    either pass a stand-in explicitly (e.g. ``default_registry(..., mac_runner=fake)``)."""
+    import subprocess
+
+    from jarvis import service
+    from jarvis.tools import mac
+
+    def no_launchctl(*args, check=True):
+        return subprocess.CompletedProcess(["launchctl", *args], 113, "", "not loaded (tests never use launchctl)")
+    monkeypatch.setattr(service, "_launchctl", no_launchctl)
+    monkeypatch.setattr(mac, "available", lambda: False)
+
+
 @pytest.fixture
 def root(tmp_path: Path) -> Path:
     r = tmp_path / "work"

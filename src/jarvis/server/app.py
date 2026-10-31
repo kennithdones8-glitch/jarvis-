@@ -22,6 +22,7 @@ import json
 import os
 import re
 import shutil
+import sys
 import secrets
 import threading
 import time
@@ -213,6 +214,12 @@ class Dashboard:
         self._audit_cache: tuple[float, Any] = (0.0, None)
         self.httpd = ThreadingHTTPServer((host, port), self._handler_class())
         self.httpd.daemon_threads = True
+        default_handle_error = self.httpd.handle_error
+
+        def handle_error(request, client_address):  # a client hanging up mid-reply isn't worth a traceback
+            if not isinstance(sys.exc_info()[1], (BrokenPipeError, ConnectionResetError)):
+                default_handle_error(request, client_address)
+        self.httpd.handle_error = handle_error
         self.host, self.port = host, self.httpd.server_address[1]
         self._runner = threading.Thread(target=self._run_loop, name="jarvis-runner-loop", daemon=True)
         self._maint = threading.Thread(target=self._maintenance_loop, name="jarvis-maintenance", daemon=True)
@@ -267,6 +274,10 @@ class Dashboard:
         self.httpd.server_close()
         self._pool.shutdown(wait=False, cancel_futures=True)
         self.voice.stop()
+        # Let the background loops finish their current pass before the caller closes the database.
+        for thread in (self._runner, self._maint):
+            if thread.is_alive() and thread is not threading.current_thread():
+                thread.join(timeout=15)
 
     # ---- task runner -------------------------------------------------------------------
     def _run_loop(self) -> None:
@@ -286,6 +297,8 @@ class Dashboard:
                             self._inflight.add(tid)
                         self._pool.submit(self._drive, tid)
             except Exception as exc:  # keep the loop alive; record what happened
+                if self._stop.is_set():
+                    return
                 self.kernel.audit.record("dashboard.runner_error", error=f"{type(exc).__name__}: {exc}")
             if self.notifier is not None:
                 try:
@@ -391,6 +404,8 @@ class Dashboard:
                         self.notifier.health_changed(self._health["ok"])
                 self.maybe_briefing()
             except Exception as exc:
+                if self._stop.is_set():
+                    return  # shutting down: the database may already be closed
                 self.kernel.audit.record("dashboard.maintenance_error", error=f"{type(exc).__name__}: {exc}"[:300])
             self._stop.wait(self.maintenance_s)
 
