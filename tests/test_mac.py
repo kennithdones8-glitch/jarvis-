@@ -274,7 +274,61 @@ def test_calendar_reply_with_timing_dedupes_and_reports_gaps():
 
 
 def test_calendar_script_never_asks_for_the_whole_history():
+    """`whose` date/recurrence filters stalled Calendar for over 85 s on the owner's Mac (macOS 14), while bulk
+    reads of every event took seconds; the script must bulk-read and filter itself, with a cap."""
     from jarvis.tools.mac import SCRIPTS
     script = SCRIPTS["calendar.events"]
-    assert "c.events.whose({startDate: {_lessThan: to}})" not in script  # the slow, unbounded question
-    assert "{endDate: {_greaterThan: from}}" in script and "_beginsWith" in script
+    assert ".whose(" not in script
+    assert "evs.startDate()" in script and "evs.recurrence()" in script and "max" in script
+
+
+FAKE_CALENDAR = """
+const D = (s) => new Date(s);
+const data = {
+  Work: [["Standup", "2026-11-02T09:00:00Z", "2026-11-02T09:15:00Z", ""],
+         ["Old meeting", "2025-01-01T09:00:00Z", "2025-01-01T10:00:00Z", ""],
+         ["Weekly 1:1", "2026-01-05T14:00:00Z", "2026-01-05T14:30:00Z", "FREQ=WEEKLY"],
+         ["Next year", "2027-06-01T09:00:00Z", "2027-06-01T10:00:00Z", "FREQ=DAILY"]],
+  Birthdays: [["Sam", "2001-11-03T00:00:00Z", "2001-11-04T00:00:00Z", "FREQ=YEARLY"]],
+};
+function cal(name) {
+  const rows = data[name];
+  const evs = rows.map((r) => ({summary: () => r[0], alldayEvent: () => name === "Birthdays", location: () => "",
+                                excludedDates: () => []}));
+  evs.startDate = () => rows.map((r) => D(r[1]));
+  evs.endDate = () => rows.map((r) => D(r[2]));
+  evs.recurrence = () => rows.map((r) => r[3]);
+  evs.whose = () => { throw new Error("whose must not be used"); };
+  return {name: () => name, events: evs};
+}
+function Application() {
+  const cals = () => Object.keys(data).map(cal);
+  cals.byName = cal;
+  return {calendars: cals};
+}
+"""
+
+
+def test_calendar_script_filters_correctly(tmp_path):
+    import shutil
+    from jarvis.tools.mac import PRELUDE, SCRIPTS
+    node = shutil.which("node")
+    if not node:
+        pytest.skip("node is not installed")
+    js = tmp_path / "cal.js"
+    js.write_text(FAKE_CALENDAR + PRELUDE + SCRIPTS["calendar.events"] +
+                  "\nconsole.log(run([process.argv[2]]));")
+
+    def call(**a):
+        out = subprocess.run([node, str(js), json.dumps(a)], capture_output=True, text=True, check=True).stdout
+        return json.loads(out)
+
+    r = call(**{"from": "2026-11-01T00:00:00Z", "to": "2026-11-08T00:00:00Z"})
+    titles = sorted(e["title"] for e in r["events"])
+    assert titles == ["Sam", "Standup", "Weekly 1:1"]  # not the old one-off, not the future repeating one
+    assert {t["calendar"]: (t["overlapping"], t["repeating"]) for t in r["timing"]} == {"Work": (1, 1), "Birthdays": (0, 1)}
+    assert not any(t.get("error") for t in r["timing"])
+    capped = call(**{"from": "2026-11-01T00:00:00Z", "to": "2026-11-08T00:00:00Z", "max": 1})
+    assert len(capped["events"]) == 1 and "stopped at 1" in capped["timing"][0]["error"]
+    only = call(**{"from": "2026-11-01T00:00:00Z", "to": "2026-11-08T00:00:00Z", "calendar": "Birthdays"})
+    assert [e["title"] for e in only["events"]] == ["Sam"]

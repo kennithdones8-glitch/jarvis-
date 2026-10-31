@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.17.7 — Calendar reads without `whose` filters (still found on the owner's Mac)
+
+- **Fixed:** 0.17.6's bounded `whose` questions still timed out on the owner's Mac (macOS 14), although the
+  calendars hold only ~170 events and each calendar read by itself in at most 10 s. The script now bulk-reads
+  each calendar's start, end and repeat rule, picks events that overlap the range (or repeat and began before
+  it ends) in the script, and reads the other details only for those. At most 200 events; hitting the cap is
+  reported in `incomplete`.
+- New test runs the real calendar script under Node against a fake Calendar, so the filtering logic is
+  exercised on every platform, not just syntax-checked on macOS.
+
 ## 0.17.6 — Calendar speed fix (found on the owner's Mac)
 
 - **Fixed:** reading the calendar asked Calendar for every event that started before the end of the range, i.e. the
