@@ -38,6 +38,18 @@ ACTION_DOCS: dict[tuple[str, str], str] = {
                          ' (searches the web and reads pages; use for anything current, factual or needing sources)',
     ("llm", "compose"): 'llm.compose {"instruction": "<what to write>", "inputs": ["{{steps.N.field}}", ...]} '
                         '-> {"text"}  (use for summarising, drafting, answering from gathered data)',
+    ("calendar", "events"): 'calendar.events {"from": "<ISO date-time>", "to": "<ISO date-time>", "calendar": "<name>" (optional)} '
+                            '-> {"events": [{"title", "start", "end", "all_day", "location", "calendar"}]} (max 62 days)',
+    ("calendar", "add"): 'calendar.add {"title", "start": "<ISO>", "end": "<ISO>", "calendar" (optional), "location" (optional), '
+                         '"notes" (optional)} -> adds an event',
+    ("reminders", "list"): 'reminders.list {"list": "<name>" (optional)} -> {"reminders": [{"title", "due", "list", "notes"}]} (open ones)',
+    ("reminders", "add"): 'reminders.add {"title", "due": "<ISO>" (optional), "list" (optional), "notes" (optional)} -> adds a reminder',
+    ("reminders", "complete"): 'reminders.complete {"title": "<exact title>", "list" (optional)} -> ticks it off',
+    ("notes", "search"): 'notes.search {"query": "<words>"} -> {"results": [{"title", "modified", "snippet"}]} (Apple Notes)',
+    ("notes", "read"): 'notes.read {"title": "<exact title>"} -> {"content"}',
+    ("notes", "create"): 'notes.create {"title", "body": "<text>", "folder" (optional)} -> new note in Apple Notes',
+    ("mail", "draft"): 'mail.draft {"to": ["<email>"], "subject", "body"} -> saves a draft in Mail for the owner to send (never sends)',
+    ("apps", "open"): 'apps.open {"name": "<app name>"} -> opens an app',
 }
 REQUIRED_ARGS: dict[tuple[str, str], dict[str, type]] = {
     ("fs", "read"): {"path": str}, ("fs", "list"): {"path": str}, ("fs", "mkdir"): {"path": str},
@@ -46,12 +58,20 @@ REQUIRED_ARGS: dict[tuple[str, str], dict[str, type]] = {
     ("web", "fetch"): {"url": str}, ("search", "query"): {"query": str},
     ("llm", "compose"): {"instruction": str, "inputs": list},
     ("research", "web"): {"question": str},
+    ("calendar", "events"): {"from": str, "to": str}, ("calendar", "add"): {"title": str, "start": str, "end": str},
+    ("reminders", "list"): {}, ("reminders", "add"): {"title": str}, ("reminders", "complete"): {"title": str},
+    ("notes", "search"): {"query": str}, ("notes", "read"): {"title": str},
+    ("notes", "create"): {"title": str, "body": str},
+    ("mail", "draft"): {"to": list, "subject": str, "body": str}, ("apps", "open"): {"name": str},
 }
-RETRIES = {"web": 3, "search": 3, "llm": 2, "fs": 2, "research": 2, "doc": 2}
+RETRIES = {"web": 3, "search": 3, "llm": 2, "fs": 2, "research": 2, "doc": 2,
+           "calendar": 2, "reminders": 2, "notes": 2, "mail": 1, "apps": 1}
 
 PLANNER_PROMPT = """\
 You are the planning component of JARVIS, a personal assistant on the owner's Mac. Turn the \
 owner's request into a short plan of tool steps. Reply with JSON only.
+
+Now: {now} (the owner's local time). Write dates and times as ISO 8601, e.g. "2026-11-05T14:00".
 
 Available actions (use nothing else):
 {catalog}
@@ -78,6 +98,13 @@ Example reply:
  {{"description": "Read the trip notes", "tool": "fs", "action": "read", "args": {{"path": "{notes}/trip.txt"}}, "depends_on": []}},
  {{"description": "Write the summary", "tool": "llm", "action": "compose", "args": {{"instruction": "Summarise in one paragraph", "inputs": ["{{{{steps.0.content}}}}"]}}, "depends_on": [0]}},
  {{"description": "Save the summary", "tool": "fs", "action": "write", "args": {{"path": "{notes}/trip-summary.md", "content": "{{{{steps.1.text}}}}"}}, "depends_on": [1]}}]}}"""
+
+
+def now_text() -> str:
+    from datetime import datetime
+
+    now = datetime.now().astimezone()
+    return f"{now:%A %d %B %Y, %H:%M} ({now:%Z}, UTC{now:%z})"
 
 
 class PlanError(ValueError):
@@ -165,7 +192,7 @@ class Planner:
     def system_prompt(self) -> str:
         catalog = "\n".join(f"- {ACTION_DOCS[k]}" for k in available_actions(self.registry))
         return PLANNER_PROMPT.format(catalog=catalog, roots=", ".join(self.roots) or "(none)",
-                                     notes=self.notes_dir, max_steps=MAX_STEPS)
+                                     notes=self.notes_dir, max_steps=MAX_STEPS, now=now_text())
 
     def folder_context(self, request: str) -> str | None:
         """Names (not contents) of files in approved folders the request mentions, so the plan can refer

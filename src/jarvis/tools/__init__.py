@@ -11,7 +11,8 @@ from .search import SearchTool
 from .web import WebTool
 
 
-def default_registry(data_dir: str | Path, *, searxng_url: str | None = None, permissions=None) -> ToolRegistry:
+def default_registry(data_dir: str | Path, *, searxng_url: str | None = None, permissions=None,
+                     mac_runner=None) -> ToolRegistry:
     from ..core.permissions import Effect, ResourceKind, Tier
 
     def dest_guard(path: str) -> tuple[bool, str]:
@@ -23,6 +24,10 @@ def default_registry(data_dir: str | Path, *, searxng_url: str | None = None, pe
     registry.register(FileTool(data_dir, dest_guard=dest_guard if permissions is not None else None).spec())
     registry.register(DocumentTool().spec())
     registry.register(WebTool().spec())
+    from . import mac
+    if mac.available() or mac_runner is not None:  # Calendar, Reminders, Notes, Mail drafts, opening apps
+        for spec in mac.MacTool(**({"runner": mac_runner} if mac_runner else {})).specs():
+            registry.register(spec)
     if searxng_url and _reachable(searxng_url):  # don't offer the planner a search engine that isn't running
         registry.register(SearchTool(searxng_url).spec())
     return registry

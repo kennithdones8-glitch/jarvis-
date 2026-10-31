@@ -132,6 +132,37 @@ def describe_event(event: str, p: dict[str, Any], *, task_id: str | None = None,
     return text[:180]
 
 
+MAC_TOOLS = ("calendar", "reminders", "notes", "mail", "apps")
+
+
+def mac_preview(tool: str, action: str, args: dict[str, Any]) -> str:
+    """Exactly what a Mac-app action will add or change, in plain words, for the approval card."""
+    def when(v: Any) -> str:
+        try:
+            dt = datetime.fromisoformat(str(v).replace("Z", "+00:00"))
+            return (dt.astimezone() if dt.tzinfo else dt).strftime("%a %d %b %Y, %H:%M")
+        except ValueError:
+            return str(v)
+    lines: list[str] = []
+    if tool == "calendar":
+        lines = [f"Event: {args.get('title')}", f"From: {when(args.get('start'))}", f"To:   {when(args.get('end'))}"]
+        lines += [f"{k.capitalize()}: {args[k]}" for k in ("calendar", "location", "notes") if args.get(k)]
+    elif tool == "reminders":
+        lines = [f"{'Tick off' if action == 'complete' else 'Reminder'}: {args.get('title')}"]
+        lines += [f"Due: {when(args['due'])}"] if args.get("due") else []
+        lines += [f"{k.capitalize()}: {args[k]}" for k in ("list", "notes") if args.get(k)]
+    elif tool == "notes":
+        lines = [f"New note: {args.get('title')}"] + ([f"Folder: {args['folder']}"] if args.get("folder") else [])
+        lines += ["", str(args.get("body", ""))]
+    elif tool == "mail":
+        to = args.get("to")
+        lines = [f"Draft to: {', '.join(to) if isinstance(to, list) else to}", f"Subject: {args.get('subject')}",
+                 "(saved as a draft: JARVIS never sends it)", "", str(args.get("body", ""))]
+    elif tool == "apps":
+        lines = [f"Open: {args.get('name')}"]
+    return "\n".join(lines)[:4000]
+
+
 def _content_length(h: BaseHTTPRequestHandler) -> int:
     """A body length we can safely read: a missing, negative or malformed header would otherwise make the
     read wait until the client hangs up."""
@@ -502,12 +533,15 @@ class Dashboard:
         approvals = []
         for a in k.approvals.pending():
             preview = None
-            if a["task_id"] and a["step_id"] and a["tool"] == "fs":
+            if a["task_id"] and a["step_id"] and a["tool"] in ("fs", *MAC_TOOLS):
                 try:
                     args = self.orch.preview_args(a["task_id"], a["step_id"])
-                    preview = args.get("content")
-                    if preview is None and a["action"] == "move":
-                        preview = f"Move to: {tilde(str(args.get('to')))}"
+                    if a["tool"] == "fs":
+                        preview = args.get("content")
+                        if preview is None and a["action"] == "move":
+                            preview = f"Move to: {tilde(str(args.get('to')))}"
+                    else:
+                        preview = mac_preview(a["tool"], a["action"], args)
                 except Exception:
                     preview = None
             approvals.append({"id": a["id"], "task_id": a["task_id"], "tool": a["tool"], "action": a["action"],

@@ -126,6 +126,9 @@ function decisionKind(a) {
   if (a.tool === "fs" && a.action === "mkdir") return "Create a folder";
   if (a.tool === "fs" && a.action === "delete") return "Delete a file";
   if (a.tool === "search") return "Search the web";
+  const mac = { "calendar.add": "Add a calendar event", "reminders.add": "Add a reminder", "reminders.complete": "Tick off a reminder",
+                "notes.create": "Create a note", "mail.draft": "Create an email draft", "apps.open": "Open an app" };
+  if (mac[`${a.tool}.${a.action}`]) return mac[`${a.tool}.${a.action}`];
   return "Action";
 }
 

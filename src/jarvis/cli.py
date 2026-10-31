@@ -105,6 +105,8 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("file", nargs="?")
     p.add_argument("--whisper-dir", default="~/whisper.cpp", help="where you built whisper.cpp")
     p.add_argument("--model", default="base.en", help="model name (default base.en)")
+    p = sub.add_parser("mac", help="Mac apps (Calendar, Reminders, Notes): check — read-only test that also lets macOS ask for permission")
+    p.add_argument("op", choices=["check"])
     p = sub.add_parser("doctor", help="check the whole installation and say what to fix")
     p.add_argument("--port", type=int, default=8765)
     p.add_argument("--json", action="store_true")
@@ -190,6 +192,8 @@ def main(argv: list[str] | None = None) -> int:
             return _devices(kernel, args)
         elif args.cmd == "voice":
             return _voice(kernel, args)
+        elif args.cmd == "mac":
+            return _mac_check()
         elif args.cmd == "doctor":
             from .doctor import FAIL, Doctor, as_json, report
 
@@ -675,6 +679,43 @@ listening on 127.0.0.1 only.""")
         if started:
             voice.process.stop()
     return 0
+
+
+def _mac_check(runner=None) -> int:
+    """Read from each Mac app once through the same code JARVIS uses, so macOS can ask its one-time permission
+    question while you're at Terminal. Reads only; nothing is added or changed."""
+    from datetime import datetime, timedelta
+
+    from .tools import mac
+
+    if runner is None and not mac.available():
+        print("Mac apps are only available on macOS.", file=sys.stderr)
+        return 1
+    tool = mac.MacTool(**({"runner": runner} if runner else {}))
+    now = datetime.now().astimezone()
+    checks = [
+        ("Calendar", "calendar", "events", {"from": now.replace(hour=0, minute=0).isoformat(),
+                                             "to": (now + timedelta(days=7)).isoformat()},
+         lambda r: f"{r['count']} event(s) in the next 7 days"),
+        ("Reminders", "reminders", "list", {}, lambda r: f"{r['count']} open reminder(s)"),
+        ("Notes", "notes", "search", {"query": "a", "limit": 1}, lambda r: f"{r['total']} note(s) contain the letter a"),
+    ]
+    print("Reading from each app once (nothing is changed). If macOS asks to allow access, click OK.\n")
+    failed = 0
+    from .core.tools import CallContext
+    ctx = CallContext(task_id=None, step_id=None, op_id=None, resource=None)
+    for label, tool_name, action, args, describe in checks:
+        handler = getattr(tool, f"handle_{tool_name}")
+        started = time.monotonic()
+        try:
+            result = handler(action, args, ctx)
+            print(f"✓ {label:<10} {describe(result)} · {time.monotonic() - started:.1f}s")
+        except mac.MacError as exc:
+            failed += 1
+            print(f"✗ {label:<10} {exc}")
+    print("\nMail drafts and opening apps ask for permission the first time you approve one." if not failed else
+          "\nFix the ✗ lines (System Settings → Privacy & Security → Automation), then run this again.")
+    return 1 if failed else 0
 
 
 def _touchid(kernel: Kernel, args) -> int:
