@@ -11,7 +11,6 @@ from pathlib import Path
 import pytest
 
 from jarvis.core import Kernel, StepSpec, TaskState
-from jarvis.core.killswitch import EmergencyStop
 from jarvis.models import ChatRequest, Message
 from jarvis.models.providers import ClaudeCodeProvider, run_tracked
 from jarvis.models.types import Category, ModelInfo

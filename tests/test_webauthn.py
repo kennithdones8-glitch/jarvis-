@@ -63,7 +63,6 @@ def test_assertion_rejections():
     with pytest.raises(WebAuthnError, match="signature"):
         verify_assertion(other.get(b64, ORIGIN, counter=20), **kw)
     tampered = pk.get(b64, ORIGIN, counter=30)
-    sig = bytearray(tampered["response"]["signature"].encode())
     tampered["response"]["clientDataJSON"] = b64url_encode(b'{"type":"webauthn.get","challenge":"' + b64.encode()
                                                            + b'","origin":"' + ORIGIN.encode() + b'","x":1}')
     with pytest.raises(WebAuthnError, match="signature"):

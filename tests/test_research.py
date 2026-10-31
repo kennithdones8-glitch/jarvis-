@@ -203,7 +203,7 @@ def test_usage_limit_during_research_task_waits(env, root, monkeypatch):
     make, _ = env
     k = make()
     k.models.router.gate.grants.grant(category="conversation", provider="claude", by="user:test")
-    o = Orchestrator(k, notes_dir=str(root / "notes"))
+    Orchestrator(k, notes_dir=str(root / "notes"))  # registers the research tool used below
     monkeypatch.setenv("FAKE_MODE", "limit")
     tid = k.tasks.create("r", steps=[StepSpec("Research", "research", "web", {"question": "x"})],
                          context={"verifier": "writes_verified"})

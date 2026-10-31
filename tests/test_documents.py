@@ -13,7 +13,6 @@ from jarvis.core import TaskState
 from jarvis.core.permissions import Policy
 from jarvis.core.tools import ApprovalRequired, PermissionDenied, ToolError
 from jarvis.orchestrator import Orchestrator
-from jarvis.tools import default_registry
 from jarvis.tools.documents import parse_pages
 from jarvis.tools.fs import FileTool
 

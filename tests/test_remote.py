@@ -11,7 +11,7 @@ import pytest
 
 from model_servers import start_ollama
 from soft_passkey import SoftPasskey
-from test_dashboard import CFG, call, state, wait_for
+from test_dashboard import CFG, call, wait_for
 
 from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import ec

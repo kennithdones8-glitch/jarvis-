@@ -5,7 +5,7 @@ import pytest
 from model_servers import start_ollama, start_openai
 
 from jarvis.core.killswitch import EmergencyStop
-from jarvis.core.tools import ApprovalRequired, PermissionDenied
+from jarvis.core.tools import ApprovalRequired
 from jarvis.models import (
     BudgetExceeded, Category, ChatRequest, EgressDenied, Message, Need, NoModelAvailable, parse_json_output,
 )

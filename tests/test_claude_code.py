@@ -312,7 +312,7 @@ def test_background_compose_waits_for_reset_instead_of_degrading(brain, fake_cla
     from jarvis.core import StepSpec, TaskState
     from jarvis.orchestrator import Orchestrator
     k, local = brain("hybrid")
-    o = Orchestrator(k, notes_dir=str(root / "notes"))
+    Orchestrator(k, notes_dir=str(root / "notes"))  # registers the compose tool used below
     k.models.router.gate.grants.grant(category="file_content", provider="claude", by="user:test")
     (root / "notes" / "a.txt").write_text("facts")
     claude = next(p for p in k.models.router.gate._providers.values())

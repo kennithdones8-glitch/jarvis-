@@ -70,7 +70,7 @@ class ComposeTool:
                                      task_id=ctx.task_id, step_id=ctx.step_id, allow_fallback=False)
         except UsageLimited as exc:
             # Background work waits for Claude rather than quietly using a weaker model.
-            raise ToolError(f"Claude usage limit reached; resuming after reset", retryable=True,
+            raise ToolError("Claude usage limit reached; resuming after reset", retryable=True,
                             retry_after=exc.reset_at or time.time() + 900) from None
         except NoModelAvailable as exc:
             raise ToolError(f"no model available to write: {exc}", retryable=True) from None

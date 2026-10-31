@@ -7,7 +7,6 @@ import ssl
 import pytest
 
 from model_servers import start_whisper
-from test_dashboard import dash  # noqa: F401  (fixture)
 
 from jarvis.doctor import FAIL, OK, SKIP, WARN, Doctor, report
 

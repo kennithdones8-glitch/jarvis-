@@ -5,7 +5,7 @@ from datetime import datetime, timedelta
 
 import pytest
 
-from test_dashboard import call, dash  # noqa: F401  (fixture)
+from test_dashboard import call
 
 from jarvis.core import StepSpec
 from jarvis.models.config import ConfigError, parse_model_config

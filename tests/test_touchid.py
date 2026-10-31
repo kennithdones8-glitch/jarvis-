@@ -2,10 +2,9 @@
 
 import json
 
-import pytest
 
 from soft_passkey import SoftPasskey
-from test_dashboard import call, dash, state  # noqa: F401  (fixture)
+from test_dashboard import call, state
 
 
 class MacBrowser:
