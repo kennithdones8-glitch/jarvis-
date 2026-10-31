@@ -387,3 +387,15 @@ pre.out { background: rgba(0, 0, 0, .35); border: 1px solid var(--gold-line); pa
   .top-right { flex-wrap: wrap; justify-content: flex-end; row-gap: 6px; }
   .top-right .btn { padding-left: 8px; padding-right: 8px; letter-spacing: .08em; font-size: 13px; }
 }
+
+/* Flight Recorder timeline */
+.timeline .tl-goal { font: 600 18px/1.3 var(--display); margin: 0 0 6px 10px; overflow-wrap: anywhere; }
+.timeline .tl-sum { color: var(--muted); font-size: 13px; margin: 0 0 6px 10px; }
+.timeline .tl-integrity { font-size: 13px; color: var(--ok); margin: 0 0 10px 10px; }
+.timeline .tl-integrity.bad { color: var(--red); }
+.tl-events li span { overflow-wrap: anywhere; }
+.tl-events li.problem { color: #ffd0d3; }
+.tl-phase { font: 600 11px var(--display); letter-spacing: .18em; text-transform: uppercase; color: var(--gold); margin-right: 4px; }
+.tl-phase.approval, .tl-phase.cloud { color: var(--arc); }
+.tl-events li.problem .tl-phase { color: var(--red); }
+.tl-events li small { color: var(--muted); }

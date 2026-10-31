@@ -800,6 +800,9 @@ class Dashboard:
             items = mem.search(q) if q.strip() else mem.list(limit=50)
             return self._json(h, 200, {"memories": items, "counts": mem.counts(),
                                        "records": mem.search_records(q, limit=10) if q.strip() else []})
+        if m := re.fullmatch(r"/api/tasks/([\w-]+)/timeline", url.path):
+            from ..flight import timeline
+            return self._json(h, 200, timeline(self.kernel, m.group(1)))
         if m := re.fullmatch(r"/api/tasks/([\w-]+)/audit", url.path):
             return self._json(h, 200, self.kernel.audit.entries(task_id=m.group(1), limit=300))
         if url.path == "/api/briefing":

@@ -35,6 +35,7 @@ uv run jarvis gate # release gate: full suite + linter + every security item, by
 | `tests/test_lookup.py` | Smarter chat: lookups chosen locally, read-only only, outside-folder reads refused, no stray approvals, plan offers, persona |
 | `tests/test_bench.py` | Benchmark harness end to end: an oracle model passes every task, a careless one fails for the right reasons, unapproved changes caught, isolation, baseline scoring, sandboxed code checks |
 | `tests/test_streaming.py` | Live replies: same answer streamed or not, closed page stops generation without a retry, emergency stop cuts off, usual protections |
+| `tests/test_flight.py` | Flight Recorder: order, who approved what, no private text, rejections and a damaged audit log shown, dashboard + CLI |
 | `tests/test_gate.py` | The release gate: failing/skipped/missing security tests fail it, nothing outweighs them, every listed test exists |
 | `tests/test_backup_service.py` | Encryption, tamper detection, restore with deletions kept, retention, LaunchAgent plist |
 | `tests/test_persona.py` | Persona honesty and ability list |

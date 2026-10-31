@@ -206,6 +206,14 @@ audit-log check fails any change made without an approval. `jarvis gate` runs th
 pinned linter, and maps each security item to the specific tests that prove it: any of those failing, being
 skipped or missing fails the gate.
 
+## Flight Recorder (`src/jarvis/flight.py`, v0.17.3)
+
+`timeline(kernel, task_id)` orders everything recorded about one task: the audit entries for it (plus approval
+"used"/"restored" entries, which carry only an approval id), its steps and approvals, with counts (steps, tool runs,
+local and Claude model calls, approvals asked/approved/rejected, verification) and the audit chain's integrity.
+Read-only, and limited to what the audit log holds (fingerprints, not private text). Exposed as `jarvis trace`,
+`GET /api/tasks/<id>/timeline` and the dashboard's Timeline button.
+
 ## Service and backups
 
 `service.py` writes a per-user LaunchAgent that runs `uv run jarvis dashboard --no-open` at login and after

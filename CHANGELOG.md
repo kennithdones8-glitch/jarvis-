@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.17.3 — Flight Recorder timeline
+
+- **Timeline** for every task (dashboard: Timeline on a mission; Terminal: `jarvis trace TASK_ID`): the request,
+  plan, each permission decision, approvals and who gave them, which model did what (on the Mac or Claude), each
+  action, the verification and the outcome, in order, with problems flagged and the audit log's integrity shown.
+  Read-only; built from what JARVIS already records, so it holds fingerprints, not your private text.
+- Three of its tests joined the release gate (privacy, corrupted state, honest reporting).
+
 ## 0.17.2 — Release gate and docs sync (M-B)
 
 - **`jarvis gate`**: runs the full test suite and the linter, then checks 12 security items (normal completion,

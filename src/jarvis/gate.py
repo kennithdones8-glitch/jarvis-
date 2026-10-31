@@ -73,7 +73,8 @@ SECURITY: dict[str, tuple[str, list[str]]] = {
         "test_backup_service::wrong_passphrase_and_tampering_detected",
         "test_orchestrator::writes_verified_detects_tampering",
         "test_doctor::broken_settings_give_a_plain_message_not_a_traceback",
-        "test_documents::scanned_encrypted_and_corrupt_pdfs_reported_honestly"]),
+        "test_documents::scanned_encrypted_and_corrupt_pdfs_reported_honestly",
+        "test_flight::timeline_reports_a_damaged_audit_log"]),
     "Resource exhaustion and runaway retries": ("Retries, time, output and memory are bounded", [
         "test_tasks::bounded_retries_with_backoff", "test_tasks::retry_limit_reached",
         "test_gateway::timeout_and_output_limit", "test_tools::overall_deadline_stops_drip_feeding_servers",
@@ -92,7 +93,8 @@ SECURITY: dict[str, tuple[str, list[str]]] = {
         "test_memory::audit_holds_no_memory_text", "test_memory::memory_context_is_private_category",
         "test_lookup::lookup_results_are_private_and_the_question_stays_local",
         "test_research::asks_before_researching_and_never_falls_back_to_local",
-        "test_audit::secrets_redacted_in_audit", "test_bench::runs_never_touch_the_real_jarvis"]),
+        "test_audit::secrets_redacted_in_audit", "test_bench::runs_never_touch_the_real_jarvis",
+        "test_flight::holds_no_private_text"]),
     "Honest reporting": ("Failures and unverified results are reported as such", [
         "test_tasks::failed_verification_is_not_reported_as_complete", "test_tasks::rejection_fails_task_honestly",
         "test_orchestrator::invalid_plan_gets_one_repair_then_fails_honestly",
@@ -100,7 +102,7 @@ SECURITY: dict[str, tuple[str, list[str]]] = {
         "test_lookup::persona_matches_the_new_abilities",
         "test_claude_code::failure_reason_is_visible_in_fallback_note",
         "test_research::research_brief_end_to_end_requires_a_verified_source",
-        "test_remote::push_failures_are_recorded_not_silent"]),
+        "test_remote::push_failures_are_recorded_not_silent", "test_flight::a_rejection_is_shown_as_a_problem"]),
     "Emergency stop (protected)": ("One stop halts everything, including work in progress", [
         "test_gateway::emergency_stop_blocks_everything", "test_tasks::emergency_stop_pauses_then_requires_explicit_resume",
         "test_stop::stop_kills_running_claude_and_its_children", "test_models::emergency_stop_blocks_model_calls",

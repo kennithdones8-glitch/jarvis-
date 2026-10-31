@@ -105,6 +105,9 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("file", nargs="?")
     p.add_argument("--whisper-dir", default="~/whisper.cpp", help="where you built whisper.cpp")
     p.add_argument("--model", default="base.en", help="model name (default base.en)")
+    p = sub.add_parser("trace", help="Flight Recorder: one task's full timeline (request, plan, approvals, models, tools, outcome)")
+    p.add_argument("task_id")
+    p.add_argument("--json", action="store_true")
     p = sub.add_parser("gate", help="release gate: full tests, linter, and every security item (run from the repo)")
     p.add_argument("--json", action="store_true")
     p = sub.add_parser("bench", help="benchmark: list | run [IDS] | baseline | score-baseline FILE | report RUN_DIR")
@@ -202,6 +205,11 @@ def main(argv: list[str] | None = None) -> int:
             return _devices(kernel, args)
         elif args.cmd == "voice":
             return _voice(kernel, args)
+        elif args.cmd == "trace":
+            from . import flight
+
+            t = flight.timeline(kernel, args.task_id)
+            print(json.dumps(t, indent=2, default=str) if args.json else flight.as_text(t))
         elif args.cmd == "gate":
             from . import gate
 

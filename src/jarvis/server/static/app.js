@@ -493,6 +493,36 @@ async function makePlan(m) {
   catch (e) { note(`Could not start planning: ${e.message}`); }
 }
 
+// ---------------------------------------------------------------- Flight Recorder: one task's whole story
+const PHASE_WORDS = { request: "Asked", plan: "Plan", state: "Status", permission: "Permission", approval: "Approval",
+                      tool: "Action", model: "Model", cloud: "Claude", verify: "Check", stop: "Stop", other: "Other" };
+
+async function showTimeline(taskId) {
+  let t;
+  try { t = await api(`/api/tasks/${taskId}/timeline`); } catch (e) { note(`Couldn't load the timeline: ${e.message}`); return; }
+  const s = t.summary;
+  const verified = s.verified === true ? "passed" : s.verified === false ? "FAILED" : "not run";
+  const close = () => { dlg.close(); dlg.remove(); };
+  const dlg = h("dialog", { class: "logdlg timeline", "aria-labelledby": "tl-h" },
+    h("header", { class: "ph" }, h("h2", { id: "tl-h" }, "Timeline"),
+      h("button", { class: "btn btn-ghost btn-sm", type: "button", onclick: close }, "Close")),
+    h("div", { class: "tl-goal" }, t.task.goal),
+    h("div", { class: "tl-sum" },
+      `${STATE_WORDS[t.task.state] || t.task.state} · ${s.steps_done}/${s.steps} steps · `,
+      `models: ${s.local_model_calls} on the Mac, ${s.claude_calls} Claude · `,
+      `approvals: ${s.approvals_requested} asked, ${s.approved} approved, ${s.rejected} rejected · check ${verified}`),
+    h("div", { class: `tl-integrity${t.integrity.audit_chain_ok ? "" : " bad"}` },
+      t.integrity.audit_chain_ok ? `✓ Audit log intact (${t.integrity.entries_checked} entries checked)`
+        : `✗ Audit log damaged at entry ${t.integrity.first_bad_seq}: this timeline may be incomplete`),
+    h("ol", { class: "activity tl-events" }, t.events.map((e) => h("li", { class: e.problem ? "problem" : null },
+      h("time", {}, clock(e.ts)),
+      h("span", {}, h("b", { class: `tl-phase ${e.phase}` }, PHASE_WORDS[e.phase] || e.phase), " ", e.text,
+        e.actor && e.actor !== "system" ? h("small", {}, ` · ${e.actor.replace("user:", "")}`) : null)))));
+  dlg.addEventListener("close", () => dlg.remove());
+  document.body.append(dlg);
+  dlg.showModal();
+}
+
 // ---------------------------------------------------------------- morning briefing (built live, never stored)
 function briefingCard(m) {
   const b = m.briefing;
@@ -613,6 +643,7 @@ function missionCard(t) {
   const files = (t.evidence && t.evidence.files) || [];
   const controls = [];
   if (["queued", "running", "awaiting_approval"].includes(t.state)) controls.push(h("button", { class: "btn btn-ghost btn-sm", type: "button", onclick: () => act(`/api/tasks/${t.id}/pause`, {}) }, "Pause"));
+  controls.push(h("button", { class: "btn btn-ghost btn-sm", type: "button", onclick: () => showTimeline(t.id) }, "Timeline"));
   if (["paused", "blocked"].includes(t.state)) controls.push(h("button", { class: "btn btn-sm", type: "button", onclick: () => act(`/api/tasks/${t.id}/resume`, {}) }, "Resume"));
   if (!["completed", "failed", "cancelled"].includes(t.state)) controls.push(h("button", { class: "btn btn-ghost btn-sm", type: "button", onclick: async () => (await ask("Cancel this task? Steps already done are not undone.", { ok: "Cancel task", danger: true })) && act(`/api/tasks/${t.id}/cancel`, {}) }, "Cancel"));
 

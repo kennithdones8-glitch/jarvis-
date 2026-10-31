@@ -36,7 +36,7 @@ Approved model paths and what they cost:
 
 | System | Today | Built from |
 |---|---|---|
-| Flight Recorder | mostly exists | audit hash chain, task steps/checkpoints, approvals, evidence, model routes · missing: one timeline per task, external anchor |
+| Flight Recorder | exists (v0.17.3) | audit hash chain, steps/checkpoints, approvals, evidence, model routes, **per-task timeline** · missing: external anchor for the newest entries |
 | Outcome Engine | partial | planner + task engine + writes_verified + bench checks · missing: per-goal criteria, broader verification, replanning (M-C) |
 | Intelligence Tournament | missing | research source verification only |
 | Opportunity Radar | minimal | morning briefing |
