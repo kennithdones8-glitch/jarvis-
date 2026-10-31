@@ -66,7 +66,7 @@ def test_every_listed_test_really_exists():
     """Renaming a test without updating the gate would otherwise fail every run; catch it here, by name."""
     defined = {f"{p.stem}::{m}" for p in TESTS.glob("test_*.py")
                for m in re.findall(r"^def test_(\w+)", p.read_text(), re.M)}
-    listed = {t for _, tests in gate.SECURITY.values() for t in tests} | gate.ALLOWED_SKIPS
+    listed = {t for _, tests in gate.SECURITY.values() for t in tests} | gate.ALLOWED_SKIPS | gate.MACOS_ONLY
     assert listed - defined == set()
 
 

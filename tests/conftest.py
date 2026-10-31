@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import sys
 from pathlib import Path
 
@@ -45,6 +46,23 @@ def _never_touch_the_real_mac(monkeypatch):
         return subprocess.CompletedProcess(["launchctl", *args], 113, "", "not loaded (tests never use launchctl)")
     monkeypatch.setattr(service, "_launchctl", no_launchctl)
     monkeypatch.setattr(mac, "available", lambda: False)
+    # Anything that still reaches for these programs finds a refusing stand-in first, not the real one: no Keychain
+    # prompts, no Apple events, no service changes. (Tests that need their own stand-in put it in front of these.)
+    monkeypatch.setenv("PATH", f"{_refusing_bin()}:{os.environ.get('PATH', '')}")
+
+
+_BIN: list[str] = []
+
+
+def _refusing_bin() -> str:
+    if not _BIN:
+        import tempfile
+        d = Path(tempfile.mkdtemp(prefix="jarvis-test-bin-"))
+        for name in ("security", "osascript", "launchctl"):
+            (d / name).write_text("#!/bin/sh\necho \"tests never use the real $0\" >&2\nexit 44\n")
+            (d / name).chmod(0o755)
+        _BIN.append(str(d))
+    return _BIN[0]
 
 
 @pytest.fixture

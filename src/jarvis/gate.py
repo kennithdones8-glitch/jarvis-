@@ -20,6 +20,11 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 ALLOWED_SKIPS = {"test_live_ollama::real_ollama_round_trip", "test_live_ollama::real_ollama_speed"}
+# Checks that need macOS itself: allowed to skip elsewhere, required to pass on a Mac.
+MACOS_ONLY = {"test_macos_only::mac_app_scripts_compile", "test_macos_only::launch_agent_file_is_valid",
+              "test_macos_only::code_sandbox_blocks_network_and_outside_writes"}
+if sys.platform != "darwin":
+    ALLOWED_SKIPS = ALLOWED_SKIPS | MACOS_ONLY
 
 # Each item: what it guards, and the tests (file::name, without parameters) that prove it.
 SECURITY: dict[str, tuple[str, list[str]]] = {
