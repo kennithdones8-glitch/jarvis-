@@ -281,6 +281,7 @@ class TaskEngine:
         backoff_base: float = 2.0,
         backoff_cap: float = 300.0,
         clock: Callable[[], float] = time.time,
+        arg_resolver: Callable[[dict[str, Any], list[dict[str, Any]]], dict[str, Any]] | None = None,
     ):
         self.store = store
         self.gateway = gateway
@@ -290,6 +291,9 @@ class TaskEngine:
         self.backoff_base = backoff_base
         self.backoff_cap = backoff_cap
         self.clock = clock
+        # Fills references to earlier step results into a step's args just before it runs, so
+        # approvals are bound to the real content being written or sent.
+        self.arg_resolver = arg_resolver
         self._active: set[str] = set()
         self._active_lock = threading.Lock()
 
@@ -460,7 +464,7 @@ class TaskEngine:
                 self.store.transition(tid, S.FAILED, reason="no runnable step", error="unsatisfiable step dependencies")
             return True
 
-        self._execute(tid, step)
+        self._execute(tid, step, steps)
         return True
 
     def _next_runnable(self, steps: list[dict[str, Any]]) -> dict[str, Any] | None:
@@ -476,12 +480,21 @@ class TaskEngine:
             return s
         return None
 
-    def _execute(self, tid: str, step: dict[str, Any]) -> None:
+    def _execute(self, tid: str, step: dict[str, Any], steps: list[dict[str, Any]]) -> None:
         act = self.gateway.registry.action(step["tool"], step["action"])
+        args = step["args"]
+        if self.arg_resolver is not None:
+            try:
+                args = self.arg_resolver(step, steps)
+            except (KeyError, IndexError, TypeError, ValueError) as exc:
+                self.store.update_step(step["id"], state=StepState.FAILED, error=f"bad step reference: {exc}",
+                                       finished_at=now_iso())
+                self.store.transition(tid, S.FAILED, reason="bad step reference", error=f"step {step['idx']}: {exc}")
+                return
         op_id = step["op_id"] or new_id("op")
         attempt = self.store.start_step(step["id"], op_id)  # durable before the call
         try:
-            result = self.gateway.invoke(step["tool"], step["action"], step["args"], task_id=tid,
+            result = self.gateway.invoke(step["tool"], step["action"], args, task_id=tid,
                                          step_id=step["id"], op_id=op_id, summary=step["description"])
         except ApprovalRequired as exc:
             self.store.unstart_step(step["id"])

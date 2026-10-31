@@ -2,7 +2,7 @@
 
 A personal AI system for Mac and iPhone: persistent, permissioned, auditable, local-first.
 
-**Status: Milestone 2 (kernel + model layer) — no orchestrator, voice or UI yet.** See [ROADMAP](docs/ROADMAP.md).
+**Status: Milestone 3 — JARVIS can plan and carry out file-based tasks from the terminal. No dashboard, voice or memory yet.** See [ROADMAP](docs/ROADMAP.md).
 
 ## What works today
 
@@ -14,13 +14,14 @@ A personal AI system for Mac and iPhone: persistent, permissioned, auditable, lo
 | Hash-chained, append-only audit log with secret redaction | ✅ implemented, tested |
 | Global emergency stop | ✅ implemented, tested |
 | Operator CLI (`jarvis status`, `approve`, `stop`, …) | ✅ implemented, smoke-tested |
-| Model router (local-first) + Ollama and OpenAI-compatible adapters | ✅ implemented, protocol-tested; **not yet run against a real model** |
+| Model router (local-first) + Ollama and OpenAI-compatible adapters | ✅ running on the Mac with llama3.2:3b and qwen2.5:7b |
 | Egress privacy gate (ask per transmission, grants, local-only, secret scan) | ✅ implemented, tested |
 | Budget guard ($0 default) with usage ledger | ✅ implemented, tested |
 | File tool (read/list/search/write/delete; atomic, versioned, trash) | ✅ implemented, tested |
 | Web fetch tool (SSRF-protected, untrusted-content marking) | ✅ implemented, tested incl. a live fetch |
 | Web search via local SearXNG | ✅ implemented, protocol-tested; needs SearXNG on the Mac |
-| Orchestrator (LLM planning), dashboard, memory, voice, iPhone | ⏳ not started |
+| Orchestrator: plan → review → permission-checked execution → verification (`jarvis do`) | ✅ implemented, tested; planning quality on real models being evaluated |
+| Dashboard, memory, voice, iPhone | ⏳ not started |
 | macOS-specific behaviour (launchd, Keychain, Touch ID) | ⏳ not started; not yet tested on a Mac |
 
 ## Quick start
@@ -58,6 +59,8 @@ or `$JARVIS_HOME`. Nothing runs in the background and nothing is sent over the n
 | `jarvis pause\|resume\|cancel ID` | Task controls |
 | `jarvis stop [--reason]` / `jarvis release --yes` | Emergency stop |
 | `jarvis audit [--task ID]` / `jarvis verify-audit` | Inspect and verify the audit trail |
+| `jarvis do "…" [--yes]` | Plan a task, show the plan, run it with approvals, verify and report |
+| `jarvis run ID` | Continue a task (after approving, resuming or a restart) |
 | `jarvis models` | Configured models, live availability, budget |
 | `jarvis ask "…" [--min-quality N] [--local-only]` | One-off question through the router and privacy gate |
 | `jarvis grant-egress --category C --provider P` / `revoke-egress ID` / `grants` | Standing privacy grants |

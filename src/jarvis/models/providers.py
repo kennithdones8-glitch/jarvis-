@@ -37,13 +37,14 @@ class OllamaProvider:
     data_use_note = "runs on this Mac; nothing leaves the machine"
 
     def __init__(self, name: str, host: str, models: dict[str, ModelInfo], *, timeout: float = 600.0,
-                 cache_s: float = 30.0):
+                 cache_s: float = 30.0, keep_alive: str = "30m"):
         if not is_loopback_url(host):
             raise ValueError(f"local provider {name} must use a loopback host, got {host!r}")
         self.name = name
         self.host = host.rstrip("/")
         self.models = models
         self.timeout = timeout
+        self.keep_alive = keep_alive
         self._cache_s = cache_s
         self._cached: tuple[float, set[str]] | None = None
 
@@ -63,6 +64,8 @@ class OllamaProvider:
             "messages": _wire_messages(request),
             "stream": False,
             "options": {"temperature": request.temperature, "num_predict": request.max_tokens},
+            # Keep the model in memory between requests; reloading costs ~10 s on an Intel CPU.
+            "keep_alive": self.keep_alive,
         }
         if request.json_mode:
             payload["format"] = "json"

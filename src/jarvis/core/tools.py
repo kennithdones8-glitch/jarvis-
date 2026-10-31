@@ -200,6 +200,8 @@ class ToolGateway:
             # The worker thread cannot be killed; tools doing slow I/O must enforce their own deadlines.
             self.audit.record("tool.timeout", task_id=task_id, step_id=step_id, op_id=op_id, timeout_s=act.timeout_s)
             raise ToolTimeout(f"{tool}.{action} timed out after {act.timeout_s}s") from None
+        except ApprovalRequired:
+            raise  # nothing left the machine; the task pauses for the user's decision
         except ToolError as exc:
             self.audit.record("tool.error", task_id=task_id, step_id=step_id, op_id=op_id, error=str(exc),
                               retryable=exc.retryable, outcome_unknown=exc.outcome_unknown)

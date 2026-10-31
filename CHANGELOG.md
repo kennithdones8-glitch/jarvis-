@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.4.0 — Milestone 3b: orchestrator
+
+- Planner: the quality model proposes a JSON plan; code validates actions, args, dependencies and
+  step references; one repair round; clarifying questions and "cannot" answers are passed through.
+- Plan-then-execute with `{{steps.N.field}}` references resolved just before each step runs, so
+  approvals bind to and display the real content.
+- `llm.compose` tool (fast model, untrusted data blocks).
+- `writes_verified` verifier re-hashes every file written.
+- `jarvis do` (plan review, interactive approvals, verified report) and `jarvis run`.
+- Persona: neutral identity, worked example, and an explicit list of real abilities.
+  This fixed the "I am Tony Stark's AI" answer and invented abilities seen on the Mac.
+- Ollama `keep_alive` (30 min) to avoid model reloads; live benchmark reports warm generation speed.
+- Kernel uses the production tools by default.
+
 ## 0.3.1 — Web search
 
 - `search.query` tool backed by a local SearXNG (loopback only, query length/limit validation,

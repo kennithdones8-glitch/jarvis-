@@ -47,6 +47,11 @@ def main(argv: list[str] | None = None) -> int:
     for name in ("cancel", "pause", "resume"):
         p = sub.add_parser(name)
         p.add_argument("task_id")
+    p = sub.add_parser("do", help="plan and carry out a task (shows the plan and asks before running)")
+    p.add_argument("request")
+    p.add_argument("--yes", action="store_true", help="run the plan without asking (approvals are still asked)")
+    p = sub.add_parser("run", help="continue a task after approving or resuming it")
+    p.add_argument("task_id")
     sub.add_parser("models", help="show configured models, availability and budget")
     p = sub.add_parser("ask", help="one-off question to the best available model")
     p.add_argument("question")
@@ -102,6 +107,10 @@ def main(argv: list[str] | None = None) -> int:
         elif args.cmd in ("cancel", "pause", "resume"):
             getattr(kernel.engine, args.cmd)(args.task_id, actor="user:cli")
             print(f"{args.cmd}: {kernel.tasks.get(args.task_id)['state']}")
+        elif args.cmd == "do":
+            return _do(kernel, args)
+        elif args.cmd == "run":
+            return _drive(kernel, _orchestrator(kernel), args.task_id)
         elif args.cmd == "models":
             _print(_models_status(kernel))
         elif args.cmd == "ask":
@@ -144,6 +153,95 @@ def _models_status(kernel: Kernel) -> dict:
     disabled = [p.name for p in kernel.model_config.providers if not p.enabled]
     out["disabled_providers"] = disabled
     return out
+
+
+def _orchestrator(kernel: Kernel):
+    from .orchestrator import Orchestrator
+
+    return Orchestrator(kernel)
+
+
+def _confirm(question: str) -> bool:
+    try:
+        return input(f"{question} [y/N] ").strip().lower() in ("y", "yes")
+    except EOFError:
+        return False
+
+
+def _do(kernel: Kernel, args) -> int:
+    import time
+
+    from .models import NoModelAvailable
+    from .orchestrator.planner import describe_args
+
+    kernel.start()
+    orch = _orchestrator(kernel)
+    print("Planning…", file=sys.stderr)
+    started = time.monotonic()
+    try:
+        plan = orch.plan(args.request)
+    except NoModelAvailable as exc:
+        print(f"no model can plan this: {exc}")
+        for model, reason in exc.reasons.items():
+            print(f"  {model}: {reason}")
+        return 4
+    took = time.monotonic() - started
+    if plan.kind == "clarify":
+        print(f"JARVIS asks: {plan.message}\n(re-run `jarvis do` with a more specific request)")
+        return 0
+    if plan.kind == "cannot":
+        print(f"JARVIS can't do this yet: {plan.message}")
+        return 0
+    if plan.kind == "failed":
+        print(f"JARVIS could not produce a valid plan ({plan.model}, {plan.attempts} attempts): {plan.message}")
+        return 5
+    print(f"\nGoal: {plan.goal}   [{plan.model} · {took:.0f}s]")
+    for i, s in enumerate(plan.steps):
+        deps = f"  (after {', '.join(map(str, s.depends_on))})" if s.depends_on else ""
+        print(f"  {i}. {s.description}\n     {s.tool}.{s.action} {describe_args(s.args)}{deps}")
+    if not args.yes and not _confirm("\nRun this plan?"):
+        print("Not run. Nothing was changed.")
+        return 0
+    task_id = orch.submit(args.request, plan, actor="user:cli")
+    print(f"Task {task_id}")
+    return _drive(kernel, orch, task_id)
+
+
+def _drive(kernel: Kernel, orch, task_id: str) -> int:
+    import time
+
+    from .core.tasks import TaskState
+
+    while True:
+        state = kernel.engine.run(task_id)
+        if state is TaskState.AWAITING_APPROVAL:
+            for appr in kernel.approvals.pending(task_id=task_id):
+                print(f"\nApproval needed (tier {appr['tier']}): {appr['summary']}\n  reason: {appr['reason']}")
+                if appr["tool"] == "fs" and appr["step_id"]:
+                    preview = orch.preview_args(task_id, appr["step_id"]).get("content")
+                    if isinstance(preview, str):
+                        print("  content:\n    " + preview[:600].replace("\n", "\n    ")
+                              + ("\n    …" if len(preview) > 600 else ""))
+                approve = _confirm("Approve?")
+                kernel.approvals.decide(appr["id"], approve=approve, by="user:cli")
+            continue
+        if state is TaskState.RUNNING:  # waiting out a retry backoff
+            time.sleep(1)
+            continue
+        break
+    rep = orch.report(task_id)
+    print(f"\nResult: {rep['state'].upper()}")
+    for s in rep["steps"]:
+        print(f"  {s['n']}. [{s['state']}] {s['description']}" + (f" — {s['error']}" if s["error"] else ""))
+    if rep["error"]:
+        print(f"Error: {rep['error']}")
+    if rep["next_action"]:
+        print(f"Next: {rep['next_action']}")
+    for f in (rep["evidence"] or {}).get("files", []):
+        print(f"Verified: {f['path']} (on disk: {f['exists']}, content matches: {f['content_matches']})")
+    if rep["final_text"] and not (rep["evidence"] or {}).get("files"):
+        print(f"\n{rep['final_text']}")
+    return 0 if rep["state"] == "completed" else 6
 
 
 def _ask(kernel: Kernel, args) -> int:

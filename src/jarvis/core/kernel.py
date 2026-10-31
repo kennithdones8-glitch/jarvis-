@@ -40,6 +40,9 @@ class Kernel:
         self.policy_path = Path(policy_path) if policy_path else self.home / "policy.toml"
         self.config_path = Path(config_path) if config_path else self.home / "jarvis.toml"
 
+        from ..models import build_model_service, load_model_config  # models depend on core, not vice versa
+
+        self.model_config = load_model_config(self.config_path)
         self.db = Database(self.home / "jarvis.db")
         self.audit = AuditLog(self.db)
         self.killswitch = KillSwitch(self.db, self.audit)
@@ -52,15 +55,16 @@ class Kernel:
             self.policy = Policy.empty(protected=protected)
         self.permissions = PermissionEngine(self.policy)
         self.approvals = Approvals(self.db, self.audit)
-        self.registry = registry or ToolRegistry()
+        if registry is None:
+            from ..tools import default_registry
+
+            registry = default_registry(self.home, searxng_url=self.model_config.searxng_url)
+        self.registry = registry
         self.gateway = ToolGateway(self.registry, self.permissions, self.approvals, self.audit, self.killswitch)
         self.tasks = TaskStore(self.db, self.audit)
         self.engine = TaskEngine(self.tasks, self.gateway, self.killswitch, self.audit, verifiers=verifiers,
                                  **engine_options)
 
-        from ..models import build_model_service, load_model_config  # models depend on core, not vice versa
-
-        self.model_config = load_model_config(self.config_path)
         self.models = build_model_service(self.model_config, self.db, self.audit, self.approvals, self.killswitch,
                                           secrets=secrets)
 

@@ -39,7 +39,7 @@ Fixed guarantees, independent of policy:
 | Repeated external action after crash | Write-ahead `started`, reconcile, `uncertain` + block | ✅ tested with real process kill |
 | Audit tampering | Triggers + hash chain | ✅ tested (edit, delete) — tail truncation not yet detectable |
 | Secrets in logs | Redaction + bulk content stored as hash/length | ✅ best-effort |
-| Prompt injection | External content treated as data; policy outside model | ⏳ orchestrator milestone |
+| Prompt injection | Plan-then-execute (content is read only after the plan is fixed); untrusted data blocks in compose; permission engine outside the model | ✅ tested — injected text can still distort the wording of a composed document |
 | Private data sent to cloud | Egress gate holds all cloud providers; private categories need a grant or a single-use, request-bound approval; local-only categories are never sent; content is never written to the audit log | ✅ tested |
 | Silent provider fallback | Fallback goes through the same gate; approvals are per provider and per request | ✅ tested |
 | Unapproved spending | Budget guard (default $0) checked by router and gate; paid models are excluded | ✅ tested |

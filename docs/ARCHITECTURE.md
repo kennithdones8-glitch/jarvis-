@@ -75,8 +75,23 @@ ModelService.complete(need, request)
 `ApprovalRequired` from the gate propagates to the caller and pauses the task. The service never
 works around it by trying another provider.
 
+## Orchestrator (implemented, `src/jarvis/orchestrator/`)
+
+```
+request ─► Planner (quality model, JSON) ─► deterministic validation ─► (one repair attempt)
+        ─► plan shown to owner ─► TaskStore ─► TaskEngine ─► resolve {{steps.N.x}} ─► ToolGateway
+        ─► writes_verified (re-hash every written file) ─► report
+```
+
+- **Plan-then-execute.** The plan is fixed before any file or web page is read, so text inside
+  them cannot add steps, change tools or skip approvals.
+- `llm.compose` writes from earlier results with the fast model. Inputs are wrapped as untrusted data blocks.
+- References are resolved just before a step runs. Approvals therefore cover, and display, the
+  exact content that will be written.
+- The planner may only use read, list, search, mkdir, write, fetch, search-query and compose. Delete and
+  external actions are not plannable yet.
+
 ## Planned components
 
-Orchestrator, tools
-(files, web), FastAPI + dashboard, memory (FTS5 + vectors with provenance), voice, iPhone web app
+ FastAPI + dashboard, memory (FTS5 + vectors with provenance), voice, iPhone web app
 over Tailscale with passkeys, launchd service, backups. See the [roadmap](ROADMAP.md).
