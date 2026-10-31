@@ -200,6 +200,8 @@ class Dashboard:
             raise ValueError("the dashboard only listens on loopback")
         self.kernel = kernel
         self.orch = Orchestrator(kernel)
+        from ..orchestrator.lookup import LookupService
+        self.lookup = LookupService(kernel, [str(r) for r in kernel.policy.roots])
         self.token = token or secrets.token_urlsafe(32)
         self.jobs: dict[str, dict[str, Any]] = {}
         self._lock = threading.Lock()
@@ -467,15 +469,18 @@ class Dashboard:
     def chat(self, message: str, history: list[dict[str, str]], *, local_only: bool = False,
              session: str = "dashboard") -> dict[str, Any]:
         memory = self.kernel.memory
-        msgs = list(priming_messages(chat_abilities(memory.settings.enabled)))
+        started = time.time()
+        found = self.lookup.run(message)  # calendar / reminders / notes / files, read-only, chosen locally
+        msgs = list(priming_messages(chat_abilities(memory.settings.enabled, lookups=bool(self.lookup.available()))))
         recalled = memory.recall(message)
         if context := memory.context_message(recalled):
             msgs.append(context)
         for turn in history[-10:]:
             if turn.get("role") in ("user", "assistant") and isinstance(turn.get("content"), str):
                 msgs.append(Message(turn["role"], turn["content"][:4000], Category.CONVERSATION))
+        if found.context:
+            msgs.append(found.context)
         msgs.append(Message("user", message, Category.CONVERSATION))
-        started = time.time()
         try:
             r = self.kernel.models.complete(Need("chat", prefer="auto", local_only=local_only),
                                             ChatRequest(tuple(msgs), max_tokens=600), purpose="dashboard chat")
@@ -486,7 +491,8 @@ class Dashboard:
             return {"needs_approval": True, "approval_id": exc.approval_id, "summary": appr["summary"]}
         memory.learn_from(session, message, r.text)
         return {"text": r.text, "model": f"{r.provider}/{r.model}", "seconds": round(time.time() - started, 1),
-                "tokens": r.usage.output_tokens, "note": r.note, "memories_used": len(recalled)}
+                "tokens": r.usage.output_tokens, "note": r.note, "memories_used": len(recalled),
+                "checked": found.checked, "offer_plan": found.change}
 
     def research(self, question: str, *, deep: bool = False, session: str = "dashboard") -> dict[str, Any]:
         from ..orchestrator.research import research_request, result_payload

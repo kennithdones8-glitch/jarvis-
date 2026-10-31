@@ -362,3 +362,6 @@ pre.out { background: rgba(0, 0, 0, .35); border: 1px solid var(--gold-line); pa
 .ask-input { width: 100%; box-sizing: border-box; background: var(--bg); color: var(--text); border: 1px solid var(--gold-line);
              padding: 10px 12px; font: inherit; }
 .ask-input:focus-visible { outline: 2px solid var(--arc); outline-offset: 1px; }
+
+/* smarter chat: what JARVIS looked up */
+.msg .checked { margin-top: 8px; font-size: 12.5px; color: var(--arc); opacity: .85; overflow-wrap: anywhere; }

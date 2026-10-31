@@ -53,7 +53,8 @@ MEMORY_ABILITY = ("remember what the owner tells you and recall it in later conv
 def abilities_text(abilities: tuple[str, ...] | list[str]) -> str:
     lines = "\n".join(f"- {a}" for a in abilities)
     has_memory = any("remember" in a for a in abilities)
-    missing = "; ".join(n for n in NOT_YET if not (has_memory and "remembering" in n))
+    not_yet = NOT_YET_WITH_LOOKUPS if any(a == LOOKUP_ABILITY for a in abilities) else NOT_YET
+    missing = "; ".join(n for n in not_yet if not (has_memory and "remembering" in n))
     return (f"Your abilities right now — this is the COMPLETE list:\n{lines}\n"
             f"You can NOT currently do anything else, including: {missing}. "
             "If asked what you can do, describe only the abilities listed above and say more are being built.")
@@ -63,8 +64,19 @@ def system_message(abilities: tuple[str, ...] | list[str] = CHAT_ONLY_ABILITIES)
     return Message("system", f"{SYSTEM_PROMPT}\n{abilities_text(abilities)}", Category.SYSTEM_PROMPT)
 
 
-def chat_abilities(memory_enabled: bool) -> tuple[str, ...]:
-    return (*CHAT_ONLY_ABILITIES, MEMORY_ABILITY) if memory_enabled else CHAT_ONLY_ABILITIES
+LOOKUP_ABILITY = ("look up the owner's calendar, reminders, Apple Notes and files when a question needs them (read-only; "
+                  "the results appear in a <lookup> block; say plainly when nothing was found or a lookup failed)")
+CHANGE_ABILITY = ("when asked to add, change, send or move something, explain that you can't do it in chat but the owner "
+                  "can tap Make a plan: JARVIS then plans it and asks for approval before doing anything")
+# With lookups, calendar/reminders/files move from "can't" to "can read"; changing them still needs a plan.
+NOT_YET_WITH_LOOKUPS = ("sending email or messages", "changing your calendar, reminders, notes or files directly from chat",
+                        "controlling Mac settings, volume, brightness or media", "browsing the web in this chat "
+                        "(Research mode does that)", "smart-home devices")
+
+
+def chat_abilities(memory_enabled: bool, lookups: bool = False) -> tuple[str, ...]:
+    out = (*CHAT_ONLY_ABILITIES, MEMORY_ABILITY) if memory_enabled else CHAT_ONLY_ABILITIES
+    return (*out, LOOKUP_ABILITY, CHANGE_ABILITY) if lookups else out
 
 
 def priming_messages(abilities: tuple[str, ...] | list[str] = CHAT_ONLY_ABILITIES) -> list[Message]:

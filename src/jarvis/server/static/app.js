@@ -230,7 +230,8 @@ async function sendChat(payload, endpoint = "/api/chat") {
       meta: [r.model.split("/").pop(), `${r.seconds}s`, `${r.searches.length} searches`, `${r.pages_read.length} pages read`,
              `${r.verified_sources}/${r.sources.length} sources verified`].join(" · ") });
     else if (r.error) ui.convo.push({ role: "assistant", text: r.error, error: true });
-    else ui.convo.push({ role: "assistant", text: r.text, meta: [r.model.split("/").pop(), `${r.seconds}s`,
+    else ui.convo.push({ role: "assistant", text: r.text, checked: r.checked || [], plan: r.offer_plan ? payload.message : null,
+      meta: [r.model.split("/").pop(), `${r.seconds}s`,
       r.memories_used ? `used ${plural(r.memories_used, "memory").replace("memorys", "memories")}` : null, r.note].filter(Boolean).join(" · ") });
   } catch (e) {
     ui.convo.push({ role: "assistant", text: `Request failed: ${e.message}`, error: true });
@@ -302,6 +303,9 @@ function renderFeed(d) {
           h("li", { class: s.verified ? "ok" : "warn" },
             h("a", { href: s.url, target: "_blank", rel: "noopener noreferrer" }, s.url.replace(/^https?:\/\//, "")),
             s.verified ? " ✓" : " — not seen by the research tools"))) : null,
+        m.checked && m.checked.length ? h("div", { class: "checked" }, "Checked: ", m.checked.join(" · ")) : null,
+        m.plan ? h("div", { class: "row mt" }, h("button", { class: "btn btn-sm", type: "button", onclick: () => makePlan(m) },
+          "Make a plan")) : null,
         m.meta ? h("span", { class: "meta" }, m.meta) : null));
   if (ui.chatBusy) items.push(h("div", { class: "msg jarvis" }, h("span", { class: "who typing" }, "JARVIS")));
   if (d) items.push(...d.jobs.filter((j) => j.state !== "submitted").reverse().map(jobCard));
@@ -439,6 +443,16 @@ async function toWav16k(buf) {
   str(36, "data"); out.setUint32(40, pcm.length * 2, true);
   for (let i = 0; i < pcm.length; i++) out.setInt16(44 + i * 2, Math.max(-1, Math.min(1, pcm[i])) * 0x7fff, true);
   return new Blob([out.buffer], { type: "audio/wav" });
+}
+
+// "Add the dentist on Thursday": chat can't change things, so it offers a plan, which asks before doing anything.
+async function makePlan(m) {
+  const request = m.plan;
+  m.plan = null;
+  ui.lastFeed = "";
+  setMode("do");
+  try { await api("/api/plan", { request }); await refresh(); }
+  catch (e) { note(`Could not start planning: ${e.message}`); }
 }
 
 // ---------------------------------------------------------------- morning briefing (built live, never stored)
