@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.17.6 — Calendar speed fix (found on the owner's Mac)
+
+- **Fixed:** reading the calendar asked Calendar for every event that started before the end of the range, i.e. the
+  whole history (plus subscribed holiday/birthday calendars). On the owner's Mac that took 73 s, then timed out.
+  Now two bounded questions per calendar: events overlapping the range, and repeating events that began before
+  it. Events found by both are kept once; a calendar that can't be read is reported as `incomplete`, never hidden.
+- `jarvis mac check` shows each calendar's counts and time, so a slow one is easy to spot.
+
 ## 0.17.5 — Real-Mac CI, extended benchmark, a chat lookup fix
 
 - **GitHub Actions** runs `jarvis gate` and `jarvis drill` after every push on an Intel Mac, an Apple-silicon Mac

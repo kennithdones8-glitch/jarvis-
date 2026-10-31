@@ -257,3 +257,24 @@ def test_mac_check_cli(fake, capsys):
     out = capsys.readouterr().out
     assert "✓ Calendar" in out and "✓ Reminders" in out and "nothing is changed" in out
     assert {c[0] for c in fake.calls} == {"calendar.events", "reminders.list", "notes.search"}  # reads only
+
+
+def test_calendar_reply_with_timing_dedupes_and_reports_gaps():
+    ev = {"title": "Standup", "start": "2026-11-02T09:00:00Z", "end": "2026-11-02T09:30:00Z", "all_day": False,
+          "location": "", "calendar": "Work", "recurrence": None, "excluded": []}
+
+    def runner(name, args, timeout):
+        return {"events": [ev, dict(ev)], "timing": [
+            {"calendar": "Work", "overlapping": 1, "repeating": 1, "seconds": 0.4},
+            {"calendar": "Holidays", "seconds": 2.0, "error": "repeating: can't filter"}]}
+    r = MacTool(runner=runner).handle_calendar("events", {"from": "2026-11-02T00:00:00Z", "to": "2026-11-03T00:00:00Z"}, CTX)
+    assert r["count"] == 1  # the same event from both questions counts once
+    assert r["incomplete"] == ["Holidays: repeating: can't filter"]  # a gap is reported, never hidden
+    assert r["timing"][0]["calendar"] == "Work"
+
+
+def test_calendar_script_never_asks_for_the_whole_history():
+    from jarvis.tools.mac import SCRIPTS
+    script = SCRIPTS["calendar.events"]
+    assert "c.events.whose({startDate: {_lessThan: to}})" not in script  # the slow, unbounded question
+    assert "{endDate: {_greaterThan: from}}" in script and "_beginsWith" in script
