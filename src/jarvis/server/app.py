@@ -277,6 +277,25 @@ class Dashboard:
         return {"text": r.text, "model": f"{r.provider}/{r.model}", "seconds": round(time.time() - started, 1),
                 "tokens": r.usage.output_tokens, "note": r.note, "memories_used": len(recalled)}
 
+    def research(self, question: str, *, deep: bool = False, session: str = "dashboard") -> dict[str, Any]:
+        from ..orchestrator.research import research_request, result_payload
+
+        memory = self.kernel.memory
+        recalled = memory.recall(question)
+        context = memory.context_message(recalled)
+        started = time.time()
+        try:
+            r = self.kernel.models.research(research_request(question, context.content if context else None),
+                                            purpose="dashboard web research", deep=deep)
+        except ApprovalRequired as exc:
+            appr = self.kernel.approvals.get(exc.approval_id)
+            return {"needs_approval": True, "approval_id": exc.approval_id, "summary": appr["summary"]}
+        except NoModelAvailable as exc:
+            return {"error": "Web research needs Claude. Run `jarvis use-claude on` (and make sure you're signed in).",
+                    "reasons": exc.reasons}
+        memory.learn_from(session, question, r.text)
+        return {**result_payload(r), "seconds": round(time.time() - started, 1), "memories_used": len(recalled)}
+
     # ---- state snapshot ----------------------------------------------------------------
     def state(self) -> dict[str, Any]:
         k = self.kernel
@@ -329,6 +348,7 @@ class Dashboard:
             "audit": list(reversed(audit)), "audit_chain": self._audit_cache[1],
             "roots": [tilde(str(r)) for r in k.policy.roots], "policy_loaded": k.policy_path.exists(),
             "memory": {**k.memory.counts(), "enabled": k.memory.settings.enabled},
+            "research_available": self.kernel.registry.get("research") is not None,
         }
 
     # ---- HTTP plumbing -----------------------------------------------------------------
@@ -451,6 +471,9 @@ class Dashboard:
             session = body.get("session") if isinstance(body.get("session"), str) else "dashboard"
             return self.chat(text("message"), history, local_only=body.get("local_only") is True,
                              session=session[:64])
+        if path == "/api/research":
+            session = body.get("session") if isinstance(body.get("session"), str) else "dashboard"
+            return self.research(text("question", 2000), deep=body.get("deep") is True, session=session[:64])
         if path == "/api/memory/remember":
             mid = self.kernel.memory.remember(text("text", 500), origin="explicit", by=actor)
             return {"id": mid, "stored": mid is not None}

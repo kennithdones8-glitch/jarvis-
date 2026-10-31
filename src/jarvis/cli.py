@@ -57,6 +57,9 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--no-open", action="store_true", help="do not open the browser")
     p = sub.add_parser("use-claude", help="turn the Claude (Claude Code on your Pro plan) brain on or off")
     p.add_argument("state", choices=["on", "off"])
+    p = sub.add_parser("research", help="search the web and read pages to answer, with sources (uses Claude)")
+    p.add_argument("question")
+    p.add_argument("--deep", action="store_true", help="use the strongest model (more of your Claude allowance)")
     p = sub.add_parser("remember", help="tell JARVIS something to remember")
     p.add_argument("text")
     p = sub.add_parser("memory", help="review memory: list | search Q | confirm ID | delete ID | forget Q | export FILE")
@@ -118,6 +121,8 @@ def main(argv: list[str] | None = None) -> int:
         elif args.cmd in ("cancel", "pause", "resume"):
             getattr(kernel.engine, args.cmd)(args.task_id, actor="user:cli")
             print(f"{args.cmd}: {kernel.tasks.get(args.task_id)['state']}")
+        elif args.cmd == "research":
+            return _research(kernel, args)
         elif args.cmd == "remember":
             mid = kernel.memory.remember(args.text, origin="explicit", by="user:cli")
             print(f"Remembered ({mid})." if mid else "Not stored (memory is off, or the text matches an excluded topic).")
@@ -360,6 +365,43 @@ def _with_consent(kernel: Kernel, call):
                 print("Keeping it on this Mac — using a local model.", file=sys.stderr)
                 local = True
     return call(True)
+
+
+def _research(kernel: Kernel, args) -> int:
+    from .models import NoModelAvailable
+    from .orchestrator.research import research_request
+
+    mem = kernel.memory
+    context = mem.context_message(mem.recall(args.question))
+    request = research_request(args.question, context.content if context else None)
+    print("Researching… (Claude searches and reads pages; this can take a minute)", file=sys.stderr)
+    try:
+        r = _with_consent(kernel, lambda local: _research_or_decline(kernel, request, local, args.deep))
+    except NoModelAvailable as exc:
+        print("Web research needs Claude. Run `uv run jarvis use-claude on` (and make sure you're signed in).")
+        for model, reason in exc.reasons.items():
+            print(f"  {model}: {reason}")
+        return 4
+    if r is None:
+        print("Not researched — web research needs to send your question to Claude.")
+        return 0
+    meta = r.meta or {}
+    print(r.text, flush=True)
+    sources = meta.get("sources", [])
+    print(f"\n[{r.provider}/{r.model} · {r.latency_s:.0f}s · {len(meta.get('searches', []))} searches · "
+          f"{len(meta.get('fetched', []))} pages read · {meta.get('verified_sources', 0)}/{len(sources)} sources verified]",
+          file=sys.stderr)
+    for s in sources:
+        if not s["verified"]:
+            print(f"  ⚠ cited but not seen by the research tools: {s['url']}", file=sys.stderr)
+    mem.learn_from("cli", args.question, r.text, background=False)
+    return 0
+
+
+def _research_or_decline(kernel: Kernel, request, local: bool, deep: bool):
+    if local:  # you declined sending it to Claude; there is no local web research
+        return None
+    return kernel.models.research(request, purpose="cli web research", deep=deep)
 
 
 def _memory(kernel: Kernel, args) -> int:

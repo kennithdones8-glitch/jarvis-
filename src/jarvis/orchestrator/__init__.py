@@ -14,6 +14,7 @@ from typing import Any
 from ..core.kernel import Kernel
 from ..core.tasks import StepState, Verification
 from .compose import ComposeTool
+from .research import ResearchTool
 from .planner import Plan, Planner, describe_args
 from .refs import resolve_step_args
 
@@ -21,8 +22,13 @@ DEFAULT_NOTES = "~/Documents/JARVIS/Notes"
 
 
 def writes_verified(task: dict[str, Any], steps: list[dict[str, Any]]) -> Verification:
-    """Every step finished, and every file JARVIS wrote is on disk with exactly the content it wrote."""
+    """Every step finished, and every file JARVIS wrote is on disk with exactly the content it wrote.
+    If the task did web research, every written file must cite at least one source the research
+    actually saw (so a "sourced brief" can't silently lose or invent its sources)."""
     evidence: dict[str, Any] = {"files": [], "incomplete_steps": []}
+    verified_urls = {src["url"] for s in steps if s["tool"] == "research" and s["state"] == StepState.DONE
+                     and isinstance(s["result"], dict) for src in s["result"].get("sources", []) if src.get("verified")}
+    researched = any(s["tool"] == "research" for s in steps)
     ok = True
     for s in steps:
         if s["state"] not in (StepState.DONE, StepState.SKIPPED):
@@ -32,9 +38,21 @@ def writes_verified(task: dict[str, Any], steps: list[dict[str, Any]]) -> Verifi
             path = Path(s["result"]["path"])
             actual = hashlib.sha256(path.read_bytes()).hexdigest() if path.is_file() else None
             match = actual == s["result"].get("sha256")
-            evidence["files"].append({"path": str(path), "exists": actual is not None, "content_matches": match})
+            record = {"path": str(path), "exists": actual is not None, "content_matches": match}
+            if researched:
+                body = path.read_text(errors="replace") if actual else ""
+                cited = sorted(u for u in verified_urls if u in body)
+                record["verified_sources_cited"] = len(cited)
+                ok = ok and bool(cited)
+            evidence["files"].append(record)
             ok = ok and match
     return Verification(ok, evidence)
+
+
+def research_available(kernel: Kernel) -> bool:
+    """Web research needs a cloud model that can browse (Claude via Claude Code)."""
+    return any("research" in info.capabilities for s in kernel.models.router.gate.summaries()
+               for info in s.models.values())
 
 
 class Orchestrator:
@@ -42,6 +60,8 @@ class Orchestrator:
         self.kernel = kernel
         if kernel.registry.get("llm") is None:
             kernel.registry.register(ComposeTool(kernel.models).spec())
+        if kernel.registry.get("research") is None and research_available(kernel):
+            kernel.registry.register(ResearchTool(kernel.models).spec())
         kernel.engine.arg_resolver = resolve_step_args
         kernel.engine.verifiers.setdefault("writes_verified", writes_verified)
         self.notes_dir = str(Path(notes_dir).expanduser())

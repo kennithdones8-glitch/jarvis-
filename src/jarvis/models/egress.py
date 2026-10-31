@@ -200,12 +200,15 @@ class EgressGate:
         return self._providers[provider].available_models()
 
     def send(self, provider: str, model: str, request: ChatRequest, *, purpose: str,
-             task_id: str | None = None, step_id: str | None = None) -> ChatResponse:
+             task_id: str | None = None, step_id: str | None = None, research: bool = False) -> ChatResponse:
+        """``research=True``: the provider may also search and read public web pages to answer."""
         self.killswitch.check()
         p = self._providers.get(provider)
         info = p.models.get(model) if p else None
         if p is None or info is None:
             self._deny(task_id, provider, model, "provider or model is not enabled")
+        if research and not hasattr(p, "research"):
+            self._deny(task_id, provider, model, "provider cannot do web research")
 
         levels = [(m.category, self.sensitivity.of(m)) for m in request.messages]
         if any(level is Sensitivity.LOCAL_ONLY for _, level in levels):
@@ -251,7 +254,7 @@ class EgressGate:
                           categories=sorted({c.value for c, _ in levels}), chars=request.chars(),
                           request_sha256=digest, estimated_cost_usd=estimate, approval_id=approval_id)
         try:
-            response = p.chat(model, request)
+            response = p.research(model, request) if research else p.chat(model, request)
         except ProviderError as exc:
             self.audit.record("egress.error", task_id=task_id, provider=provider, model=model, error=str(exc),
                               retryable=exc.retryable)
@@ -275,5 +278,7 @@ class EgressGate:
     def _summary(p: Provider, model: str, request: ChatRequest, categories: list[str], purpose: str,
                  estimate: float) -> str:
         cost = "free" if estimate <= 0 else f"est. ${estimate:.4f}"
+        if "research" in purpose:
+            purpose += "; Claude will search the web and read public pages"
         return (f"Send {request.chars():,} characters of {', '.join(categories)} to {p.name} ({model}) "
                 f"({cost}) — purpose: {purpose}. Provider data use: {p.data_use_note}.")

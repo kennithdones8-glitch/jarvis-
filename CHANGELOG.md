@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.9.0 — Web research
+
+- Research through Claude Code's own web tools on your Pro plan (no Docker). Only `WebSearch` and
+  `WebFetch` are available, pre-approved, with `--permission-mode dontAsk`, so any other tool is
+  refused. No file, shell or add-on tools.
+- Evidence: JARVIS reads Claude Code's event stream and records the searches made and pages read.
+  A cited source is marked **verified** only if the research tools actually saw it; invented
+  citations are flagged.
+- Research asks before sending your question (your "ask every time" rule) and never falls back to
+  a local model. At the usage limit, task steps wait for the reset.
+- Dashboard **Research** tab with clickable sources (✓ verified / flagged); `jarvis research "…" [--deep]`.
+- The planner can use `research.web`, so `jarvis do "Research X and save a sourced brief to my notes"`
+  works. The verifier fails a brief that doesn't cite at least one verified source.
+- Haiku by default; `--deep` uses Sonnet. Research is offered only when Claude is enabled.
+- 8 new tests.
+
 ## 0.8.0 — Milestone 5: memory
 
 - Long-term memory stored only in JARVIS's local database: original conversation records (a

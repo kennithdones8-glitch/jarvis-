@@ -71,6 +71,7 @@ class ChatResponse:
     latency_s: float = 0.0
     cost_usd: float = 0.0
     note: str | None = None  # e.g. "answered locally — Claude is at its usage limit"
+    meta: dict[str, Any] | None = None  # extra structured output, e.g. research sources
 
 
 @dataclass(frozen=True)

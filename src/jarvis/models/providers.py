@@ -16,7 +16,7 @@ import shutil
 import subprocess
 import time
 from pathlib import Path
-from typing import Literal
+from typing import Any, Literal
 from urllib.parse import urlsplit
 
 from .http import request_json
@@ -151,8 +151,11 @@ class ClaudeCodeProvider:
 
     def __init__(self, name: str, models: dict[str, ModelInfo], *, workdir: str | Path, command: str = "claude",
                  timeout: float = 300.0, data_use_note: str = ""):
+        from dataclasses import replace as _replace
+
         self.name = name
-        self.models = models
+        # Claude Code can search and read the web, so every Claude model is research-capable.
+        self.models = {k: _replace(v, capabilities=v.capabilities | {"research"}) for k, v in models.items()}
         self.command = command
         self.workdir = Path(workdir)
         self.timeout = timeout
@@ -206,6 +209,9 @@ class ClaudeCodeProvider:
         if self.limited_until and time.time() < self.limited_until:
             raise UsageLimited("Claude is at its usage limit", self.limited_until)
         return set(self.models)
+
+    def research(self, model: str, request: ChatRequest) -> ChatResponse:
+        return research_on(self, model, request)
 
     @staticmethod
     def _split(request: ChatRequest) -> tuple[str, str]:
@@ -262,3 +268,86 @@ class ClaudeCodeProvider:
             text=text, provider=self.name, model=model, latency_s=time.monotonic() - started,
             usage=Usage(int(usage.get("input_tokens") or 0), int(usage.get("output_tokens") or 0)),
         )
+
+
+URL_RE = re.compile(r"https?://[^\s<>()\[\]\"'`]+")
+
+
+def normalise_url(url: str) -> str:
+    url = url.rstrip(".,;:!?)]}>*_'\"").split("#", 1)[0]
+    return url[:-1] if url.endswith("/") else url
+
+
+def research_on(provider: "ClaudeCodeProvider", model: str, request: ChatRequest) -> ChatResponse:
+    """Run a research turn with ONLY Claude Code's read-only web tools enabled.
+
+    Returns the answer plus evidence: the searches made, the pages read, every URL seen in tool
+    results, and which cited URLs were actually seen (verified) versus not (unverified)."""
+    binary = provider._binary()
+    system, prompt = provider._split(request)
+    args = [binary, "-p", "--output-format", "stream-json", "--verbose", "--model", model,
+            "--tools", "WebSearch,WebFetch", "--allowedTools", "WebSearch,WebFetch", "--permission-mode", "dontAsk",
+            "--strict-mcp-config", "--disable-slash-commands", "--no-session-persistence",
+            "--system-prompt", system or "You are a careful research assistant."]
+    env = {k: v for k, v in os.environ.items() if k not in provider._STRIP_ENV}
+    provider.workdir.mkdir(parents=True, exist_ok=True)
+    started = time.monotonic()
+    try:
+        proc = subprocess.run(args, input=prompt, capture_output=True, text=True, timeout=max(provider.timeout, 600),
+                              cwd=provider.workdir, env=env)
+    except subprocess.TimeoutExpired:
+        raise ProviderError("Claude research did not finish in time", retryable=True) from None
+    except OSError as exc:
+        raise ProviderUnavailable(f"could not start Claude Code: {exc}") from None
+
+    searches: list[str] = []
+    fetched: list[str] = []
+    seen: set[str] = set()
+    result: dict[str, Any] | None = None
+    for line in proc.stdout.splitlines():
+        try:
+            event = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        kind = event.get("type")
+        if kind == "result":
+            result = event
+            continue
+        for block in (event.get("message") or {}).get("content") or []:
+            if not isinstance(block, dict):
+                continue
+            if block.get("type") == "tool_use":
+                inp = block.get("input") or {}
+                if block.get("name") == "WebSearch" and isinstance(inp.get("query"), str):
+                    searches.append(inp["query"])
+                if block.get("name") == "WebFetch" and isinstance(inp.get("url"), str):
+                    fetched.append(inp["url"])
+                    seen.add(normalise_url(inp["url"]))
+            elif block.get("type") == "tool_result":
+                content = block.get("content")
+                text = content if isinstance(content, str) else json.dumps(content)
+                seen.update(normalise_url(u) for u in URL_RE.findall(text))
+    if result is None:
+        tail = (proc.stderr or proc.stdout or "").strip()[-300:]
+        if "login" in tail.lower():
+            provider._remember_blocked(f"Claude Code is not signed in: {tail[:120]}")
+            raise ProviderUnavailable(f"Claude Code is not signed in — run `claude` and /login ({tail})")
+        raise ProviderError(f"Claude research failed (exit {proc.returncode}): {tail}")
+    text = result.get("result")
+    if result.get("is_error") or not isinstance(text, str):
+        message = str(result.get("result") or result.get("subtype") or "unknown error")[:300]
+        if "limit" in message.lower():
+            reset = provider.parse_reset(message)
+            reset = reset if reset and reset > time.time() else None
+            provider.limited_until = reset or time.time() + 900
+            raise UsageLimited(f"Claude usage limit reached: {message}", reset)
+        raise ProviderError(f"Claude research error: {message}")
+    cited = list(dict.fromkeys(normalise_url(u) for u in URL_RE.findall(text)))
+    sources = [{"url": u, "verified": u in seen} for u in cited]
+    usage = result.get("usage") or {}
+    return ChatResponse(
+        text=text, provider=provider.name, model=model, latency_s=time.monotonic() - started,
+        usage=Usage(int(usage.get("input_tokens") or 0), int(usage.get("output_tokens") or 0)),
+        meta={"searches": searches, "fetched": fetched, "sources": sources,
+              "verified_sources": sum(1 for s in sources if s["verified"])},
+    )

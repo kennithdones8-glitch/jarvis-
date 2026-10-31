@@ -56,6 +56,8 @@ Fixed guarantees, independent of policy:
 | Destructive file operations | Overwrites keep the previous version; delete is Tier 4 and moves to trash | ✅ tested |
 | Memory poisoning / inferred "facts" | Memories the model noticed are stored as unconfirmed, shown as such to the model and to you; extraction is local-only and limited to things you stated | ✅ tested |
 | Deleted personal data reappearing | Tombstones block re-learning; record deletion cascades to derived memories; audit holds no memory text | ✅ tested — task history and future backups are outside memory deletion (documented) |
+| Prompt injection via web pages during research | Claude has only WebSearch/WebFetch (`dontAsk` denies anything else); pages are untrusted per the prompt; the task plan is fixed before research runs | ✅ tested (argv recorded) |
+| Fabricated sources | Cited URLs are checked against the URLs the research tools actually returned or read; unverified ones are flagged; briefs must cite a verified source | ✅ tested |
 | Supply chain | Kernel has zero runtime dependencies; dev deps locked in `uv.lock` | ✅ |
 | Self-modification | Proposals only in git worktrees; policy/gate/auth files excluded | ⏳ later |
 

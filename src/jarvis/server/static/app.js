@@ -114,14 +114,17 @@ function renderHead(d) {
 }
 
 // ---------------------------------------------------------------- feed: conversation + plans
+const MODES = {
+  ask: ["Ask JARVIS anything…", "Ask: conversation only. JARVIS answers and takes no actions.   ⌘↩ to send"],
+  research: ["What should JARVIS look up?", "Research: Claude searches the web and reads pages, then answers with sources. Asks before sending."],
+  do: ["Describe a task — e.g. research X and save a brief to my notes", "Do: JARVIS plans the task and shows you the plan. Nothing happens until you press Run."],
+};
+
 function setMode(mode) {
   ui.mode = mode;
-  $("#tab-ask").setAttribute("aria-selected", mode === "ask");
-  $("#tab-do").setAttribute("aria-selected", mode === "do");
-  $("#cmd").placeholder = mode === "ask" ? "Ask JARVIS anything…" : "Describe a task — e.g. summarise a note and save it";
-  $("#modehint").textContent = mode === "ask"
-    ? "Ask: conversation only. JARVIS answers and takes no actions.   ⌘↩ to send"
-    : "Do: JARVIS plans the task and shows you the plan. Nothing happens until you press Run.";
+  for (const m of Object.keys(MODES)) $(`#tab-${m}`).setAttribute("aria-selected", mode === m);
+  $("#cmd").placeholder = MODES[mode][0];
+  $("#modehint").textContent = MODES[mode][1];
   $("#cmd").focus();
 }
 
@@ -137,20 +140,24 @@ async function submitCommand(ev) {
     return;
   }
   if (ui.chatBusy) return;
-  const history = ui.convo.filter((m) => !m.error && !m.consent).map((m) => ({ role: m.role, content: m.text }));
   ui.convo.push({ role: "user", text });
   $("#cmd").value = "";
+  if (ui.mode === "research") { await sendChat({ question: text, session: ui.session }, "/api/research"); return; }
+  const history = ui.convo.slice(0, -1).filter((m) => !m.error && !m.consent).map((m) => ({ role: m.role, content: m.text }));
   await sendChat({ message: text, history, session: ui.session });
 }
 
 // Sends a chat turn. If the best model is in the cloud and your rule is "ask every time", the server
 // returns needs_approval instead of sending; we show a consent card and resend the identical request.
-async function sendChat(payload) {
+async function sendChat(payload, endpoint = "/api/chat") {
   ui.chatBusy = true;
   render();
   try {
-    const r = await api("/api/chat", payload);
-    if (r.needs_approval) ui.convo.push({ role: "assistant", consent: true, payload, approval_id: r.approval_id, text: r.summary });
+    const r = await api(endpoint, payload);
+    if (r.needs_approval) ui.convo.push({ role: "assistant", consent: true, payload, endpoint, approval_id: r.approval_id, text: r.summary });
+    else if (r.answer !== undefined) ui.convo.push({ role: "assistant", text: r.answer, sources: r.sources,
+      meta: [r.model.split("/").pop(), `${r.seconds}s`, `${r.searches.length} searches`, `${r.pages_read.length} pages read`,
+             `${r.verified_sources}/${r.sources.length} sources verified`].join(" · ") });
     else if (r.error) ui.convo.push({ role: "assistant", text: r.error, error: true });
     else ui.convo.push({ role: "assistant", text: r.text, meta: [r.model.split("/").pop(), `${r.seconds}s`,
       r.memories_used ? `used ${plural(r.memories_used, "memory").replace("memorys", "memories")}` : null, r.note].filter(Boolean).join(" · ") });
@@ -165,6 +172,11 @@ async function sendChat(payload) {
 async function consent(m, approve) {
   ui.convo = ui.convo.filter((x) => x !== m);
   try { await api(`/api/approvals/${m.approval_id}`, { approve }); } catch (e) { /* already decided in Decisions */ }
+  if (m.endpoint === "/api/research") {
+    if (approve) await sendChat(m.payload, m.endpoint);
+    else note("Not researched — web research needs to send your question to Claude.");
+    return;
+  }
   await sendChat(approve ? m.payload : { ...m.payload, local_only: true });
 }
 
@@ -208,8 +220,13 @@ function renderFeed(d) {
         h("div", { class: "d-target" }, m.text),
         h("div", { class: "row mt" },
           h("button", { class: "btn btn-approve btn-sm", type: "button", onclick: () => consent(m, true) }, "Send to Claude"),
-          h("button", { class: "btn btn-sm", type: "button", onclick: () => consent(m, false) }, "Answer locally")))
+          h("button", { class: "btn btn-sm", type: "button", onclick: () => consent(m, false) },
+            m.endpoint === "/api/research" ? "Don't research" : "Answer locally")))
     : h("div", { class: `msg jarvis${m.error ? " err" : ""}` }, h("span", { class: "who" }, "JARVIS"), m.text,
+        m.sources && m.sources.length ? h("ul", { class: "sources" }, m.sources.filter((s) => /^https?:\/\//.test(s.url)).map((s) =>
+          h("li", { class: s.verified ? "ok" : "warn" },
+            h("a", { href: s.url, target: "_blank", rel: "noopener noreferrer" }, s.url.replace(/^https?:\/\//, "")),
+            s.verified ? " ✓" : " — not seen by the research tools"))) : null,
         m.meta ? h("span", { class: "meta" }, m.meta) : null));
   if (ui.chatBusy) items.push(h("div", { class: "msg jarvis" }, h("span", { class: "who typing" }, "JARVIS")));
   if (d) items.push(...d.jobs.filter((j) => j.state !== "submitted").reverse().map(jobCard));
@@ -387,6 +404,7 @@ async function refresh() {
 document.addEventListener("DOMContentLoaded", () => {
   $("#tab-ask").addEventListener("click", () => setMode("ask"));
   $("#tab-do").addEventListener("click", () => setMode("do"));
+  $("#tab-research").addEventListener("click", () => setMode("research"));
   $("#cmdform").addEventListener("submit", submitCommand);
   $("#cmd").addEventListener("keydown", (e) => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) submitCommand(e); });
   $("#estop").addEventListener("click", () => {

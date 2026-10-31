@@ -295,3 +295,11 @@ pre.out { background: rgba(0, 0, 0, .35); border: 1px solid var(--gold-line); pa
 .panel { min-width: 0; }
 .memform .btn { flex: none; }
 @media (max-width: 760px) { .stack-rail { display: contents; } .memory-panel { order: 2; } .systems-panel { order: 3; } }
+
+/* research sources */
+.sources { list-style: none; margin: 10px 0 0; padding: 8px 0 0; border-top: 1px solid var(--gold-line); display: grid; gap: 3px;
+           white-space: normal; font-size: 13px; }
+.sources a { color: var(--gold-hi); text-decoration: none; overflow-wrap: anywhere; }
+.sources a:hover { text-decoration: underline; }
+.sources li.ok { color: var(--ok); }
+.sources li.warn { color: #ffb0b6; }

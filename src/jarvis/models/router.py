@@ -21,7 +21,7 @@ from ..core.tools import ApprovalRequired
 from .egress import BudgetExceeded, EgressDenied, EgressGate
 from .types import Category, ChatRequest, ChatResponse, Message, ModelInfo, Provider, ProviderError, UsageLimited
 
-CAPABILITIES = frozenset({"chat", "plan", "code", "summarize", "classify", "json", "extract"})
+CAPABILITIES = frozenset({"chat", "plan", "code", "summarize", "classify", "json", "extract", "research"})
 
 
 @dataclass(frozen=True)
@@ -143,6 +143,19 @@ class ModelService:
         self.killswitch = killswitch
         self.max_attempts = max_attempts
 
+    def research(self, request: ChatRequest, *, purpose: str = "web research", deep: bool = False,
+                 task_id: str | None = None, step_id: str | None = None) -> ChatResponse:
+        """Answer using live web search and page reading (cloud only — local models can't browse).
+        Never falls back to a local model: an answer without the web would be a different thing."""
+        self.killswitch.check()
+        need = Need("research", min_quality=5 if deep else 4, prefer="quality" if deep else "speed")
+        try:
+            return self._complete(need, request, purpose=purpose, task_id=task_id, step_id=step_id, op="research")
+        except NoModelAvailable as exc:
+            if limited := self.router.gate.limited_until():
+                raise UsageLimited("Claude is at its usage limit", limited) from exc
+            raise
+
     def complete(self, need: Need, request: ChatRequest, *, purpose: str, task_id: str | None = None,
                  step_id: str | None = None, allow_fallback: bool = True) -> ChatResponse:
         """``allow_fallback``: if the chosen tier is unavailable (e.g. Claude's usage limit), answer with a
@@ -200,7 +213,7 @@ class ModelService:
         return level
 
     def _complete(self, need: Need, request: ChatRequest, *, purpose: str, task_id: str | None,
-                  step_id: str | None) -> ChatResponse:
+                  step_id: str | None, op: str = "chat") -> ChatResponse:
         try:
             route = self.router.route(need, request)
         except NoModelAvailable as exc:
@@ -222,7 +235,7 @@ class ModelService:
                                       latency_s=round(response.latency_s, 3))
                 else:
                     response = self.router.gate.send(cand.provider, cand.model, request, purpose=purpose,
-                                                      task_id=task_id, step_id=step_id)
+                                                      task_id=task_id, step_id=step_id, research=op == "research")
                 return response
             except ApprovalRequired:
                 raise

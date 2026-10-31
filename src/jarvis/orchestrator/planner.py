@@ -29,6 +29,8 @@ ACTION_DOCS: dict[tuple[str, str], str] = {
     ("fs", "write"): 'fs.write {"path": "<file>", "content": "<text>"} -> saves a text file',
     ("web", "fetch"): 'web.fetch {"url": "https://..."} -> {"title", "text"}',
     ("search", "query"): 'search.query {"query": "<words>", "limit": 5} -> {"results": [{"title", "url", "snippet"}]}',
+    ("research", "web"): 'research.web {"question": "<what to find out>"} -> {"answer", "sources": [{"url", "verified"}]} '
+                         ' (searches the web and reads pages; use for anything current, factual or needing sources)',
     ("llm", "compose"): 'llm.compose {"instruction": "<what to write>", "inputs": ["{{steps.N.field}}", ...]} '
                         '-> {"text"}  (use for summarising, drafting, answering from gathered data)',
 }
@@ -37,8 +39,9 @@ REQUIRED_ARGS: dict[tuple[str, str], dict[str, type]] = {
     ("fs", "search"): {"path": str, "query": str}, ("fs", "write"): {"path": str, "content": str},
     ("web", "fetch"): {"url": str}, ("search", "query"): {"query": str},
     ("llm", "compose"): {"instruction": str, "inputs": list},
+    ("research", "web"): {"question": str},
 }
-RETRIES = {"web": 3, "search": 3, "llm": 2, "fs": 2}
+RETRIES = {"web": 3, "search": 3, "llm": 2, "fs": 2, "research": 2}
 
 PLANNER_PROMPT = """\
 You are the planning component of JARVIS, a personal assistant on the owner's Mac. Turn the \
@@ -52,6 +55,8 @@ Rules:
 - Steps are numbered from 0. To use an earlier step's output write "{{{{steps.N.field}}}}", e.g. \
 "{{{{steps.0.content}}}}", and put N in that step's "depends_on".
 - Keep plans short (at most {max_steps} steps). Do not add steps the owner did not ask for.
+- When a document should cite research, pass the research step's answer AND sources to llm.compose and \
+ask it to keep a "Sources" section with the URLs.
 - If the request is ambiguous or missing something essential, do not guess: return a short "question".
 - If it cannot be done with these actions, return "cannot" with the reason.
 
