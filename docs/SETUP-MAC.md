@@ -96,7 +96,15 @@ uv run jarvis open
 ```
 Set the Ollama app to launch at login too.
 
-## 7. Your iPhone (optional)
+## 7. Touch ID for approvals (optional)
+
+Dashboard → **Systems → Touch ID → Set up Touch ID**. From then on, approvals in the dashboard ask for your
+fingerprint. If Touch ID ever stops working:
+```bash
+uv run jarvis touchid reset --yes
+```
+
+## 8. Your iPhone (optional)
 
 Needs iOS 16.4 or later. Free; nothing is exposed to the internet.
 

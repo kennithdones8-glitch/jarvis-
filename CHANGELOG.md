@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.14.0 — Touch ID for Mac approvals
+
+- Optional **Touch ID** for the Mac dashboard (Systems → Touch ID). Once set up, approvals, consent, running
+  plans, releasing the stop, memory edits/forget, pairing a phone and adding/removing Touch ID keys need a fresh
+  Touch ID bound to that exact request. Stopping never needs it.
+- `jarvis touchid list | remove ID | reset --yes` (recovery if Touch ID stops working; audited).
+- The dashboard page now lives at `http://localhost:PORT` (passkeys can't belong to an IP address); the old
+  127.0.0.1 link redirects there.
+- Shared passkey code for phone and Mac (`remote/passkeys.py`). Migration v6 (`devices.kind`).
+- 8 new tests; headless-browser run with a virtual passkey (set up → approve with Touch ID → unverified refused).
+  Phone flow re-checked. Not yet checked on the real Mac.
+
 ## 0.13.0 — Milestone 7: iPhone companion
 
 - **Use JARVIS from your iPhone** over your private Tailscale network. `jarvis remote enable` runs

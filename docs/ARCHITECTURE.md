@@ -145,6 +145,12 @@ Mac's `*.ts.net` name gets the phone path, where the Mac's token cookie is never
 - `push.py`: Web Push (RFC 8291 encryption, RFC 8292 VAPID) to Apple's push service only, with generic
   text ("JARVIS needs a decision"); `Notifier` batches and rate-limits.
 - `tailscale.py`: the few `tailscale` commands `jarvis remote` runs.
+- `passkeys.py`: the ceremonies shared by phone (Face ID) and Mac (Touch ID): single-use challenges bound
+  to a purpose, assertion checks, request-bound step-up.
+- `mac.py` (`MacKeys`, v0.14): optional Touch ID for the Mac dashboard. Keys are stored as devices of kind
+  `mac` (they never sign in a phone). Once one exists, the phone's step-up list plus pairing a phone and
+  adding/removing Touch ID keys need a fresh Touch ID. The passkey's site is `localhost`, so the dashboard
+  page redirects from 127.0.0.1 to `http://localhost:PORT`.
 
 ## Service and backups
 
@@ -154,5 +160,5 @@ each one, prunes to the newest N, and restores with tombstones re-applied.
 
 ## Not built yet
 
-Voice, Touch ID on the Mac dashboard, Mac app automation, proactive monitoring,
+Voice, Mac app automation, proactive monitoring,
 self-improvement proposals. See the [roadmap](ROADMAP.md).

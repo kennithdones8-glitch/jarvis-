@@ -109,7 +109,10 @@ def describe_event(event: str, p: dict[str, Any], *, task_id: str | None = None,
         "device.pairing_created": lambda: "Made a phone pairing code (valid 10 minutes)",
         "device.paired": lambda: "A phone was paired",
         "device.signed_in": lambda: "Phone signed in with Face ID",
-        "device.step_up": lambda: "Face ID confirmed an action from the phone",
+        "device.step_up": lambda: ("Face ID confirmed an action from the phone" if str(p.get("device_id", "")).startswith("dev")
+                                   else "Touch ID confirmed an action"),
+        "touchid.added": lambda: "Touch ID key added",
+        "touchid.reset": lambda: f"Touch ID turned off from Terminal ({p.get('keys')} key(s) removed)",
         "device.denied": lambda: f"Phone request refused: {p.get('reason')}",
         "device.revoked": lambda: "A phone was removed",
         "push.subscribed": lambda: "Phone notifications turned on",
@@ -168,6 +171,8 @@ class Dashboard:
                 remote = RemoteAccess(kernel, cfg["hostname"])
         self.remote = remote or None
         self._local_hosts = local_hosts or {f"127.0.0.1:{self.port}", f"localhost:{self.port}", f"[::1]:{self.port}"}
+        from ..remote import MacKeys
+        self.mac = MacKeys(kernel, self.port)  # Touch ID, once set up
         self.notifier = None
         if self.remote is not None:
             from ..remote import Notifier
@@ -176,7 +181,7 @@ class Dashboard:
     # ---- lifecycle ---------------------------------------------------------------------
     @property
     def url(self) -> str:
-        return f"http://{self.host}:{self.port}/?token={self.token}"
+        return f"http://localhost:{self.port}/?token={self.token}"  # localhost: Touch ID passkeys need a name
 
     def start(self) -> None:
         """Run in background threads (used by tests)."""
@@ -478,6 +483,7 @@ class Dashboard:
             "remote": {"enabled": self.remote is not None, "hostname": self.remote.hostname if self.remote else None,
                        "this_device": {"id": device["id"], "name": device["name"]} if device else None,
                        "devices": self.remote.devices.list() if self.remote else []},
+            "touch_id": {"enabled": self.mac.enabled(), "keys": self.mac.keys()},
         }
 
     # ---- HTTP plumbing -----------------------------------------------------------------
@@ -540,6 +546,10 @@ class Dashboard:
             if is_remote:
                 return self._dispatch_remote(h, method, url)
 
+            if method == "GET" and url.path == "/" and not host.startswith("localhost:"):
+                # Touch ID passkeys belong to "localhost" (never to an IP address), so the page lives there.
+                return self._send(h, 303, b"", "text/plain",
+                                  {"Location": f"http://localhost:{self.port}/" + (f"?{url.query}" if url.query else "")})
             if method == "GET" and url.path == "/":
                 token = parse_qs(url.query).get("token", [""])[0]
                 if token and hmac.compare_digest(token, self.token):
@@ -557,7 +567,7 @@ class Dashboard:
             if method == "GET":
                 return self._get(h, url, device=None)
             body = self._read_post(h, origin=f"http://{host}")
-            return self._json(h, 200, self._post(url.path, body, actor="user:dashboard", device=None))
+            return self._json(h, 200, self._post_local(url.path, body))
         except HttpError as exc:
             self._json(h, exc.status, {"error": str(exc)})
         except (InvalidTransition, ApprovalStateError, KeyError, ValueError, PermissionError) as exc:
@@ -673,12 +683,40 @@ class Dashboard:
             if path == "/api/memory/forget" and body.get("confirm") is not True:
                 needs_face_id = False  # a preview changes nothing
             if needs_face_id:
-                remote.verify_stepup(device, path, body)
+                remote.verify_stepup(device, path, body, actor=actor)
                 body = {k: v for k, v in body.items() if k not in ("assertion", "challengeId")}
             return self._json(h, 200, self._post(path, body, actor=actor, device=device))
         except (DeviceError, WebAuthnError) as exc:
             self.kernel.audit.record("device.denied", path=url.path, reason=str(exc)[:200])
             raise HttpError(403, str(exc)) from None
+
+    def _post_local(self, path: str, body: dict[str, Any]) -> Any:
+        """The Mac dashboard. Once Touch ID is set up, sensitive actions need a fresh Touch ID for that request."""
+        from ..remote import DeviceError, WebAuthnError
+        from ..remote.mac import MAC_STEP_UP
+
+        actor = "user:dashboard"
+        try:
+            if path == "/api/stepup/options":
+                target, target_body = body.get("path"), body.get("body")
+                if not isinstance(target, str) or not isinstance(target_body, dict):
+                    raise HttpError(400, "path and body are required")
+                return self.mac.stepup_options(None, target, target_body)
+            if path == "/api/touchid/enroll/finish":
+                name, cid = body.get("name"), body.get("challengeId")
+                if not isinstance(name, str) or not isinstance(cid, str):
+                    raise HttpError(400, "name and challengeId are required")
+                return {"id": self.mac.enroll_finish(cid, name[:60], body.get("credential"), by=actor)}
+            needs_touch_id = any(re.fullmatch(p, path) for p in MAC_STEP_UP)
+            if path == "/api/memory/forget" and body.get("confirm") is not True:
+                needs_touch_id = False  # a preview changes nothing
+            if needs_touch_id and self.mac.enabled():
+                self.mac.verify_stepup(None, path, body, actor=actor)
+                body = {k: v for k, v in body.items() if k not in ("assertion", "challengeId")}
+        except (DeviceError, WebAuthnError) as exc:
+            self.kernel.audit.record("device.denied", path=path, reason=str(exc)[:200])
+            raise HttpError(403, str(exc)) from None
+        return self._post(path, body, actor=actor, device=None)
 
     def _post(self, path: str, body: dict[str, Any], *, actor: str = "user:dashboard",
               device: dict | None = None) -> Any:
@@ -742,6 +780,12 @@ class Dashboard:
                 raise HttpError(409, "phone access isn't set up — run `jarvis remote enable` on the Mac first")
             code = self.remote.devices.create_pairing(by=actor)
             return {"url": self.remote.pair_url(code), "expires_in": 600}
+        if path == "/api/touchid/enroll/options":
+            name = body.get("name")
+            return self.mac.enroll_options(name[:60] if isinstance(name, str) else "This Mac")
+        if m := re.fullmatch(r"/api/touchid/([\w-]+)/remove", path):
+            self.mac.remove(m.group(1), by=actor)
+            return {"ok": True}
         if m := re.fullmatch(r"/api/devices/([\w-]+)/revoke", path):
             if self.remote is None:
                 raise HttpError(409, "phone access isn't set up")

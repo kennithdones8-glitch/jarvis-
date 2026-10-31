@@ -32,7 +32,7 @@ async function api(path, body) {
   return data;
 }
 
-// ---------------------------------------------------------------- iPhone: Face ID for sensitive actions
+// ---------------------------------------------------------------- Face ID (iPhone) / Touch ID (Mac) for sensitive actions
 const b64u = {
   toBuf: (s) => Uint8Array.from(atob(s.replace(/-/g, "+").replace(/_/g, "/") + "===".slice((s.length + 3) % 4)), (c) => c.charCodeAt(0)).buffer,
   fromBuf: (b) => btoa(String.fromCharCode(...new Uint8Array(b))).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, ""),
@@ -40,17 +40,22 @@ const b64u = {
 // Must match the server's STEP_UP list; the server enforces it regardless of what this page does.
 const FACE_ID = [/^\/api\/approvals\/[\w-]+$/, /^\/api\/release$/, /^\/api\/plan\/\w+\/run$/,
                  /^\/api\/memory\/[\w-]+\/(delete|edit)$/, /^\/api\/devices\/[\w-]+\/revoke$/];
+const TOUCH_ID = [...FACE_ID, /^\/api\/devices\/pair$/, /^\/api\/touchid\/enroll\/options$/, /^\/api\/touchid\/[\w-]+\/remove$/];
 const onPhone = () => !!(ui.data && ui.data.remote && ui.data.remote.this_device);
+const touchIdOn = () => !onPhone() && !!(ui.data && ui.data.touch_id && ui.data.touch_id.enabled);
+const bio = () => (onPhone() ? "Face ID" : "Touch ID");
+const cancelled = (e) => (e.name === "NotAllowedError" ? `${bio()} was cancelled.` : e.message);
+const credJSON = (c) => ({ id: c.id, rawId: b64u.fromBuf(c.rawId), type: c.type });
 
 async function call(path, body) {
-  const needs = onPhone() && (FACE_ID.some((r) => r.test(path)) || (path === "/api/memory/forget" && body.confirm === true));
+  const list = onPhone() ? FACE_ID : touchIdOn() ? TOUCH_ID : [];
+  const needs = list.some((r) => r.test(path)) || ((onPhone() || touchIdOn()) && path === "/api/memory/forget" && body.confirm === true);
   if (!needs) return api(path, body);
   const o = await api("/api/stepup/options", { path, body });
   const a = await navigator.credentials.get({ publicKey: {
     challenge: b64u.toBuf(o.challenge), rpId: o.rpId, timeout: o.timeout, userVerification: o.userVerification,
     allowCredentials: o.allowCredentials.map((c) => ({ ...c, id: b64u.toBuf(c.id) })) } });
-  return api(path, { ...body, challengeId: o.challengeId, assertion: {
-    id: a.id, rawId: b64u.fromBuf(a.rawId), type: a.type,
+  return api(path, { ...body, challengeId: o.challengeId, assertion: { ...credJSON(a),
     response: { clientDataJSON: b64u.fromBuf(a.response.clientDataJSON), authenticatorData: b64u.fromBuf(a.response.authenticatorData),
                 signature: b64u.fromBuf(a.response.signature) } } });
 }
@@ -363,8 +368,19 @@ function renderSystems(d) {
     rem.this_device ? h("div", { class: "row mt" },
       "PushManager" in window ? h("button", { class: "btn btn-sm", type: "button", onclick: enableNotifications }, "Enable notifications") : null,
       h("button", { class: "btn btn-ghost btn-sm", type: "button", onclick: async () => { await api("/api/logout", {}); location.reload(); } }, "Sign out")) : null);
+  const tid = d.touch_id || { enabled: false, keys: [] };
+  const touch = onPhone() ? null : h("div", { class: "devices" },
+    h("div", { class: "ro" }, h("span", {}, "Touch ID"),
+      h("b", { class: tid.enabled ? "ok" : null }, tid.enabled ? `On · ${plural(tid.keys.length, "key")}` : "Off")),
+    tid.keys.map((k) => h("div", { class: "device-row" }, k.name,
+      h("small", {}, k.last_seen ? `used ${clock(k.last_seen)}` : "not used yet"),
+      h("button", { class: "btn btn-ghost btn-sm", type: "button", onclick: () =>
+        confirm(tid.keys.length === 1 ? "Remove your only Touch ID key? Approvals will stop asking for Touch ID." : `Remove ${k.name}?`) &&
+        act(`/api/touchid/${k.id}/remove`, {}) }, "Remove"))),
+    h("button", { class: "btn btn-sm mt", type: "button", onclick: setupTouchId }, tid.enabled ? "Add another key" : "Set up Touch ID"),
+    tid.enabled ? null : h("div", { class: "d-why" }, "Then every approval here asks for your fingerprint, not just this browser's sign-in."));
   $("#system").replaceChildren(
-    healthBlock, phone,
+    healthBlock, touch, phone,
     h("div", { class: "lights" }, lights.length ? lights : h("div", { class: "empty" }, "No models configured")),
     h("div", { class: "readouts" },
       ro("Privacy", (m.disabled_providers || []).length && !m.providers.some((p) => p.location === "cloud") ? "Local only" : "Cloud allowed with approval"),
@@ -377,9 +393,27 @@ function renderSystems(d) {
       ro("Version", d.version)));
 }
 
+async function setupTouchId() {
+  if (!window.PublicKeyCredential) { note("This browser can't use Touch ID passkeys. Try Safari or Chrome."); return; }
+  const name = (prompt("Name this key (e.g. Safari on MacBook):", "This Mac") || "").trim();
+  if (!name) return;
+  try {
+    const o = await call("/api/touchid/enroll/options", { name });
+    const p = o.publicKey;
+    const c = await navigator.credentials.create({ publicKey: {
+      ...p, challenge: b64u.toBuf(p.challenge), user: { ...p.user, id: b64u.toBuf(p.user.id) },
+      authenticatorSelection: { ...p.authenticatorSelection, authenticatorAttachment: "platform" },
+      excludeCredentials: p.excludeCredentials.map((x) => ({ ...x, id: b64u.toBuf(x.id) })) } });
+    await api("/api/touchid/enroll/finish", { name, challengeId: o.challengeId, credential: { ...credJSON(c),
+      response: { clientDataJSON: b64u.fromBuf(c.response.clientDataJSON), attestationObject: b64u.fromBuf(c.response.attestationObject) } } });
+    ui.convo.push({ role: "assistant", text: "Touch ID is on. Approvals here now ask for your fingerprint." });
+  } catch (e) { note(cancelled(e)); }
+  await refresh();
+}
+
 async function pairPhone() {
   let r;
-  try { r = await api("/api/devices/pair", {}); } catch (e) { note(e.message); return; }
+  try { r = await call("/api/devices/pair", {}); } catch (e) { note(cancelled(e)); return; }
   const qr = qrcode(0, "M");
   qr.addData(r.url);
   qr.make();
@@ -444,7 +478,7 @@ async function loadMemory(force) {
 }
 
 async function memAct(path, body) {
-  try { await call(path, body); } catch (e) { note(e.name === "NotAllowedError" ? "Face ID was cancelled." : e.message); }
+  try { await call(path, body); } catch (e) { note(cancelled(e)); }
   await refresh(); await loadMemory(true);
 }
 
@@ -469,7 +503,7 @@ function render() {
 }
 
 async function act(path, body) {
-  try { await call(path, body); } catch (e) { note(e.name === "NotAllowedError" ? "Face ID was cancelled." : e.message); }
+  try { await call(path, body); } catch (e) { note(cancelled(e)); }
   await refresh();
 }
 

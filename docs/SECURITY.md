@@ -73,7 +73,7 @@ Fixed guarantees, independent of policy:
 | Stop not stopping work in progress | Claude Code runs as a tracked process group, killed on emergency stop (from any process) or deadline | ✅ tested (v0.12) — in-process tools still finish their current call |
 | Spending one approval twice | Find-and-consume in one transaction | ✅ tested (v0.12) |
 | Backup passphrase in the process list | Written to the Keychain via `security -i` on stdin | ✅ tested with a stand-in — **Mac check pending** |
-| Dashboard approvals without step-up auth | Same-user local processes could approve via the Mac dashboard cookie (the phone path already needs Face ID) | ⚠ open on the Mac — Touch ID planned |
+| Dashboard approvals without step-up auth | Optional Touch ID (v0.14): once set up, approvals, consent, running plans, releasing the stop, memory edits/forget, pairing a phone and adding/removing keys need a fresh Touch ID bound to that exact request; the dashboard cookie alone can't approve | ✅ tested + headless browser — **Mac check pending**. Off until you set it up. Does not cover the CLI (see limitations) |
 
 ## Data categories
 
@@ -88,6 +88,10 @@ Config can only make a category stricter. It can never make one less strict.
 
 - Voice identity is not authentication, and neither is "being on the tailnet": a phone also needs its passkey.
   Anyone who can unlock your iPhone (Face ID or passcode) can approve from it. Remove a lost phone from the Mac.
+- Touch ID protects the **dashboard** path (a script or browser extension holding the dashboard cookie, or
+  someone at your unlocked Mac using the open dashboard). It is not a boundary against software running as
+  your macOS user: such software can also use the `jarvis` CLI (`approve`, `touchid reset --yes`) or edit
+  JARVIS's files directly. That needs OS-level separation, which JARVIS doesn't have.
 - A process on the Mac itself can send requests with the Tailscale Host header. It still needs a device
   session and a fresh passkey assertion for sensitive actions, but it can see the sign-in page.
 

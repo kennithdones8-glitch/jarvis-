@@ -2,6 +2,7 @@
 
 - Pairing codes are random, valid for 10 minutes, single use, and only their hash is stored.
 - A paired device is a passkey (public key only; the private key never leaves the phone).
+- Mac Touch ID keys (kind "mac") are stored here too; they never sign in a phone and have no sessions.
 - Sessions are random tokens (stored hashed), expire after 12 hours idle or 30 days total, and are
   deleted the moment the device is revoked.
 """
@@ -81,18 +82,30 @@ class DeviceStore:
         return did
 
     # ---- devices -------------------------------------------------------------------------
-    def list(self) -> list[dict[str, Any]]:
+    def list(self, kind: str = "phone") -> list[dict[str, Any]]:
         return [dict(r) for r in self.db.query(
-            "SELECT id, name, created_at, last_seen, revoked_at FROM devices ORDER BY created_at DESC")]
+            "SELECT id, name, kind, created_at, last_seen, revoked_at FROM devices WHERE kind = ? "
+            "ORDER BY created_at DESC", (kind,))]
 
-    def active_credentials(self) -> list[str]:
-        return [r["credential_id"] for r in self.db.query("SELECT credential_id FROM devices WHERE revoked_at IS NULL")]
+    def active_credentials(self, kind: str = "phone") -> list[str]:
+        return [r["credential_id"] for r in self.db.query(
+            "SELECT credential_id FROM devices WHERE revoked_at IS NULL AND kind = ?", (kind,))]
 
-    def by_credential(self, credential_id: str) -> dict[str, Any]:
-        row = self.db.one("SELECT * FROM devices WHERE credential_id = ? AND revoked_at IS NULL", (credential_id,))
+    def by_credential(self, credential_id: str, kind: str = "phone") -> dict[str, Any]:
+        row = self.db.one("SELECT * FROM devices WHERE credential_id = ? AND revoked_at IS NULL AND kind = ?",
+                          (credential_id, kind))
         if row is None:
             raise DeviceError("unknown or revoked device")
         return dict(row)
+
+    def add_mac_key(self, *, name: str, credential_id: str, public_key_pem: str, sign_count: int, by: str) -> str:
+        did = new_id("key")
+        with self.db.tx() as c:
+            c.execute("INSERT INTO devices (id, name, kind, credential_id, public_key, sign_count, created_at) "
+                      "VALUES (?,?,?,?,?,?,?)",
+                      (did, name[:60] or "This Mac", "mac", credential_id, public_key_pem, sign_count, now_iso()))
+            self.audit.record("touchid.added", actor=by, key_id=did)
+        return did
 
     def get(self, device_id: str) -> dict[str, Any]:
         row = self.db.one("SELECT * FROM devices WHERE id = ?", (device_id,))
@@ -112,6 +125,12 @@ class DeviceStore:
             c.execute("DELETE FROM device_sessions WHERE device_id = ?", (device_id,))
             c.execute("DELETE FROM push_subscriptions WHERE device_id = ?", (device_id,))
             self.audit.record("device.revoked", actor=by, device_id=device_id)
+
+    def revoke_all(self, kind: str, *, by: str) -> int:
+        ids = [r["id"] for r in self.db.query("SELECT id FROM devices WHERE kind = ? AND revoked_at IS NULL", (kind,))]
+        for did in ids:
+            self.revoke(did, by=by)
+        return len(ids)
 
     # ---- sessions ------------------------------------------------------------------------
     def create_session(self, device_id: str) -> str:

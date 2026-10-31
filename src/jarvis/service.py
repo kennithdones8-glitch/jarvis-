@@ -47,7 +47,7 @@ def dashboard_token(home: Path, *, rotate: bool = False) -> str:
 
 
 def dashboard_url(home: Path, port: int = DEFAULT_PORT) -> str:
-    return f"http://127.0.0.1:{port}/?token={dashboard_token(home)}"
+    return f"http://localhost:{port}/?token={dashboard_token(home)}"
 
 
 def build_plist(*, home: Path, uv: str, port: int = DEFAULT_PORT, repo: Path = REPO,

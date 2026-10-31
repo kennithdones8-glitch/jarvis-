@@ -46,7 +46,7 @@ def dash(make_kernel, tmp_path, root):
 
 def call(d, path, body=None, *, cookie=True, host=None, headers=None, origin=None):
     url = f"http://127.0.0.1:{d.port}{path}"
-    h = {"Host": host or f"127.0.0.1:{d.port}"}
+    h = {"Host": host or f"localhost:{d.port}"}
     if cookie:
         h["Cookie"] = "jarvis_session=test-token"
     if body is not None:
@@ -98,6 +98,14 @@ def test_token_link_sets_strict_httponly_cookie(dash):
     assert status == 303 and headers["Location"] == "/"
     assert "HttpOnly" in headers["Set-Cookie"] and "SameSite=Strict" in headers["Set-Cookie"]
     assert call(d, "/?token=wrong", cookie=False)[0] == 401
+
+
+def test_ip_address_redirects_to_localhost(dash):
+    d, *_ = dash
+    status, headers, _ = call(d, "/?token=test-token", cookie=False, host=f"127.0.0.1:{d.port}")
+    assert status == 303 and headers["Location"] == f"http://localhost:{d.port}/?token=test-token"
+    assert d.url.startswith(f"http://localhost:{d.port}/")
+    assert call(d, "/api/state", host=f"127.0.0.1:{d.port}")[0] == 200  # the API still answers on the IP
 
 
 def test_dns_rebinding_host_refused(dash):

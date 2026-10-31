@@ -192,6 +192,10 @@ MIGRATIONS: list[str] = [
         created_at TEXT NOT NULL
     );
     """,
+    # v6: Touch ID passkeys for the Mac dashboard live beside phone passkeys
+    """
+    ALTER TABLE devices ADD COLUMN kind TEXT NOT NULL DEFAULT 'phone' CHECK (kind IN ('phone', 'mac'));
+    """,
 ]
 
 

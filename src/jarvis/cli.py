@@ -99,6 +99,10 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("op", choices=["enable", "disable", "status"])
     p.add_argument("--port", type=int, default=8765)
     p.add_argument("--hostname", help="this Mac's Tailscale name (default: asked from the Tailscale app)")
+    p = sub.add_parser("touchid", help="Touch ID for dashboard approvals: list | remove ID | reset --yes (recovery)")
+    p.add_argument("op", nargs="?", choices=["list", "remove", "reset"], default="list")
+    p.add_argument("key_id", nargs="?")
+    p.add_argument("--yes", action="store_true")
     p = sub.add_parser("devices", help="paired phones: list | revoke ID")
     p.add_argument("op", nargs="?", choices=["list", "revoke"], default="list")
     p.add_argument("device_id", nargs="?")
@@ -169,6 +173,8 @@ def main(argv: list[str] | None = None) -> int:
             return _remote(kernel, args)
         elif args.cmd == "devices":
             return _devices(kernel, args)
+        elif args.cmd == "touchid":
+            return _touchid(kernel, args)
         elif args.cmd == "allow-folder":
             return _allow_folder(kernel, args)
         elif args.cmd == "folders":
@@ -527,6 +533,32 @@ def _device_store(kernel: Kernel):
     from .remote.devices import DeviceStore
 
     return DeviceStore(kernel.db, kernel.audit)
+
+
+def _touchid(kernel: Kernel, args) -> int:
+    store = _device_store(kernel)
+    keys = [k for k in store.list("mac") if not k["revoked_at"]]
+    if args.op == "list":
+        if not keys:
+            print("Touch ID isn't set up. Set it up in the dashboard: Systems → Touch ID.")
+        for k in keys:
+            print(f"{k['id']}  {k['name']:<20} added {k['created_at'][:10]}  last used {(k['last_seen'] or 'never')[:16]}")
+        return 0
+    if args.op == "remove":
+        if args.key_id not in {k["id"] for k in keys}:
+            print("usage: jarvis touchid remove KEY_ID (see `jarvis touchid list`)", file=sys.stderr)
+            return 1
+        store.revoke(args.key_id, by="user:cli")
+        print("Removed." + ("" if len(keys) > 1 else " Touch ID is now off; dashboard approvals no longer ask for it."))
+        return 0
+    if not args.yes:
+        print("This turns Touch ID off for dashboard approvals (use it if Touch ID stopped working).\n"
+              "Run again with --yes to confirm.", file=sys.stderr)
+        return 1
+    n = store.revoke_all("mac", by="user:cli")
+    kernel.audit.record("touchid.reset", actor="user:cli", keys=n)
+    print(f"Removed {n} Touch ID key(s). Set Touch ID up again in the dashboard: Systems → Touch ID.")
+    return 0
 
 
 def _devices(kernel: Kernel, args) -> int:

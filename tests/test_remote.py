@@ -213,6 +213,7 @@ def test_pairing_is_mac_only_and_code_single_use(remote_dash):
     phone = Phone(d)
     assert phone.pair(url)[0] == 200
     assert phone.req("/api/devices/pair", {})[0] == 403  # a phone can't add more phones
+    assert phone.req("/api/touchid/enroll/options", {"name": "x"})[0] == 403  # nor touch the Mac's Touch ID keys
     thief = Phone(d)
     assert thief.req("/api/pair/options", {"code": url.split("pair=")[1], "name": "x"})[0] == 403
 
