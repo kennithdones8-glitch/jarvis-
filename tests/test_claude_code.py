@@ -346,3 +346,33 @@ def test_usage_meter_counts_recent_calls(brain, fake_claude):
     k.models.complete(Need("chat", prefer="auto"), req(Message("user", "status", Category.SYSTEM_PROMPT)), purpose="t")
     [u] = k.models.router.gate.usage_summary()
     assert u == {"provider": "claude", "calls": 1, "tokens": 49, "limited_until": None}
+
+
+def test_one_approval_covers_retry_with_another_claude_model(brain, fake_claude, monkeypatch, tmp_path):
+    """Seen on the Mac: approved for Haiku, Haiku failed, Sonnet then demanded a second approval."""
+    exe = tmp_path / "bin" / "claude"
+    exe.write_text(exe.read_text().replace('mode = os.environ.get("FAKE_CLAUDE_MODE", "ok")',
+        'mode = "garbage" if args[args.index("--model") + 1] == "haiku" else os.environ.get("FAKE_CLAUDE_MODE", "ok")'))
+    TRIAGE["word"] = "MEDIUM"
+    k, _ = brain("hybrid")
+    with pytest.raises(ApprovalRequired) as ei:
+        k.models.complete(Need("chat", prefer="auto"), PRIVATE, purpose="chat")
+    assert "to claude (haiku)" in k.approvals.get(ei.value.approval_id)["summary"]
+    k.approvals.decide(ei.value.approval_id, approve=True, by="user:test")
+    r = k.models.complete(Need("chat", prefer="auto"), PRIVATE, purpose="chat")
+    assert (r.provider, r.model) == ("claude", "sonnet")
+    models = [c["args"][c["args"].index("--model") + 1] for c in fake_claude()]
+    assert models == ["haiku", "sonnet"]
+    assert k.approvals.get(ei.value.approval_id)["state"] == "consumed"    # used up once it succeeded
+    with pytest.raises(ApprovalRequired):                                   # and not reusable afterwards
+        k.models.complete(Need("chat", prefer="auto"), PRIVATE, purpose="chat")
+
+
+def test_failure_reason_is_visible_in_fallback_note(brain, fake_claude, monkeypatch):
+    monkeypatch.setenv("FAKE_CLAUDE_MODE", "garbage")
+    TRIAGE["word"] = "HARD"
+    k, _ = brain("hybrid")
+    k.models.router.gate.grants.grant(category="conversation", provider="claude", by="user:test")
+    r = k.models.complete(Need("chat", prefer="auto"), PRIVATE, purpose="chat")
+    assert r.provider == "ollama" and "cloud model failed" in r.note and "exit 1" in r.note
+    TRIAGE["word"] = "MEDIUM"

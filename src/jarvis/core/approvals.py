@@ -125,6 +125,14 @@ class Approvals:
                 raise ApprovalStateError(f"approval {approval_id} is not usable")
             self.audit.record("approval.consumed", approval_id=approval_id)
 
+    def restore(self, approval_id: str) -> None:
+        """Undo ``consume`` after a failed call, so the identical request can be retried."""
+        with self.db.tx() as conn:
+            cur = conn.execute("UPDATE approvals SET state = ? WHERE id = ? AND state = ?",
+                               (APPROVED, approval_id, CONSUMED))
+            if cur.rowcount == 1:
+                self.audit.record("approval.restored", approval_id=approval_id)
+
     def expire_for_task(self, task_id: str) -> int:
         with self.db.tx() as conn:
             cur = conn.execute(

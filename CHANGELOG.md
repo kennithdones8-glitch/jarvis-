@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.7.1 — Fix repeated approval prompts
+
+- Found on the Mac: after you approved sending a question to Claude Haiku, Haiku failed, JARVIS tried
+  Sonnet, and Sonnet demanded a second approval, which the CLI reported as an error.
+- Consent is now bound to the exact content and the provider (Claude), not the specific model.
+  If a call fails, the approval is restored, so the same content can be retried or sent to another
+  Claude model without asking again. It still can't be reused for different content or another
+  provider, and it is used up once a call succeeds.
+- When JARVIS falls back to local, the note now says why the cloud call failed.
+- The CLI handles more than one approval prompt in a row.
+
 ## 0.7.0 — Stretch Claude usage
 
 - Routing mode `hybrid` (set by `jarvis use-claude on`): a local model rates each chat message.

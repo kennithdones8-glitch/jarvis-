@@ -165,7 +165,10 @@ class ModelService:
             except NoModelAvailable:
                 raise exc from None
             until = f" until about {time.strftime('%H:%M', time.localtime(limited))}" if limited else ""
-            why = f"Claude is at its usage limit{until}" if limited else "the preferred model was unavailable"
+            cloud_errors = [msg for key, msg in exc.reasons.items() if key.split("/")[0] in self.router.gate.provider_names()
+                            and not msg.startswith(("lacks", "quality", "context", "would exceed", "request contains"))]
+            detail = cloud_errors[0].removeprefix("unavailable: ")[:200] if cloud_errors else "it was unavailable"
+            why = f"Claude is at its usage limit{until}" if limited else f"the cloud model failed: {detail}"
             note = f"Answered locally — {why}."
             self.audit.record("model.fallback", task_id=task_id, model=f"{r.provider}/{r.model}", reason=why)
             return replace(r, note=note)

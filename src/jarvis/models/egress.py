@@ -180,6 +180,9 @@ class EgressGate:
     def summaries(self) -> list[ProviderSummary]:
         return [ProviderSummary(p.name, p.location, dict(p.models), p.data_use_note) for p in self._providers.values()]
 
+    def provider_names(self) -> set[str]:
+        return set(self._providers)
+
     def usage_summary(self) -> list[dict[str, Any]]:
         """Per cloud provider: calls and tokens in the last 5 hours, and any known limit."""
         out = []
@@ -217,8 +220,10 @@ class EgressGate:
             self.audit.record("egress.denied", task_id=task_id, provider=provider, model=model, reason=str(exc))
             raise
 
+        # Consent covers sending this exact content to this provider; which of its models answers
+        # doesn't change who sees the data, so the model is deliberately not part of the binding.
         digest = sha256_hex(canonical_json({
-            "provider": provider, "model": model, "max_tokens": request.max_tokens, "json": request.json_mode,
+            "provider": provider, "max_tokens": request.max_tokens, "json": request.json_mode,
             "messages": [[m.role, m.category.value, m.content] for m in request.messages],
         }))
         private = sorted({c.value for c, level in levels if level is Sensitivity.PRIVATE})
@@ -250,6 +255,10 @@ class EgressGate:
         except ProviderError as exc:
             self.audit.record("egress.error", task_id=task_id, provider=provider, model=model, error=str(exc),
                               retryable=exc.retryable)
+            if approval_id:
+                # The call failed; let the same content go to this provider again (another model, a retry)
+                # without asking twice. It cannot be reused for different content or another provider.
+                self.approvals.restore(approval_id)
             raise
         cost = self.budget.actual(info, response)
         self.budget.record(response, cost, task_id)
@@ -266,5 +275,5 @@ class EgressGate:
     def _summary(p: Provider, model: str, request: ChatRequest, categories: list[str], purpose: str,
                  estimate: float) -> str:
         cost = "free" if estimate <= 0 else f"est. ${estimate:.4f}"
-        return (f"Send {request.chars():,} characters of {', '.join(categories)} to {p.name}/{model} "
+        return (f"Send {request.chars():,} characters of {', '.join(categories)} to {p.name} ({model}) "
                 f"({cost}) — purpose: {purpose}. Provider data use: {p.data_use_note}.")

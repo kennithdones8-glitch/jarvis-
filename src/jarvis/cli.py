@@ -333,16 +333,19 @@ def _with_consent(kernel: Kernel, call):
     the terminal: yes → approve and retry the identical request; no → retry with local models only."""
     from .core.tools import ApprovalRequired
 
-    try:
-        return call(False)
-    except ApprovalRequired as exc:
-        appr = kernel.approvals.get(exc.approval_id)
-        print(f"\n{appr['summary']}", file=sys.stderr)
-        approve = _confirm("Send it?")
-        kernel.approvals.decide(exc.approval_id, approve=approve, by="user:cli")
-        if not approve:
-            print("Keeping it on this Mac — using a local model.", file=sys.stderr)
-        return call(not approve)
+    local = False
+    for _ in range(3):
+        try:
+            return call(local)
+        except ApprovalRequired as exc:
+            appr = kernel.approvals.get(exc.approval_id)
+            print(f"\n{appr['summary']}", file=sys.stderr)
+            approve = _confirm("Send it?")
+            kernel.approvals.decide(exc.approval_id, approve=approve, by="user:cli")
+            if not approve:
+                print("Keeping it on this Mac — using a local model.", file=sys.stderr)
+                local = True
+    return call(True)
 
 
 def _ask(kernel: Kernel, args) -> int:
