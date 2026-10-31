@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.17.1 — Live replies, Help, welcome
+
+- **Live replies:** a local model's answer appears word by word as it's written (`/api/chat/stream`; first words
+  in well under a second instead of waiting for the whole reply). Display only: same answer, routing, lookups and
+  privacy rules. Claude's answers still arrive whole. Emergency stop cuts a reply off at once (the partial text is
+  kept with a note); a closed page stops generation and is never mistaken for a model failure (no retry elsewhere).
+  Falls back to the plain request where streaming isn't available.
+- **Help → "What can I say?"**: example requests by mode, only those this JARVIS can do (calendar ones only with the
+  Mac apps); tap one to put it in the box. A one-time welcome card explains the panels.
+- **Fixed:** tests reached the real Mac on the owner's machine (one restarted the background service via launchctl,
+  one read the real Calendar). An autouse fixture now stands in for both; the dashboard also stops its background
+  loops before shutting down. Found by running the suite on the Mac.
+- Small phones: header buttons tighten and wrap so Emergency stop stays fully on screen at 320–430 px.
+
 ## 0.17.0 — Mac apps, smarter chat, Briefing 2.0, benchmark (milestone 1)
 
 - **Mac apps** (Calendar, Reminders, Notes, Mail drafts, opening apps) through macOS scripting. Reading is tier 0;

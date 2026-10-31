@@ -177,3 +177,9 @@ def test_bad_content_length_refused_quickly(dash):
                           f"X-Requested-By: jarvis\r\nContent-Length: {value}\r\n\r\n").encode())
             assert sock.recv(64).startswith(b"HTTP/1.0 400")  # answered at once, not left waiting
     assert d.kernel.killswitch.engaged() is False
+
+
+def test_capabilities_drive_the_help_examples(dash):
+    d, *_ = dash
+    caps = state(d)["capabilities"]
+    assert caps == {"mac_apps": False, "research": False, "voice": False}  # this test JARVIS has none of them

@@ -370,3 +370,20 @@ pre.out { background: rgba(0, 0, 0, .35); border: 1px solid var(--gold-line); pa
 .msg.live::after { content: "▍"; color: var(--arc); margin-left: 2px; animation: caret 1s steps(2) infinite; }
 @keyframes caret { 50% { opacity: 0; } }
 @media (prefers-reduced-motion: reduce) { .msg.live::after { animation: none; } }
+
+/* help & welcome */
+.helpcard .help-group { margin-top: 12px; }
+.helpcard h3 { font: 600 12px var(--display); letter-spacing: .3em; text-transform: uppercase; color: var(--gold); margin: 0; }
+.helpcard .d-why { margin: 4px 0 8px; }
+.help-examples { display: flex; flex-wrap: wrap; gap: 8px; }
+.chip { background: rgba(0, 0, 0, .3); color: var(--text); border: 1px solid var(--gold-line); padding: 8px 10px;
+        font: inherit; font-size: 14px; text-align: left; cursor: pointer; display: grid; gap: 2px; }
+.chip small { font: 600 11px var(--display); letter-spacing: .24em; text-transform: uppercase; color: var(--gold); }
+.chip:hover, .chip:focus-visible { border-color: var(--gold); outline: none; }
+.welcome { margin: 10px 0 0; padding-left: 18px; display: grid; gap: 6px; }
+
+/* smallest phones: three header buttons must fit, and Emergency stop must always be fully on screen */
+@media (max-width: 400px) {
+  .top-right { flex-wrap: wrap; justify-content: flex-end; row-gap: 6px; }
+  .top-right .btn { padding-left: 8px; padding-right: 8px; letter-spacing: .08em; font-size: 13px; }
+}

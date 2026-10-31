@@ -333,6 +333,8 @@ function renderFeed(d) {
           h("button", { class: "btn btn-sm", type: "button", onclick: () => consent(m, false) },
             m.endpoint === "/api/research" ? "Don't research" : "Answer locally")))
     : m.briefing ? briefingCard(m)
+    : m.help ? helpCard(m)
+    : m.welcome ? welcomeCard(m)
     : h("div", { class: `msg jarvis${m.error ? " err" : ""}${m.live ? " live" : ""}`, "aria-busy": m.live ? "true" : null },
         h("span", { class: "who" }, "JARVIS"), m.text,
         m.sources && m.sources.length ? h("ul", { class: "sources" }, m.sources.filter((s) => /^https?:\/\//.test(s.url)).map((s) =>
@@ -346,7 +348,7 @@ function renderFeed(d) {
   if (ui.chatBusy && !ui.convo.some((m) => m.live)) items.push(h("div", { class: "msg jarvis" }, h("span", { class: "who typing" }, "JARVIS")));
   if (d) items.push(...d.jobs.filter((j) => j.state !== "submitted").reverse().map(jobCard));
   const feed = $("#feed");
-  const key = JSON.stringify([ui.convo.length, ui.liveLen || 0, ui.convo.map((m) => m.approval_id || ""), ui.chatBusy, d && d.jobs.map((j) => [j.id, j.state, j.elapsed, j.kind])]);
+  const key = JSON.stringify([ui.convo.length, ui.convo.map((m) => (m.help ? "h" : m.welcome ? "w" : "")).join(""), ui.liveLen || 0, ui.convo.map((m) => m.approval_id || ""), ui.chatBusy, d && d.jobs.map((j) => [j.id, j.state, j.elapsed, j.kind])]);
   if (key === ui.lastFeed) return;            // avoid re-rendering (and losing scroll/focus) when nothing changed
   ui.lastFeed = key;
   const nearBottom = feed.scrollHeight - feed.scrollTop - feed.clientHeight < 60;
@@ -511,6 +513,79 @@ async function showBriefing() {
     ui.convo.push({ role: "assistant", briefing: b });
     render();
   } catch (e) { note(e.message); }
+}
+
+// ---------------------------------------------------------------- help: what can I say?
+// Only examples this JARVIS can actually do right now (e.g. calendar ones only when the Mac apps are available).
+function helpExamples(d) {
+  const cap = (d && d.capabilities) || {};
+  const ask = [["What do you remember about me?"], ["Remember that I prefer email over phone calls"],
+               ["Explain the difference between a Roth and a traditional IRA"]];
+  const doIt = [["Summarise the PDFs in my Downloads folder into one note"],
+                ["Move last month's screenshots from Downloads into an Archive folder"]];
+  if (cap.mac_apps) {
+    ask.unshift(["What's on my calendar tomorrow?"], ["Which of my reminders are overdue?"], ["What did my notes say about the trip?"]);
+    doIt.unshift(["Add a reminder to call the dentist tomorrow at 10am"], ["Draft an email to Sam about Friday's meeting"],
+                 ["Put lunch with Alex on Thursday at 1pm in my calendar"]);
+  }
+  const groups = [["ask", "Ask", "Answers, and looks things up when it needs to. Changes nothing.", ask],
+                  ["do", "Do", "Makes a plan, then asks you before every change.", doIt]];
+  if (cap.research) groups.push(["research", "Research", "Searches the web with Claude (asks first) and checks every source.",
+                                 [["Which free note-taking apps work offline?"], ["What changed in the latest macOS release?"]]]);
+  return groups;
+}
+
+function helpCard(m) {
+  const pick = (mode, text) => {
+    setMode(mode);
+    const cmd = $("#cmd");
+    cmd.value = text;
+    cmd.focus();
+  };
+  return h("div", { class: "job helpcard" },
+    h("div", { class: "kicker" }, "What can I say?"),
+    helpExamples(ui.data).map(([mode, label, what, examples]) => h("div", { class: "help-group" },
+      h("h3", {}, label), h("p", { class: "d-why" }, what),
+      h("div", { class: "help-examples" }, examples.map(([text]) =>
+        h("button", { class: "chip", type: "button", onclick: () => pick(mode, text) }, text))))),
+    h("p", { class: "d-why" }, "Tap an example to put it in the box, then Send. Nothing changes without your approval; ",
+      "Emergency stop pauses everything."),
+    h("div", { class: "row mt" }, h("button", { class: "btn btn-ghost btn-sm", type: "button", onclick: () => dismiss(m) }, "Close")));
+}
+
+function welcomeCard(m) {
+  return h("div", { class: "job helpcard" },
+    h("div", { class: "kicker" }, "Welcome to JARVIS"),
+    h("ul", { class: "welcome" },
+      h("li", {}, h("b", {}, "Command box"), " (bottom): Ask a question, Do a task, or Research the web."),
+      h("li", {}, h("b", {}, "Missions"), ": tasks JARVIS is working on, step by step."),
+      h("li", {}, h("b", {}, "Decisions"), ": anything JARVIS wants to change waits here for your Approve or Reject."),
+      h("li", {}, h("b", {}, "Emergency stop"), " (top): pauses everything at once.")),
+    h("div", { class: "row mt" },
+      h("button", { class: "btn btn-sm", type: "button", onclick: () => { dismiss(m); showHelp(); } }, "What can I say?"),
+      h("button", { class: "btn btn-ghost btn-sm", type: "button", onclick: () => dismiss(m) }, "Got it")));
+}
+
+function dismiss(m) {
+  ui.convo = ui.convo.filter((x) => x !== m);
+  if (m.welcome) { try { localStorage.setItem("jarvis-welcomed", "1"); } catch (e) { /* shows again next time */ } }
+  render();
+}
+
+function showHelp() {
+  ui.convo = ui.convo.filter((x) => !x.help);
+  ui.convo.push({ role: "assistant", help: true });
+  render();
+  const feed = $("#feed");
+  feed.scrollTop = feed.scrollHeight;
+}
+
+function maybeWelcome() {
+  if (ui.welcomeChecked) return;
+  ui.welcomeChecked = true;
+  let seen = false;
+  try { seen = localStorage.getItem("jarvis-welcomed") === "1"; } catch (e) { /* show it */ }
+  if (!seen) { ui.convo.unshift({ role: "assistant", welcome: true }); render(); }
 }
 
 function maybeAutoBriefing(d) {
@@ -772,6 +847,7 @@ async function refresh() {
   catch (e) { ui.online = false; if (/not signed in/.test(e.message)) { location.reload(); return; } }
   render();
   maybeAutoBriefing(ui.data);
+  maybeWelcome();
   renderVoice(ui.data);
 }
 
@@ -784,6 +860,7 @@ document.addEventListener("DOMContentLoaded", () => {
   // One tap, no questions: stopping is always safe (releasing it is what asks for confirmation).
   $("#estop").addEventListener("click", () => act("/api/stop", { reason: "stopped from the dashboard" }));
   $("#briefbtn").addEventListener("click", showBriefing);
+  $("#helpbtn").addEventListener("click", showHelp);
   $("#mic").addEventListener("click", toggleMic);
   $("#speak").addEventListener("click", toggleSpeak);
   document.addEventListener("keydown", (e) => { if (e.key === "Escape") stopSpeaking(); });

@@ -205,6 +205,7 @@
       roots: ["~/Documents/JARVIS", "~/Downloads"], policy_loaded: true,
       memory: { memories: S.memories.length, unconfirmed, records: 0, enabled: true },
       research_available: true,
+      capabilities: { mac_apps: false, research: true, voice: false },
       health: { ok: true, checked: t(), service: false, items: [
         { name: "Simulation", ok: true, detail: "running in this browser · not connected to your Mac" },
         { name: "Backups", ok: true, detail: "not part of the simulation" }] },
