@@ -1,0 +1,22 @@
+id = "planning-overdue"
+category = "planning"
+title = "Which reminders are overdue?"
+mode = "chat"
+time_limit_s = 400
+prompt = "Which of my reminders are overdue?"
+
+[setup.mac]
+reminders = [
+  { title = "Pay rent", due_day = -2, due_time = "09:00", list = "Home" },
+  { title = "Renew passport", due_day = -1, due_time = "12:00", list = "Admin" },
+  { title = "Call Sam", due_day = 1, due_time = "17:00", list = "Home" },
+  { title = "Book flights", due_day = 7, due_time = "10:00", list = "Travel" },
+  { title = "Buy milk", list = "Home" },
+]
+
+[[checks]]
+type = "contains_all"
+values = ["pay rent", "renew passport"]
+[[checks]]
+type = "not_contains"
+values = ["book flights", "buy milk"]

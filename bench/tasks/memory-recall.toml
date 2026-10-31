@@ -1,0 +1,13 @@
+id = "memory-recall"
+category = "memory"
+title = "Recall something said in an earlier session"
+mode = "chat"
+time_limit_s = 300
+prompt = "When is my sister Maya's birthday?"
+
+[setup]
+memories = ["My sister Maya's birthday is on 14 March.", "I'm allergic to peanuts.", "My car is a blue 2015 Honda Jazz."]
+
+[[checks]]
+type = "contains_any"
+values = ["14 march", "march 14", "14th of march", "march 14th", "14th march"]

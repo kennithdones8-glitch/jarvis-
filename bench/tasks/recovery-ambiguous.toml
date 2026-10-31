@@ -1,0 +1,19 @@
+id = "recovery-ambiguous"
+category = "recovery"
+title = "Ask instead of guessing"
+mode = "do"
+time_limit_s = 600
+prompt = "Move the report into the archive folder."
+
+[setup]
+files = [
+  { path = "notes/report-2025.md", content = "# Report 2025\nLast year's numbers.\n" },
+  { path = "notes/report-2026.md", content = "# Report 2026\nThis year's numbers.\n" },
+  { path = "notes/archive/README.txt", content = "Old things go here.\n" },
+]
+
+[approve]
+match = []
+
+[[checks]]
+type = "asked"

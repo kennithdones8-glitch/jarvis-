@@ -105,6 +105,14 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("file", nargs="?")
     p.add_argument("--whisper-dir", default="~/whisper.cpp", help="where you built whisper.cpp")
     p.add_argument("--model", default="base.en", help="model name (default base.en)")
+    p = sub.add_parser("bench", help="benchmark: list | run [IDS] | baseline | score-baseline FILE | report RUN_DIR")
+    p.add_argument("op", choices=["list", "run", "baseline", "score-baseline", "report"])
+    p.add_argument("ids", nargs="*", help="task ids (run), or the file / folder (score-baseline, report)")
+    p.add_argument("--models", choices=["local", "hybrid"], default="local",
+                   help="local: Claude off (default). hybrid: your settings, uses your Claude Pro plan")
+    p.add_argument("--repeat", type=int, default=1)
+    p.add_argument("--run-code", action="store_true", help="run coding answers against hidden tests (sandboxed)")
+    p.add_argument("--b1", action="store_true", help="baseline with the same information JARVIS gets")
     p = sub.add_parser("mac", help="Mac apps (Calendar, Reminders, Notes): check — read-only test that also lets macOS ask for permission")
     p.add_argument("op", choices=["check"])
     p = sub.add_parser("doctor", help="check the whole installation and say what to fix")
@@ -192,6 +200,8 @@ def main(argv: list[str] | None = None) -> int:
             return _devices(kernel, args)
         elif args.cmd == "voice":
             return _voice(kernel, args)
+        elif args.cmd == "bench":
+            return _bench(kernel, args)
         elif args.cmd == "mac":
             return _mac_check()
         elif args.cmd == "doctor":
@@ -679,6 +689,53 @@ listening on 127.0.0.1 only.""")
         if started:
             voice.process.stop()
     return 0
+
+
+def _bench(kernel: Kernel, args) -> int:
+    import json as _json
+
+    from .bench import TaskError, load_tasks
+    from .bench.baseline import score_file, template
+    from .bench.runner import BenchError, report, run_suite
+
+    out = kernel.home / "bench-results"
+    try:
+        if args.op == "list":
+            for t in load_tasks():
+                print(f"{t.id:<22} {t.category:<10} {t.mode:<9} {t.title}")
+            return 0
+        if args.op == "baseline":
+            out.mkdir(parents=True, exist_ok=True)
+            path = out / f"baseline-{'b1' if args.b1 else 'b0'}.md"
+            path.write_text(template(load_tasks(args.ids or None), b1=args.b1))
+            print(f"Wrote {path}\nFill it in with the Claude app's answers, then: uv run jarvis bench score-baseline \"{path}\"")
+            return 0
+        if args.op == "score-baseline":
+            if not args.ids:
+                print("usage: jarvis bench score-baseline FILE", file=sys.stderr)
+                return 1
+            r = score_file(Path(args.ids[0]).expanduser(), load_tasks())
+            for x in r["results"]:
+                print(f"{x['status'].upper():<8} {x['id']:<22} " + "; ".join(c["detail"] for c in x["checks"] if c["passed"] is False))
+            print(f"\nSaved {r['path']}")
+            return 0
+        if args.op == "report":
+            data = _json.loads((Path(args.ids[0]).expanduser() / "results.json").read_text())
+            print(report(data["meta"], data["results"]))
+            return 0
+        tasks = load_tasks(args.ids or None)
+        if args.models == "hybrid":
+            print("Hybrid: uses your Claude Pro plan (no money; it counts toward your usage limits). Each task runs in a\n"
+                  "throwaway folder with made-up data, which may be sent to Claude without asking. Your real JARVIS\n"
+                  "settings and permissions are untouched.\n")
+        run_dir = run_suite(tasks, real_config=kernel.config_path, out_dir=out, models=args.models,
+                            repeat=max(1, args.repeat), run_code=args.run_code, progress=print)
+        print(f"\nReport: {run_dir / 'report.md'}")
+        print("\n".join((run_dir / "report.md").read_text().splitlines()[:16]))
+        return 0
+    except (TaskError, BenchError) as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 1
 
 
 def _mac_check(runner=None) -> int:

@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.17.0 — Mac apps, smarter chat, Briefing 2.0, benchmark (milestone 1)
+
+- **Mac apps** (Calendar, Reminders, Notes, Mail drafts, opening apps) through macOS scripting. Reading is tier 0;
+  adding or changing is tier 1 and asks first with an exact preview. Nothing sends, deletes or changes settings.
+  Repeating events are expanded (python-dateutil 2.9, pinned below 3). `jarvis mac check` tests access read-only.
+- **Smarter chat:** for questions about your calendar, reminders, notes or files, the local model picks up to three
+  read-only lookups (the question never leaves the Mac for this), run through the permission engine; results go to
+  the answering model as private file content (the privacy gate asks before Claude sees them). Change requests get
+  a **Make a plan** button instead of being done in chat. The persona's can/can't list follows.
+- **Briefing 2.0:** today's calendar and reminders due or overdue, read on the Mac.
+- **Benchmark (Intelligence project, milestone 1):** `jarvis bench` with 12 core tasks in 7 categories, run in
+  throwaway data folders with made-up data and a Mac-apps stand-in, no standing permissions, a check that fails any
+  unapproved change, a $0-budget requirement, sandboxed code checks, and a baseline file for the Claude app scored
+  by the same checks. Results record JARVIS version, git commit and each task file's hash. See `bench/README.md`.
+- Planner now knows today's date and time. Approval cards describe Mac-app actions in plain words.
+- Not yet run on the Mac: the Mac apps' real scripts, smarter chat with real models, and the first benchmark run.
+
 ## 0.16.4 — Phone preview (simulation) and in-page dialogs
 
 - **Phone preview:** `demo/` builds the real dashboard with a simulated JARVIS running in the browser, plus a

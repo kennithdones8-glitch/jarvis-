@@ -1,0 +1,27 @@
+id = "tooluse-decisions"
+category = "tool_use"
+title = "Read two notes, save one summary file"
+mode = "do"
+time_limit_s = 900
+prompt = "Read meeting-mon.txt and meeting-wed.txt in my notes folder and save a file called decisions.md in the same folder that lists every decision from both meetings."
+
+[setup]
+files = [
+  { path = "notes/meeting-mon.txt", content = "Monday meeting\nDecisions: the budget is approved at 12,000. The launch moves to Friday.\nActions: Sam updates the website.\n" },
+  { path = "notes/meeting-wed.txt", content = "Wednesday meeting\nDecisions: we will hire one designer. The launch stays on Friday.\nOpen question: where to hold the party.\n" },
+]
+
+[approve]
+match = ["decisions.md"]
+
+[[checks]]
+type = "file_contains_all"
+path = "notes/decisions.md"
+values = ["budget", "designer", "friday"]
+[[checks]]
+type = "contains_all"
+values = ["budget", "designer", "friday"]
+[[checks]]
+type = "approvals"
+min = 1
+max = 1

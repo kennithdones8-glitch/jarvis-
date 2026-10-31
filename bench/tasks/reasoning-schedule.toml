@@ -1,0 +1,23 @@
+id = "reasoning-schedule"
+category = "reasoning"
+title = "Constraint puzzle with one right answer"
+mode = "chat"
+time_limit_s = 300
+prompt = """
+Ana, Ben, Cara and Dev each get one meeting slot: 9:00, 10:00, 11:00 or 12:00.
+Ana is earlier than Ben. Cara is neither first nor last. Dev is last. Ben is not at 10:00.
+Who has each slot? Finish with four lines in the form "9:00 Name".
+"""
+
+[[checks]]
+type = "regex"
+pattern = '9:00\W{0,8}ana'
+[[checks]]
+type = "regex"
+pattern = '10:00\W{0,8}cara'
+[[checks]]
+type = "regex"
+pattern = '11:00\W{0,8}ben'
+[[checks]]
+type = "regex"
+pattern = '12:00\W{0,8}dev'

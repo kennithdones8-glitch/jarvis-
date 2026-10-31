@@ -30,6 +30,9 @@ uv run pytest      # full suite, ~30 s
 | `tests/test_proactive.py` | Quiet hours, briefing timing, briefing from live state (nothing stored), reminders, health alerts, dashboard announcement, CLI |
 | `tests/test_voice.py` | WAV checks, transcript cleaning, loopback-only client (proxies ignored), transcribe endpoint + defences, phone sessions, managed whisper-server process, CLI. Uses a whisper.cpp `/inference` protocol stand-in |
 | `tests/test_doctor.py` | Every doctor check runs without crashing; phone path check (Host preserved vs rewritten); Tailscale name change; voice; HTTPS-trust fallback |
+| `tests/test_mac.py` | Mac apps through the real gateway with an osascript stand-in: tiers, approvals and previews, argument checks, repeating events, injection-safe arguments, error messages, reconcile |
+| `tests/test_lookup.py` | Smarter chat: lookups chosen locally, read-only only, outside-folder reads refused, no stray approvals, plan offers, persona |
+| `tests/test_bench.py` | Benchmark harness end to end: an oracle model passes every task, a careless one fails for the right reasons, unapproved changes caught, isolation, baseline scoring, sandboxed code checks |
 | `tests/test_backup_service.py` | Encryption, tamper detection, restore with deletions kept, retention, LaunchAgent plist |
 | `tests/test_persona.py` | Persona honesty and ability list |
 | `tests/test_tasks.py` | End-to-end task with approval + verification, retries/backoff, uncertain outcomes, pause/cancel, corrupt checkpoints, **real subprocess crash + recovery** |

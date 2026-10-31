@@ -1,0 +1,13 @@
+id = "reasoning-flour"
+category = "reasoning"
+title = "Scaling a recipe"
+mode = "chat"
+time_limit_s = 300
+prompt = """
+A recipe for 4 people uses 300 g of flour. I'm cooking the same recipe for 10 people and I have 650 g of flour.
+How many more grams of flour do I need? End with the number on its own line.
+"""
+
+[[checks]]
+type = "regex"
+pattern = '(?m)^\W*100\s*(g|grams)?\W*$'

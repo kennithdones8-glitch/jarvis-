@@ -1,0 +1,33 @@
+id = "coding-median"
+category = "coding"
+title = "Fix a buggy function (hidden tests)"
+mode = "chat"
+time_limit_s = 400
+prompt = """
+This Python function is wrong for lists with an even number of items, and it crashes on an empty list (it should
+return None then):
+
+```python
+def median(values):
+    s = sorted(values)
+    mid = len(s) // 2
+    return s[mid]
+```
+
+Fix it. Reply with the complete corrected function in one Python code block.
+"""
+
+[[checks]]
+type = "contains_all"
+values = ["def median"]
+[[checks]]
+type = "code_tests"
+function = "median"
+cases = [
+  [[[3, 1, 2]], 2],
+  [[[4, 1, 3, 2]], 2.5],
+  [[[]], "__none__"],
+  [[[5]], 5],
+  [[[1, 2]], 1.5],
+  [[[7, 7, 1, 9]], 7.0],
+]

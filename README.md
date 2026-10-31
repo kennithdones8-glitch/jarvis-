@@ -68,6 +68,8 @@ is sent over the network without your approval.
 
 | Command | Purpose |
 |---|---|
+| `jarvis bench list\|run\|baseline\|score-baseline\|report` | Benchmark JARVIS on fixed tasks, and the Claude app on the same tasks ([bench/README](bench/README.md)) |
+| `jarvis mac check` | Read-only test of Calendar, Reminders and Notes access (lets macOS ask for permission) |
 | `jarvis doctor [--json]` | Check the whole installation (database, models, service, backups, HTTPS, phone path, Touch ID, voice) and say what to fix |
 | `jarvis status` | Emergency-stop state, task counts, pending approvals |
 | `jarvis tasks` / `jarvis show ID` / `jarvis tasks delete ID` | List tasks / inspect one / delete a finished task's history |

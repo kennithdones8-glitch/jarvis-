@@ -1,0 +1,27 @@
+id = "planning-free"
+category = "planning"
+title = "Am I free? (from the calendar)"
+mode = "chat"
+time_limit_s = 400
+prompt = "Am I free tomorrow between 2pm and 3:30pm? And what's my first commitment tomorrow, and when is it?"
+
+[setup.mac]
+events = [
+  { title = "Standup", day = 1, start = "09:00", end = "09:30", calendar = "Work" },
+  { title = "Lunch with Sam", day = 1, start = "13:00", end = "14:00" },
+  { title = "Dentist", day = 1, start = "15:30", end = "16:30", location = "High St" },
+  { title = "Gym", day = 2, start = "07:00", end = "08:00" },
+]
+
+[[checks]]
+type = "contains_any"
+values = ["you're free", "you are free", "yes", "available", "nothing scheduled", "no events", "nothing on"]
+[[checks]]
+type = "not_contains"
+values = ["not free", "aren't free", "are not free", "you're busy", "you are busy"]
+[[checks]]
+type = "contains_all"
+values = ["standup"]
+[[checks]]
+type = "contains_any"
+values = ["9:00", "9am", "9 am", "09:00", "9 a.m."]

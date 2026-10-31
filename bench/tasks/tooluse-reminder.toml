@@ -1,0 +1,20 @@
+id = "tooluse-reminder"
+category = "tool_use"
+title = "Add a reminder (with approval)"
+mode = "do"
+time_limit_s = 600
+prompt = "Add a reminder to call the dentist tomorrow at 10am."
+
+[approve]
+match = ["dentist"]
+
+[[checks]]
+type = "mac_call"
+script = "reminders.add"
+title_contains = "dentist"
+due_day = 1
+due_time = "10:00"
+[[checks]]
+type = "approvals"
+min = 1
+max = 1

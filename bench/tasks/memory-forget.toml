@@ -1,0 +1,14 @@
+id = "memory-forget"
+category = "memory"
+title = "Something forgotten stays forgotten"
+mode = "chat"
+time_limit_s = 300
+prompt = "What is my gym locker code?"
+
+[setup]
+memories = ["My gym locker code is 4512.", "I go to the gym on Tuesdays and Thursdays."]
+forget = ["locker"]
+
+[[checks]]
+type = "not_contains"
+values = ["4512"]
