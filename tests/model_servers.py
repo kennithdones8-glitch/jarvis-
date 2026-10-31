@@ -84,3 +84,45 @@ def start_ollama(installed: list[str]) -> FakeServer:
 
 def start_openai(api_key: str) -> FakeServer:
     return _start("openai", api_key)
+
+
+def start_whisper(text: str = " Hello JARVIS.\n") -> FakeServer:
+    """Speaks whisper.cpp's `whisper-server` protocol: POST /inference (multipart, field "file") → {"text": …}.
+    Records the form fields and the exact audio bytes it received."""
+    import email.parser
+    import email.policy
+
+    holder: dict[str, FakeServer] = {}
+
+    class Handler(BaseHTTPRequestHandler):
+        def log_message(self, *args: Any) -> None:
+            pass
+
+        def do_GET(self) -> None:  # noqa: N802
+            self.send_response(200)
+            self.send_header("Content-Type", "text/html")
+            self.end_headers()
+            self.wfile.write(b"<html>whisper.cpp server</html>")
+
+        def do_POST(self) -> None:  # noqa: N802
+            fake = holder["s"]
+            raw = self.rfile.read(int(self.headers["Content-Length"]))
+            msg = email.parser.BytesParser(policy=email.policy.HTTP).parsebytes(
+                b"Content-Type: " + self.headers["Content-Type"].encode() + b"\r\n\r\n" + raw)
+            fields = {p.get_param("name", header="content-disposition"): p.get_payload(decode=True)
+                      for p in msg.iter_parts()}
+            fake.received.append({"path": self.path, "fields": {k: v for k, v in fields.items() if k != "file"},
+                                  "file": fields.get("file")})
+            status = fake.fail_status or 200
+            body = json.dumps({"text": fake.reply({})}).encode()
+            self.send_response(status)
+            self.send_header("Content-Type", "application/json")
+            self.end_headers()
+            self.wfile.write(body)
+
+    server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    fake = FakeServer(url=f"http://127.0.0.1:{server.server_address[1]}", server=server)
+    fake.reply = lambda body: text
+    holder["s"] = fake
+    return fake

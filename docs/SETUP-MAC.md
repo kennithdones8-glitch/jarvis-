@@ -110,7 +110,19 @@ On by default at 08:00 (needs JARVIS running, e.g. the background service). Clic
 dashboard any time, or run `uv run jarvis briefing`. Change the time or quiet hours in the `[proactive]` section
 of `jarvis.toml` (see `config/jarvis.example.toml`), then `uv run jarvis service restart`.
 
-## 9. Your iPhone (optional)
+## 9. Voice (optional)
+
+```bash
+uv run jarvis voice setup
+```
+Follow the steps it prints (builds whisper.cpp v1.9.4 and downloads a ~150 MB model; free). Then
+`uv run jarvis voice enable` and restart JARVIS. Tap **Talk** next to Send; tap again to stop. Turn on
+**Voice replies** under the box to hear answers. To check it with a recording made in QuickTime:
+```bash
+afconvert -f WAVE -d LEI16@16000 -c 1 ~/Desktop/test.m4a ~/Desktop/test.wav && uv run jarvis voice test ~/Desktop/test.wav
+```
+
+## 10. Your iPhone (optional)
 
 Needs iOS 16.4 or later. Free; nothing is exposed to the internet.
 

@@ -10,6 +10,7 @@ import argparse
 import json
 import shutil
 import sys
+import time
 from pathlib import Path
 
 from .core import Kernel
@@ -99,6 +100,11 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("op", choices=["enable", "disable", "status"])
     p.add_argument("--port", type=int, default=8765)
     p.add_argument("--hostname", help="this Mac's Tailscale name (default: asked from the Tailscale app)")
+    p = sub.add_parser("voice", help="local speech recognition (whisper.cpp): setup | enable | disable | status | test FILE")
+    p.add_argument("op", choices=["setup", "enable", "disable", "status", "test"])
+    p.add_argument("file", nargs="?")
+    p.add_argument("--whisper-dir", default="~/whisper.cpp", help="where you built whisper.cpp")
+    p.add_argument("--model", default="base.en", help="model name (default base.en)")
     sub.add_parser("briefing", help="what needs you, what finished or failed, and any problems")
     p = sub.add_parser("touchid", help="Touch ID for dashboard approvals: list | remove ID | reset --yes (recovery)")
     p.add_argument("op", nargs="?", choices=["list", "remove", "reset"], default="list")
@@ -174,6 +180,8 @@ def main(argv: list[str] | None = None) -> int:
             return _remote(kernel, args)
         elif args.cmd == "devices":
             return _devices(kernel, args)
+        elif args.cmd == "voice":
+            return _voice(kernel, args)
         elif args.cmd == "briefing":
             from .proactive import briefing_text, build_briefing
 
@@ -538,6 +546,97 @@ def _device_store(kernel: Kernel):
     from .remote.devices import DeviceStore
 
     return DeviceStore(kernel.db, kernel.audit)
+
+
+WHISPER_VERSION = "v1.9.4"  # pinned: an established release, not whatever is newest
+
+
+def _write_section(kernel: Kernel, section: str, values: dict) -> None:
+    """Replace (or add) one [section] in jarvis.toml, validating before writing and keeping a backup."""
+    import re
+    import tomllib
+
+    from .models.config import parse_model_config
+
+    path = kernel.config_path
+    text = path.read_text() if path.exists() else EXAMPLE_MODELS.read_text()
+    lines = [f"[{section}]"] + [f"{k} = {json.dumps(v)}" for k, v in values.items()]
+    block = "\n".join(lines) + "\n"
+    pattern = rf"(?ms)^\[{re.escape(section)}\]\n.*?(?=^\[|\Z)"
+    text = re.sub(pattern, lambda m: block + "\n", text, count=1) if re.search(rf"(?m)^\[{re.escape(section)}\]", text) \
+        else text.rstrip() + "\n\n" + block
+    parse_model_config(tomllib.loads(text))  # never write an invalid config
+    if path.exists():
+        path.with_suffix(".toml.bak").write_text(path.read_text())
+    path.write_text(text)
+    path.chmod(0o600)
+
+
+def _voice(kernel: Kernel, args) -> int:
+    from . import service as svc
+    from .voice import DEFAULT_URL, Voice, VoiceError
+
+    cfg = kernel.model_config.voice
+    if args.op == "setup":
+        print(f"""Local speech recognition with whisper.cpp ({WHISPER_VERSION}). Free; audio never leaves your Mac.
+Needs Xcode command line tools (`xcode-select --install`) and about 200 MB of disk. In Terminal, one at a time:
+
+  uv tool install cmake
+  git clone --depth 1 --branch {WHISPER_VERSION} https://github.com/ggml-org/whisper.cpp ~/whisper.cpp
+  cd ~/whisper.cpp && cmake -B build -DCMAKE_BUILD_TYPE=Release && cmake --build build -j --config Release --target whisper-server
+  sh ./models/download-ggml-model.sh {args.model}
+  cd ~/jarvis && uv run jarvis voice enable
+
+The model download is about 150 MB (base.en). JARVIS then starts and stops whisper-server itself,
+listening on 127.0.0.1 only.""")
+        return 0
+    if args.op == "enable":
+        d = Path(args.whisper_dir).expanduser()
+        binary, model = d / "build" / "bin" / "whisper-server", d / "models" / f"ggml-{args.model}.bin"
+        missing = [str(p) for p in (binary, model) if not p.exists()]
+        if missing:
+            print("Not found: " + ", ".join(missing) + "\nRun `uv run jarvis voice setup` for the steps.", file=sys.stderr)
+            return 1
+        _write_section(kernel, "voice", {"enabled": True, "server": cfg.get("server") or DEFAULT_URL,
+                                         "whisper_binary": str(binary), "model": str(model),
+                                         "language": "en" if args.model.endswith(".en") else cfg.get("language", "auto"),
+                                         "threads": int(cfg.get("threads", 4))})
+        kernel.audit.record("config.voice", actor="user:cli", enabled=True)
+        print("Voice is on. Restart JARVIS to load it (`uv run jarvis service restart`, or restart `jarvis dashboard`).\n"
+              "Then use the microphone button next to Send. Approvals still need a tap (and Touch ID / Face ID).")
+        return 0
+    if args.op == "disable":
+        _write_section(kernel, "voice", {**cfg, "enabled": False})
+        kernel.audit.record("config.voice", actor="user:cli", enabled=False)
+        if svc.is_loaded():
+            svc.restart()
+        print("Voice is off.")
+        return 0
+    voice = Voice(cfg, kernel.home)
+    if args.op == "status":
+        _print({**voice.status(), "server": voice.client.url,
+                "note": None if voice.process is None or voice.client.available()
+                else "whisper-server starts with JARVIS (dashboard or background service)"})
+        return 0
+    if not args.file:
+        print("usage: jarvis voice test FILE.wav  (16 kHz mono; convert with: "
+              "afconvert -f WAVE -d LEI16@16000 -c 1 in.m4a out.wav)", file=sys.stderr)
+        return 1
+    started = voice.process.start() if voice.process and not voice.client.available() else False
+    try:
+        if started:
+            for _ in range(60):
+                if voice.client.available():
+                    break
+                time.sleep(0.5)
+        print(voice.client.transcribe(Path(args.file).expanduser().read_bytes()) or "(no speech heard)")
+    except VoiceError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 1
+    finally:
+        if started:
+            voice.process.stop()
+    return 0
 
 
 def _touchid(kernel: Kernel, args) -> int:

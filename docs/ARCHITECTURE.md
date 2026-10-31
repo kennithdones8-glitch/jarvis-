@@ -162,6 +162,15 @@ opened (`/api/briefing`, `jarvis briefing`) and covers the time since the previo
 time it was announced are stored (`meta` table). It calls no model and sends nothing off the Mac except the
 generic push.
 
+## Voice (`src/jarvis/voice/`, v0.16)
+
+The browser records (MediaRecorder), converts to 16 kHz mono 16-bit WAV (Web Audio, in the page) and posts it
+to `/api/voice/transcribe` (same CSRF/Origin checks; Mac cookie or phone session). JARVIS checks the WAV
+(format, ≤60 s), passes it in memory to whisper.cpp's `whisper-server` on 127.0.0.1 (`POST /inference`;
+loopback enforced, no system proxy) and returns the cleaned transcript, which the page sends like typed text.
+With `whisper_binary` and `model` configured, the dashboard process starts `whisper-server` and stops it on
+exit (no extra LaunchAgent). Spoken replies use `speechSynthesis` with on-device (`localService`) voices only.
+
 ## Service and backups
 
 `service.py` writes a per-user LaunchAgent that runs `uv run jarvis dashboard --no-open` at login and after

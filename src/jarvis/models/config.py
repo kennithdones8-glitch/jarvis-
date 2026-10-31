@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 import tomllib
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -39,6 +40,7 @@ class ModelConfig:
     backup: dict[str, Any] = field(default_factory=dict)
     remote: dict[str, Any] = field(default_factory=dict)
     proactive: dict[str, Any] = field(default_factory=dict)
+    voice: dict[str, Any] = field(default_factory=dict)
 
 
 def _check_keys(where: str, data: dict[str, Any], allowed: set[str]) -> None:
@@ -66,7 +68,16 @@ def _model(where: str, raw: dict[str, Any]) -> ModelInfo:
 
 def parse_model_config(data: dict[str, Any]) -> ModelConfig:
     _check_keys("jarvis.toml", data, {"budget", "privacy", "providers", "search", "routing", "memory", "backup",
-                                      "remote", "proactive"})
+                                      "remote", "proactive", "voice"})
+    voice = data.get("voice", {})
+    _check_keys("[voice]", voice, {"enabled", "server", "whisper_binary", "model", "language", "threads"})
+    from .providers import is_loopback_url
+    if not is_loopback_url(str(voice.get("server", "http://127.0.0.1:8178"))):
+        raise ConfigError("[voice]: server must be on this Mac (http://127.0.0.1:PORT) — audio never leaves it")
+    if not re.fullmatch(r"[a-z]{2}|auto", str(voice.get("language", "en"))):
+        raise ConfigError("[voice]: language must be a two-letter code like 'en', or 'auto'")
+    if not 1 <= int(voice.get("threads", 4)) <= 16:
+        raise ConfigError("[voice]: threads must be 1–16")
     proactive = data.get("proactive", {})
     _check_keys("[proactive]", proactive, {"enabled", "briefing_time", "quiet_hours", "approval_reminder_min"})
     from ..proactive import validate
@@ -128,7 +139,7 @@ def parse_model_config(data: dict[str, Any]) -> ModelConfig:
         raise ConfigError("[budget]: monthly_limit_usd cannot be negative")
     return ModelConfig(monthly_limit_usd=limit, local_only_categories=local_only, providers=tuple(providers),
                        searxng_url=search.get("searxng_url"), routing_mode=routing.get("mode", "local_first"),
-                       memory=dict(memory), backup=dict(backup), remote=dict(remote), proactive=proactive)
+                       memory=dict(memory), backup=dict(backup), remote=dict(remote), proactive=proactive, voice=dict(voice))
 
 
 def load_model_config(path: str | Path) -> ModelConfig:

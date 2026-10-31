@@ -56,6 +56,10 @@ Fixed guarantees, independent of policy:
 | Notification content leaking (lock screen, Apple) | Payloads are encrypted for the phone only (RFC 8291) and contain only generic text; details need sign-in. The briefing notification says only "Your morning briefing is ready"; its content is built when you open it and never stored | ✅ tested (decrypted as the phone would) |
 | Notification links opening other sites | The payload link must be a JARVIS path (`/…`); the service worker checks again | ✅ tested (server side) |
 | Push used to reach arbitrary hosts | Only https endpoints on known push services are accepted | ✅ tested |
+| Voice used to approve or authenticate | A transcript is only chat text: it can't approve, and approvals still need a tap (+ Touch ID / Face ID). Voice identity is not authentication | ✅ by construction |
+| Audio leaving the Mac / lingering | Recogniser must be on loopback (config and client refuse anything else; no system proxy); audio held in memory only, never written; audit records only length and timing; phone audio travels inside Tailscale | ✅ tested with a whisper.cpp protocol stand-in — real whisper.cpp **Mac check pending** |
+| Spoken replies sent to a cloud voice | Only voices marked on-device (`localService`) are used; otherwise JARVIS says it can't read aloud | ✅ headless browser (no local voice → refused) |
+| Page features abused (camera, location) | `Permissions-Policy` allows only the microphone, only for JARVIS itself | ✅ tested |
 | Unsafe shell | No shell tool exists | ✅ by absence |
 | SSRF via web fetch (reaching Ollama, router, cloud metadata) | Each hop resolved once, must be public, and the connection is pinned to that address (no rebinding); ports 80/443 only; no embedded credentials; ≤5 redirects; one overall deadline; system HTTP proxies not used | ✅ tested (v0.12) |
 | Destructive file operations | Overwrites keep the previous version; delete is Tier 4 and moves to trash | ✅ tested |

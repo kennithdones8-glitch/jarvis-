@@ -195,6 +195,8 @@ async function sendChat(payload, endpoint = "/api/chat") {
     ui.chatBusy = false;
     render();
   }
+  const last = ui.convo[ui.convo.length - 1];
+  if (last && last.role === "assistant" && !last.error && !last.consent) say(last.text);
 }
 
 async function consent(m, approve) {
@@ -267,6 +269,133 @@ function renderFeed(d) {
   const nearBottom = feed.scrollHeight - feed.scrollTop - feed.clientHeight < 60;
   feed.replaceChildren(...items);
   if (nearBottom) feed.scrollTop = feed.scrollHeight;
+}
+
+// ---------------------------------------------------------------- voice
+// Speech → text runs on the Mac (whisper.cpp, loopback only). Replies are read with on-device voices only
+// (voices that would send text to a server are skipped). Interrupting speech never cancels a task.
+const voice = { rec: null, stream: null, chunks: [], timer: null, started: 0, speak: false, warned: false };
+try { voice.speak = localStorage.getItem("jarvis-speak") === "1"; } catch (e) { /* default off */ }
+
+function renderVoice(d) {
+  const v = d && d.voice;
+  const mic = $("#mic");
+  mic.hidden = !(v && v.enabled && navigator.mediaDevices && window.MediaRecorder);
+  if (!voice.rec && mic.textContent !== "Listening…") {
+    mic.disabled = !(v && v.available);
+    mic.title = v && v.available ? "Tap to talk, tap again to stop" : "The speech recogniser isn't running on the Mac";
+  }
+  const sp = $("#speak");
+  sp.hidden = !("speechSynthesis" in window);
+  sp.setAttribute("aria-pressed", String(voice.speak));
+  sp.textContent = `Voice replies: ${voice.speak ? "on" : "off"}`;
+}
+
+function stopSpeaking() { if ("speechSynthesis" in window) speechSynthesis.cancel(); }
+
+async function localVoices() {
+  let all = speechSynthesis.getVoices();
+  if (!all.length) {
+    await new Promise((res) => { speechSynthesis.addEventListener("voiceschanged", res, { once: true }); setTimeout(res, 1500); });
+    all = speechSynthesis.getVoices();
+  }
+  return all.filter((v) => v.localService);
+}
+
+async function say(text) {
+  if (!voice.speak || !("speechSynthesis" in window) || !text) return;
+  const voices = await localVoices();
+  if (!voices.length) {
+    if (!voice.warned) { voice.warned = true; note("This browser has no on-device voice, so replies aren't read aloud."); }
+    return;
+  }
+  const lang = navigator.language || "en-US";
+  const pick = voices.find((v) => v.lang === lang && v.default) || voices.find((v) => v.lang === lang)
+    || voices.find((v) => v.lang.startsWith(lang.slice(0, 2))) || voices[0];
+  const u = new SpeechSynthesisUtterance(text.replace(/https?:\/\/\S+/g, "a link").slice(0, 1500));
+  u.voice = pick; u.lang = pick.lang;
+  stopSpeaking();
+  speechSynthesis.speak(u);
+}
+
+function toggleSpeak() {
+  voice.speak = !voice.speak;
+  try { localStorage.setItem("jarvis-speak", voice.speak ? "1" : "0"); } catch (e) { /* this session only */ }
+  if (voice.speak) say("Voice replies on."); else stopSpeaking();  // speaking inside the tap also unlocks audio on iPhone
+  renderVoice(ui.data);
+}
+
+function micLabel(text, busy) { const m = $("#mic"); m.textContent = text; m.classList.toggle("rec", !!busy); }
+
+async function toggleMic() {
+  stopSpeaking();  // barge in: interrupting JARVIS's voice doesn't cancel anything it's doing
+  if (voice.rec) { voice.rec.stop(); return; }
+  try {
+    voice.stream = await navigator.mediaDevices.getUserMedia({ audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true } });
+  } catch (e) {
+    note(e.name === "NotAllowedError" ? "Microphone access is blocked for this page (check the browser's site settings)." : `Microphone unavailable: ${e.message}`);
+    return;
+  }
+  voice.chunks = [];
+  const rec = new MediaRecorder(voice.stream);
+  rec.ondataavailable = (e) => { if (e.data.size) voice.chunks.push(e.data); };
+  rec.onstop = () => finishRecording(rec.mimeType);
+  voice.rec = rec;
+  voice.started = Date.now();
+  rec.start();
+  micLabel("Stop · 0s", true);
+  voice.timer = setInterval(() => {
+    const s = (Date.now() - voice.started) / 1000;
+    micLabel(`Stop · ${Math.floor(s)}s`, true);
+    if (s >= 58 && voice.rec) voice.rec.stop();
+  }, 250);
+}
+
+async function finishRecording(type) {
+  clearInterval(voice.timer);
+  voice.stream.getTracks().forEach((t) => t.stop());
+  voice.rec = null;
+  const blob = new Blob(voice.chunks, { type });
+  voice.chunks = [];
+  micLabel("Listening…", false);
+  $("#mic").disabled = true;
+  try {
+    const body = await toWav16k(await blob.arrayBuffer());
+    const r = await fetch("/api/voice/transcribe", { method: "POST", credentials: "same-origin",
+      headers: { "Content-Type": "audio/wav", "X-Requested-By": "jarvis" }, body });
+    const data = await r.json().catch(() => ({ error: `HTTP ${r.status}` }));
+    if (!r.ok) throw new Error(data.error || `HTTP ${r.status}`);
+    if (!data.text) { note("I didn't catch that — try again a little closer to the microphone."); return; }
+    $("#cmd").value = data.text;
+    $("#cmdform").requestSubmit();
+  } catch (e) {
+    note(`Voice: ${e.message}`);
+  } finally {
+    micLabel("Talk", false);
+    renderVoice(ui.data);
+  }
+}
+
+// Any recorded format the browser can decode → 16 kHz mono 16-bit WAV (what whisper.cpp expects).
+async function toWav16k(buf) {
+  const AC = window.AudioContext || window.webkitAudioContext;
+  const ctx = new AC();
+  let decoded;
+  try { decoded = await ctx.decodeAudioData(buf); } finally { ctx.close(); }
+  const off = new OfflineAudioContext(1, Math.max(1, Math.ceil(decoded.duration * 16000)), 16000);
+  const src = off.createBufferSource();
+  src.buffer = decoded;
+  src.connect(off.destination);
+  src.start();
+  const pcm = (await off.startRendering()).getChannelData(0);
+  const out = new DataView(new ArrayBuffer(44 + pcm.length * 2));
+  const str = (o, s) => { for (let i = 0; i < s.length; i++) out.setUint8(o + i, s.charCodeAt(i)); };
+  str(0, "RIFF"); out.setUint32(4, 36 + pcm.length * 2, true); str(8, "WAVE"); str(12, "fmt ");
+  out.setUint32(16, 16, true); out.setUint16(20, 1, true); out.setUint16(22, 1, true);
+  out.setUint32(24, 16000, true); out.setUint32(28, 32000, true); out.setUint16(32, 2, true); out.setUint16(34, 16, true);
+  str(36, "data"); out.setUint32(40, pcm.length * 2, true);
+  for (let i = 0; i < pcm.length; i++) out.setInt16(44 + i * 2, Math.max(-1, Math.min(1, pcm[i])) * 0x7fff, true);
+  return new Blob([out.buffer], { type: "audio/wav" });
 }
 
 // ---------------------------------------------------------------- morning briefing (built live, never stored)
@@ -549,6 +678,7 @@ async function refresh() {
   catch (e) { ui.online = false; if (/not signed in/.test(e.message)) { location.reload(); return; } }
   render();
   maybeAutoBriefing(ui.data);
+  renderVoice(ui.data);
 }
 
 document.addEventListener("DOMContentLoaded", () => {
@@ -562,6 +692,9 @@ document.addEventListener("DOMContentLoaded", () => {
     if (reason !== null) act("/api/stop", { reason: reason || "stopped from dashboard" });
   });
   $("#briefbtn").addEventListener("click", showBriefing);
+  $("#mic").addEventListener("click", toggleMic);
+  $("#speak").addEventListener("click", toggleSpeak);
+  document.addEventListener("keydown", (e) => { if (e.key === "Escape") stopSpeaking(); });
   window.addEventListener("hashchange", () => maybeAutoBriefing(ui.data));
   $("#release").addEventListener("click", () => {
     if (confirm("Release the emergency stop? Paused tasks stay paused until you resume them.")) act("/api/release", { confirm: true });

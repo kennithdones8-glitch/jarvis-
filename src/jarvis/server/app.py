@@ -58,6 +58,7 @@ SECURITY_HEADERS = {
     "X-Content-Type-Options": "nosniff",
     "X-Frame-Options": "DENY",
     "Referrer-Policy": "no-referrer",
+    "Permissions-Policy": "microphone=(self), camera=(), geolocation=(), payment=(), usb=()",
     "Cache-Control": "no-store",
 }
 
@@ -119,6 +120,7 @@ def describe_event(event: str, p: dict[str, Any], *, task_id: str | None = None,
         "push.subscribed": lambda: "Phone notifications turned on",
         "push.sent": lambda: f"Notification sent to {p.get('devices')} phone(s)",
         "briefing.ready": lambda: "Morning briefing ready",
+        "voice.transcribed": lambda: f"Heard you ({p.get('chars')} characters, {p.get('seconds')}s on this Mac)",
         "config.remote": lambda: "Phone access " + ("turned on" if p.get("enabled") else "turned off"),
     }
     goals = goals or {}
@@ -180,7 +182,9 @@ class Dashboard:
         self.remote = remote or None
         self._local_hosts = local_hosts or {f"127.0.0.1:{self.port}", f"localhost:{self.port}", f"[::1]:{self.port}"}
         from ..remote import MacKeys
+        from ..voice import Voice
         self.mac = MacKeys(kernel, self.port)  # Touch ID, once set up
+        self.voice = Voice(kernel.model_config.voice, kernel.home)  # speech recognition on this Mac
         self.notifier = None
         if self.remote is not None:
             from ..remote import Notifier
@@ -193,12 +197,14 @@ class Dashboard:
 
     def start(self) -> None:
         """Run in background threads (used by tests)."""
+        self.voice.start()
         self._runner.start()
         self._maint.start()
         self._serving = True
         threading.Thread(target=self.httpd.serve_forever, kwargs={"poll_interval": 0.1}, daemon=True).start()
 
     def serve_forever(self) -> None:
+        self.voice.start()
         self._runner.start()
         self._maint.start()
         self._serving = True
@@ -214,6 +220,7 @@ class Dashboard:
             self.httpd.shutdown()
         self.httpd.server_close()
         self._pool.shutdown(wait=False, cancel_futures=True)
+        self.voice.stop()
 
     # ---- task runner -------------------------------------------------------------------
     def _run_loop(self) -> None:
@@ -270,6 +277,10 @@ class Dashboard:
         for p in status["providers"]:
             if p["location"] == "cloud":
                 add(p["name"].capitalize(), bool(p["available"]), "ready" if p["available"] else (p["error"] or "unavailable"))
+        if self.voice.enabled:
+            v = self.voice.status()
+            add("Voice", v["available"], "ready" if v["available"] else
+                ("; ".join(v["problems"]) or "speech recogniser not running — see `jarvis voice status`"))
         free = shutil.disk_usage(k.home).free / 1e9
         add("Disk space", free > 2, f"{free:.0f} GB free")
         b = self.backup_settings()
@@ -515,6 +526,7 @@ class Dashboard:
                        "devices": self.remote.devices.list() if self.remote else []},
             "touch_id": {"enabled": self.mac.enabled(), "keys": self.mac.keys()},
             "briefing": {"last_date": _last_briefing(k)},
+            "voice": self.voice.status(),
         }
 
     # ---- HTTP plumbing -----------------------------------------------------------------
@@ -597,6 +609,8 @@ class Dashboard:
                 raise HttpError(401, "not signed in")
             if method == "GET":
                 return self._get(h, url, device=None)
+            if url.path == "/api/voice/transcribe":
+                return self._json(h, 200, self._transcribe(h, origin=f"http://{host}", actor="user:dashboard"))
             body = self._read_post(h, origin=f"http://{host}")
             return self._json(h, 200, self._post_local(url.path, body))
         except HttpError as exc:
@@ -606,6 +620,33 @@ class Dashboard:
         except Exception as exc:
             self.kernel.audit.record("dashboard.error", error=f"{type(exc).__name__}: {exc}")
             self._json(h, 500, {"error": "internal error (recorded in the audit log)"})
+
+    def _transcribe(self, h: BaseHTTPRequestHandler, *, origin: str, actor: str) -> dict[str, Any]:
+        """Speech → text on this Mac. Same CSRF defences as other POSTs; the audio is never written to disk."""
+        from ..voice import MAX_BYTES, VoiceError
+
+        if h.headers.get("X-Requested-By") != "jarvis":
+            raise HttpError(403, "missing request header")
+        if h.headers.get("Origin") not in (None, origin):
+            raise HttpError(403, "cross-origin request refused")
+        if not self.voice.enabled:
+            raise HttpError(409, "voice is off — run `jarvis voice enable` on the Mac")
+        if (h.headers.get("Content-Type") or "").split(";")[0].strip() != "audio/wav":
+            raise HttpError(415, "expected audio/wav")
+        length = int(h.headers.get("Content-Length") or 0)
+        if length > MAX_BYTES:
+            raise HttpError(413, "recordings are limited to 60 seconds")
+        audio = h.rfile.read(length)
+        started = time.monotonic()
+        try:
+            text = self.voice.client.transcribe(audio)
+        except VoiceError as exc:
+            raise HttpError(422, str(exc)) from None
+        finally:
+            del audio
+        self.kernel.audit.record("voice.transcribed", actor=actor, chars=len(text),
+                                 seconds=round(time.monotonic() - started, 1))
+        return {"text": text, "seconds": round(time.monotonic() - started, 1)}
 
     def _read_post(self, h: BaseHTTPRequestHandler, *, origin: str) -> dict[str, Any]:
         """CSRF defences + body parsing for every state-changing request."""
@@ -675,6 +716,11 @@ class Dashboard:
                     raise HttpError(401, "not signed in")
                 return self._get(h, url, device=device)
 
+            if url.path == "/api/voice/transcribe":
+                if device is None:
+                    raise HttpError(401, "not signed in")
+                return self._json(h, 200, self._transcribe(h, origin=remote.origin,
+                                                           actor=f"user:phone:{device['name']}"))
             body = self._read_post(h, origin=remote.origin)
             path = url.path
             if path in PUBLIC_REMOTE_POST:

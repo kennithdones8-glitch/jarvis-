@@ -75,6 +75,10 @@ button { font: inherit; }
 @media (max-width: 760px) {
   .top { padding: 14px 16px 6px; }
   .wordmark { font-size: 18px; } .clock { display: none; }
+  .wordmark { letter-spacing: .28em; } .wordmark span { letter-spacing: .24em; }
+  .top { flex-wrap: wrap; row-gap: 10px; }
+  .top-right { gap: 8px; margin-left: auto; }
+  .top-right .btn { padding-left: 10px; padding-right: 10px; letter-spacing: .14em; }
   .hud { display: flex; flex-direction: column; align-items: stretch; padding: 4px 16px 16px; gap: 16px; }
   .rail { display: contents; }
   .decision-panel.has-items { order: -1; }
@@ -171,7 +175,16 @@ textarea { width: 100%; resize: none; min-height: 44px; max-height: 160px; backg
 textarea::placeholder { color: var(--faint); }
 textarea:focus { outline: none; border-color: var(--gold); box-shadow: 0 0 18px -6px var(--gold); }
 .hint { color: var(--faint); font-size: 13px; margin: 8px 0 0; text-align: center; max-width: 640px; }
-@media (max-width: 560px) { .cmd { grid-template-columns: 1fr auto; padding-left: 18px; } .tabs { grid-column: 1 / -1; justify-self: start; } }
+.cmd-actions { display: flex; gap: 8px; align-items: center; }
+#mic.rec { border-color: var(--red); color: var(--red); animation: micpulse 1.2s ease-in-out infinite; }
+@keyframes micpulse { 50% { box-shadow: 0 0 0 4px rgba(255, 70, 70, .18); } }
+@media (prefers-reduced-motion: reduce) { #mic.rec { animation: none; } }
+.speak-toggle { justify-self: center; margin-top: 4px; }
+.speak-toggle[aria-pressed="true"] { color: var(--arc); border-color: var(--arc); }
+@media (max-width: 560px) {
+  .cmd { grid-template-columns: 1fr; padding-left: 18px; } .tabs { justify-self: start; }
+  .cmd-actions { justify-content: flex-end; } .cmd-actions .btn { flex: 1; }
+}
 
 /* ---------- buttons ---------- */
 .btn { border: 1px solid var(--gold-line); background: transparent; color: var(--text); padding: 8px 18px; cursor: pointer;

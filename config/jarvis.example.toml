@@ -113,3 +113,11 @@ enabled = true
 briefing_time = "08:00"
 quiet_hours = "22:00-07:00"   # "" for none
 approval_reminder_min = 60
+
+# Voice: speech recognition with whisper.cpp on this Mac (`uv run jarvis voice setup` shows the steps,
+# `jarvis voice enable` fills this in). Audio never leaves the Mac; the server must be on 127.0.0.1.
+[voice]
+enabled = false
+server = "http://127.0.0.1:8178"
+language = "en"
+threads = 4

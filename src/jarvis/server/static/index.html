@@ -90,9 +90,14 @@
       </div>
       <label for="cmd" class="sr">Message to JARVIS</label>
       <textarea id="cmd" rows="2" autocomplete="off"></textarea>
-      <button class="btn btn-primary" id="send" type="submit">Send</button>
+      <div class="cmd-actions">
+        <button class="btn btn-ghost" id="mic" type="button" hidden title="Tap to talk, tap again to stop">Talk</button>
+        <button class="btn btn-primary" id="send" type="submit">Send</button>
+      </div>
     </form>
     <p id="modehint" class="hint"></p>
+    <button id="speak" class="btn btn-ghost btn-sm speak-toggle" type="button" hidden aria-pressed="false"
+            title="Read replies aloud with this device's built-in voice">Voice replies: off</button>
   </section>
 
   <aside class="rail rail-right">

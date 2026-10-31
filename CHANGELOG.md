@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.16.0 — Milestone 6: voice
+
+- **Push-to-talk** (Talk button, Mac and iPhone): the page records, converts to 16 kHz mono WAV and JARVIS
+  transcribes it with **whisper.cpp on the Mac** (`whisper-server`, loopback only, pinned v1.9.4). Audio is held in
+  memory only; the audit log records length and timing, not words. The transcript is sent like typed text.
+- **Voice replies** toggle: answers read aloud with on-device voices only (cloud voices are skipped).
+  Tapping Talk or pressing Escape interrupts speech; it never cancels a task. Voice can't approve anything.
+- `jarvis voice setup | enable | disable | status | test FILE`; JARVIS starts/stops `whisper-server` itself.
+- `Permissions-Policy` header (microphone only, for JARVIS itself).
+- **Fixed:** on phones the v0.15 Briefing button pushed **Emergency stop** partly off-screen (≤390 px wide). The
+  header now wraps; checked at 320–430 px. The command box uses the full width on phones.
+- 11 new tests (whisper.cpp protocol stand-in). Headless browser with a fake microphone: record → WAV (16 kHz
+  mono) → transcript sent. Real whisper.cpp was not built in this environment: **verify on the Mac**.
+
 ## 0.15.0 — Proactive JARVIS
 
 - **Morning briefing** (default 08:00): what needs you, what finished or failed since the last briefing,
