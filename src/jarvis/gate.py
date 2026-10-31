@@ -52,7 +52,8 @@ SECURITY: dict[str, tuple[str, list[str]]] = {
         "test_tasks::crash_recovery_reconciles_when_tool_can_tell",
         "test_tasks::crash_recovery_reruns_append_that_never_landed",
         "test_leases::crashed_owner_is_taken_over_and_reconciled", "test_mac::reconcile_after_a_crash",
-        "test_documents::move_reconcile", "test_tools::write_reconcile"]),
+        "test_documents::move_reconcile", "test_tools::write_reconcile",
+        "test_drill::all_drills_pass_on_a_healthy_jarvis"]),
     "Duplicate-action prevention": ("Nothing that changes things runs twice by accident", [
         "test_tasks::timeout_on_non_idempotent_step_blocks_instead_of_retrying",
         "test_gateway::concurrent_callers_cannot_both_spend_one_approval",

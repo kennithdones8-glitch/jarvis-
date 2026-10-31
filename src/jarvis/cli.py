@@ -108,6 +108,9 @@ def main(argv: list[str] | None = None) -> int:
     p = sub.add_parser("trace", help="Flight Recorder: one task's full timeline (request, plan, approvals, models, tools, outcome)")
     p.add_argument("task_id")
     p.add_argument("--json", action="store_true")
+    p = sub.add_parser("drill", help="recovery drills on a throwaway JARVIS: crashes, stops, races, damage, restore")
+    p.add_argument("only", nargs="*", help="run only drills whose name contains these words")
+    p.add_argument("--json", action="store_true")
     p = sub.add_parser("gate", help="release gate: full tests, linter, and every security item (run from the repo)")
     p.add_argument("--json", action="store_true")
     p = sub.add_parser("bench", help="benchmark: list | run [IDS] | baseline | score-baseline FILE | report RUN_DIR")
@@ -210,6 +213,13 @@ def main(argv: list[str] | None = None) -> int:
 
             t = flight.timeline(kernel, args.task_id)
             print(json.dumps(t, indent=2, default=str) if args.json else flight.as_text(t))
+        elif args.cmd == "drill":
+            from . import drill
+
+            print("Running recovery drills on a throwaway JARVIS (your real data is not touched)…", file=sys.stderr)
+            results = drill.run(args.only or None)
+            print(drill.as_json(results) if args.json else drill.report(results))
+            return 0 if results and all(r.passed for r in results) else 1
         elif args.cmd == "gate":
             from . import gate
 

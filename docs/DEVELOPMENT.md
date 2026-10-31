@@ -36,6 +36,7 @@ uv run jarvis gate # release gate: full suite + linter + every security item, by
 | `tests/test_bench.py` | Benchmark harness end to end: an oracle model passes every task, a careless one fails for the right reasons, unapproved changes caught, isolation, baseline scoring, sandboxed code checks |
 | `tests/test_streaming.py` | Live replies: same answer streamed or not, closed page stops generation without a retry, emergency stop cuts off, usual protections |
 | `tests/test_flight.py` | Flight Recorder: order, who approved what, no private text, rejections and a damaged audit log shown, dashboard + CLI |
+| `tests/test_drill.py` | Recovery drills pass on a healthy JARVIS, leave nothing behind, never touch the Keychain, and each protection drill fails when its protection is disabled |
 | `tests/test_gate.py` | The release gate: failing/skipped/missing security tests fail it, nothing outweighs them, every listed test exists |
 | `tests/test_backup_service.py` | Encryption, tamper detection, restore with deletions kept, retention, LaunchAgent plist |
 | `tests/test_persona.py` | Persona honesty and ability list |

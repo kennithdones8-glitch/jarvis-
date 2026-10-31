@@ -214,6 +214,15 @@ local and Claude model calls, approvals asked/approved/rejected, verification) a
 Read-only, and limited to what the audit log holds (fingerprints, not private text). Exposed as `jarvis trace`,
 `GET /api/tasks/<id>/timeline` and the dashboard's Timeline button.
 
+## Recovery drills (`src/jarvis/drill.py`, v0.17.4)
+
+Each drill builds a throwaway JARVIS in a temporary folder (own database, approved folder, policy and small drill
+tools), breaks it the way real life does, checks the outcome and deletes the folder: crashes are real (a child
+process exits with `os._exit` mid-action, recovery runs in a new process), the stop is pressed from a second
+Kernel on the same database, approvals are raced from four threads, a checkpoint and an audit entry are damaged,
+and the database is deleted and restored from an encrypted backup (throwaway passphrase; the Keychain is never
+used). Tests prove each protection drill fails when its protection is disabled.
+
 ## Service and backups
 
 `service.py` writes a per-user LaunchAgent that runs `uv run jarvis dashboard --no-open` at login and after

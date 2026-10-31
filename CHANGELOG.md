@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.17.4 — Recovery drills
+
+- **`jarvis drill`**: 10 recovery drills on a throwaway JARVIS (deleted afterwards; real data, Keychain and apps
+  never touched): real process crashes right after / just before a one-time action and during a repeatable step;
+  emergency stop pressed from another process; four callers racing for one approval; a damaged checkpoint; a
+  tampered audit log; a lost database restored from an encrypted backup; a second process trying to take over a
+  running task. All 10 pass here. Tests show each protection drill fails when its protection is disabled.
+- Building the drills turned up two bugs in the drills themselves (a crash trigger firing one step early; a check
+  expecting a trailing full stop JARVIS doesn't store), fixed; no JARVIS bugs found.
+
 ## 0.17.3 — Flight Recorder timeline
 
 - **Timeline** for every task (dashboard: Timeline on a mission; Terminal: `jarvis trace TASK_ID`): the request,

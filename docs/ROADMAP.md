@@ -45,7 +45,7 @@ Approved model paths and what they cost:
 | Trust Contract | partial | global policy, tiers, privacy gate, budget, approvals · no per-task contract |
 | Initiative Engine | missing | notifications only |
 | Personal Operations Model | missing | on-demand calendar/reminder reads |
-| Self-Test & Recovery Lab | partial | 350+ tests incl. real crash recovery, `jarvis doctor`, `jarvis bench`, `jarvis gate` · no recovery drills on a live install |
+| Self-Test & Recovery Lab | mostly exists (v0.17.4) | 350+ tests, `jarvis doctor`, `jarvis bench`, `jarvis gate`, **`jarvis drill`** (10 recovery drills on a throwaway JARVIS) · missing: drills against the live install (deliberately not done) |
 
 Superseded: M3c/SearXNG web search (research now goes through Claude Code; the SearXNG tool is optional and
 off by default).

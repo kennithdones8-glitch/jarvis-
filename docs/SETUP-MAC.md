@@ -154,6 +154,11 @@ Turn phone access off with `uv run jarvis remote disable`.
 ```bash
 uv run jarvis doctor
 ```
+```bash
+uv run jarvis drill
+```
+The drill crashes, stops and damages a **throwaway** JARVIS on purpose and checks it recovers safely (about 10 s;
+your real data, Keychain and apps are not touched).
 Each line is ✓ (works), ! (warning), ✗ (problem) or – (not set up), with what to do next. It changes nothing,
 doesn't use your Claude plan, and (if voice is on) speaks a test sentence with `say` and transcribes it locally.
 

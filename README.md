@@ -43,6 +43,7 @@ the owner's Intel Mac (macOS 14.1.1). Untested-on-Mac items may still have Mac-s
 | Benchmark `jarvis bench` (12 tasks, isolated runs, Claude-app baseline) | ✅ (oracle/careless stand-ins) | **not yet** (first run pending) |
 | Release gate `jarvis gate` (full suite + linter + 12 security items) | ✅ | n/a (runs from the repo) |
 | Flight Recorder: per-task timeline (`jarvis trace`, dashboard Timeline) | ✅ + headless browser | **not yet** |
+| Recovery drills `jarvis drill` (10 drills, throwaway JARVIS, real process crashes) | ✅ | **not yet** — run it on the Mac |
 | Watched folders, self-improvement proposals, personal operations model | — | ⏳ not started |
 
 ## Quick start
@@ -79,6 +80,7 @@ is sent over the network without your approval.
 | `jarvis bench list\|run\|baseline\|score-baseline\|report` | Benchmark JARVIS on fixed tasks, and the Claude app on the same tasks ([bench/README](bench/README.md)) |
 | `jarvis mac check` | Read-only test of Calendar, Reminders and Notes access (lets macOS ask for permission) |
 | `jarvis trace TASK_ID [--json]` | Flight Recorder: one task's whole story (also **Timeline** on each mission in the dashboard) |
+| `jarvis drill [NAME…]` | Recovery drills on a throwaway JARVIS: real crashes mid-action, stop from another process, approval races, damage, restore from backup |
 | `jarvis gate [--json]` | Release gate: full tests, linter and every security item; must pass before a release |
 | `jarvis doctor [--json]` | Check the whole installation (database, models, service, backups, HTTPS, phone path, Touch ID, voice) and say what to fix |
 | `jarvis status` | Emergency-stop state, task counts, pending approvals |
