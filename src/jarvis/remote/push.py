@@ -83,10 +83,22 @@ def load_or_create_vapid(path: Path) -> ec.EllipticCurvePrivateKey:
     return key
 
 
-def vapid_header(endpoint: str, key: ec.EllipticCurvePrivateKey, *, subject: str = "mailto:jarvis@localhost",
+def vapid_subject(subject: str) -> str:
+    """Apple's push service rejects (BadJwtToken) a subject that isn't a mailto: or https: URL with a real
+    domain; localhost / .local / bare names fail. JARVIS uses its own Tailscale address, never your email."""
+    parts = urlsplit(subject)
+    host = (parts.hostname or subject.partition("@")[2]).lower()
+    if parts.scheme not in ("https", "mailto") or not host or "." not in host or host == "localhost" \
+            or host.endswith((".local", ".localhost")):
+        raise PushError(f"push subject {subject!r} would be rejected by Apple's push service")
+    return subject
+
+
+def vapid_header(endpoint: str, key: ec.EllipticCurvePrivateKey, *, subject: str,
                  now: float | None = None) -> str:
     parts = urlsplit(endpoint)
-    claims = {"aud": f"{parts.scheme}://{parts.netloc}", "exp": int((now or time.time()) + 12 * 3600), "sub": subject}
+    claims = {"aud": f"{parts.scheme}://{parts.netloc}", "exp": int((now or time.time()) + 12 * 3600),
+              "sub": vapid_subject(subject)}
     signing_input = (b64url_encode(json.dumps({"typ": "JWT", "alg": "ES256"}, separators=(",", ":")).encode()) + "."
                      + b64url_encode(json.dumps(claims, separators=(",", ":")).encode()))
     r, s = decode_dss_signature(key.sign(signing_input.encode(), ec.ECDSA(hashes.SHA256())))
@@ -102,11 +114,12 @@ def allowed_endpoint(endpoint: str, hosts: tuple[str, ...] = PUSH_HOSTS) -> bool
 
 class PushService:
     def __init__(self, db: Database, audit: AuditLog, key_path: Path, *, hosts: tuple[str, ...] = PUSH_HOSTS,
-                 opener=None):
+                 opener=None, subject: str = "https://jarvis.invalid"):
         self.db = db
         self.audit = audit
         self.key = load_or_create_vapid(key_path)
         self.hosts = hosts
+        self.subject = subject
         self.opener = opener or urllib.request.build_opener(urllib.request.HTTPSHandler(context=client_context()))
 
     @property
@@ -144,7 +157,7 @@ class PushService:
             data = encrypt(payload, sub["p256dh"], sub["auth"])
             req = urllib.request.Request(sub["endpoint"], data=data, method="POST", headers={
                 "Content-Encoding": "aes128gcm", "Content-Type": "application/octet-stream", "TTL": "86400",
-                "Urgency": "high", "Authorization": vapid_header(sub["endpoint"], self.key)})
+                "Urgency": "high", "Authorization": vapid_header(sub["endpoint"], self.key, subject=self.subject)})
             try:
                 with self.opener.open(req, timeout=10) as resp:
                     delivered += resp.status in (200, 201, 202)

@@ -352,3 +352,6 @@ pre.out { background: rgba(0, 0, 0, .35); border: 1px solid var(--gold-line); pa
 .brief-sec.alert h3 { color: var(--red); }
 .brief-sec ul { margin: 0; padding-left: 18px; }
 .brief-sec li { overflow-wrap: anywhere; margin: 2px 0; }
+
+.row.center { justify-content: center; }
+.pairdlg .phone-btn { margin-top: 10px; }

@@ -47,14 +47,34 @@ const bio = () => (onPhone() ? "Face ID" : "Touch ID");
 const cancelled = (e) => (e.name === "NotAllowedError" ? `${bio()} was cancelled.` : e.message);
 const credJSON = (c) => ({ id: c.id, rawId: b64u.fromBuf(c.rawId), type: c.type });
 
+// iPhone Safari before iOS 17.4 only shows Face ID when it's called straight from a tap, and we fetch a
+// challenge first. If Safari refuses at once, ask for one more tap and call it again from inside that tap.
+async function withTap(op, label) {
+  const t0 = Date.now();
+  try { return await op(); } catch (e) {
+    if (e.name !== "NotAllowedError" || Date.now() - t0 > 1500) throw e;
+    return new Promise((resolve, reject) => {
+      const done = () => { dlg.close(); dlg.remove(); };
+      const dlg = h("dialog", { class: "pairdlg" },
+        h("h2", {}, label),
+        h("p", { class: "hl-sub" }, `Your device needs one more tap to show ${bio()}.`),
+        h("div", { class: "row mt center" },
+          h("button", { class: "btn btn-approve", type: "button", onclick: () => { done(); op().then(resolve, reject); } }, label),
+          h("button", { class: "btn", type: "button", onclick: () => { done(); reject(e); } }, "Cancel")));
+      document.body.append(dlg);
+      dlg.showModal();
+    });
+  }
+}
+
 async function call(path, body) {
   const list = onPhone() ? FACE_ID : touchIdOn() ? TOUCH_ID : [];
   const needs = list.some((r) => r.test(path)) || ((onPhone() || touchIdOn()) && path === "/api/memory/forget" && body.confirm === true);
   if (!needs) return api(path, body);
   const o = await api("/api/stepup/options", { path, body });
-  const a = await navigator.credentials.get({ publicKey: {
+  const a = await withTap(() => navigator.credentials.get({ publicKey: {
     challenge: b64u.toBuf(o.challenge), rpId: o.rpId, timeout: o.timeout, userVerification: o.userVerification,
-    allowCredentials: o.allowCredentials.map((c) => ({ ...c, id: b64u.toBuf(c.id) })) } });
+    allowCredentials: o.allowCredentials.map((c) => ({ ...c, id: b64u.toBuf(c.id) })) } }), `Confirm with ${bio()}`);
   return api(path, { ...body, challengeId: o.challengeId, assertion: { ...credJSON(a),
     response: { clientDataJSON: b64u.fromBuf(a.response.clientDataJSON), authenticatorData: b64u.fromBuf(a.response.authenticatorData),
                 signature: b64u.fromBuf(a.response.signature) } } });
@@ -566,10 +586,10 @@ async function setupTouchId() {
   try {
     const o = await call("/api/touchid/enroll/options", { name });
     const p = o.publicKey;
-    const c = await navigator.credentials.create({ publicKey: {
+    const c = await withTap(() => navigator.credentials.create({ publicKey: {
       ...p, challenge: b64u.toBuf(p.challenge), user: { ...p.user, id: b64u.toBuf(p.user.id) },
       authenticatorSelection: { ...p.authenticatorSelection, authenticatorAttachment: "platform" },
-      excludeCredentials: p.excludeCredentials.map((x) => ({ ...x, id: b64u.toBuf(x.id) })) } });
+      excludeCredentials: p.excludeCredentials.map((x) => ({ ...x, id: b64u.toBuf(x.id) })) } }), "Set up Touch ID");
     await api("/api/touchid/enroll/finish", { name, challengeId: o.challengeId, credential: { ...credJSON(c),
       response: { clientDataJSON: b64u.fromBuf(c.response.clientDataJSON), attestationObject: b64u.fromBuf(c.response.attestationObject) } } });
     ui.convo.push({ role: "assistant", text: "Touch ID is on. Approvals here now ask for your fingerprint." });
@@ -598,8 +618,9 @@ async function pairPhone() {
 
 async function enableNotifications() {
   try {
-    const reg = await navigator.serviceWorker.ready;
+    // ask first, straight from the tap: iPhone Safari only shows the permission prompt in response to one
     if (await Notification.requestPermission() !== "granted") { note("Notifications are off for JARVIS in iPhone Settings."); return; }
+    const reg = await navigator.serviceWorker.ready;
     const { key } = await api("/api/push/key");
     const sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: b64u.toBuf(key) });
     await api("/api/push/subscribe", { subscription: sub.toJSON() });

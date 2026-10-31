@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.16.2 — iPhone Safari fixes (found by research, not yet on a real iPhone)
+
+- **Fixed: notifications would never have arrived.** Apple's push service rejects VAPID subjects that point at
+  localhost (`BadJwtToken`); JARVIS used `mailto:jarvis@localhost`. It now uses its own Tailscale address
+  (`https://<mac>.ts.net`), never your email, and refuses subjects Apple would reject.
+- **Fixed: notification permission prompt.** It's now requested first, straight from the tap, as iPhone Safari
+  requires.
+- **Safety net for Face ID prompts:** Safari before iOS 17.4 refuses passkey prompts not made directly from a tap
+  (JARVIS fetches a challenge first). If that happens, JARVIS shows a "Confirm with Face ID" button and retries
+  from that tap. Checked in a headless browser made to refuse the first prompt (pairing and approval).
+- Setup steps: the Home Screen app signs in separately from Safari (once, with Face ID).
+
 ## 0.16.1 — Pre-Mac review and `jarvis doctor`
 
 Reviewed the untested v0.13–v0.16 code against whisper.cpp v1.9.4's source and Mac behaviour:

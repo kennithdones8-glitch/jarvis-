@@ -466,3 +466,16 @@ def test_push_failures_are_recorded_not_silent(make_kernel, tmp_path):
     entry = [e for e in k.audit.entries() if e["event"] == "push.sent"][-1]
     assert entry["payload"]["errors"] == ["SSLCertVerificationError"]
     assert push.subscriptions()  # a temporary failure keeps the subscription
+
+
+def test_vapid_subject_is_one_apple_accepts(make_kernel):
+    from jarvis.remote.push import PushError, vapid_header, vapid_subject
+    for bad in ("mailto:jarvis@localhost", "https://localhost", "mailto:me@mac.local", "jarvis", "http://example.com"):
+        with pytest.raises(PushError):
+            vapid_subject(bad)
+    k = make_kernel()
+    remote = RemoteAccess(k, HOST)
+    assert remote.push.subject == f"https://{HOST}"  # JARVIS's own address, never the owner's email
+    header = vapid_header(PUSH_URL, remote.push.key, subject=remote.push.subject)
+    claims = json.loads(b64url_decode(header.split("t=")[1].split(".")[1]))
+    assert claims["sub"] == f"https://{HOST}" and claims["aud"] == "https://web.push.apple.com"

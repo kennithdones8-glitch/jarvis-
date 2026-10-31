@@ -33,7 +33,7 @@ class RemoteAccess(PasskeyRP):
         self.hostname = hostname.rstrip(".")
         super().__init__(kernel, origin or f"https://{self.hostname}")
         self.push = PushService(kernel.db, kernel.audit, kernel.home / "push-vapid.pem", hosts=push_hosts,
-                                opener=push_opener)
+                                opener=push_opener, subject=f"https://{self.hostname}")
 
     @property
     def hosts(self) -> set[str]:
