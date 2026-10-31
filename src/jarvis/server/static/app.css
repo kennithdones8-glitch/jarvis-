@@ -303,3 +303,10 @@ pre.out { background: rgba(0, 0, 0, .35); border: 1px solid var(--gold-line); pa
 .sources a:hover { text-decoration: underline; }
 .sources li.ok { color: var(--ok); }
 .sources li.warn { color: #ffb0b6; }
+
+/* health */
+.health { display: grid; gap: 6px; padding: 0 0 12px 10px; margin-bottom: 12px; border-bottom: 1px solid var(--gold-faint); }
+.health-head { font: 700 13px var(--display); letter-spacing: .18em; text-transform: uppercase; display: flex; justify-content: space-between; gap: 8px; }
+.health-head.ok { color: var(--ok); } .health-head.bad { color: var(--red); }
+.health-head small { color: var(--faint); font: 500 11px var(--sans); letter-spacing: 0; text-transform: none; }
+.health .light small { max-width: 60%; text-align: right; }

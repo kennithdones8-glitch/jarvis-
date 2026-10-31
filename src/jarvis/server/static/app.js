@@ -317,7 +317,15 @@ function renderSystems(d) {
   }
   const chain = d.audit_chain;
   const ro = (label, value, cls) => h("div", { class: "ro" }, h("span", {}, label), h("b", { class: cls || null }, value));
+  const health = d.health;
+  const healthBlock = health ? h("div", { class: "health" },
+    h("div", { class: `health-head ${health.ok ? "ok" : "bad"}` },
+      health.ok ? "✓ All systems healthy" : "⚠ Needs attention", h("small", {}, health.service ? "background service" : "running in Terminal")),
+    health.items.filter((i) => !i.ok || ["Backups"].includes(i.name)).map((i) =>
+      h("div", { class: `light${i.ok ? " on" : ""}`, title: i.detail }, h("i"), i.name, h("small", {}, i.detail))))
+    : null;
   $("#system").replaceChildren(
+    healthBlock,
     h("div", { class: "lights" }, lights.length ? lights : h("div", { class: "empty" }, "No models configured")),
     h("div", { class: "readouts" },
       ro("Privacy", (m.disabled_providers || []).length && !m.providers.some((p) => p.location === "cloud") ? "Local only" : "Cloud allowed with approval"),

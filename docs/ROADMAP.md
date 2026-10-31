@@ -17,7 +17,7 @@ Claude Pro is a consumer subscription without API access, so it is not used by J
 | M5 | Memory: originals + derived memories with provenance, full-text search, deletion propagation, memory panel | ✅ done (search by meaning with embeddings: later) |
 | M6 | Mac voice: push-to-talk (whisper.cpp), TTS (`say`/Piper), interruption ≠ cancellation, then local wake word | |
 | M7 | iPhone home-screen web app over Tailscale: pairing, approvals, notifications, task handoff | |
-| M8 | launchd service, health monitor, encrypted backups + restore test, uninstall | |
+| M8 | launchd service, health monitor, encrypted backups + restore test, uninstall | ✅ done (launchd live check on the Mac) |
 | M9+ | Mac automation (Shortcuts/AppleScript/Playwright), proactive monitoring, self-improvement proposals | |
 
 Things that must be validated on the real Mac: local model speed (benchmark before choosing),

@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.11.0 — Milestone 8: always-on service, health, encrypted backups
+
+- `jarvis service install|uninstall|status|restart|rotate-link`: a per-user macOS LaunchAgent starts the
+  dashboard at login and restarts it after a crash (never as root). `jarvis open` opens the dashboard;
+  the link stays the same across restarts so it can be bookmarked.
+- Health checks (database, audit chain, local and Claude models, disk space, backup freshness) every
+  minute, shown in Systems; changes are recorded in the activity log.
+- Encrypted backups (AES-256-GCM, scrypt-derived key; passphrase in the macOS Keychain and shown once so you
+  can save it): `jarvis backup now|list|verify|restore`. Each backup is test-restored (decrypted, checksums,
+  SQLite integrity check, audit-chain check). Daily automatic backups after the first manual one; the newest
+  14 are kept. A restore keeps your current files as `*.before-restore-*` and re-applies deletions made since
+  the backup, so deleted memories and conversations don't come back.
+- `[backup]` config (auto, keep, dir). New dependency: cryptography.
+- 9 new tests.
+
 ## 0.10.1 — Ask about missing files before planning
 
 - Found on the Mac: a request naming a file that doesn't exist was planned and run, then failed at step 0.

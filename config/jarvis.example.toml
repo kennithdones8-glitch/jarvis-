@@ -29,6 +29,13 @@ extract = true
 # Conversations or facts mentioning these words are never stored, e.g. ["medical", "password"].
 exclude_topics = []
 
+[backup]
+# Encrypted daily backups of memory, task history and settings (made while the dashboard/service runs,
+# once you've created the first one with `jarvis backup now`). Keeps the newest `keep` backups.
+auto = true
+keep = 14
+# dir = "~/Library/Mobile Documents/com~apple~CloudDocs/JARVIS Backups"   # e.g. iCloud Drive (still encrypted)
+
 [search]
 # Local SearXNG (see docs/SETUP-MAC.md). Comment out to disable web search.
 searxng_url = "http://127.0.0.1:8888"

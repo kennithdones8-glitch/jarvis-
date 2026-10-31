@@ -25,6 +25,7 @@ A personal AI system for Mac and iPhone: persistent, permissioned, auditable, lo
 | Memory: conversation archive + facts with provenance, recall in chat, review/correct/delete, forget-by-topic, exclusions (local only) | ✅ implemented, tested, browser-checked |
 | Web research via Claude Code's read-only web tools (Pro plan): sourced answers, cited sources verified against what was actually read, sourced briefs | ✅ implemented, tested with a stand-in CLI; **live check on the Mac** |
 | Documents: read PDF / Word / text, summarise and compare, move and rename files with approval | ✅ implemented, tested with real generated files |
+| Always-on background service (`jarvis service install`), health checks, encrypted verified backups with deletion-respecting restore | ✅ implemented, tested; **launchd part verified only on the Mac** |
 | Command-centre dashboard (`jarvis dashboard`): chat, plan review, approvals with previews, missions, systems, activity, emergency stop | ✅ implemented, tested, browser-checked |
 | Passkeys / Touch ID, iPhone access, memory, voice, iPhone | ⏳ not started |
 | macOS-specific behaviour (launchd, Keychain, Touch ID) | ⏳ not started; not yet tested on a Mac |
@@ -68,6 +69,8 @@ or `$JARVIS_HOME`. Nothing runs in the background and nothing is sent over the n
 | `jarvis do "…" [--yes]` | Plan a task, show the plan, run it with approvals, verify and report |
 | `jarvis run ID` | Continue a task (after approving, resuming or a restart) |
 | `jarvis use-claude on\|off` | Hybrid brain: simple → local, medium → Claude Haiku, hard → Claude Sonnet (Pro plan); or local-only |
+| `jarvis service install\|uninstall\|status\|restart` / `jarvis open` | Run JARVIS in the background at login; open the dashboard |
+| `jarvis backup now\|list\|verify FILE\|restore FILE --yes` | Encrypted backups of memory, history and settings |
 | `jarvis allow-folder PATH [--remove]` / `jarvis folders` | Let JARVIS read a folder such as Downloads (changes still ask) |
 | `jarvis research "…" [--deep]` | Search the web and read pages, answer with verified sources |
 | `jarvis remember "…"` | Tell JARVIS something to remember |
@@ -82,3 +85,12 @@ or `$JARVIS_HOME`. Nothing runs in the background and nothing is sent over the n
 - [SECURITY](docs/SECURITY.md) — permission model, threat model, known limits
 - [DEVELOPMENT](docs/DEVELOPMENT.md) — setup, tests, conventions
 - [ROADMAP](docs/ROADMAP.md) · [CHANGELOG](CHANGELOG.md)
+
+## Uninstalling
+
+```bash
+uv run jarvis service uninstall
+rm -rf ~/jarvis
+```
+Your data stays in `~/Library/Application Support/JARVIS` (memory, history, backups) until you delete that
+folder too. The backup passphrase is in Keychain Access under "jarvis".

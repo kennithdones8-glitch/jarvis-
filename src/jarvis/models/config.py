@@ -36,6 +36,7 @@ class ModelConfig:
     searxng_url: str | None = None
     routing_mode: str = "local_first"
     memory: dict[str, Any] = field(default_factory=dict)
+    backup: dict[str, Any] = field(default_factory=dict)
 
 
 def _check_keys(where: str, data: dict[str, Any], allowed: set[str]) -> None:
@@ -62,7 +63,11 @@ def _model(where: str, raw: dict[str, Any]) -> ModelInfo:
 
 
 def parse_model_config(data: dict[str, Any]) -> ModelConfig:
-    _check_keys("jarvis.toml", data, {"budget", "privacy", "providers", "search", "routing", "memory"})
+    _check_keys("jarvis.toml", data, {"budget", "privacy", "providers", "search", "routing", "memory", "backup"})
+    backup = data.get("backup", {})
+    _check_keys("[backup]", backup, {"auto", "keep", "dir"})
+    if not 1 <= int(backup.get("keep", 14)) <= 365:
+        raise ConfigError("[backup]: keep must be between 1 and 365")
     memory = data.get("memory", {})
     _check_keys("[memory]", memory, {"enabled", "extract", "exclude_topics", "recall_limit"})
     if not isinstance(memory.get("exclude_topics", []), list):
@@ -109,7 +114,7 @@ def parse_model_config(data: dict[str, Any]) -> ModelConfig:
         raise ConfigError("[budget]: monthly_limit_usd cannot be negative")
     return ModelConfig(monthly_limit_usd=limit, local_only_categories=local_only, providers=tuple(providers),
                        searxng_url=search.get("searxng_url"), routing_mode=routing.get("mode", "local_first"),
-                       memory=dict(memory))
+                       memory=dict(memory), backup=dict(backup))
 
 
 def load_model_config(path: str | Path) -> ModelConfig:

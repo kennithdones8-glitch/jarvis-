@@ -19,7 +19,9 @@ from __future__ import annotations
 import concurrent.futures as cf
 import hmac
 import json
+import os
 import re
+import shutil
 import secrets
 import threading
 import time
@@ -83,6 +85,9 @@ def describe_event(event: str, p: dict[str, Any]) -> str:
         "memory.deleted": lambda: "Deleted a memory",
         "memory.confirmed": lambda: "Confirmed a memory",
         "memory.edited": lambda: "Corrected a memory",
+        "backup.created": lambda: f"Backup saved{' automatically' if p.get('automatic') else ''} and verified",
+        "backup.failed": lambda: f"Backup FAILED: {p.get('error')}",
+        "health.changed": lambda: "All systems healthy" if p.get("ok") else f"Health problem: {', '.join(p.get('problems', []))}",
         "memory.forget": lambda: f"Forgot {p.get('memories')} memories and {p.get('records')} records",
         "tool.start": lambda: f"Running {call}",
         "tool.result": lambda: f"Finished {call}",
@@ -135,6 +140,9 @@ class Dashboard:
         self.httpd.daemon_threads = True
         self.host, self.port = host, self.httpd.server_address[1]
         self._runner = threading.Thread(target=self._run_loop, name="jarvis-runner-loop", daemon=True)
+        self._maint = threading.Thread(target=self._maintenance_loop, name="jarvis-maintenance", daemon=True)
+        self._health: dict[str, Any] = {}
+        self.maintenance_s = 60.0
         self._serving = False
 
     # ---- lifecycle ---------------------------------------------------------------------
@@ -145,11 +153,13 @@ class Dashboard:
     def start(self) -> None:
         """Run in background threads (used by tests)."""
         self._runner.start()
+        self._maint.start()
         self._serving = True
         threading.Thread(target=self.httpd.serve_forever, kwargs={"poll_interval": 0.1}, daemon=True).start()
 
     def serve_forever(self) -> None:
         self._runner.start()
+        self._maint.start()
         self._serving = True
         try:
             self.httpd.serve_forever(poll_interval=0.25)
@@ -184,6 +194,80 @@ class Dashboard:
             except Exception as exc:  # keep the loop alive; record what happened
                 self.kernel.audit.record("dashboard.runner_error", error=f"{type(exc).__name__}: {exc}")
             self._stop.wait(self._poll_s)
+
+    # ---- health & automatic backups --------------------------------------------------
+    def backup_settings(self) -> dict[str, Any]:
+        cfg = self.kernel.model_config.backup
+        folder = Path(os.path.expanduser(cfg["dir"])) if cfg.get("dir") else self.kernel.home / "backups"
+        return {"auto": bool(cfg.get("auto", True)), "keep": int(cfg.get("keep", 14)), "dir": folder}
+
+    def check_health(self) -> dict[str, Any]:
+        from ..backup import get_passphrase, last_backup
+
+        k = self.kernel
+        items: list[dict[str, Any]] = []
+
+        def add(name: str, ok: bool, detail: str) -> None:
+            items.append({"name": name, "ok": ok, "detail": detail})
+
+        try:
+            k.db.one("SELECT 1")
+            add("Database", True, "ok")
+        except Exception as exc:
+            add("Database", False, f"{type(exc).__name__}: {exc}")
+        chain = k.audit.verify()
+        add("Audit log", chain.ok, f"intact · {chain.checked} entries" if chain.ok else f"broken at #{chain.first_bad_seq}")
+        status = models_status(k)
+        local = [p for p in status["providers"] if p["location"] == "local"]
+        add("Local models", any(p["available"] for p in local),
+            "online" if any(p["available"] for p in local) else "Ollama isn't answering — open the Ollama app")
+        for p in status["providers"]:
+            if p["location"] == "cloud":
+                add(p["name"].capitalize(), bool(p["available"]), "ready" if p["available"] else (p["error"] or "unavailable"))
+        free = shutil.disk_usage(k.home).free / 1e9
+        add("Disk space", free > 2, f"{free:.0f} GB free")
+        b = self.backup_settings()
+        last = last_backup(b["dir"])
+        if not get_passphrase():
+            add("Backups", False, "not set up — run `jarvis backup now` once")
+        elif not last:
+            add("Backups", False, "no backups yet")
+        else:
+            add("Backups", last["age_hours"] < 48, f"last {last['age_hours']:.0f}h ago · {last['count']} kept")
+        return {"items": items, "ok": all(i["ok"] for i in items), "checked": time.time(),
+                "service": os.environ.get("JARVIS_SERVICE") == "1"}
+
+    def maybe_backup(self) -> dict[str, Any] | None:
+        """Daily automatic backup — only once you've set up backups yourself (so you have the passphrase)."""
+        from ..backup import BackupError, create_backup, get_passphrase, last_backup
+
+        b = self.backup_settings()
+        if not b["auto"] or not get_passphrase():
+            return None
+        last = last_backup(b["dir"])
+        if last and last["age_hours"] < 24:
+            return None
+        k = self.kernel
+        try:
+            r = create_backup(k.home, k.policy_path, k.config_path, dest_dir=b["dir"], keep=b["keep"])
+        except (BackupError, OSError, ValueError) as exc:
+            k.audit.record("backup.failed", error=str(exc)[:300])
+            return {"ok": False, "error": str(exc)}
+        k.audit.record("backup.created", file=r.path.name, bytes=r.bytes, verified=r.verified, automatic=True)
+        return {"ok": True, "path": str(r.path)}
+
+    def _maintenance_loop(self) -> None:
+        while not self._stop.is_set():
+            try:
+                self.maybe_backup()
+                before = self._health.get("ok")
+                self._health = self.check_health()
+                if before is not None and before != self._health["ok"]:
+                    bad = [i["name"] for i in self._health["items"] if not i["ok"]]
+                    self.kernel.audit.record("health.changed", ok=self._health["ok"], problems=bad)
+            except Exception as exc:
+                self.kernel.audit.record("dashboard.maintenance_error", error=f"{type(exc).__name__}: {exc}"[:300])
+            self._stop.wait(self.maintenance_s)
 
     def _drive(self, tid: str) -> None:
         try:
@@ -352,6 +436,7 @@ class Dashboard:
             "roots": [tilde(str(r)) for r in k.policy.roots], "policy_loaded": k.policy_path.exists(),
             "memory": {**k.memory.counts(), "enabled": k.memory.settings.enabled},
             "research_available": self.kernel.registry.get("research") is not None,
+            "health": self._health or None,
         }
 
     # ---- HTTP plumbing -----------------------------------------------------------------

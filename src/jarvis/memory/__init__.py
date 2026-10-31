@@ -45,6 +45,31 @@ def normalise(text: str) -> str:
     return " ".join(re.sub(r"[^\w\s]", " ", text.lower()).split())
 
 
+def record_tombstone(content: str) -> str:
+    return sha256_hex("record:" + normalise(content))
+
+
+def reapply_tombstones(db: Database, hashes: Iterable[str]) -> dict[str, int]:
+    """After restoring an older backup: remove memories and records you deleted since, so deleted data
+    doesn't silently come back. Returns how many were removed."""
+    hashes = set(hashes)
+    removed = {"memories": 0, "records": 0}
+    with db.tx() as c:
+        for h in hashes:
+            c.execute("INSERT OR IGNORE INTO tombstones (hash, created_at) VALUES (?, ?)", (h, now_iso()))
+        for row in c.execute("SELECT id, text FROM memories").fetchall():
+            if sha256_hex(normalise(row["text"])) in hashes:
+                c.execute("DELETE FROM memories WHERE id = ?", (row["id"],))
+                c.execute("DELETE FROM memories_fts WHERE id = ?", (row["id"],))
+                removed["memories"] += 1
+        for row in c.execute("SELECT id, content FROM records").fetchall():
+            if record_tombstone(row["content"]) in hashes:
+                c.execute("DELETE FROM records WHERE id = ?", (row["id"],))
+                c.execute("DELETE FROM records_fts WHERE id = ?", (row["id"],))
+                removed["records"] += 1
+    return removed
+
+
 def fts_query(text: str) -> str | None:
     words = [w for w in re.findall(r"\w+", text.lower()) if len(w) >= 3][:12]
     return " OR ".join(f'"{w}"' for w in dict.fromkeys(words)) or None
@@ -100,7 +125,11 @@ class MemoryStore:
         derived = [r["id"] for r in self.db.query("SELECT id FROM memories WHERE source_record = ?", (record_id,))]
         for mid in derived:
             self.delete(mid, by=by)
+        row = self.db.one("SELECT content FROM records WHERE id = ?", (record_id,))
         with self.db.tx() as c:
+            if row:  # lets a restore from an older backup drop this record again
+                c.execute("INSERT OR IGNORE INTO tombstones (hash, created_at) VALUES (?, ?)",
+                          (record_tombstone(row["content"]), now_iso()))
             c.execute("DELETE FROM records WHERE id = ?", (record_id,))
             c.execute("DELETE FROM records_fts WHERE id = ?", (record_id,))
             self.audit.record("memory.record_deleted", actor=by, record_id=record_id, derived_deleted=len(derived))

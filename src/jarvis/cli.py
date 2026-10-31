@@ -57,6 +57,17 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--no-open", action="store_true", help="do not open the browser")
     p = sub.add_parser("use-claude", help="turn the Claude (Claude Code on your Pro plan) brain on or off")
     p.add_argument("state", choices=["on", "off"])
+    p = sub.add_parser("service", help="run JARVIS in the background at login: install | uninstall | status | restart | rotate-link")
+    p.add_argument("op", choices=["install", "uninstall", "status", "restart", "rotate-link"])
+    p.add_argument("--port", type=int, default=8765)
+    p = sub.add_parser("open", help="open the dashboard in your browser")
+    p.add_argument("--port", type=int, default=8765)
+    p = sub.add_parser("backup", help="encrypted backups: now [--to DIR] | list | verify FILE | restore FILE --yes")
+    p.add_argument("op", choices=["now", "list", "verify", "restore"])
+    p.add_argument("file", nargs="?")
+    p.add_argument("--to", help="folder for this backup (default: [backup] dir or the data folder)")
+    p.add_argument("--yes", action="store_true", help="confirm a restore")
+    p.add_argument("--keep-config", action="store_true", help="restore: keep your current policy and model settings")
     p = sub.add_parser("allow-folder", help="let JARVIS read a folder (writes there still ask you first)")
     p.add_argument("path")
     p.add_argument("--remove", action="store_true", help="take the folder off the list")
@@ -125,6 +136,20 @@ def main(argv: list[str] | None = None) -> int:
         elif args.cmd in ("cancel", "pause", "resume"):
             getattr(kernel.engine, args.cmd)(args.task_id, actor="user:cli")
             print(f"{args.cmd}: {kernel.tasks.get(args.task_id)['state']}")
+        elif args.cmd == "service":
+            return _service(kernel, args)
+        elif args.cmd == "open":
+            import webbrowser
+
+            from .service import dashboard_url, responding
+            url = dashboard_url(kernel.home, args.port)
+            if not responding(args.port):
+                print("JARVIS isn't running. Start it with `jarvis dashboard` or `jarvis service install`.")
+                return 1
+            webbrowser.open(url)
+            print(url)
+        elif args.cmd == "backup":
+            return _backup(kernel, args)
         elif args.cmd == "allow-folder":
             return _allow_folder(kernel, args)
         elif args.cmd == "folders":
@@ -174,8 +199,13 @@ def _dashboard(kernel: Kernel, args) -> int:
 
     from .server import Dashboard
 
+    from .service import dashboard_token, responding
+
+    if responding(args.port):
+        print(f"JARVIS is already running on port {args.port} (the background service?). Open it with `jarvis open`.")
+        return 0
     recovered = kernel.start()
-    dash = Dashboard(kernel, port=args.port)
+    dash = Dashboard(kernel, port=args.port, token=dashboard_token(kernel.home))
     print(f"JARVIS dashboard running. Open (keep this link private):\n\n  {dash.url}\n")
     if recovered:
         print(f"Recovered {len(recovered)} interrupted task(s).")
@@ -377,6 +407,96 @@ def _with_consent(kernel: Kernel, call):
                 print("Keeping it on this Mac — using a local model.", file=sys.stderr)
                 local = True
     return call(True)
+
+
+def _service(kernel: Kernel, args) -> int:
+    from . import service as svc
+
+    custom = bool(args.home) or "JARVIS_HOME" in __import__("os").environ
+    try:
+        if args.op == "install":
+            path = svc.install(kernel.home, port=args.port, custom_home=custom)
+            print(f"Installed {path.name}. JARVIS now starts when you log in and restarts if it crashes.")
+            print("Open the dashboard any time with `uv run jarvis open` (the link stays the same — bookmark it).")
+            print("Make sure the Ollama app is set to open at login too (Ollama menu → Launch at login).")
+            print("After `git pull`, run `uv run jarvis service restart` to load the new version.")
+        elif args.op == "uninstall":
+            print("Removed the background service." if svc.uninstall() else "The background service wasn't installed.")
+            print("Your data, memory and settings are untouched.")
+        elif args.op == "restart":
+            svc.restart()
+            print("Restarted.")
+        elif args.op == "rotate-link":
+            svc.dashboard_token(kernel.home, rotate=True)
+            print("New dashboard link created; the old one stops working after a restart.")
+            if svc.is_loaded():
+                svc.restart()
+            print(svc.dashboard_url(kernel.home, args.port))
+        else:
+            _print(svc.status(args.port))
+    except svc.ServiceError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 1
+    return 0
+
+
+def _backup(kernel: Kernel, args) -> int:
+    import time as _time
+
+    from . import backup as bk
+
+    cfg = kernel.model_config.backup
+    folder = Path(args.to).expanduser() if args.to else (Path(cfg["dir"]).expanduser() if cfg.get("dir")
+                                                         else kernel.home / "backups")
+    try:
+        if args.op == "now":
+            r = bk.create_backup(kernel.home, kernel.policy_path, kernel.config_path, dest_dir=folder,
+                                 keep=int(cfg.get("keep", 14)))
+            kernel.audit.record("backup.created", actor="user:cli", file=r.path.name, bytes=r.bytes, verified=True)
+            c = r.detail["counts"]
+            print(f"Backup saved and verified: {r.path}")
+            print(f"  {r.bytes / 1024:.0f} KB · {c.get('memories', 0)} memories · {c.get('records', 0)} conversation "
+                  f"records · {c.get('tasks', 0)} tasks · audit log intact ({r.detail['audit_entries']} entries)")
+            if r.new_passphrase:
+                print("\nYour backups are encrypted. The passphrase is stored in your Mac's Keychain.")
+                print("SAVE A COPY NOW (e.g. in your password manager) — without it, backups can't be restored")
+                print("on another Mac:\n")
+                print(f"    {r.new_passphrase}\n")
+                print("Daily automatic backups are now on while JARVIS runs.")
+        elif args.op == "list":
+            found = bk.list_backups(folder)
+            print(f"{len(found)} backup(s) in {folder}")
+            for p in found:
+                st = p.stat()
+                print(f"  {p.name}  {st.st_size / 1024:.0f} KB  {_time.strftime('%Y-%m-%d %H:%M', _time.localtime(st.st_mtime))}")
+        elif args.op == "verify":
+            if not args.file:
+                print("usage: jarvis backup verify FILE", file=sys.stderr)
+                return 1
+            d = bk.verify_backup(Path(args.file).expanduser())
+            print(f"OK — decrypts, checksums match, database and audit log intact. Contents: {d['counts']}")
+        elif args.op == "restore":
+            if not args.file:
+                print("usage: jarvis backup restore FILE --yes", file=sys.stderr)
+                return 1
+            from .service import responding
+            if responding():
+                print("Stop JARVIS first (`jarvis service uninstall`, or Ctrl+C the dashboard), then restore.",
+                      file=sys.stderr)
+                return 1
+            if not args.yes:
+                print("This replaces JARVIS's memory, task history and settings with the backup (your current "
+                      "files are kept as *.before-restore-*). Add --yes to go ahead.")
+                return 0
+            kernel.close()
+            res = bk.restore_backup(Path(args.file).expanduser(), kernel.home, kernel.policy_path,
+                                    kernel.config_path, include_config=not args.keep_config)
+            print(f"Restored from {Path(args.file).name}. Re-applied deletions made since: {res['reapplied_deletions']}.")
+            print(f"Your previous files were kept as {res['previous_files_kept_as']}.")
+    except bk.BackupError as exc:
+        print(f"backup error: {exc}", file=sys.stderr)
+        return 1
+    return 0
 
 
 def _allow_folder(kernel: Kernel, args) -> int:

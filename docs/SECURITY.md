@@ -58,6 +58,9 @@ Fixed guarantees, independent of policy:
 | Deleted personal data reappearing | Tombstones block re-learning; record deletion cascades to derived memories; audit holds no memory text | ✅ tested — task history and future backups are outside memory deletion (documented) |
 | Prompt injection via web pages during research | Claude has only WebSearch/WebFetch (`dontAsk` denies anything else); pages are untrusted per the prompt; the task plan is fixed before research runs | ✅ tested (argv recorded) |
 | Fabricated sources | Cited URLs are checked against the URLs the research tools actually returned or read; unverified ones are flagged; briefs must cite a verified source | ✅ tested |
+| Backup exposure | AES-256-GCM encrypted, authenticated (tampering detected), passphrase in the Keychain, files 0600; no secrets in backups | ✅ tested |
+| Deleted data returning from a backup | Restore re-applies tombstones for memories and records deleted since the backup | ✅ tested — old backups still contain the data until they're pruned (newest 14 kept) |
+| Background service | Per-user LaunchAgent, never root; loopback-only dashboard; removable with one command | ✅ (launchd verified on the Mac only) |
 | Supply chain | Kernel has zero runtime dependencies; the one runtime dependency (pypdf, pure Python) and dev deps are locked in `uv.lock` | ✅ |
 | Hostile documents | Size caps, a .docx decompression cap and page caps; text is marked untrusted; read-only tool | ✅ tested — a pathological PDF could still be slow (the thread can't be killed) |
 | Moving files somewhere unsafe | The destination is checked against approved folders and protected paths inside the tool, after approval as well | ✅ tested |
