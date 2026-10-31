@@ -178,6 +178,15 @@ quality = 5
 speed = 3
 """
 
+HAIKU_BLOCK = """
+[[providers.claude.models]]
+id = "haiku"
+capabilities = ["chat", "summarize", "classify", "json", "extract"]
+context_tokens = 200000
+quality = 4
+speed = 5
+"""
+
 
 def _use_claude(kernel: Kernel, on: bool) -> int:
     """Edit jarvis.toml: enable/disable the Claude provider and switch routing to best/local-first.
@@ -192,11 +201,13 @@ def _use_claude(kernel: Kernel, on: bool) -> int:
     data = tomllib.loads(text)
     if "claude" not in data.get("providers", {}):
         text = text.rstrip() + "\n" + CLAUDE_BLOCK
+    if not any(m.get("id") == "haiku" for m in data.get("providers", {}).get("claude", {}).get("models", [])):
+        text = text.rstrip() + "\n" + HAIKU_BLOCK
     if "routing" not in data:
         text = text.rstrip() + '\n\n[routing]\nmode = "local_first"\n'
     text = re.sub(r'(\[providers\.claude\][^\[]*?enabled\s*=\s*)(true|false)', lambda m: m.group(1) + ("true" if on else "false"),
                   text, count=1)
-    text = re.sub(r'(\[routing\][^\[]*?mode\s*=\s*)"[^"]*"', lambda m: m.group(1) + ('"best"' if on else '"local_first"'),
+    text = re.sub(r'(\[routing\][^\[]*?mode\s*=\s*)"[^"]*"', lambda m: m.group(1) + ('"hybrid"' if on else '"local_first"'),
                   text, count=1)
     parse_model_config(tomllib.loads(text))  # never write an invalid config
     if path.exists():
@@ -207,7 +218,8 @@ def _use_claude(kernel: Kernel, on: bool) -> int:
     if not on:
         print("Claude is off. JARVIS uses only local models.")
         return 0
-    print("Claude is on: JARVIS uses the most capable model, asking before any private content is sent.")
+    print("Claude is on (hybrid): simple requests stay on this Mac, medium ones use Claude Haiku, hard ones\n"
+          "Claude Sonnet. JARVIS asks before sending any private content.")
     print("Checking that Claude Code answers (a test with no private data)…")
     from .models import ChatRequest, Message
     from .models.providers import ClaudeCodeProvider
@@ -217,7 +229,7 @@ def _use_claude(kernel: Kernel, on: bool) -> int:
     pc = next(p for p in reloaded.providers if p.name == "claude")
     probe = ClaudeCodeProvider("claude", pc.models, workdir=kernel.home / "claude-workdir", command=pc.command)
     try:
-        r = probe.chat(next(iter(pc.models)), ChatRequest((
+        r = probe.chat("haiku" if "haiku" in pc.models else next(iter(pc.models)), ChatRequest((
             Message("system", "Reply with exactly: JARVIS link online.", Category.SYSTEM_PROMPT),
             Message("user", "Status check.", Category.SYSTEM_PROMPT))))
     except ProviderError as exc:
@@ -352,6 +364,8 @@ def _ask(kernel: Kernel, args) -> int:
             print(f"  {model}: {reason}")
         return 4
     print(r.text)
+    if r.note:
+        print(f"\n({r.note})", file=sys.stderr)
     print(f"\n[{r.provider}/{r.model} · {r.latency_s:.1f}s · {r.usage.output_tokens} tokens · ${r.cost_usd:.4f}]",
           file=sys.stderr)
     return 0

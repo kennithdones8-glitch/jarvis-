@@ -11,14 +11,15 @@ request is never "worked around" by trying another provider; it pauses the task.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+import time
+from dataclasses import dataclass, field, replace
 from typing import Iterable, Literal
 
 from ..core.audit import AuditLog
 from ..core.killswitch import KillSwitch
 from ..core.tools import ApprovalRequired
 from .egress import BudgetExceeded, EgressDenied, EgressGate
-from .types import ChatRequest, ChatResponse, ModelInfo, Provider, ProviderError
+from .types import Category, ChatRequest, ChatResponse, Message, ModelInfo, Provider, ProviderError, UsageLimited
 
 CAPABILITIES = frozenset({"chat", "plan", "code", "summarize", "classify", "json", "extract"})
 
@@ -58,18 +59,31 @@ class Route:
 
 
 class NoModelAvailable(RuntimeError):
-    def __init__(self, message: str, reasons: dict[str, str]):
+    def __init__(self, message: str, reasons: dict[str, str], *, unavailable: bool = False):
         super().__init__(message)
         self.reasons = reasons
+        # True when a model that would have qualified was down/limited (so a fallback makes sense),
+        # as opposed to every model being excluded by the rules (local-only data, budget, quality).
+        self.unavailable = unavailable
+
+
+ROUTING_MODES = ("local_first", "best", "hybrid")
+
+TRIAGE_PROMPT = """Classify how demanding the user's message is for an AI assistant. Reply with exactly one word:
+SIMPLE - greetings, small talk, quick facts, short rewrites, simple arithmetic
+MEDIUM - explanations, summaries, everyday advice, moderate writing
+HARD - multi-step reasoning, coding, analysis, planning, long or careful writing, high-stakes questions"""
 
 
 class ModelRouter:
-    """``mode="local_first"``: any capable local model outranks every cloud model.
-    ``mode="best"``: the most capable available model wins; local models are the fallback."""
+    """``local_first``: any capable local model outranks every cloud model.
+    ``best``: the most capable available model wins; local models are the fallback.
+    ``hybrid``: like best, but ModelService first triages chat locally so only demanding requests use
+    the cloud, and picks the lightest cloud model that is good enough (saves plan usage)."""
 
     def __init__(self, local: Iterable[Provider], gate: EgressGate, *, mode: str = "local_first"):
-        if mode not in ("local_first", "best"):
-            raise ValueError("routing mode must be 'local_first' or 'best'")
+        if mode not in ROUTING_MODES:
+            raise ValueError(f"routing mode must be one of {ROUTING_MODES}")
         self.mode = mode
         self.local = {p.name: p for p in local}
         if any(p.location != "local" for p in self.local.values()):
@@ -103,20 +117,21 @@ class ModelRouter:
                 elif location == "cloud" and local_only:
                     reason = "request contains local-only data"
                 elif unavailable_reason or mid not in available:
-                    reason = unavailable_reason or "model not installed/available"
+                    reason = f"unavailable: {unavailable_reason or 'model not installed'}"
                 elif location == "cloud" and not self.gate.budget.allows(self.gate.budget.estimate(info, request)):
                     reason = "would exceed budget"
                 if reason:
                     rejected[key] = reason
                     continue
-                prefer = need.prefer if need.prefer != "auto" else ("quality" if self.mode == "best" else "speed")
+                prefer = need.prefer if need.prefer != "auto" else ("speed" if self.mode == "local_first" else "quality")
                 primary, secondary = (info.quality, info.speed) if prefer == "quality" else (info.speed, info.quality)
                 local_bonus = 100 if location == "local" and self.mode == "local_first" else 0
                 score = local_bonus + primary * 10 + secondary + (0.5 if location == "local" else 0)
                 ok.append(Candidate(name, mid, location, info, score))
 
         if not ok:
-            raise NoModelAvailable("no approved model satisfies this request", rejected)
+            raise NoModelAvailable("no approved model satisfies this request", rejected,
+                                   unavailable=any(r.startswith("unavailable") for r in rejected.values()))
         ok.sort(key=lambda c: c.score, reverse=True)
         return Route(tuple(ok), rejected)
 
@@ -129,8 +144,60 @@ class ModelService:
         self.max_attempts = max_attempts
 
     def complete(self, need: Need, request: ChatRequest, *, purpose: str, task_id: str | None = None,
-                 step_id: str | None = None) -> ChatResponse:
+                 step_id: str | None = None, allow_fallback: bool = True) -> ChatResponse:
+        """``allow_fallback``: if the chosen tier is unavailable (e.g. Claude's usage limit), answer with a
+        local model and say so. Background tasks pass False and instead wait for the reset (UsageLimited)."""
         self.killswitch.check()
+        need = self._apply_hybrid(need, request, task_id)
+        try:
+            return self._complete(need, request, purpose=purpose, task_id=task_id, step_id=step_id)
+        except NoModelAvailable as exc:
+            limited = self.router.gate.limited_until()
+            if need.local_only or not (exc.unavailable or limited):
+                raise
+            if not allow_fallback:
+                if limited:
+                    raise UsageLimited("Claude is at its usage limit", limited) from exc
+                raise
+            local_need = Need(need.capability, min_quality=1, prefer="speed", local_only=True)
+            try:
+                r = self._complete(local_need, request, purpose=purpose, task_id=task_id, step_id=step_id)
+            except NoModelAvailable:
+                raise exc from None
+            until = f" until about {time.strftime('%H:%M', time.localtime(limited))}" if limited else ""
+            why = f"Claude is at its usage limit{until}" if limited else "the preferred model was unavailable"
+            note = f"Answered locally — {why}."
+            self.audit.record("model.fallback", task_id=task_id, model=f"{r.provider}/{r.model}", reason=why)
+            return replace(r, note=note)
+
+    def _apply_hybrid(self, need: Need, request: ChatRequest, task_id: str | None) -> Need:
+        if self.router.mode != "hybrid" or need.prefer != "auto" or need.local_only:
+            return need
+        level = self.triage(request, task_id) if need.capability == "chat" else "medium"
+        if level == "simple":
+            return replace(need, local_only=True, prefer="speed")
+        if level == "medium":  # lightest cloud model that is clearly better than local (e.g. Haiku)
+            return replace(need, min_quality=max(need.min_quality, 4), prefer="speed")
+        return replace(need, min_quality=max(need.min_quality, 5), prefer="quality")
+
+    def triage(self, request: ChatRequest, task_id: str | None = None) -> str:
+        """Rate the latest user message SIMPLE / MEDIUM / HARD with a fast local model (never leaves the Mac)."""
+        last = next((m.content for m in reversed(request.messages) if m.role == "user"), "")[:1500]
+        word = ""
+        try:
+            r = self._complete(Need("classify", prefer="speed", local_only=True), ChatRequest((
+                Message("system", TRIAGE_PROMPT, Category.SYSTEM_PROMPT),
+                Message("user", last, Category.CONVERSATION)), max_tokens=4, temperature=0.0),
+                purpose="triage", task_id=task_id, step_id=None)
+            word = (r.text.strip().split() or [""])[0].strip(".:,*").upper()
+        except (NoModelAvailable, ProviderError):
+            pass
+        level = {"SIMPLE": "simple", "MEDIUM": "medium", "HARD": "hard"}.get(word, "medium")
+        self.audit.record("model.triage", task_id=task_id, level=level, raw=word[:20])
+        return level
+
+    def _complete(self, need: Need, request: ChatRequest, *, purpose: str, task_id: str | None,
+                  step_id: str | None) -> ChatResponse:
         try:
             route = self.router.route(need, request)
         except NoModelAvailable as exc:
@@ -160,4 +227,4 @@ class ModelService:
                 failures[key] = str(exc)
                 self.audit.record("model.attempt_failed", task_id=task_id, model=key, error=str(exc),
                                   budget=isinstance(exc, BudgetExceeded))
-        raise NoModelAvailable("every candidate model failed", {**route.rejected, **failures})
+        raise NoModelAvailable("every candidate model failed", {**route.rejected, **failures}, unavailable=True)

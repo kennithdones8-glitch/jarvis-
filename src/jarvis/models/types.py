@@ -70,6 +70,7 @@ class ChatResponse:
     usage: Usage = field(default_factory=Usage)
     latency_s: float = 0.0
     cost_usd: float = 0.0
+    note: str | None = None  # e.g. "answered locally — Claude is at its usage limit"
 
 
 @dataclass(frozen=True)
@@ -92,6 +93,14 @@ class ProviderError(RuntimeError):
 class ProviderUnavailable(ProviderError):
     def __init__(self, message: str):
         super().__init__(message, retryable=True)
+
+
+class UsageLimited(ProviderUnavailable):
+    """The provider's plan limit is reached. ``reset_at`` is a Unix time when known."""
+
+    def __init__(self, message: str, reset_at: float | None = None):
+        super().__init__(message)
+        self.reset_at = reset_at
 
 
 class InvalidModelOutput(ValueError):

@@ -105,8 +105,11 @@ function renderHead(d) {
   const models = d.models ? d.models.providers.reduce((n, p) => n + p.available.length, 0) : 0;
   const total = d.models ? d.models.providers.reduce((n, p) => n + p.configured.length, 0) : 0;
   const spent = d.models ? d.models.budget.spent_this_month_usd || 0 : 0;
+  const claude = d.models && (d.models.cloud_usage || []).find((u) => u.provider === "claude");
   const stat = (v, label, alert) => h("div", { class: `stat${alert ? " alert" : ""}` }, h("b", {}, v), h("span", {}, label));
-  $("#stats").replaceChildren(stat(active, "Active"), stat(needs, "Need you", needs > 0), stat(`${models}/${total}`, "Models"), stat(`$${spent.toFixed(2)}`, "Spent"));
+  $("#stats").replaceChildren(stat(active, "Active"), stat(needs, "Need you", needs > 0), stat(`${models}/${total}`, "Models"),
+    claude ? (claude.limited_until ? stat(clock(claude.limited_until), "Claude resets", true) : stat(claude.calls, "Claude · 5h"))
+      : stat(`$${spent.toFixed(2)}`, "Spent"));
 }
 
 // ---------------------------------------------------------------- feed: conversation + plans
@@ -148,7 +151,7 @@ async function sendChat(payload) {
     const r = await api("/api/chat", payload);
     if (r.needs_approval) ui.convo.push({ role: "assistant", consent: true, payload, approval_id: r.approval_id, text: r.summary });
     else if (r.error) ui.convo.push({ role: "assistant", text: r.error, error: true });
-    else ui.convo.push({ role: "assistant", text: r.text, meta: `${r.model.split("/").pop()} · ${r.seconds}s` });
+    else ui.convo.push({ role: "assistant", text: r.text, meta: [r.model.split("/").pop(), `${r.seconds}s`, r.note].filter(Boolean).join(" · ") });
   } catch (e) {
     ui.convo.push({ role: "assistant", text: `Request failed: ${e.message}`, error: true });
   } finally {
@@ -299,6 +302,9 @@ function renderSystems(d) {
     h("div", { class: "lights" }, lights.length ? lights : h("div", { class: "empty" }, "No models configured")),
     h("div", { class: "readouts" },
       ro("Privacy", (m.disabled_providers || []).length && !m.providers.some((p) => p.location === "cloud") ? "Local only" : "Cloud allowed with approval"),
+      ro("Routing", { local_first: "Local first", best: "Best model", hybrid: "Hybrid (saves Claude usage)" }[m.routing_mode] || m.routing_mode || "—"),
+      ...(m.cloud_usage || []).map((u) => ro(`${u.provider} · 5h`, u.limited_until
+        ? `At limit · resets ~${clock(u.limited_until)}` : `${u.calls} calls · ${(u.tokens / 1000).toFixed(1)}k tokens`, u.limited_until ? "bad" : null)),
       ro("Budget", `$${(m.budget.spent_this_month_usd || 0).toFixed(2)} of $${(m.budget.monthly_limit_usd || 0).toFixed(2)}`),
       ro("Audit log", chain ? (chain.ok ? `Intact · ${chain.checked}` : `Broken at #${chain.first_bad_seq}`) : "Checking…", chain ? (chain.ok ? "ok" : "bad") : null),
       ro("Folders", d.roots.length ? d.roots.map(base).join(", ") : "None approved"),

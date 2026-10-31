@@ -264,13 +264,13 @@ class Dashboard:
             appr = self.kernel.approvals.get(exc.approval_id)
             return {"needs_approval": True, "approval_id": exc.approval_id, "summary": appr["summary"]}
         return {"text": r.text, "model": f"{r.provider}/{r.model}", "seconds": round(time.time() - started, 1),
-                "tokens": r.usage.output_tokens}
+                "tokens": r.usage.output_tokens, "note": r.note}
 
     # ---- state snapshot ----------------------------------------------------------------
     def state(self) -> dict[str, Any]:
         k = self.kernel
         now = time.time()
-        if now - self._models_cache[0] > 15:
+        if now - self._models_cache[0] > 5:
             self._models_cache = (now, models_status(k))
         if now - self._audit_cache[0] > 60:
             self._audit_cache = (now, k.audit.verify().__dict__)

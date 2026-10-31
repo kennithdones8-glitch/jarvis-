@@ -16,7 +16,9 @@ local_only_categories = []
 [routing]
 # "local_first": use local models whenever they can do the job (most private, weaker).
 # "best": use the most capable available model (Claude when enabled); local models are the fallback.
-# `jarvis use-claude on` switches this to "best" and enables Claude.
+# "hybrid": a local model first rates each chat message; simple ones stay local, medium ones use the
+#   lightest good cloud model (Claude Haiku), hard ones the strongest (Claude Sonnet). Saves usage.
+# `jarvis use-claude on` switches this to "hybrid" and enables Claude.
 mode = "local_first"
 
 [search]
@@ -80,3 +82,10 @@ capabilities = ["chat", "plan", "code", "summarize", "classify", "json", "extrac
 context_tokens = 200000
 quality = 5
 speed = 3
+
+[[providers.claude.models]]
+id = "haiku"
+capabilities = ["chat", "summarize", "classify", "json", "extract"]
+context_tokens = 200000
+quality = 4
+speed = 5

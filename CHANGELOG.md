@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.7.0 — Stretch Claude usage
+
+- Routing mode `hybrid` (set by `jarvis use-claude on`): a local model rates each chat message.
+  Simple ones stay on the Mac, medium ones go to Claude Haiku, hard ones to Claude Sonnet. Planning
+  always uses the strongest model; writing steps in tasks use Haiku.
+- Usage limits: Claude Code's limit message is recognised and its reset time parsed. Until then
+  JARVIS doesn't call Claude at all. Chat and planning answer locally and say so; background task
+  steps wait for the reset (no attempt spent) and resume automatically.
+- Fallback to local happens only when Claude is genuinely unavailable, never to get around your rules
+  (local-only data, budget).
+- Usage meter: Claude calls and tokens over the last 5 hours and the reset time, on the dashboard and in `jarvis models`.
+- 9 new tests.
+
 ## 0.6.0 — Claude as JARVIS's brain
 
 - `claude_code` provider: Claude through the official Claude Code CLI on your Pro login. It runs with

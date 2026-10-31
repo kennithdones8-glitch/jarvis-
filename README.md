@@ -64,7 +64,7 @@ or `$JARVIS_HOME`. Nothing runs in the background and nothing is sent over the n
 | `jarvis dashboard [--port 8765]` | Start the local command centre and open it in your browser |
 | `jarvis do "…" [--yes]` | Plan a task, show the plan, run it with approvals, verify and report |
 | `jarvis run ID` | Continue a task (after approving, resuming or a restart) |
-| `jarvis use-claude on\|off` | Use Claude (via Claude Code on your Pro plan) as the main brain, or go local-only |
+| `jarvis use-claude on\|off` | Hybrid brain: simple → local, medium → Claude Haiku, hard → Claude Sonnet (Pro plan); or local-only |
 | `jarvis models` | Configured models, live availability, budget |
 | `jarvis ask "…" [--min-quality N] [--local-only]` | One-off question through the router and privacy gate |
 | `jarvis grant-egress --category C --provider P` / `revoke-egress ID` / `grants` | Standing privacy grants |

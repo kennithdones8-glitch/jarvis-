@@ -11,6 +11,7 @@ from __future__ import annotations
 import ipaddress
 import json
 import os
+import re
 import shutil
 import subprocess
 import time
@@ -20,7 +21,7 @@ from urllib.parse import urlsplit
 
 from .http import request_json
 from .secrets import SecretStore
-from .types import ChatRequest, ChatResponse, ModelInfo, ProviderError, ProviderUnavailable, Usage
+from .types import ChatRequest, ChatResponse, ModelInfo, ProviderError, ProviderUnavailable, Usage, UsageLimited
 
 
 def is_loopback_url(url: str) -> bool:
@@ -156,7 +157,25 @@ class ClaudeCodeProvider:
         self.workdir = Path(workdir)
         self.timeout = timeout
         self.data_use_note = data_use_note or "Anthropic, via your Claude Pro plan (Anthropic's consumer terms apply)"
+        # While the plan limit is in force, don't call Claude at all (saves time and noise).
+        self.limited_until: float | None = None
 
+    @staticmethod
+    def parse_reset(message: str, now: float | None = None) -> float | None:
+        """Best-effort reset time from Claude Code's limit message ('…|1700000000' or '… resets 3pm')."""
+        now = time.time() if now is None else now
+        if m := re.search(r"\|(\d{9,11})\b", message):
+            return float(m.group(1))
+        if m := re.search(r"resets?\s+(?:at\s+)?(\d{1,2})(?::(\d{2}))?\s*(am|pm)?", message, re.IGNORECASE):
+            hour, minute, ampm = int(m.group(1)), int(m.group(2) or 0), (m.group(3) or "").lower()
+            if ampm == "pm" and hour < 12:
+                hour += 12
+            if ampm == "am" and hour == 12:
+                hour = 0
+            local = time.localtime(now)
+            target = time.mktime((local.tm_year, local.tm_mon, local.tm_mday, hour, minute, 0, 0, 0, -1))
+            return target if target > now else target + 86400
+        return None
     def _binary(self) -> str:
         found = shutil.which(self.command)
         if not found:
@@ -165,6 +184,8 @@ class ClaudeCodeProvider:
 
     def available_models(self) -> set[str]:
         self._binary()
+        if self.limited_until and time.time() < self.limited_until:
+            raise UsageLimited("Claude is at its usage limit", self.limited_until)
         return set(self.models)
 
     @staticmethod
@@ -205,7 +226,14 @@ class ClaudeCodeProvider:
         if not isinstance(data, dict) or data.get("is_error") or not isinstance(text, str):
             message = str((data or {}).get("result") or (data or {}).get("subtype") or "unknown error")[:300]
             lowered = message.lower()
-            if "limit" in lowered or "login" in lowered or "auth" in lowered or "credit" in lowered:
+            if "limit" in lowered:
+                reset = self.parse_reset(message)
+                if reset is not None and reset <= time.time():
+                    reset = None  # a reset time in the past is meaningless; treat as unknown
+                # Unknown reset time: back off for 15 minutes before trying Claude again.
+                self.limited_until = reset or time.time() + 900
+                raise UsageLimited(f"Claude usage limit reached: {message}", reset)
+            if "login" in lowered or "auth" in lowered or "credit" in lowered:
                 raise ProviderUnavailable(f"Claude unavailable: {message}")
             raise ProviderError(f"Claude Code error: {message}", retryable=False)
         usage = data.get("usage") or {}

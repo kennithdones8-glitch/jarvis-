@@ -12,8 +12,10 @@ from typing import Any
 
 from ..core.permissions import Tier
 from ..core.tools import ActionSpec, CallContext, ToolError, ToolSpec
+import time
+
 from ..models import ChatRequest, Message, ModelService, Need, NoModelAvailable
-from ..models.types import Category
+from ..models.types import Category, UsageLimited
 
 MAX_INSTRUCTION = 2_000
 MAX_INPUT_CHARS = 12_000
@@ -65,7 +67,11 @@ class ComposeTool:
                                Message("user", user, Category.FILE_CONTENT)), max_tokens=1200, temperature=0.3)
         try:
             r = self.models.complete(Need("summarize", prefer="auto"), request, purpose="compose text",
-                                     task_id=ctx.task_id, step_id=ctx.step_id)
+                                     task_id=ctx.task_id, step_id=ctx.step_id, allow_fallback=False)
+        except UsageLimited as exc:
+            # Background work waits for Claude rather than quietly using a weaker model.
+            raise ToolError(f"Claude usage limit reached; resuming after reset", retryable=True,
+                            retry_after=exc.reset_at or time.time() + 900) from None
         except NoModelAvailable as exc:
             raise ToolError(f"no model available to write: {exc}", retryable=True) from None
         return {"text": r.text.strip(), "model": f"{r.provider}/{r.model}", "input_chars": total}

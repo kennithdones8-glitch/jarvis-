@@ -67,10 +67,14 @@ class ToolSpec:
 class ToolError(RuntimeError):
     """A tool failed. ``retryable``: safe to try again. ``outcome_unknown``: it may have taken effect."""
 
-    def __init__(self, message: str, *, retryable: bool = False, outcome_unknown: bool = False):
+    def __init__(self, message: str, *, retryable: bool = False, outcome_unknown: bool = False,
+                 retry_after: float | None = None):
         super().__init__(message)
         self.retryable = retryable
         self.outcome_unknown = outcome_unknown
+        # Unix time before which retrying is pointless (e.g. a usage limit). The engine waits without
+        # spending an attempt, because nothing happened.
+        self.retry_after = retry_after
 
 
 class ToolTimeout(ToolError):

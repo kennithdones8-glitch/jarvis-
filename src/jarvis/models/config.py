@@ -64,8 +64,8 @@ def parse_model_config(data: dict[str, Any]) -> ModelConfig:
     _check_keys("jarvis.toml", data, {"budget", "privacy", "providers", "search", "routing"})
     routing = data.get("routing", {})
     _check_keys("[routing]", routing, {"mode"})
-    if routing.get("mode", "local_first") not in ("local_first", "best"):
-        raise ConfigError("[routing]: mode must be 'local_first' or 'best'")
+    if routing.get("mode", "local_first") not in ("local_first", "best", "hybrid"):
+        raise ConfigError("[routing]: mode must be 'local_first', 'best' or 'hybrid'")
     search = data.get("search", {})
     _check_keys("[search]", search, {"searxng_url"})
     budget = data.get("budget", {})

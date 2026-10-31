@@ -100,6 +100,13 @@ class BudgetGuard:
                 f" (spent ${self.spent_this_month():.4f})"
             )
 
+    def usage_since(self, provider: str, seconds: float) -> dict[str, int]:
+        since = datetime.fromtimestamp(datetime.now(timezone.utc).timestamp() - seconds, timezone.utc).isoformat(
+            timespec="microseconds")
+        row = self.db.one("SELECT COUNT(*), COALESCE(SUM(input_tokens + output_tokens), 0) FROM model_usage "
+                          "WHERE provider = ? AND ts >= ?", (provider, since))
+        return {"calls": int(row[0]), "tokens": int(row[1])}
+
     def record(self, response: ChatResponse, cost: float, task_id: str | None) -> None:
         with self.db.tx() as conn:
             conn.execute(
@@ -172,6 +179,19 @@ class EgressGate:
 
     def summaries(self) -> list[ProviderSummary]:
         return [ProviderSummary(p.name, p.location, dict(p.models), p.data_use_note) for p in self._providers.values()]
+
+    def usage_summary(self) -> list[dict[str, Any]]:
+        """Per cloud provider: calls and tokens in the last 5 hours, and any known limit."""
+        out = []
+        for p in self._providers.values():
+            limited = getattr(p, "limited_until", None)
+            out.append({"provider": p.name, **self.budget.usage_since(p.name, 5 * 3600),
+                        "limited_until": limited if limited and limited > datetime.now(timezone.utc).timestamp() else None})
+        return out
+
+    def limited_until(self) -> float | None:
+        known = [u["limited_until"] for u in self.usage_summary() if u["limited_until"]]
+        return max(known) if known else None
 
     def available_models(self, provider: str) -> set[str]:
         return self._providers[provider].available_models()

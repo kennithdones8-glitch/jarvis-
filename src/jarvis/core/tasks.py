@@ -205,6 +205,11 @@ class TaskStore:
             self.audit.record("task.state", actor=actor, task_id=tid, frm=frm.value, to=to.value, reason=reason,
                               **{k: v for k, v in fields.items() if k in ("error", "next_action")})
 
+    def set_next_action(self, tid: str, text: str | None) -> None:
+        with self.db.tx() as conn:
+            conn.execute("UPDATE tasks SET next_action = ?, version = version + 1, updated_at = ? WHERE id = ?",
+                         (text, now_iso(), tid))
+
     def set_control(self, tid: str, control: str | None, *, actor: str) -> None:
         with self.db.tx() as conn:
             conn.execute("UPDATE tasks SET control = ?, version = version + 1, updated_at = ? WHERE id = ?",
@@ -512,6 +517,12 @@ class TaskEngine:
                 self.store.update_step(step["id"], state=StepState.UNCERTAIN, error=str(exc))
                 self.store.transition(tid, S.BLOCKED, reason="operation outcome unknown",
                                       next_action=f"confirm whether '{step['description']}' took effect (op {op_id})")
+            elif exc.retry_after is not None:
+                self.store.unstart_step(step["id"])
+                self.store.update_step(step["id"], not_before=exc.retry_after, error=str(exc))
+                when = time.strftime("%H:%M", time.localtime(exc.retry_after))
+                self.store.set_next_action(tid, f"waiting until {when}: {exc}")
+                self.audit.record("step.waiting", task_id=tid, step_id=step["id"], until=exc.retry_after, error=str(exc))
             elif exc.retryable and attempt < step["max_attempts"]:
                 delay = min(self.backoff_cap, self.backoff_base * (2 ** (attempt - 1)))
                 self.store.update_step(step["id"], state=StepState.PENDING, error=str(exc),
@@ -524,6 +535,8 @@ class TaskEngine:
                 self.store.transition(tid, S.FAILED, reason=why, error=f"step {step['idx']}: {exc}")
         else:
             self.store.update_step(step["id"], state=StepState.DONE, result=result, error=None, finished_at=now_iso())
+            if step.get("not_before"):  # it had been waiting (e.g. for a usage reset); clear the notice
+                self.store.set_next_action(tid, None)
             self.store.checkpoint(tid, step["id"], {"completed_step": step["idx"], "op_id": op_id})
 
     def _verify(self, task: dict[str, Any]) -> None:

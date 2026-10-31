@@ -21,6 +21,8 @@ def models_status(kernel: Kernel) -> dict:
             available, error = [], str(exc)
         out["providers"].append({"name": name, "location": location, "configured": sorted(models),
                                  "available": available, "error": error, "data_use": note})
+    out["routing_mode"] = router.mode
+    out["cloud_usage"] = router.gate.usage_summary()
     disabled = [p.name for p in kernel.model_config.providers if not p.enabled]
     out["disabled_providers"] = disabled
     return out

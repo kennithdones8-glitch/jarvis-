@@ -126,7 +126,7 @@ enabled = true
 host = "{url}"
 [[providers.ollama.models]]
 id = "llama:3b"
-capabilities = ["chat", "plan", "summarize", "json"]
+capabilities = ["chat", "plan", "summarize", "json", "classify"]
 context_tokens = 16384
 quality = 3
 speed = 4
@@ -139,7 +139,26 @@ capabilities = ["chat", "plan", "code", "summarize", "json"]
 context_tokens = 200000
 quality = 5
 speed = 3
+[[providers.claude.models]]
+id = "haiku"
+capabilities = ["chat", "summarize", "json"]
+context_tokens = 200000
+quality = 4
+speed = 5
 """
+
+
+TRIAGE = {"word": "MEDIUM"}
+
+
+def local_reply(body):
+    system = body["messages"][0]["content"]
+    if "Classify how demanding" in system:
+        return TRIAGE["word"]
+    if "planning component" in system:
+        return json.dumps({"goal": "local plan", "steps": [{"description": "List", "tool": "fs", "action": "list",
+                                                             "args": {"path": "/"}, "depends_on": []}]})
+    return "Local says hello."
 
 
 @pytest.fixture
@@ -148,9 +167,7 @@ def brain(make_kernel, tmp_path, fake_claude):
 
     def _make(mode="best"):
         srv = start_ollama(installed=["llama:3b"])
-        srv.reply = lambda body: (json.dumps({"goal": "local plan", "steps": [{"description": "List", "tool": "fs",
-                                  "action": "list", "args": {"path": "/"}, "depends_on": []}]})
-                                  if "planning component" in body["messages"][0]["content"] else "Local says hello.")
+        srv.reply = local_reply
         servers.append(srv)
         (tmp_path / "jarvis.toml").write_text(CFG.format(mode=mode, url=srv.url))
         return make_kernel(registry=default_registry(tmp_path / "home"), config_path=tmp_path / "jarvis.toml"), srv
@@ -238,10 +255,94 @@ def test_use_claude_command_edits_config_and_probes(fake_claude, tmp_path):
     assert cli_main(["--home", str(home), "init"]) == 0
     assert cli_main(["--home", str(home), "use-claude", "on"]) == 0
     cfg = load_model_config(home / "jarvis.toml")
-    assert cfg.routing_mode == "best" and any(p.name == "claude" and p.enabled for p in cfg.providers)
+    assert cfg.routing_mode == "hybrid" and any(p.name == "claude" and p.enabled for p in cfg.providers)
+    claude = next(p for p in cfg.providers if p.name == "claude")
+    assert set(claude.models) == {"sonnet", "haiku"}
     probe = fake_claude()[-1]
+    assert probe["args"][probe["args"].index("--model") + 1] == "haiku"    # cheapest model for the probe
     assert probe["stdin"] == "Status check."                 # the probe sends no private data
     assert (home / "jarvis.toml.bak").exists()
     assert cli_main(["--home", str(home), "use-claude", "off"]) == 0
     cfg = load_model_config(home / "jarvis.toml")
     assert cfg.routing_mode == "local_first" and not any(p.name == "claude" and p.enabled for p in cfg.providers)
+
+
+# ---- stretching usage ----------------------------------------------------------------------
+@pytest.mark.parametrize("word,expected", [("SIMPLE", ("ollama", None)), ("MEDIUM", ("claude", "haiku")),
+                                           ("HARD", ("claude", "sonnet")), ("gibberish", ("claude", "haiku"))])
+def test_hybrid_triage_routes_by_difficulty(brain, fake_claude, word, expected):
+    TRIAGE["word"] = word
+    k, local = brain("hybrid")
+    k.models.router.gate.grants.grant(category="conversation", provider="claude", by="user:test")
+    r = k.models.complete(Need("chat", prefer="auto"), PRIVATE, purpose="chat")
+    assert r.provider == expected[0]
+    if expected[1]:
+        assert fake_claude()[-1]["args"][fake_claude()[-1]["args"].index("--model") + 1] == expected[1]
+    else:
+        assert fake_claude() == []
+    triage_call = local.received[0]["body"]["messages"]
+    assert triage_call[-1]["content"] == "my private question"   # triage ran locally on the message
+    TRIAGE["word"] = "MEDIUM"
+
+
+def test_planning_uses_strongest_claude_in_hybrid(brain, fake_claude, monkeypatch):
+    k, _ = brain("hybrid")
+    k.models.router.gate.grants.grant(category="conversation", provider="claude", by="user:test")
+    k.models.complete(Need("plan", min_quality=3), PRIVATE, purpose="plan")
+    assert fake_claude()[-1]["args"][fake_claude()[-1]["args"].index("--model") + 1] == "sonnet"
+
+
+def test_limit_remembered_fallback_labelled_and_claude_not_called_again(brain, fake_claude, monkeypatch):
+    k, _ = brain("hybrid")
+    k.models.router.gate.grants.grant(category="conversation", provider="claude", by="user:test")
+    monkeypatch.setenv("FAKE_CLAUDE_MODE", "limit")
+    TRIAGE["word"] = "HARD"
+    r = k.models.complete(Need("chat", prefer="auto"), PRIVATE, purpose="chat")
+    assert r.provider == "ollama" and "usage limit" in r.note
+    calls = len(fake_claude())
+    r2 = k.models.complete(Need("chat", prefer="auto"), PRIVATE, purpose="chat")
+    assert r2.provider == "ollama" and len(fake_claude()) == calls    # known limit: Claude not even tried
+    [u] = k.models.router.gate.usage_summary()
+    assert u["provider"] == "claude" and u["limited_until"] > time.time()   # stale reset → back off 15 min
+    TRIAGE["word"] = "MEDIUM"
+
+
+def test_background_compose_waits_for_reset_instead_of_degrading(brain, fake_claude, monkeypatch, root):
+    from jarvis.core import StepSpec, TaskState
+    from jarvis.orchestrator import Orchestrator
+    k, local = brain("hybrid")
+    o = Orchestrator(k, notes_dir=str(root / "notes"))
+    k.models.router.gate.grants.grant(category="file_content", provider="claude", by="user:test")
+    (root / "notes" / "a.txt").write_text("facts")
+    claude = next(p for p in k.models.router.gate._providers.values())
+    claude.limited_until = time.time() + 3600
+    tid = k.tasks.create("summarise", steps=[
+        StepSpec("Read", "fs", "read", {"path": f"{root}/notes/a.txt"}),
+        StepSpec("Write", "llm", "compose", {"instruction": "Summarise", "inputs": ["{{steps.0.content}}"]}, depends_on=[0])],
+        context={"verifier": "writes_verified"})
+    assert k.engine.run(tid) is TaskState.RUNNING                       # waiting, not failed, not degraded
+    task, step = k.tasks.get(tid), k.tasks.steps(tid)[1]
+    assert "waiting until" in task["next_action"] and step["state"] == "pending" and step["attempts"] == 0
+    assert not any("Write" in json.dumps(c["body"]) for c in local.received if "summar" in json.dumps(c["body"]).lower()
+                   and "Classify" not in json.dumps(c["body"]))
+    claude.limited_until = None                                         # the reset arrives
+    k.engine.clock = lambda: time.time() + 7200
+    assert k.engine.run(tid) is TaskState.COMPLETED
+    assert k.tasks.get(tid)["next_action"] is None
+    assert any(c["args"][c["args"].index("--model") + 1] == "haiku" for c in fake_claude())
+
+
+def test_parse_reset_formats():
+    from jarvis.models.providers import ClaudeCodeProvider as C
+    assert C.parse_reset("Claude AI usage limit reached|1700000000") == 1700000000.0
+    now = time.mktime((2026, 10, 31, 13, 0, 0, 0, 0, -1))
+    assert time.localtime(C.parse_reset("5-hour limit reached ∙ resets 3pm", now)).tm_hour == 15
+    assert C.parse_reset("limit reached, resets 9am", now) > now          # tomorrow morning
+    assert C.parse_reset("limit reached") is None
+
+
+def test_usage_meter_counts_recent_calls(brain, fake_claude):
+    k, _ = brain("best")
+    k.models.complete(Need("chat", prefer="auto"), req(Message("user", "status", Category.SYSTEM_PROMPT)), purpose="t")
+    [u] = k.models.router.gate.usage_summary()
+    assert u == {"provider": "claude", "calls": 1, "tokens": 49, "limited_until": None}
