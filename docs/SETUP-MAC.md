@@ -1,7 +1,11 @@
 # Setting up JARVIS on your Mac
 
 Everything here is free. Nothing runs in the background except Ollama and, if you install it in step 6,
-JARVIS's own per-user service (`uv run jarvis service uninstall` removes it).
+JARVIS's own per-user service (`uv run jarvis service uninstall` removes it). If you turn voice on, JARVIS
+starts whisper.cpp's server alongside itself and stops it when JARVIS stops.
+
+**Already installed?** Update (see [Updating](#updating) at the end), then run `uv run jarvis doctor` and work
+through whatever it marks ✗ or ! — it points at the right step below.
 
 ## 1. Get the code
 
@@ -116,7 +120,8 @@ of `jarvis.toml` (see `config/jarvis.example.toml`), then `uv run jarvis service
 uv run jarvis voice setup
 ```
 Follow the steps it prints (builds whisper.cpp v1.9.4 and downloads a ~150 MB model; free). Then
-`uv run jarvis voice enable` and restart JARVIS. Tap **Talk** next to Send; tap again to stop. Turn on
+`uv run jarvis voice enable` and restart JARVIS. Tap **Talk** next to Send (the browser asks once for the
+microphone: allow it); tap again to stop. Turn on
 **Voice replies** under the box to hear answers. To check it with a recording made in QuickTime:
 ```bash
 afconvert -f WAVE -d LEI16@16000 -c 1 ~/Desktop/test.m4a ~/Desktop/test.wav && uv run jarvis voice test ~/Desktop/test.wav
@@ -133,6 +138,8 @@ Needs iOS 16.4 or later. Free; nothing is exposed to the internet.
 ```bash
 uv run jarvis remote enable
 ```
+   The first time, Tailscale may answer with a link to turn on "Serve" for your account: open it, approve,
+   and run the command again.
 4. Open the dashboard on the Mac → **Systems → Phone → Pair a phone**. Scan the code with the iPhone camera,
    tap **Pair with Face ID**.
 5. In Safari on the iPhone: Share → **Add to Home Screen**. Open JARVIS from the Home Screen and tap
@@ -152,10 +159,12 @@ doesn't use your Claude plan, and (if voice is on) speaks a test sentence with `
 
 ## Updating
 
+The first command needs backups set up (step 6); skip it if you haven't yet.
 ```bash
 uv run jarvis backup now
 ```
 ```bash
 cd ~/jarvis && git pull && uv sync -q && uv run jarvis service restart
 ```
-To roll back, see "Rolling back" in the README.
+If the background service isn't installed, the last part says so: start JARVIS with `uv run jarvis dashboard`
+instead. To roll back, see "Rolling back" in the README.

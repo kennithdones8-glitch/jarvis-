@@ -34,7 +34,8 @@ the owner's Intel Mac (macOS 14.1.1). Untested-on-Mac items may still have Mac-s
 | Touch ID for dashboard approvals on the Mac (optional; recovery via Terminal) | ✅ + headless browser with a virtual passkey | **not yet** |
 | Morning briefing (built live, never stored), quiet hours, waiting-decision reminders, health alerts | ✅ + headless browser | **not yet** |
 | Voice: push-to-talk on Mac and iPhone, local whisper.cpp (loopback only, audio never stored), on-device spoken replies | ✅ protocol stand-in + headless browser with a fake microphone | **not yet** (real whisper.cpp not built here) |
-| Mac automation, proactive monitoring, self-improvement | — | ⏳ not started |
+| `jarvis doctor`: one-command check of the whole installation | ✅ | **not yet** |
+| Mac automation, watched folders, self-improvement proposals | — | ⏳ not started |
 
 ## Quick start
 
@@ -59,7 +60,8 @@ uv run jarvis ask "What can you do yet?"
 ```
 
 Data lives in `~/Library/Application Support/JARVIS` on macOS (`~/.local/share/jarvis` on Linux),
-or `$JARVIS_HOME`. Nothing runs in the background unless you run `jarvis service install`, and nothing private
+or `$JARVIS_HOME`. Nothing runs in the background unless you run `jarvis service install` (plus whisper.cpp while JARVIS runs,
+if you turned voice on), and nothing private
 is sent over the network without your approval.
 
 ## CLI

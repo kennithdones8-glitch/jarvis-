@@ -71,7 +71,7 @@ Fixed guarantees, independent of policy:
 | Backup exposure | AES-256-GCM encrypted, authenticated (tampering detected), passphrase in the Keychain, files 0600; no secrets in backups | ✅ tested |
 | Deleted data returning from a backup | Restore re-applies tombstones for memories and records deleted since the backup | ✅ tested — old backups still contain the data until they're pruned (newest 14 kept) |
 | Background service | Per-user LaunchAgent, never root; loopback-only dashboard; removable with one command | ✅ (launchd verified on the Mac only) |
-| Supply chain | Kernel has zero runtime dependencies; the one runtime dependency (pypdf, pure Python) and dev deps are locked in `uv.lock` | ✅ |
+| Supply chain | The kernel uses only the standard library. Runtime dependencies: pypdf (pure Python) and cryptography (passkeys, push encryption, backups), locked in `uv.lock`. Browser code is self-hosted (CSP `script-src 'self'`); the one vendored library, qrcode-generator 1.4.4 (MIT), was checked against its npm integrity hash. whisper.cpp is pinned to release v1.9.4 and built by you | ✅ |
 | Hostile documents | Size caps, a .docx decompression cap and page caps; text is marked untrusted; read-only tool | ✅ tested — a pathological PDF could still be slow (in-process threads can't be killed; not yet isolated in a separate process) |
 | Moving files somewhere unsafe | The destination is checked against approved folders and protected paths inside the tool, after approval as well | ✅ tested |
 | Self-modification | Proposals only in git worktrees; policy/gate/auth files excluded | ⏳ later |

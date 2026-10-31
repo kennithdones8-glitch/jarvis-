@@ -5,7 +5,7 @@ iPhone web app, voice, CLI) are thin and talk to it. Models never call tools or 
 directly.
 
 ```
-clients ─► API (later) ─► Orchestrator (later) ─► TaskEngine ─► ToolGateway ─► tool handlers
+clients ─► dashboard API ─► Orchestrator ─► TaskEngine ─► ToolGateway ─► tool handlers
                                                        │              │
                                                    TaskStore    PermissionEngine + Approvals
                                                        │              │
@@ -179,5 +179,5 @@ each one, prunes to the newest N, and restores with tombstones re-applied.
 
 ## Not built yet
 
-Voice, Mac app automation, proactive monitoring,
-self-improvement proposals. See the [roadmap](ROADMAP.md).
+Mac app automation, deeper monitoring (e.g. watched folders), self-improvement proposals. See the
+[roadmap](ROADMAP.md).

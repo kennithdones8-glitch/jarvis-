@@ -500,23 +500,7 @@ def _service(kernel: Kernel, args) -> int:
 
 
 def _write_remote_config(kernel: Kernel, *, enabled: bool, hostname: str) -> None:
-    import re
-    import tomllib
-
-    from .models.config import parse_model_config
-
-    path = kernel.config_path
-    text = path.read_text() if path.exists() else EXAMPLE_MODELS.read_text()
-    block = f'[remote]\nenabled = {"true" if enabled else "false"}\nhostname = "{hostname}"\n'
-    if re.search(r"(?m)^\[remote\]", text):
-        text = re.sub(r"(?ms)^\[remote\]\n.*?(?=^\[|\Z)", lambda m: block + "\n", text, count=1)
-    else:
-        text = text.rstrip() + "\n\n" + block
-    parse_model_config(tomllib.loads(text))  # never write an invalid config
-    if path.exists():
-        path.with_suffix(".toml.bak").write_text(path.read_text())
-    path.write_text(text)
-    path.chmod(0o600)
+    _write_section(kernel, "remote", {"enabled": enabled, "hostname": hostname})
     kernel.audit.record("config.remote", actor="user:cli", enabled=enabled)
 
 
