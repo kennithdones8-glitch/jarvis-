@@ -79,7 +79,7 @@ function situation(d) {
     return { core: "executing", cls: "", kicker: run.state === "verifying" ? "Verifying" : "Executing",
              main: run.goal, sub: step ? `Step ${i + 1} of ${run.steps.length} · ${step.description}` : "Checking the result" };
   }
-  const job = d.jobs.find((j) => j.state === "planning");
+  const job = d.jobs.find((j) => j.state === "planning" || j.state === "waiting_approval");
   if (job) return { core: "thinking", cls: "", kicker: "Planning", main: job.request, sub: `Working out the steps · ${job.elapsed}s (about a minute on this Mac)` };
   if (ui.chatBusy) return { core: "thinking", cls: "", kicker: "Thinking", main: "Composing a reply", sub: "" };
   const online = d.models ? d.models.providers.reduce((n, p) => n + p.available.length, 0) : 0;
@@ -133,14 +133,21 @@ async function submitCommand(ev) {
     return;
   }
   if (ui.chatBusy) return;
-  const history = ui.convo.filter((m) => !m.error).map((m) => ({ role: m.role, content: m.text }));
+  const history = ui.convo.filter((m) => !m.error && !m.consent).map((m) => ({ role: m.role, content: m.text }));
   ui.convo.push({ role: "user", text });
-  ui.chatBusy = true;
   $("#cmd").value = "";
+  await sendChat({ message: text, history });
+}
+
+// Sends a chat turn. If the best model is in the cloud and your rule is "ask every time", the server
+// returns needs_approval instead of sending; we show a consent card and resend the identical request.
+async function sendChat(payload) {
+  ui.chatBusy = true;
   render();
   try {
-    const r = await api("/api/chat", { message: text, history });
-    if (r.error) ui.convo.push({ role: "assistant", text: r.error, error: true });
+    const r = await api("/api/chat", payload);
+    if (r.needs_approval) ui.convo.push({ role: "assistant", consent: true, payload, approval_id: r.approval_id, text: r.summary });
+    else if (r.error) ui.convo.push({ role: "assistant", text: r.error, error: true });
     else ui.convo.push({ role: "assistant", text: r.text, meta: `${r.model.split("/").pop()} · ${r.seconds}s` });
   } catch (e) {
     ui.convo.push({ role: "assistant", text: `Request failed: ${e.message}`, error: true });
@@ -150,17 +157,29 @@ async function submitCommand(ev) {
   }
 }
 
+async function consent(m, approve) {
+  ui.convo = ui.convo.filter((x) => x !== m);
+  try { await api(`/api/approvals/${m.approval_id}`, { approve }); } catch (e) { /* already decided in Decisions */ }
+  await sendChat(approve ? m.payload : { ...m.payload, local_only: true });
+}
+
 function note(text) { ui.convo.push({ role: "assistant", text, error: true }); render(); }
 
 function jobCard(j) {
   const dismiss = h("button", { class: "btn btn-ghost btn-sm", type: "button", onclick: () => act(`/api/plan/${j.id}/discard`, {}) }, "Dismiss");
+  if (j.state === "waiting_approval") {
+    return h("div", { class: "job consent" }, h("div", { class: "kicker" }, "Waiting for you"),
+      h("div", { class: "job-title" }, j.request),
+      h("div", { class: "d-target" }, "Planning with Claude needs your approval — see Decisions. Reject it to plan locally instead."));
+  }
   if (j.state === "planning") {
     return h("div", { class: "job" }, h("div", { class: "kicker" }, `Planning · ${j.elapsed}s`),
       h("div", { class: "job-title typing" }, j.request));
   }
   if (j.kind === "plan") {
     return h("div", { class: "job" },
-      h("div", { class: "kicker" }, `Plan ready · ${plural(j.steps.length, "step")}`),
+      h("div", { class: "kicker" }, `Plan ready · ${plural(j.steps.length, "step")} · ${j.model.split("/").pop()}`),
+      j.note ? h("div", { class: "d-why" }, j.note) : null,
       h("div", { class: "job-title" }, j.goal || j.request),
       h("ol", { class: "plan-steps" }, j.steps.map((s) => h("li", {}, s.description))),
       h("details", { class: "more" }, h("summary", {}, "Technical details"),
@@ -179,12 +198,18 @@ function jobCard(j) {
 function renderFeed(d) {
   const items = ui.convo.slice(-30).map((m) => m.role === "user"
     ? h("div", { class: "msg user" }, m.text)
+    : m.consent ? h("div", { class: "job consent" },
+        h("div", { class: "kicker" }, "Send to Claude?"),
+        h("div", { class: "d-target" }, m.text),
+        h("div", { class: "row mt" },
+          h("button", { class: "btn btn-approve btn-sm", type: "button", onclick: () => consent(m, true) }, "Send to Claude"),
+          h("button", { class: "btn btn-sm", type: "button", onclick: () => consent(m, false) }, "Answer locally")))
     : h("div", { class: `msg jarvis${m.error ? " err" : ""}` }, h("span", { class: "who" }, "JARVIS"), m.text,
         m.meta ? h("span", { class: "meta" }, m.meta) : null));
   if (ui.chatBusy) items.push(h("div", { class: "msg jarvis" }, h("span", { class: "who typing" }, "JARVIS")));
   if (d) items.push(...d.jobs.filter((j) => j.state !== "submitted").reverse().map(jobCard));
   const feed = $("#feed");
-  const key = JSON.stringify([ui.convo.length, ui.chatBusy, d && d.jobs.map((j) => [j.id, j.state, j.elapsed, j.kind])]);
+  const key = JSON.stringify([ui.convo.length, ui.convo.map((m) => m.approval_id || ""), ui.chatBusy, d && d.jobs.map((j) => [j.id, j.state, j.elapsed, j.kind])]);
   if (key === ui.lastFeed) return;            // avoid re-rendering (and losing scroll/focus) when nothing changed
   ui.lastFeed = key;
   const nearBottom = feed.scrollHeight - feed.scrollTop - feed.clientHeight < 60;

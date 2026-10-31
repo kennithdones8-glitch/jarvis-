@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.6.0 — Claude as JARVIS's brain
+
+- `claude_code` provider: Claude through the official Claude Code CLI on your Pro login. It runs with
+  tools, MCP and slash commands disabled, no session persistence, an empty working folder and API-key
+  variables stripped; prompts go over stdin. Usage limits and login problems are reported as
+  "unavailable", so JARVIS falls back to local models and records why.
+- Routing mode `best` (most capable model first, local as fallback) alongside `local_first`;
+  `prefer="auto"` follows the mode.
+- Consent: with "ask every time", private content goes to Claude only after you approve that exact
+  request. Dashboard chat shows **Send to Claude / Answer locally**; dashboard planning waits for
+  your decision and plans locally if you reject it; the CLI asks inline.
+- `jarvis use-claude on|off` edits `jarvis.toml` safely (validated, backed up) and checks that Claude
+  Code really answers using a probe with no private data.
+- Fixed: `Dashboard.shutdown()` hung if the server had never started.
+- 12 new tests.
+
 ## 0.5.1 — Dashboard redesign
 
 - Holographic HUD in Stark gold & red with an animated arc-reactor core in the centre that changes

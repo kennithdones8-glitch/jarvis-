@@ -9,7 +9,12 @@ endpoint, …). Cloud providers are only ever constructed inside the egress gate
 from __future__ import annotations
 
 import ipaddress
+import json
+import os
+import shutil
+import subprocess
 import time
+from pathlib import Path
 from typing import Literal
 from urllib.parse import urlsplit
 
@@ -126,4 +131,85 @@ class OpenAICompatProvider:
         return ChatResponse(
             text=text, provider=self.name, model=model, latency_s=time.monotonic() - started,
             usage=Usage(int(usage.get("prompt_tokens") or 0), int(usage.get("completion_tokens") or 0)),
+        )
+
+
+class ClaudeCodeProvider:
+    """Claude through the official Claude Code CLI, using the owner's Claude Pro login.
+
+    Claude is used purely as a brain: every built-in tool, MCP server and slash command is
+    disabled, so it cannot read files, run commands or browse — JARVIS's own tools (and its
+    permission engine) do all acting. API-key variables are removed from the environment so the
+    CLI can only use the subscription login and never bills an API account. The prompt goes over
+    stdin; the working directory is an empty folder so no project instructions are picked up.
+    """
+
+    location: Literal["local", "cloud"] = "cloud"
+    _STRIP_ENV = ("ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN", "ANTHROPIC_BASE_URL", "CLAUDE_CODE_USE_BEDROCK",
+                  "CLAUDE_CODE_USE_VERTEX")
+
+    def __init__(self, name: str, models: dict[str, ModelInfo], *, workdir: str | Path, command: str = "claude",
+                 timeout: float = 300.0, data_use_note: str = ""):
+        self.name = name
+        self.models = models
+        self.command = command
+        self.workdir = Path(workdir)
+        self.timeout = timeout
+        self.data_use_note = data_use_note or "Anthropic, via your Claude Pro plan (Anthropic's consumer terms apply)"
+
+    def _binary(self) -> str:
+        found = shutil.which(self.command)
+        if not found:
+            raise ProviderUnavailable("Claude Code is not installed (the `claude` command was not found)")
+        return found
+
+    def available_models(self) -> set[str]:
+        self._binary()
+        return set(self.models)
+
+    @staticmethod
+    def _split(request: ChatRequest) -> tuple[str, str]:
+        system = "\n\n".join(m.content for m in request.messages if m.role == "system")
+        if request.json_mode:
+            system += "\n\nReply with one JSON object only — no prose, no code fences."
+        turns = [m for m in request.messages if m.role != "system"]
+        if len(turns) == 1:
+            return system, turns[0].content
+        transcript = "\n\n".join(f"[{'Owner' if m.role == 'user' else 'You'}]: {m.content}" for m in turns)
+        return system, f"Conversation so far:\n\n{transcript}\n\nReply to the owner's last message."
+
+    def chat(self, model: str, request: ChatRequest) -> ChatResponse:
+        binary = self._binary()
+        system, prompt = self._split(request)
+        args = [binary, "-p", "--output-format", "json", "--model", model,
+                "--tools", "", "--strict-mcp-config", "--disable-slash-commands", "--no-session-persistence",
+                "--system-prompt", system or "You are a helpful assistant."]
+        env = {k: v for k, v in os.environ.items() if k not in self._STRIP_ENV}
+        self.workdir.mkdir(parents=True, exist_ok=True)
+        started = time.monotonic()
+        try:
+            proc = subprocess.run(args, input=prompt, capture_output=True, text=True, timeout=self.timeout,
+                                  cwd=self.workdir, env=env)
+        except subprocess.TimeoutExpired:
+            raise ProviderError(f"Claude Code did not answer within {self.timeout:.0f}s", retryable=True) from None
+        except OSError as exc:
+            raise ProviderUnavailable(f"could not start Claude Code: {exc}") from None
+        try:
+            data = json.loads(proc.stdout)
+        except json.JSONDecodeError:
+            tail = (proc.stderr or proc.stdout or "").strip()[-300:]
+            if "login" in tail.lower() or "auth" in tail.lower():
+                raise ProviderUnavailable(f"Claude Code is not logged in — run `claude` once and sign in ({tail})") from None
+            raise ProviderError(f"Claude Code failed (exit {proc.returncode}): {tail}", retryable=False) from None
+        text = data.get("result") if isinstance(data, dict) else None
+        if not isinstance(data, dict) or data.get("is_error") or not isinstance(text, str):
+            message = str((data or {}).get("result") or (data or {}).get("subtype") or "unknown error")[:300]
+            lowered = message.lower()
+            if "limit" in lowered or "login" in lowered or "auth" in lowered or "credit" in lowered:
+                raise ProviderUnavailable(f"Claude unavailable: {message}")
+            raise ProviderError(f"Claude Code error: {message}", retryable=False)
+        usage = data.get("usage") or {}
+        return ChatResponse(
+            text=text, provider=self.name, model=model, latency_s=time.monotonic() - started,
+            usage=Usage(int(usage.get("input_tokens") or 0), int(usage.get("output_tokens") or 0)),
         )

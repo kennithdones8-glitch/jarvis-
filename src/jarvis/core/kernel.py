@@ -66,7 +66,7 @@ class Kernel:
                                  **engine_options)
 
         self.models = build_model_service(self.model_config, self.db, self.audit, self.approvals, self.killswitch,
-                                          secrets=secrets)
+                                          secrets=secrets, workdir=str(self.home / "claude-workdir"))
 
     def start(self) -> list[str]:
         """Record startup and recover tasks interrupted by a previous crash or shutdown."""

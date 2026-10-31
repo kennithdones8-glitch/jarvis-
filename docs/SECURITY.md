@@ -43,6 +43,9 @@ Fixed guarantees, independent of policy:
 | Private data sent to cloud | Egress gate holds all cloud providers; private categories need a grant or a single-use, request-bound approval; local-only categories are never sent; content is never written to the audit log | ✅ tested |
 | Silent provider fallback | Fallback goes through the same gate; approvals are per provider and per request | ✅ tested |
 | Unapproved spending | Budget guard (default $0) checked by router and gate; paid models are excluded | ✅ tested |
+| Claude Code acting outside JARVIS's permissions | Runs with `--tools ""`, `--strict-mcp-config`, `--disable-slash-commands`, no session persistence, an empty working folder, and JARVIS's own system prompt. Claude can only return text; JARVIS's tools do every action | ✅ tested (argv recorded) |
+| Accidental API billing through Claude Code | `ANTHROPIC_API_KEY`, auth-token, base-URL and cloud-provider variables are removed from its environment, so only the Pro login can be used | ✅ tested |
+| Private text visible in the process list | Prompts go over stdin; only JARVIS's public system prompt is on the command line | ✅ tested |
 | Local adapter used as a network bypass | Ollama adapter refuses non-loopback hosts | ✅ tested |
 | Unauthorised remote access | Dashboard binds 127.0.0.1 only; per-launch secret link → HttpOnly SameSite=Strict cookie | ✅ tested |
 | Other web pages driving the dashboard | Host-header check (DNS rebinding), custom header + Origin check (CSRF), strict CSP, no framing | ✅ tested |

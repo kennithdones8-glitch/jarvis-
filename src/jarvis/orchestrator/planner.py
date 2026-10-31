@@ -154,12 +154,12 @@ class Planner:
         return PLANNER_PROMPT.format(catalog=catalog, roots=", ".join(self.roots) or "(none)",
                                      notes=self.notes_dir, max_steps=MAX_STEPS)
 
-    def plan(self, request: str, *, task_id: str | None = None) -> Plan:
+    def plan(self, request: str, *, task_id: str | None = None, local_only: bool = False) -> Plan:
         messages = [Message("system", self.system_prompt(), Category.SYSTEM_PROMPT),
                     Message("user", request, Category.CONVERSATION)]
         problems: list[str] = []
         for attempt in (1, 2):
-            r = self.models.complete(Need("plan", min_quality=3), ChatRequest(tuple(messages), max_tokens=900,
+            r = self.models.complete(Need("plan", min_quality=3, local_only=local_only), ChatRequest(tuple(messages), max_tokens=900,
                                      temperature=0.0, json_mode=True), purpose="plan a task", task_id=task_id)
             try:
                 plan = validate(parse_json_output(r.text), self.registry)

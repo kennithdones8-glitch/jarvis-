@@ -25,6 +25,7 @@ class ProviderConfig:
     base_url: str | None = None
     api_key_secret: str | None = None
     data_use_note: str = ""
+    command: str = "claude"
 
 
 @dataclass(frozen=True)
@@ -33,6 +34,7 @@ class ModelConfig:
     local_only_categories: tuple[str, ...] = ()
     providers: tuple[ProviderConfig, ...] = field(default_factory=tuple)
     searxng_url: str | None = None
+    routing_mode: str = "local_first"
 
 
 def _check_keys(where: str, data: dict[str, Any], allowed: set[str]) -> None:
@@ -59,7 +61,11 @@ def _model(where: str, raw: dict[str, Any]) -> ModelInfo:
 
 
 def parse_model_config(data: dict[str, Any]) -> ModelConfig:
-    _check_keys("jarvis.toml", data, {"budget", "privacy", "providers", "search"})
+    _check_keys("jarvis.toml", data, {"budget", "privacy", "providers", "search", "routing"})
+    routing = data.get("routing", {})
+    _check_keys("[routing]", routing, {"mode"})
+    if routing.get("mode", "local_first") not in ("local_first", "best"):
+        raise ConfigError("[routing]: mode must be 'local_first' or 'best'")
     search = data.get("search", {})
     _check_keys("[search]", search, {"searxng_url"})
     budget = data.get("budget", {})
@@ -76,10 +82,11 @@ def parse_model_config(data: dict[str, Any]) -> ModelConfig:
     providers = []
     for name, raw in data.get("providers", {}).items():
         where = f"[providers.{name}]"
-        _check_keys(where, raw, {"kind", "enabled", "host", "base_url", "api_key_secret", "data_use_note", "models"})
+        _check_keys(where, raw, {"kind", "enabled", "host", "base_url", "api_key_secret", "data_use_note", "models",
+                                 "command"})
         kind = raw.get("kind")
-        if kind not in ("ollama", "openai_compat"):
-            raise ConfigError(f"{where}: kind must be 'ollama' or 'openai_compat'")
+        if kind not in ("ollama", "openai_compat", "claude_code"):
+            raise ConfigError(f"{where}: kind must be 'ollama', 'openai_compat' or 'claude_code'")
         if kind == "openai_compat" and not (raw.get("base_url") and raw.get("api_key_secret")):
             raise ConfigError(f"{where}: base_url and api_key_secret are required")
         models = {}
@@ -90,12 +97,13 @@ def parse_model_config(data: dict[str, Any]) -> ModelConfig:
             name=name, kind=kind, enabled=bool(raw.get("enabled", False)), models=models,
             host=raw.get("host", "http://127.0.0.1:11434"), base_url=raw.get("base_url"),
             api_key_secret=raw.get("api_key_secret"), data_use_note=raw.get("data_use_note", ""),
+            command=str(raw.get("command", "claude")),
         ))
     limit = float(budget.get("monthly_limit_usd", 0.0))
     if limit < 0:
         raise ConfigError("[budget]: monthly_limit_usd cannot be negative")
     return ModelConfig(monthly_limit_usd=limit, local_only_categories=local_only, providers=tuple(providers),
-                       searxng_url=search.get("searxng_url"))
+                       searxng_url=search.get("searxng_url"), routing_mode=routing.get("mode", "local_first"))
 
 
 def load_model_config(path: str | Path) -> ModelConfig:

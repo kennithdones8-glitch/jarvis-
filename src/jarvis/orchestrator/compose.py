@@ -64,7 +64,7 @@ class ComposeTool:
         request = ChatRequest((Message("system", WRITER_PROMPT, Category.SYSTEM_PROMPT),
                                Message("user", user, Category.FILE_CONTENT)), max_tokens=1200, temperature=0.3)
         try:
-            r = self.models.complete(Need("summarize", prefer="speed"), request, purpose="compose text",
+            r = self.models.complete(Need("summarize", prefer="auto"), request, purpose="compose text",
                                      task_id=ctx.task_id, step_id=ctx.step_id)
         except NoModelAvailable as exc:
             raise ToolError(f"no model available to write: {exc}", retryable=True) from None

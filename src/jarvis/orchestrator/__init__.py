@@ -48,8 +48,8 @@ class Orchestrator:
         self.planner = Planner(kernel.models, kernel.registry, roots=[str(r) for r in kernel.policy.roots],
                                notes_dir=self.notes_dir)
 
-    def plan(self, request: str) -> Plan:
-        plan = self.planner.plan(request)
+    def plan(self, request: str, *, local_only: bool = False) -> Plan:
+        plan = self.planner.plan(request, local_only=local_only)
         self.kernel.audit.record("orchestrator.planned", actor="system", kind=plan.kind, goal=plan.goal,
                                  model=plan.model, attempts=plan.attempts, message=plan.message,
                                  steps=[f"{s.tool}.{s.action} {describe_args(s.args)}" for s in plan.steps])

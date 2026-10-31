@@ -13,6 +13,12 @@ local_only_categories = []
 # Everything private (conversation, files, memory, project, screenshots) already requires your
 # approval for each transmission unless you create a standing grant (`jarvis grant-egress`).
 
+[routing]
+# "local_first": use local models whenever they can do the job (most private, weaker).
+# "best": use the most capable available model (Claude when enabled); local models are the fallback.
+# `jarvis use-claude on` switches this to "best" and enables Claude.
+mode = "local_first"
+
 [search]
 # Local SearXNG (see docs/SETUP-MAC.md). Comment out to disable web search.
 searxng_url = "http://127.0.0.1:8888"
@@ -58,3 +64,19 @@ quality = 4
 speed = 5
 input_cost_per_mtok = 0.0
 output_cost_per_mtok = 0.0
+
+# ---------------------------------------------------------------- Claude (via Claude Code on your Pro plan)
+# Uses the `claude` command with your Claude Pro login — no API key, no extra cost (counts toward
+# your Pro usage limits). Claude's own tools are disabled; JARVIS's permissions stay in charge.
+# Private content is only sent with your approval (see [privacy]). Turn on with `jarvis use-claude on`.
+[providers.claude]
+kind = "claude_code"
+enabled = false
+data_use_note = "Anthropic, via your Claude Pro plan"
+
+[[providers.claude.models]]
+id = "sonnet"
+capabilities = ["chat", "plan", "code", "summarize", "classify", "json", "extract"]
+context_tokens = 200000
+quality = 5
+speed = 3

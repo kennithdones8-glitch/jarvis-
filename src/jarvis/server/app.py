@@ -130,6 +130,7 @@ class Dashboard:
         self.httpd.daemon_threads = True
         self.host, self.port = host, self.httpd.server_address[1]
         self._runner = threading.Thread(target=self._run_loop, name="jarvis-runner-loop", daemon=True)
+        self._serving = False
 
     # ---- lifecycle ---------------------------------------------------------------------
     @property
@@ -139,10 +140,12 @@ class Dashboard:
     def start(self) -> None:
         """Run in background threads (used by tests)."""
         self._runner.start()
+        self._serving = True
         threading.Thread(target=self.httpd.serve_forever, kwargs={"poll_interval": 0.1}, daemon=True).start()
 
     def serve_forever(self) -> None:
         self._runner.start()
+        self._serving = True
         try:
             self.httpd.serve_forever(poll_interval=0.25)
         finally:
@@ -150,7 +153,9 @@ class Dashboard:
 
     def shutdown(self) -> None:
         self._stop.set()
-        self.httpd.shutdown()
+        if self._serving:  # shutdown() waits for serve_forever and would hang if it never started
+            self._serving = False
+            self.httpd.shutdown()
         self.httpd.server_close()
         self._pool.shutdown(wait=False, cancel_futures=True)
 
@@ -198,7 +203,8 @@ class Dashboard:
 
     def _plan_job(self, job: dict[str, Any]) -> None:
         try:
-            plan = self.orch.plan(job["request"])
+            plan = self._plan_with_consent(job)
+            job.pop("approval_id", None)
             job.update(kind=plan.kind, goal=plan.goal, message=plan.message, model=plan.model,
                        steps=[{"description": s.description, "call": f"{s.tool}.{s.action}",
                                "args": describe_args(s.args, 200), "depends_on": s.depends_on} for s in plan.steps],
@@ -206,12 +212,32 @@ class Dashboard:
         except NoModelAvailable as exc:
             job.update(state="ready", kind="failed", message=f"No model can plan this: {exc}",
                        reasons=exc.reasons)
-        except ApprovalRequired as exc:
-            job.update(state="ready", kind="failed",
-                       message=f"Planning needs your approval to use a cloud model ({exc.approval_id}).")
         except Exception as exc:
             job.update(state="ready", kind="failed", message=f"Planning failed: {type(exc).__name__}: {exc}")
         job["seconds"] = round(time.time() - job["started"], 1)
+
+    def _plan_with_consent(self, job: dict[str, Any]):
+        """Plan with the best model. If that needs your approval to send the request to the cloud, wait
+        for your decision in Decisions: approved → retry the identical request; rejected or ignored for
+        15 minutes → plan with a local model instead."""
+        try:
+            return self.orch.plan(job["request"])
+        except ApprovalRequired as exc:
+            job.update(state="waiting_approval", approval_id=exc.approval_id)
+            deadline = time.time() + 900
+            while time.time() < deadline and not self._stop.is_set():
+                decision = self.kernel.approvals.get(exc.approval_id)["state"]
+                if decision != "pending":
+                    break
+                time.sleep(0.5)
+            else:
+                decision = "expired"
+            job["state"] = "planning"
+            if decision == "approved":
+                job["started"] = time.time()
+                return self.orch.plan(job["request"])
+            job["note"] = "Planned locally (you kept this request on your Mac)."
+            return self.orch.plan(job["request"], local_only=True)
 
     def run_plan(self, job_id: str) -> str:
         job = self.jobs.get(job_id)
@@ -222,7 +248,7 @@ class Dashboard:
         return job["task_id"]
 
     # ---- chat --------------------------------------------------------------------------
-    def chat(self, message: str, history: list[dict[str, str]]) -> dict[str, Any]:
+    def chat(self, message: str, history: list[dict[str, str]], *, local_only: bool = False) -> dict[str, Any]:
         msgs = list(priming_messages())
         for turn in history[-10:]:
             if turn.get("role") in ("user", "assistant") and isinstance(turn.get("content"), str):
@@ -230,12 +256,13 @@ class Dashboard:
         msgs.append(Message("user", message, Category.CONVERSATION))
         started = time.time()
         try:
-            r = self.kernel.models.complete(Need("chat", prefer="speed"), ChatRequest(tuple(msgs), max_tokens=600),
-                                            purpose="dashboard chat")
+            r = self.kernel.models.complete(Need("chat", prefer="auto", local_only=local_only),
+                                            ChatRequest(tuple(msgs), max_tokens=600), purpose="dashboard chat")
         except NoModelAvailable as exc:
             return {"error": f"No model available: {exc}", "reasons": exc.reasons}
         except ApprovalRequired as exc:
-            return {"error": "This needs your approval to use a cloud model.", "approval_id": exc.approval_id}
+            appr = self.kernel.approvals.get(exc.approval_id)
+            return {"needs_approval": True, "approval_id": exc.approval_id, "summary": appr["summary"]}
         return {"text": r.text, "model": f"{r.provider}/{r.model}", "seconds": round(time.time() - started, 1),
                 "tokens": r.usage.output_tokens}
 
@@ -278,7 +305,7 @@ class Dashboard:
         jobs = [{k2: v for k2, v in j.items() if k2 != "plan"} for j in
                 sorted(self.jobs.values(), key=lambda j: j["started"], reverse=True)[:5]]
         for j in jobs:
-            if j["state"] == "planning":
+            if j["state"] in ("planning", "waiting_approval"):
                 j["elapsed"] = round(now - j["started"])
 
         audit = [{"seq": e["seq"], "ts": e["ts"], "actor": e["actor"], "event": e["event"], "task_id": e["task_id"],
@@ -403,7 +430,7 @@ class Dashboard:
 
         if path == "/api/chat":
             history = body.get("history") if isinstance(body.get("history"), list) else []
-            return self.chat(text("message"), history)
+            return self.chat(text("message"), history, local_only=body.get("local_only") is True)
         if path == "/api/plan":
             return {"job_id": self.start_plan(text("request"))}
         if m := re.fullmatch(r"/api/plan/(\w+)/(run|discard)", path):

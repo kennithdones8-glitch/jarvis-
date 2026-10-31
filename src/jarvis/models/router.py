@@ -27,7 +27,8 @@ CAPABILITIES = frozenset({"chat", "plan", "code", "summarize", "classify", "json
 class Need:
     capability: str = "chat"
     min_quality: int = 1
-    prefer: Literal["quality", "speed"] = "quality"
+    # "auto": quality when routing mode is "best", speed when it is "local_first".
+    prefer: Literal["quality", "speed", "auto"] = "quality"
     local_only: bool = False
 
     def __post_init__(self) -> None:
@@ -63,7 +64,13 @@ class NoModelAvailable(RuntimeError):
 
 
 class ModelRouter:
-    def __init__(self, local: Iterable[Provider], gate: EgressGate):
+    """``mode="local_first"``: any capable local model outranks every cloud model.
+    ``mode="best"``: the most capable available model wins; local models are the fallback."""
+
+    def __init__(self, local: Iterable[Provider], gate: EgressGate, *, mode: str = "local_first"):
+        if mode not in ("local_first", "best"):
+            raise ValueError("routing mode must be 'local_first' or 'best'")
+        self.mode = mode
         self.local = {p.name: p for p in local}
         if any(p.location != "local" for p in self.local.values()):
             raise ValueError("cloud providers must be registered with the egress gate")
@@ -102,9 +109,10 @@ class ModelRouter:
                 if reason:
                     rejected[key] = reason
                     continue
-                # Local-first: any local model that meets the need outranks every cloud model.
-                primary, secondary = (info.quality, info.speed) if need.prefer == "quality" else (info.speed, info.quality)
-                score = (100 if location == "local" else 0) + primary * 10 + secondary
+                prefer = need.prefer if need.prefer != "auto" else ("quality" if self.mode == "best" else "speed")
+                primary, secondary = (info.quality, info.speed) if prefer == "quality" else (info.speed, info.quality)
+                local_bonus = 100 if location == "local" and self.mode == "local_first" else 0
+                score = local_bonus + primary * 10 + secondary + (0.5 if location == "local" else 0)
                 ok.append(Candidate(name, mid, location, info, score))
 
         if not ok:

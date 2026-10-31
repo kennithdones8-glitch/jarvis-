@@ -55,6 +55,8 @@ def main(argv: list[str] | None = None) -> int:
     p = sub.add_parser("dashboard", help="start the local command centre in your browser")
     p.add_argument("--port", type=int, default=8765)
     p.add_argument("--no-open", action="store_true", help="do not open the browser")
+    p = sub.add_parser("use-claude", help="turn the Claude (Claude Code on your Pro plan) brain on or off")
+    p.add_argument("state", choices=["on", "off"])
     sub.add_parser("models", help="show configured models, availability and budget")
     p = sub.add_parser("ask", help="one-off question to the best available model")
     p.add_argument("question")
@@ -110,6 +112,8 @@ def main(argv: list[str] | None = None) -> int:
         elif args.cmd in ("cancel", "pause", "resume"):
             getattr(kernel.engine, args.cmd)(args.task_id, actor="user:cli")
             print(f"{args.cmd}: {kernel.tasks.get(args.task_id)['state']}")
+        elif args.cmd == "use-claude":
+            return _use_claude(kernel, args.state == "on")
         elif args.cmd == "dashboard":
             return _dashboard(kernel, args)
         elif args.cmd == "do":
@@ -160,6 +164,69 @@ def _dashboard(kernel: Kernel, args) -> int:
     return 0
 
 
+CLAUDE_BLOCK = """
+[providers.claude]
+kind = "claude_code"
+enabled = false
+data_use_note = "Anthropic, via your Claude Pro plan"
+
+[[providers.claude.models]]
+id = "sonnet"
+capabilities = ["chat", "plan", "code", "summarize", "classify", "json", "extract"]
+context_tokens = 200000
+quality = 5
+speed = 3
+"""
+
+
+def _use_claude(kernel: Kernel, on: bool) -> int:
+    """Edit jarvis.toml: enable/disable the Claude provider and switch routing to best/local-first.
+    Validates the result before writing and keeps a backup. Then checks Claude Code really answers."""
+    import re
+    import tomllib
+
+    from .models.config import parse_model_config
+
+    path = kernel.config_path
+    text = path.read_text() if path.exists() else EXAMPLE_MODELS.read_text()
+    data = tomllib.loads(text)
+    if "claude" not in data.get("providers", {}):
+        text = text.rstrip() + "\n" + CLAUDE_BLOCK
+    if "routing" not in data:
+        text = text.rstrip() + '\n\n[routing]\nmode = "local_first"\n'
+    text = re.sub(r'(\[providers\.claude\][^\[]*?enabled\s*=\s*)(true|false)', lambda m: m.group(1) + ("true" if on else "false"),
+                  text, count=1)
+    text = re.sub(r'(\[routing\][^\[]*?mode\s*=\s*)"[^"]*"', lambda m: m.group(1) + ('"best"' if on else '"local_first"'),
+                  text, count=1)
+    parse_model_config(tomllib.loads(text))  # never write an invalid config
+    if path.exists():
+        path.with_suffix(".toml.bak").write_text(path.read_text())
+    path.write_text(text)
+    path.chmod(0o600)
+    kernel.audit.record("config.claude", actor="user:cli", enabled=on)
+    if not on:
+        print("Claude is off. JARVIS uses only local models.")
+        return 0
+    print("Claude is on: JARVIS uses the most capable model, asking before any private content is sent.")
+    print("Checking that Claude Code answers (a test with no private data)…")
+    from .models import ChatRequest, Message
+    from .models.providers import ClaudeCodeProvider
+    from .models.types import Category, ProviderError
+
+    reloaded = parse_model_config(tomllib.loads(text))
+    pc = next(p for p in reloaded.providers if p.name == "claude")
+    probe = ClaudeCodeProvider("claude", pc.models, workdir=kernel.home / "claude-workdir", command=pc.command)
+    try:
+        r = probe.chat(next(iter(pc.models)), ChatRequest((
+            Message("system", "Reply with exactly: JARVIS link online.", Category.SYSTEM_PROMPT),
+            Message("user", "Status check.", Category.SYSTEM_PROMPT))))
+    except ProviderError as exc:
+        print(f"Claude Code did not answer: {exc}\nJARVIS will keep using local models until it does.")
+        return 7
+    print(f"Claude replied: {r.text.strip()!r} ({r.latency_s:.1f}s)")
+    return 0
+
+
 def _orchestrator(kernel: Kernel):
     from .orchestrator import Orchestrator
 
@@ -184,7 +251,7 @@ def _do(kernel: Kernel, args) -> int:
     print("Planning…", file=sys.stderr)
     started = time.monotonic()
     try:
-        plan = orch.plan(args.request)
+        plan = _with_consent(kernel, lambda local: orch.plan(args.request, local_only=local))
     except NoModelAvailable as exc:
         print(f"no model can plan this: {exc}")
         for model, reason in exc.reasons.items():
@@ -249,8 +316,24 @@ def _drive(kernel: Kernel, orch, task_id: str) -> int:
     return 0 if rep["state"] == "completed" else 6
 
 
-def _ask(kernel: Kernel, args) -> int:
+def _with_consent(kernel: Kernel, call):
+    """Run ``call(local_only)``. If it needs approval to send private content to a cloud model, ask in
+    the terminal: yes → approve and retry the identical request; no → retry with local models only."""
     from .core.tools import ApprovalRequired
+
+    try:
+        return call(False)
+    except ApprovalRequired as exc:
+        appr = kernel.approvals.get(exc.approval_id)
+        print(f"\n{appr['summary']}", file=sys.stderr)
+        approve = _confirm("Send it?")
+        kernel.approvals.decide(exc.approval_id, approve=approve, by="user:cli")
+        if not approve:
+            print("Keeping it on this Mac — using a local model.", file=sys.stderr)
+        return call(not approve)
+
+
+def _ask(kernel: Kernel, args) -> int:
     from .models import ChatRequest, Message, Need, NoModelAvailable
     from .models.types import Category
     from .persona import priming_messages
@@ -260,10 +343,9 @@ def _ask(kernel: Kernel, args) -> int:
         Message("user", args.question, Category.CONVERSATION, local_only=args.local_only),
     ))
     try:
-        r = kernel.models.complete(Need("chat", min_quality=args.min_quality, prefer="speed"), request, purpose="cli question")
-    except ApprovalRequired as exc:
-        print(f"needs your approval first: jarvis approvals  (then: jarvis approve {exc.approval_id} and re-ask)")
-        return 3
+        r = _with_consent(kernel, lambda local: kernel.models.complete(
+            Need("chat", min_quality=args.min_quality, prefer="auto", local_only=local or args.local_only),
+            request, purpose="cli question"))
     except NoModelAvailable as exc:
         print(f"no model available: {exc}")
         for model, reason in exc.reasons.items():

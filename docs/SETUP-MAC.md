@@ -54,10 +54,26 @@ JARVIS_LIVE_OLLAMA=qwen2.5:7b-instruct uv run pytest tests/test_live_ollama.py -
 uv run jarvis models
 ```
 
-## 4. Web search (later)
+## 4. Claude as JARVIS's brain (uses your Claude Pro plan)
+
+Install Claude Code (official installer):
+```bash
+curl -fsSL https://claude.ai/install.sh | bash
+```
+Close and reopen Terminal, then sign in once with your Claude Pro account:
+```bash
+claude
+```
+After signing in, type `/exit`. Then:
+```bash
+cd ~/jarvis && uv run jarvis use-claude on
+```
+It should print `Claude replied: 'JARVIS link online.'`. To go back to local-only: `uv run jarvis use-claude off`.
+
+## 5. Web search (later)
 
 Needs Docker or another way to run SearXNG. Deferred until the core runs on your Mac.
 
-## 5. Report back
+## 6. Report back
 
 Paste the output of `uv run jarvis models` plus the tokens/second lines from step 3.

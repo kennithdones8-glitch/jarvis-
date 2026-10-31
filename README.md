@@ -21,6 +21,7 @@ A personal AI system for Mac and iPhone: persistent, permissioned, auditable, lo
 | Web fetch tool (SSRF-protected, untrusted-content marking) | ✅ implemented, tested incl. a live fetch |
 | Web search via local SearXNG | ✅ implemented, protocol-tested; needs SearXNG on the Mac |
 | Orchestrator: plan → review → permission-checked execution → verification (`jarvis do`) | ✅ implemented, tested; planning quality on real models being evaluated |
+| Claude as JARVIS's brain via Claude Code on your Pro plan (`jarvis use-claude on`): tools disabled, no API key, asks before sending private content, falls back to local | ✅ implemented, tested with a stand-in CLI; **live check runs on the Mac** |
 | Command-centre dashboard (`jarvis dashboard`): chat, plan review, approvals with previews, missions, systems, activity, emergency stop | ✅ implemented, tested, browser-checked |
 | Passkeys / Touch ID, iPhone access, memory, voice, iPhone | ⏳ not started |
 | macOS-specific behaviour (launchd, Keychain, Touch ID) | ⏳ not started; not yet tested on a Mac |
@@ -63,6 +64,7 @@ or `$JARVIS_HOME`. Nothing runs in the background and nothing is sent over the n
 | `jarvis dashboard [--port 8765]` | Start the local command centre and open it in your browser |
 | `jarvis do "…" [--yes]` | Plan a task, show the plan, run it with approvals, verify and report |
 | `jarvis run ID` | Continue a task (after approving, resuming or a restart) |
+| `jarvis use-claude on\|off` | Use Claude (via Claude Code on your Pro plan) as the main brain, or go local-only |
 | `jarvis models` | Configured models, live availability, budget |
 | `jarvis ask "…" [--min-quality N] [--local-only]` | One-off question through the router and privacy gate |
 | `jarvis grant-egress --category C --provider P` / `revoke-egress ID` / `grants` | Standing privacy grants |

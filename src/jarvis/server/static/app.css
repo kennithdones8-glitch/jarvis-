@@ -270,3 +270,5 @@ pre.out { background: rgba(0, 0, 0, .35); border: 1px solid var(--gold-line); pa
 .activity { list-style: none; padding: 0; margin: 0; display: grid; gap: 2px; overflow: auto; max-height: 64vh; }
 .activity li { display: grid; grid-template-columns: 72px 1fr; gap: 10px; padding: 6px 0; border-bottom: 1px solid var(--gold-faint); font-size: 14px; }
 .activity time { color: var(--faint); font-variant-numeric: tabular-nums; }
+.job.consent { border-color: var(--arc); background: linear-gradient(180deg, var(--arc-dim), transparent); }
+.job.consent .kicker { color: var(--arc); }
