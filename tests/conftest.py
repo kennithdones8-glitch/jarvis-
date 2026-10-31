@@ -45,7 +45,9 @@ def make_kernel(tmp_path: Path, root: Path):
         policy_path = tmp_path / "policy.toml"
         if policy is not None:
             policy_path.write_text(policy.replace("{root}", str(root)))
-        kernel = Kernel(tmp_path / "home", policy_path=policy_path, registry=registry or build_registry(), **kwargs)
+        # registry="default" → the kernel's real production tools (as on the Mac)
+        chosen = None if registry == "default" else (registry or build_registry())
+        kernel = Kernel(tmp_path / "home", policy_path=policy_path, registry=chosen, **kwargs)
         opened.append(kernel)
         return kernel
 

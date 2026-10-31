@@ -58,7 +58,9 @@ Fixed guarantees, independent of policy:
 | Deleted personal data reappearing | Tombstones block re-learning; record deletion cascades to derived memories; audit holds no memory text | ✅ tested — task history and future backups are outside memory deletion (documented) |
 | Prompt injection via web pages during research | Claude has only WebSearch/WebFetch (`dontAsk` denies anything else); pages are untrusted per the prompt; the task plan is fixed before research runs | ✅ tested (argv recorded) |
 | Fabricated sources | Cited URLs are checked against the URLs the research tools actually returned or read; unverified ones are flagged; briefs must cite a verified source | ✅ tested |
-| Supply chain | Kernel has zero runtime dependencies; dev deps locked in `uv.lock` | ✅ |
+| Supply chain | Kernel has zero runtime dependencies; the one runtime dependency (pypdf, pure Python) and dev deps are locked in `uv.lock` | ✅ |
+| Hostile documents | Size caps, a .docx decompression cap and page caps; text is marked untrusted; read-only tool | ✅ tested — a pathological PDF could still be slow (the thread can't be killed) |
+| Moving files somewhere unsafe | The destination is checked against approved folders and protected paths inside the tool, after approval as well | ✅ tested |
 | Self-modification | Proposals only in git worktrees; policy/gate/auth files excluded | ⏳ later |
 
 ## Data categories

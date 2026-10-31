@@ -24,6 +24,7 @@ A personal AI system for Mac and iPhone: persistent, permissioned, auditable, lo
 | Claude as JARVIS's brain via Claude Code on your Pro plan (`jarvis use-claude on`): tools disabled, no API key, asks before sending private content, falls back to local | ✅ implemented, tested with a stand-in CLI; **live check runs on the Mac** |
 | Memory: conversation archive + facts with provenance, recall in chat, review/correct/delete, forget-by-topic, exclusions (local only) | ✅ implemented, tested, browser-checked |
 | Web research via Claude Code's read-only web tools (Pro plan): sourced answers, cited sources verified against what was actually read, sourced briefs | ✅ implemented, tested with a stand-in CLI; **live check on the Mac** |
+| Documents: read PDF / Word / text, summarise and compare, move and rename files with approval | ✅ implemented, tested with real generated files |
 | Command-centre dashboard (`jarvis dashboard`): chat, plan review, approvals with previews, missions, systems, activity, emergency stop | ✅ implemented, tested, browser-checked |
 | Passkeys / Touch ID, iPhone access, memory, voice, iPhone | ⏳ not started |
 | macOS-specific behaviour (launchd, Keychain, Touch ID) | ⏳ not started; not yet tested on a Mac |
@@ -67,6 +68,7 @@ or `$JARVIS_HOME`. Nothing runs in the background and nothing is sent over the n
 | `jarvis do "…" [--yes]` | Plan a task, show the plan, run it with approvals, verify and report |
 | `jarvis run ID` | Continue a task (after approving, resuming or a restart) |
 | `jarvis use-claude on\|off` | Hybrid brain: simple → local, medium → Claude Haiku, hard → Claude Sonnet (Pro plan); or local-only |
+| `jarvis allow-folder PATH [--remove]` / `jarvis folders` | Let JARVIS read a folder such as Downloads (changes still ask) |
 | `jarvis research "…" [--deep]` | Search the web and read pages, answer with verified sources |
 | `jarvis remember "…"` | Tell JARVIS something to remember |
 | `jarvis memory list\|search Q\|confirm ID\|delete ID\|forget Q [--yes]\|export FILE` | Review and manage memory |

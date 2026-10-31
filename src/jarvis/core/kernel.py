@@ -58,7 +58,8 @@ class Kernel:
         if registry is None:
             from ..tools import default_registry
 
-            registry = default_registry(self.home, searxng_url=self.model_config.searxng_url)
+            registry = default_registry(self.home, searxng_url=self.model_config.searxng_url,
+                                        permissions=self.permissions)
         self.registry = registry
         self.gateway = ToolGateway(self.registry, self.permissions, self.approvals, self.audit, self.killswitch)
         self.tasks = TaskStore(self.db, self.audit)

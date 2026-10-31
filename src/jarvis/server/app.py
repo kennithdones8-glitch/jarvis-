@@ -324,7 +324,10 @@ class Dashboard:
             preview = None
             if a["task_id"] and a["step_id"] and a["tool"] == "fs":
                 try:
-                    preview = self.orch.preview_args(a["task_id"], a["step_id"]).get("content")
+                    args = self.orch.preview_args(a["task_id"], a["step_id"])
+                    preview = args.get("content")
+                    if preview is None and a["action"] == "move":
+                        preview = f"Move to: {tilde(str(args.get('to')))}"
                 except Exception:
                     preview = None
             approvals.append({"id": a["id"], "task_id": a["task_id"], "tool": a["tool"], "action": a["action"],

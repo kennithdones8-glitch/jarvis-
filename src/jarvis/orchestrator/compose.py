@@ -18,8 +18,8 @@ from ..models import ChatRequest, Message, ModelService, Need, NoModelAvailable
 from ..models.types import Category, UsageLimited
 
 MAX_INSTRUCTION = 2_000
-MAX_INPUT_CHARS = 12_000
-MAX_TOTAL_CHARS = 30_000
+MAX_INPUT_CHARS = 120_000   # big documents; the router only picks models whose context fits
+MAX_TOTAL_CHARS = 240_000
 
 WRITER_PROMPT = """\
 You are the writing component of JARVIS, a personal assistant. Follow the owner's instruction \

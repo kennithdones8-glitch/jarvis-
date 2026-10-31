@@ -37,9 +37,12 @@ def _no_symlink(path: Path) -> None:
 
 
 class FileTool:
-    def __init__(self, data_dir: str | Path):
+    def __init__(self, data_dir: str | Path, *, dest_guard=None):
         self.versions = Path(data_dir) / "file-versions"
         self.trash = Path(data_dir) / "trash"
+        # Moves touch a second path. ``dest_guard(path) -> (allowed, reason)`` applies the permission
+        # engine's root/protected rules to the destination; without one, moves are refused.
+        self.dest_guard = dest_guard
 
     def spec(self) -> ToolSpec:
         return ToolSpec("fs", "Read, list, search and write files inside approved folders", {
@@ -50,6 +53,8 @@ class FileTool:
             "write": ActionSpec(Tier.ROUTINE, "path", PATH, idempotent=True, timeout_s=30, reconcile=self._reconcile_write),
             "delete": ActionSpec(Tier.HIGH_RISK, "path", PATH, idempotent=False, timeout_s=30,
                                  reconcile=self._reconcile_delete),
+            "move": ActionSpec(Tier.REVIEW, "path", PATH, idempotent=False, timeout_s=30,
+                               reconcile=self._reconcile_move),
         }, self.handle)
 
     def handle(self, action: str, args: dict[str, Any], ctx: CallContext) -> Any:
@@ -143,6 +148,44 @@ class FileTool:
             Path(tmp).unlink(missing_ok=True)
             raise
         return {"path": str(path), "bytes": len(data), "sha256": _sha(data), "previous_version": previous}
+
+    def _move(self, path: Path, args: dict[str, Any], ctx: CallContext) -> dict[str, Any]:
+        """Move or rename a file or folder. Never overwrites. The destination must pass the same
+        root/protected checks as a write."""
+        to = args.get("to")
+        if not isinstance(to, str) or not to.strip():
+            raise ToolError("'to' (destination path) is required")
+        if self.dest_guard is None:
+            raise ToolError("moves are not enabled")
+        dest = Path(os.path.realpath(os.path.expanduser(to)))
+        if dest.is_dir() and not args.get("exact"):
+            dest = dest / path.name  # moving into an existing folder
+        allowed, reason = self.dest_guard(str(dest))
+        if not allowed:
+            raise ToolError(f"destination not allowed: {reason}")
+        _no_symlink(path)
+        if not path.exists():
+            raise ToolError(f"nothing to move at {path}")
+        if dest.exists():
+            raise ToolError(f"{dest} already exists; JARVIS never overwrites when moving")
+        if path == dest or dest.is_relative_to(path):
+            raise ToolError("can't move a folder into itself")
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        shutil.move(str(path), dest)
+        return {"from": str(path), "to": str(dest)}
+
+    @staticmethod
+    def _reconcile_move(args: dict[str, Any], op_id: str) -> str:
+        src = Path(os.path.realpath(os.path.expanduser(str(args.get("path", "")))))
+        dest = Path(os.path.realpath(os.path.expanduser(str(args.get("to", "")))))
+        if dest.is_dir() and not dest.joinpath(src.name).exists() and src.exists():
+            return RECONCILE_NOT_DONE
+        target = dest / src.name if dest.is_dir() and dest.joinpath(src.name).exists() else dest
+        if target.exists() and not src.exists():
+            return RECONCILE_DONE
+        if src.exists() and not target.exists():
+            return RECONCILE_NOT_DONE
+        return "unknown"
 
     def _delete(self, path: Path, args: dict[str, Any], ctx: CallContext) -> dict[str, Any]:
         _no_symlink(path)

@@ -57,6 +57,10 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--no-open", action="store_true", help="do not open the browser")
     p = sub.add_parser("use-claude", help="turn the Claude (Claude Code on your Pro plan) brain on or off")
     p.add_argument("state", choices=["on", "off"])
+    p = sub.add_parser("allow-folder", help="let JARVIS read a folder (writes there still ask you first)")
+    p.add_argument("path")
+    p.add_argument("--remove", action="store_true", help="take the folder off the list")
+    sub.add_parser("folders", help="list folders JARVIS may access")
     p = sub.add_parser("research", help="search the web and read pages to answer, with sources (uses Claude)")
     p.add_argument("question")
     p.add_argument("--deep", action="store_true", help="use the strongest model (more of your Claude allowance)")
@@ -121,6 +125,11 @@ def main(argv: list[str] | None = None) -> int:
         elif args.cmd in ("cancel", "pause", "resume"):
             getattr(kernel.engine, args.cmd)(args.task_id, actor="user:cli")
             print(f"{args.cmd}: {kernel.tasks.get(args.task_id)['state']}")
+        elif args.cmd == "allow-folder":
+            return _allow_folder(kernel, args)
+        elif args.cmd == "folders":
+            for r in kernel.policy.roots:
+                print(r)
         elif args.cmd == "research":
             return _research(kernel, args)
         elif args.cmd == "remember":
@@ -321,7 +330,10 @@ def _drive(kernel: Kernel, orch, task_id: str) -> int:
             for appr in kernel.approvals.pending(task_id=task_id):
                 print(f"\nApproval needed (tier {appr['tier']}): {appr['summary']}\n  reason: {appr['reason']}")
                 if appr["tool"] == "fs" and appr["step_id"]:
-                    preview = orch.preview_args(task_id, appr["step_id"]).get("content")
+                    step_args = orch.preview_args(task_id, appr["step_id"])
+                    if appr["action"] == "move":
+                        print(f"  move to: {step_args.get('to')}")
+                    preview = step_args.get("content")
                     if isinstance(preview, str):
                         print("  content:\n    " + preview[:600].replace("\n", "\n    ")
                               + ("\n    …" if len(preview) > 600 else ""))
@@ -365,6 +377,48 @@ def _with_consent(kernel: Kernel, call):
                 print("Keeping it on this Mac — using a local model.", file=sys.stderr)
                 local = True
     return call(True)
+
+
+def _allow_folder(kernel: Kernel, args) -> int:
+    """Add/remove a folder in policy.toml [filesystem].roots. Reading inside it is allowed; writing,
+    moving or deleting there still needs your approval unless a rule says otherwise."""
+    import re
+    import tomllib
+
+    from .core.permissions import Policy, canonical_path
+
+    path = kernel.policy_path
+    text = path.read_text() if path.exists() else EXAMPLE_POLICY.read_text()
+    data = tomllib.loads(text)
+    roots = list(data.get("filesystem", {}).get("roots", []))
+    folder = canonical_path(args.path)
+    if not args.remove and not folder.is_dir():
+        print(f"Not a folder: {folder}", file=sys.stderr)
+        return 1
+    home = str(Path.home())
+    if not args.remove and (str(folder) in ("/", home) or str(folder).startswith(str(kernel.home))):
+        print("For safety JARVIS won't take your whole home folder, the disk root or its own data folder. "
+              "Pick a specific folder.", file=sys.stderr)
+        return 1
+    display = "~" + str(folder)[len(home):] if str(folder).startswith(home + "/") else str(folder)
+    same = lambda r: canonical_path(r) == folder  # noqa: E731
+    if args.remove:
+        roots = [r for r in roots if not same(r)]
+    elif not any(same(r) for r in roots):
+        roots.append(display)
+    new_line = "roots = [" + ", ".join(f'"{r}"' for r in roots) + "]"
+    if re.search(r"(?m)^roots\s*=.*$", text):
+        text = re.sub(r"(?m)^roots\s*=.*$", lambda m: new_line, text, count=1)
+    else:
+        text = text.replace("[filesystem]", "[filesystem]\n" + new_line, 1) if "[filesystem]" in text \
+            else f"[filesystem]\n{new_line}\n\n" + text
+    Policy.from_dict(tomllib.loads(text), protected=[kernel.home, kernel.policy_path])  # validate before writing
+    path.write_text(text)
+    path.chmod(0o600)
+    kernel.audit.record("policy.roots_changed", actor="user:cli", folder=str(folder), removed=args.remove)
+    verb = "removed" if args.remove else "added"
+    print(f"{display} {verb}. JARVIS can {'no longer read it' if args.remove else 'read files there; changes still ask you first'}.")
+    return 0
 
 
 def _research(kernel: Kernel, args) -> int:

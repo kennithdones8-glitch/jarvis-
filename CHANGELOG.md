@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.10.0 — Documents
+
+- `doc.read` / `doc.info`: PDF (page ranges, scanned-PDF detection, password-protected and corrupt files
+  reported clearly), Word .docx (headings, paragraphs, tables), and text, Markdown, CSV, JSON and HTML.
+  Size and decompression limits; text marked untrusted.
+- `fs.move` (move/rename, Tier 2 so it asks first): never overwrites; the destination must be inside an
+  approved folder and not protected, checked even after approval; crash reconciliation.
+  Approvals show "Move to: …".
+- Planner: knows the document and move actions, and before planning sees the file **names** (not
+  contents) in approved folders your request mentions, so it can plan real renames and filing.
+- Writing steps accept much larger documents; routing picks a model whose context fits.
+- `jarvis allow-folder PATH [--remove]` and `jarvis folders`: give JARVIS read access to a folder
+  (changes there still ask). It refuses your whole home folder, the disk root and JARVIS's data folder.
+- New dependency: pypdf (pure Python, BSD).
+- Not yet: OCR for scanned PDFs, old .doc, Pages, spreadsheets.
+- 12 new tests using generated PDF and Word files.
+
 ## 0.9.0 — Web research
 
 - Research through Claude Code's own web tools on your Pro plan (no Docker). Only `WebSearch` and
