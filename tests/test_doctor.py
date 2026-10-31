@@ -109,3 +109,20 @@ def test_tls_falls_back_to_a_system_bundle_when_python_has_none(monkeypatch, tmp
     ctx = tls.client_context()
     assert ctx.cert_store_stats()["x509_ca"] > 0 and ctx.verify_mode == ssl.CERT_REQUIRED
     assert tls.trust_summary()["fallback"] is True
+
+
+def test_broken_settings_give_a_plain_message_not_a_traceback(tmp_path, capsys):
+    from jarvis.cli import main as cli_main
+    home = tmp_path / "home"
+    assert cli_main(["--home", str(home), "init"]) == 0
+    cfg = home / "jarvis.toml"
+    cfg.with_suffix(".toml.bak").write_text(cfg.read_text())
+    cfg.write_text(cfg.read_text().replace('briefing_time = "08:00"', 'briefing_time = "8am"'))
+    capsys.readouterr()
+    assert cli_main(["--home", str(home), "status"]) == 1
+    err = capsys.readouterr().err
+    assert f"{cfg} has a problem" in err and "08:00" in err and "cp " in err and "Traceback" not in err
+    cfg.write_text(cfg.with_suffix(".toml.bak").read_text())
+    (home / "policy.toml").write_text((home / "policy.toml").read_text() + "\nx = = 1\n")
+    assert cli_main(["--home", str(home), "status"]) == 1
+    assert f"{home / 'policy.toml'} has a problem" in capsys.readouterr().err

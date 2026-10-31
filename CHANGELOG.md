@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.16.3 — Polish (no new features)
+
+- A broken `jarvis.toml` or `policy.toml` now gives a plain message naming the file, the problem and how to put
+  back the previous copy, instead of a Python traceback. Same for a database that can't be opened or is newer
+  than the code.
+- Docs checked against the code: corrected the supply-chain line (cryptography is a runtime dependency; the
+  vendored QR library and pinned whisper.cpp are listed), the architecture diagram, "not built yet" lists and
+  background-process notes; roadmap in release order; Mac setup guide now starts with "update, then
+  `jarvis doctor`", and covers Tailscale's first-time Serve approval and the microphone prompt.
+- Code: one config-file writer instead of two; tests lint-clean (ruff), with the shared dashboard fixture in
+  `conftest.py`. 1 new test.
+
 ## 0.16.2 — iPhone Safari fixes (found by research, not yet on a real iPhone)
 
 - **Fixed: notifications would never have arrived.** Apple's push service rejects VAPID subjects that point at

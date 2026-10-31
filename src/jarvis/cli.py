@@ -119,7 +119,11 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("device_id", nargs="?")
     args = parser.parse_args(argv)
 
-    kernel = Kernel(args.home)
+    try:
+        kernel = Kernel(args.home)
+    except Exception as exc:  # settings or database unreadable: say which file, never a traceback
+        print(_startup_problem(exc, args.home), file=sys.stderr)
+        return 1
     try:
         if args.cmd == "init":
             for src, dst in ((EXAMPLE_POLICY, kernel.policy_path), (EXAMPLE_MODELS, kernel.config_path)):
@@ -271,6 +275,40 @@ def _dashboard(kernel: Kernel, args) -> int:
     except KeyboardInterrupt:
         print("\nDashboard stopped.")
     return 0
+
+
+def _startup_problem(exc: Exception, home) -> str:
+    import sqlite3
+    import tomllib
+
+    from .core.db import SchemaTooNew
+    from .core.kernel import default_home
+    from .core.permissions import PolicyError
+    from .models.config import ConfigError, parse_model_config
+
+    folder = Path(home).expanduser() if home else default_home()
+    if isinstance(exc, (tomllib.TOMLDecodeError, ConfigError, PolicyError)):
+        culprit = None
+        for name in ("jarvis.toml", "policy.toml"):  # which file? re-read each on its own
+            try:
+                data = tomllib.loads((folder / name).read_text())
+                if name == "jarvis.toml":
+                    parse_model_config(data)
+            except FileNotFoundError:
+                continue
+            except (tomllib.TOMLDecodeError, ValueError):
+                culprit = folder / name
+                break
+        culprit = culprit or folder / ("policy.toml" if isinstance(exc, PolicyError) else "jarvis.toml")
+        backup = culprit.with_suffix(".toml.bak")
+        undo = f" or put back the previous copy: cp \"{backup}\" \"{culprit}\"" if backup.exists() else ""
+        return f"error: {culprit} has a problem: {exc}\nFix that line in a text editor{undo}."
+    if isinstance(exc, SchemaTooNew):
+        return f"error: {exc}. This copy of JARVIS is older than your data: run `git pull && uv sync`."
+    if isinstance(exc, sqlite3.Error):
+        return (f"error: JARVIS's database in {folder} couldn't be opened ({exc}). If another JARVIS is starting up, "
+                "wait a moment and try again; otherwise restore a backup (`jarvis backup list`).")
+    return f"error: JARVIS couldn't start: {type(exc).__name__}: {exc}"
 
 
 CLAUDE_BLOCK = """
