@@ -97,6 +97,7 @@ def _wire_messages(request: ChatRequest) -> list[dict[str, str]]:
 class OllamaProvider:
     location: Literal["local", "cloud"] = "local"
     data_use_note = "runs on this Mac; nothing leaves the machine"
+    streams = True  # can show its reply as it's written
 
     def __init__(self, name: str, host: str, models: dict[str, ModelInfo], *, timeout: float = 600.0,
                  cache_s: float = 30.0, keep_alive: str = "30m"):
@@ -120,11 +121,13 @@ class OllamaProvider:
         self._cached = (time.monotonic(), found)
         return found
 
-    def chat(self, model: str, request: ChatRequest) -> ChatResponse:
+    def chat(self, model: str, request: ChatRequest, on_token=None) -> ChatResponse:
+        """``on_token(text)`` gets each piece of the reply as Ollama writes it (for live display). The reply itself
+        is the same either way. If ``on_token`` raises (emergency stop, the viewer left), generation stops."""
         payload = {
             "model": model,
             "messages": _wire_messages(request),
-            "stream": False,
+            "stream": on_token is not None,
             "options": {"temperature": request.temperature, "num_predict": request.max_tokens},
             # Keep the model in memory between requests; reloading costs ~10 s on an Intel CPU.
             "keep_alive": self.keep_alive,
@@ -132,15 +135,67 @@ class OllamaProvider:
         if request.json_mode:
             payload["format"] = "json"
         started = time.monotonic()
-        data = request_json("POST", f"{self.host}/api/chat", payload, timeout=self.timeout)
-        try:
-            text = data["message"]["content"]
-        except (KeyError, TypeError):
-            raise ProviderError("unexpected response shape from Ollama") from None
+        if on_token is not None:
+            text, data = self._stream(payload, on_token)
+        else:
+            data = request_json("POST", f"{self.host}/api/chat", payload, timeout=self.timeout)
+            try:
+                text = data["message"]["content"]
+            except (KeyError, TypeError):
+                raise ProviderError("unexpected response shape from Ollama") from None
         return ChatResponse(
             text=text, provider=self.name, model=model, latency_s=time.monotonic() - started,
             usage=Usage(int(data.get("prompt_eval_count") or 0), int(data.get("eval_count") or 0)),
         )
+
+
+    def _stream(self, payload: dict, on_token) -> tuple[str, dict]:
+        import urllib.error
+        import urllib.request
+
+        req = urllib.request.Request(f"{self.host}/api/chat", data=json.dumps(payload).encode(), method="POST",
+                                     headers={"Content-Type": "application/json"})
+        opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))  # loopback: never via a proxy
+        parts: list[str] = []
+        size, final = 0, {}
+        try:
+            with opener.open(req, timeout=self.timeout) as resp:
+                for line in resp:
+                    if not line.strip():
+                        continue
+                    try:
+                        chunk = json.loads(line)
+                    except json.JSONDecodeError:
+                        raise ProviderError("unexpected streamed response from Ollama") from None
+                    piece = (chunk.get("message") or {}).get("content") or ""
+                    if piece:
+                        size += len(piece)
+                        if size > MAX_STREAM_CHARS:
+                            raise ProviderError("Ollama's reply was too long")
+                        parts.append(piece)
+                        try:
+                            on_token(piece)
+                        except BaseException as exc:  # the viewer left, or the emergency stop: not Ollama's fault
+                            raise _Aborted(exc) from None
+                    if chunk.get("done"):
+                        final = chunk
+                        break
+        except _Aborted as stop:
+            raise stop.reason from None  # never retried with another model
+        except urllib.error.HTTPError as exc:
+            raise ProviderError(f"HTTP {exc.code} from provider", retryable=exc.code == 429 or exc.code >= 500) from None
+        except (urllib.error.URLError, TimeoutError, ConnectionError) as exc:
+            raise ProviderUnavailable(f"provider unreachable: {getattr(exc, 'reason', exc)}") from None
+        return "".join(parts), final
+
+
+MAX_STREAM_CHARS = 200_000
+
+
+class _Aborted(Exception):
+    def __init__(self, reason: BaseException):
+        super().__init__(str(reason))
+        self.reason = reason
 
 
 class OpenAICompatProvider:

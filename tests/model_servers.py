@@ -7,7 +7,9 @@ adapters send and how they parse replies, and to prove that blocked requests nev
 from __future__ import annotations
 
 import json
+import re
 import threading
+import time
 from dataclasses import dataclass, field
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any, Callable
@@ -59,6 +61,19 @@ def _start(kind: str, api_key: str | None = None) -> FakeServer:
             if fs.fail_status:
                 return self._send(fs.fail_status, {"error": "simulated"})
             if kind == "ollama" and self.path == "/api/chat":
+                if body.get("stream"):  # like Ollama: one JSON object per line, then a final one with the counts
+                    text = fs.reply(body)
+                    pieces = [w for w in re.split(r"(\s+)", text) if w]
+                    self.send_response(200)
+                    self.send_header("Content-Type", "application/x-ndjson")
+                    self.end_headers()
+                    for p in pieces:
+                        time.sleep(getattr(fs, "delay", 0))
+                        self.wfile.write((json.dumps({"message": {"role": "assistant", "content": p}, "done": False}) + "\n").encode())
+                        self.wfile.flush()
+                    self.wfile.write((json.dumps({"message": {"role": "assistant", "content": ""}, "done": True,
+                                                  "prompt_eval_count": 11, "eval_count": len(pieces)}) + "\n").encode())
+                    return
                 return self._send(200, {"message": {"role": "assistant", "content": fs.reply(body)},
                                         "prompt_eval_count": 11, "eval_count": 7})
             if kind == "openai" and self.path == "/v1/chat/completions":
@@ -69,6 +84,7 @@ def _start(kind: str, api_key: str | None = None) -> FakeServer:
             self._send(404, {})
 
     server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+    server.handle_error = lambda request, address: None  # a test hanging up mid-reply is expected, not news
     threading.Thread(target=server.serve_forever, kwargs={"poll_interval": 0.02}, daemon=True).start()
     base = f"http://127.0.0.1:{server.server_address[1]}"
     fs = FakeServer(url=base if kind == "ollama" else f"{base}/v1", server=server)

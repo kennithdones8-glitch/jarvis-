@@ -365,3 +365,8 @@ pre.out { background: rgba(0, 0, 0, .35); border: 1px solid var(--gold-line); pa
 
 /* smarter chat: what JARVIS looked up */
 .msg .checked { margin-top: 8px; font-size: 12.5px; color: var(--arc); opacity: .85; overflow-wrap: anywhere; }
+
+/* a reply being written */
+.msg.live::after { content: "▍"; color: var(--arc); margin-left: 2px; animation: caret 1s steps(2) infinite; }
+@keyframes caret { 50% { opacity: 0; } }
+@media (prefers-reduced-motion: reduce) { .msg.live::after { animation: none; } }

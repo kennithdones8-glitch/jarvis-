@@ -36,6 +36,7 @@ from urllib.parse import parse_qs, urlsplit
 from .. import __version__
 from ..core import Kernel
 from ..core.approvals import ApprovalStateError
+from ..core.killswitch import EmergencyStop
 from ..core.tasks import InvalidTransition, TaskState
 from ..core.tools import ApprovalRequired
 from ..models import ChatRequest, Message, Need, NoModelAvailable
@@ -482,7 +483,7 @@ class Dashboard:
 
     # ---- chat --------------------------------------------------------------------------
     def chat(self, message: str, history: list[dict[str, str]], *, local_only: bool = False,
-             session: str = "dashboard") -> dict[str, Any]:
+             session: str = "dashboard", on_token=None) -> dict[str, Any]:
         memory = self.kernel.memory
         started = time.time()
         found = self.lookup.run(message)  # calendar / reminders / notes / files, read-only, chosen locally
@@ -498,7 +499,8 @@ class Dashboard:
         msgs.append(Message("user", message, Category.CONVERSATION))
         try:
             r = self.kernel.models.complete(Need("chat", prefer="auto", local_only=local_only),
-                                            ChatRequest(tuple(msgs), max_tokens=600), purpose="dashboard chat")
+                                            ChatRequest(tuple(msgs), max_tokens=600), purpose="dashboard chat",
+                                            on_token=on_token)
         except NoModelAvailable as exc:
             return {"error": f"No model available: {exc}", "reasons": exc.reasons}
         except ApprovalRequired as exc:
@@ -679,6 +681,8 @@ class Dashboard:
                 return self._get(h, url, device=None)
             if url.path == "/api/voice/transcribe":
                 return self._json(h, 200, self._transcribe(h, origin=f"http://{host}", actor="user:dashboard"))
+            if url.path == "/api/chat/stream":
+                return self._stream_chat(h, self._read_post(h, origin=f"http://{host}"))
             body = self._read_post(h, origin=f"http://{host}")
             return self._json(h, 200, self._post_local(url.path, body))
         except HttpError as exc:
@@ -688,6 +692,44 @@ class Dashboard:
         except Exception as exc:
             self.kernel.audit.record("dashboard.error", error=f"{type(exc).__name__}: {exc}")
             self._json(h, 500, {"error": "internal error (recorded in the audit log)"})
+
+    def _stream_chat(self, h: BaseHTTPRequestHandler, body: dict[str, Any]) -> None:
+        """Chat, with a local model's reply shown as it's written: one JSON object per line ({"t": text} pieces),
+        then {"done": <the same result /api/chat returns>}. Same answer as /api/chat; only the delivery differs."""
+        message = body.get("message")
+        if not isinstance(message, str) or not message.strip() or len(message) > 4000:
+            raise HttpError(400, "'message' must be non-empty text under 4000 characters")
+        history = body.get("history") if isinstance(body.get("history"), list) else []
+        session = body.get("session") if isinstance(body.get("session"), str) else "dashboard"
+        h.send_response(200)
+        h.send_header("Content-Type", "application/x-ndjson; charset=utf-8")
+        for k, v in SECURITY_HEADERS.items():
+            h.send_header(k, v)
+        h.send_header("Connection", "close")  # the reply ends when the connection does (no length known upfront)
+        h.end_headers()
+
+        def line(obj: Any) -> None:
+            h.wfile.write((json.dumps(obj) + "\n").encode())
+            h.wfile.flush()
+
+        def on_token(piece: str) -> None:
+            if self.kernel.killswitch.engaged():
+                raise EmergencyStop("emergency stop")
+            line({"t": piece})
+        try:
+            result = self.chat(message.strip(), history, local_only=body.get("local_only") is True,
+                               session=session[:64], on_token=on_token)
+        except (BrokenPipeError, ConnectionResetError):
+            return  # the page was closed; generation has already stopped
+        except EmergencyStop:
+            result = {"error": "Emergency stop: the reply was cut off.", "stopped": True}
+        except Exception as exc:
+            self.kernel.audit.record("dashboard.error", error=f"{type(exc).__name__}: {exc}"[:300])
+            result = {"error": "internal error (recorded in the audit log)"}
+        try:
+            line({"done": result})
+        except (BrokenPipeError, ConnectionResetError):
+            pass
 
     def _transcribe(self, h: BaseHTTPRequestHandler, *, origin: str, actor: str) -> dict[str, Any]:
         """Speech → text on this Mac. Same CSRF defences as other POSTs; the audio is never written to disk."""
@@ -789,6 +831,10 @@ class Dashboard:
                     raise HttpError(401, "not signed in")
                 return self._json(h, 200, self._transcribe(h, origin=remote.origin,
                                                            actor=f"user:phone:{device['name']}"))
+            if url.path == "/api/chat/stream":
+                if device is None:
+                    raise HttpError(401, "not signed in")
+                return self._stream_chat(h, self._read_post(h, origin=remote.origin))
             body = self._read_post(h, origin=remote.origin)
             path = url.path
             if path in PUBLIC_REMOTE_POST:

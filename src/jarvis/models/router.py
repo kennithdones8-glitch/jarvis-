@@ -158,13 +158,13 @@ class ModelService:
             raise
 
     def complete(self, need: Need, request: ChatRequest, *, purpose: str, task_id: str | None = None,
-                 step_id: str | None = None, allow_fallback: bool = True) -> ChatResponse:
+                 step_id: str | None = None, allow_fallback: bool = True, on_token=None) -> ChatResponse:
         """``allow_fallback``: if the chosen tier is unavailable (e.g. Claude's usage limit), answer with a
         local model and say so. Background tasks pass False and instead wait for the reset (UsageLimited)."""
         self.killswitch.check()
         need = self._apply_hybrid(need, request, task_id)
         try:
-            return self._complete(need, request, purpose=purpose, task_id=task_id, step_id=step_id)
+            return self._complete(need, request, purpose=purpose, task_id=task_id, step_id=step_id, on_token=on_token)
         except NoModelAvailable as exc:
             limited = self.router.gate.limited_until()
             if need.local_only or not (exc.unavailable or limited):
@@ -175,7 +175,8 @@ class ModelService:
                 raise
             local_need = Need(need.capability, min_quality=1, prefer="speed", local_only=True)
             try:
-                r = self._complete(local_need, request, purpose=purpose, task_id=task_id, step_id=step_id)
+                r = self._complete(local_need, request, purpose=purpose, task_id=task_id, step_id=step_id,
+                                   on_token=on_token)
             except NoModelAvailable:
                 raise exc from None
             until = f" until about {time.strftime('%H:%M', time.localtime(limited))}" if limited else ""
@@ -214,7 +215,8 @@ class ModelService:
         return level
 
     def _complete(self, need: Need, request: ChatRequest, *, purpose: str, task_id: str | None,
-                  step_id: str | None, op: str = "chat") -> ChatResponse:
+                  step_id: str | None, op: str = "chat", on_token=None) -> ChatResponse:
+        """``on_token``: show a local model's reply as it's written (display only; cloud replies arrive whole)."""
         try:
             route = self.router.route(need, request)
         except NoModelAvailable as exc:
@@ -229,7 +231,11 @@ class ModelService:
             try:
                 if cand.location == "local":
                     self.killswitch.check()
-                    response = self.router.local[cand.provider].chat(cand.model, request)
+                    provider = self.router.local[cand.provider]
+                    if on_token is not None and getattr(provider, "streams", False):
+                        response = provider.chat(cand.model, request, on_token=on_token)
+                    else:
+                        response = provider.chat(cand.model, request)
                     self.audit.record("model.local_call", task_id=task_id, model=key, purpose=purpose,
                                       chars=request.chars(), input_tokens=response.usage.input_tokens,
                                       output_tokens=response.usage.output_tokens,

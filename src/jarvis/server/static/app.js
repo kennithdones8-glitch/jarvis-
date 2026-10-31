@@ -220,16 +220,51 @@ async function submitCommand(ev) {
 
 // Sends a chat turn. If the best model is in the cloud and your rule is "ask every time", the server
 // returns needs_approval instead of sending; we show a consent card and resend the identical request.
+// Chat with a local model's reply appearing as it's written. Same answer as /api/chat; falls back to it when
+// streaming isn't available (an older JARVIS, the phone preview).
+async function streamChat(payload) {
+  let r;
+  try {
+    r = await fetch("/api/chat/stream", { method: "POST", credentials: "same-origin",
+      headers: { "Content-Type": "application/json", "X-Requested-By": "jarvis" }, body: JSON.stringify(payload) });
+  } catch (e) { return api("/api/chat", payload); }
+  if (!r.ok || !r.body || !(r.headers.get("Content-Type") || "").includes("ndjson")) return api("/api/chat", payload);
+  const live = { role: "assistant", text: "", live: true };
+  const reader = r.body.getReader(), dec = new TextDecoder();
+  let buf = "", done = null, painting = false;
+  const paint = () => { painting = false; ui.liveLen = live.text.length; render(); };
+  for (;;) {
+    const { value, done: end } = await reader.read();
+    if (end) break;
+    buf += dec.decode(value, { stream: true });
+    let i;
+    while ((i = buf.indexOf("\n")) >= 0) {
+      const text = buf.slice(0, i); buf = buf.slice(i + 1);
+      if (!text.trim()) continue;
+      const msg = JSON.parse(text);
+      if (typeof msg.t === "string") {
+        if (!ui.convo.includes(live)) ui.convo.push(live);
+        live.text += msg.t;
+        if (!painting) { painting = true; requestAnimationFrame(paint); }
+      } else if (msg.done) done = msg.done;
+    }
+  }
+  ui.convo = ui.convo.filter((m) => m !== live);
+  if (!done) throw new Error(live.text ? "the reply was interrupted" : "no reply");
+  if (done.error && live.text) done.partial = live.text;
+  return done;
+}
+
 async function sendChat(payload, endpoint = "/api/chat") {
   ui.chatBusy = true;
   render();
   try {
-    const r = await api(endpoint, payload);
+    const r = endpoint === "/api/chat" ? await streamChat(payload) : await api(endpoint, payload);
     if (r.needs_approval) ui.convo.push({ role: "assistant", consent: true, payload, endpoint, approval_id: r.approval_id, text: r.summary });
     else if (r.answer !== undefined) ui.convo.push({ role: "assistant", text: r.answer, sources: r.sources,
       meta: [r.model.split("/").pop(), `${r.seconds}s`, `${r.searches.length} searches`, `${r.pages_read.length} pages read`,
              `${r.verified_sources}/${r.sources.length} sources verified`].join(" · ") });
-    else if (r.error) ui.convo.push({ role: "assistant", text: r.error, error: true });
+    else if (r.error) ui.convo.push({ role: "assistant", text: r.partial ? `${r.partial}\n\n— ${r.error}` : r.error, error: true });
     else ui.convo.push({ role: "assistant", text: r.text, checked: r.checked || [], plan: r.offer_plan ? payload.message : null,
       meta: [r.model.split("/").pop(), `${r.seconds}s`,
       r.memories_used ? `used ${plural(r.memories_used, "memory").replace("memorys", "memories")}` : null, r.note].filter(Boolean).join(" · ") });
@@ -298,7 +333,8 @@ function renderFeed(d) {
           h("button", { class: "btn btn-sm", type: "button", onclick: () => consent(m, false) },
             m.endpoint === "/api/research" ? "Don't research" : "Answer locally")))
     : m.briefing ? briefingCard(m)
-    : h("div", { class: `msg jarvis${m.error ? " err" : ""}` }, h("span", { class: "who" }, "JARVIS"), m.text,
+    : h("div", { class: `msg jarvis${m.error ? " err" : ""}${m.live ? " live" : ""}`, "aria-busy": m.live ? "true" : null },
+        h("span", { class: "who" }, "JARVIS"), m.text,
         m.sources && m.sources.length ? h("ul", { class: "sources" }, m.sources.filter((s) => /^https?:\/\//.test(s.url)).map((s) =>
           h("li", { class: s.verified ? "ok" : "warn" },
             h("a", { href: s.url, target: "_blank", rel: "noopener noreferrer" }, s.url.replace(/^https?:\/\//, "")),
@@ -307,10 +343,10 @@ function renderFeed(d) {
         m.plan ? h("div", { class: "row mt" }, h("button", { class: "btn btn-sm", type: "button", onclick: () => makePlan(m) },
           "Make a plan")) : null,
         m.meta ? h("span", { class: "meta" }, m.meta) : null));
-  if (ui.chatBusy) items.push(h("div", { class: "msg jarvis" }, h("span", { class: "who typing" }, "JARVIS")));
+  if (ui.chatBusy && !ui.convo.some((m) => m.live)) items.push(h("div", { class: "msg jarvis" }, h("span", { class: "who typing" }, "JARVIS")));
   if (d) items.push(...d.jobs.filter((j) => j.state !== "submitted").reverse().map(jobCard));
   const feed = $("#feed");
-  const key = JSON.stringify([ui.convo.length, ui.convo.map((m) => m.approval_id || ""), ui.chatBusy, d && d.jobs.map((j) => [j.id, j.state, j.elapsed, j.kind])]);
+  const key = JSON.stringify([ui.convo.length, ui.liveLen || 0, ui.convo.map((m) => m.approval_id || ""), ui.chatBusy, d && d.jobs.map((j) => [j.id, j.state, j.elapsed, j.kind])]);
   if (key === ui.lastFeed) return;            // avoid re-rendering (and losing scroll/focus) when nothing changed
   ui.lastFeed = key;
   const nearBottom = feed.scrollHeight - feed.scrollTop - feed.clientHeight < 60;
