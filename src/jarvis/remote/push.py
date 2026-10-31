@@ -14,6 +14,7 @@ import os
 import struct
 import time
 import urllib.error
+from datetime import datetime
 import urllib.request
 from pathlib import Path
 from typing import Any
@@ -130,9 +131,11 @@ class PushService:
         return [dict(r) for r in self.db.query(
             "SELECT p.* FROM push_subscriptions p JOIN devices d ON d.id = p.device_id WHERE d.revoked_at IS NULL")]
 
-    def send(self, title: str, body: str, *, tag: str = "jarvis") -> int:
+    def send(self, title: str, body: str, *, tag: str = "jarvis", url: str = "/") -> int:
         """Send a generic notification to every paired, non-revoked device. Returns how many accepted."""
-        payload = json.dumps({"title": title, "body": body, "tag": tag}).encode()
+        if not url.startswith("/") or url.startswith("//"):
+            raise PushError("notifications only open JARVIS's own pages")
+        payload = json.dumps({"title": title, "body": body, "tag": tag, "url": url}).encode()
         delivered = 0
         for sub in self.subscriptions():
             if not allowed_endpoint(sub["endpoint"], self.hosts):
@@ -155,26 +158,44 @@ class PushService:
 
 
 class Notifier:
-    """Turns JARVIS state changes into a few generic notifications (batched, never content)."""
+    """Turns JARVIS state changes into a few generic notifications (batched, never content).
 
-    def __init__(self, kernel, push: PushService, *, min_interval_s: float = 20.0):
+    Quiet hours hold everything back except the morning briefing; what happened overnight is in the briefing.
+    """
+
+    def __init__(self, kernel, push: PushService, *, min_interval_s: float = 20.0, schedule=None):
+        from ..proactive import Schedule
+
         self.kernel = kernel
         self.push = push
         self.min_interval_s = min_interval_s
+        self.schedule = schedule or Schedule.from_config(kernel.model_config.proactive)
         self._last_sent: dict[str, float] = {}
         self._seen_approvals = {a["id"] for a in kernel.approvals.pending()}
+        self._reminded: set[str] = set(self._seen_approvals)  # don't nag about ones from before a restart
         self._task_states = {t["id"]: t["state"] for t in kernel.tasks.list(limit=100)}
 
-    def poll(self) -> list[str]:
-        sent = []
-        pending = {a["id"] for a in self.kernel.approvals.pending()}
+    def _quiet(self, now: datetime | None) -> bool:
+        return self.schedule.quiet(now or datetime.now().astimezone())
+
+    def poll(self, now: datetime | None = None) -> list[str]:
+        sent: list[str] = []
+        quiet = self._quiet(now)
+        approvals = self.kernel.approvals.pending()
+        pending = {a["id"] for a in approvals}
         new = pending - self._seen_approvals
         self._seen_approvals |= pending
-        if new and self._may_send("approval"):
+        if new and not quiet and self._may_send("approval"):
             n = len(pending)
             self.push.send("JARVIS", "JARVIS needs a decision" if n == 1 else f"JARVIS needs {n} decisions",
                            tag="approval")
             sent.append("approval")
+        cutoff = (now or datetime.now().astimezone()).timestamp() - self.schedule.approval_reminder_min * 60
+        waiting = [a["id"] for a in approvals if a["id"] not in self._reminded and _ts(a["created_at"]) < cutoff]
+        if waiting and not quiet and self._may_send("reminder"):
+            self._reminded |= set(waiting)
+            self.push.send("JARVIS", "A decision is still waiting for you", tag="approval")
+            sent.append("reminder")
         finished = attention = 0
         for t in self.kernel.tasks.list(limit=100):
             before = self._task_states.get(t["id"])
@@ -184,6 +205,8 @@ class Notifier:
                 elif t["state"] in ("failed", "blocked"):
                     attention += 1
             self._task_states[t["id"]] = t["state"]
+        if quiet:
+            return sent
         if attention and self._may_send("attention"):
             self.push.send("JARVIS", "A task needs your attention", tag="attention")
             sent.append("attention")
@@ -192,9 +215,25 @@ class Notifier:
             sent.append("finished")
         return sent
 
+    def health_changed(self, ok: bool, now: datetime | None = None) -> bool:
+        if ok or self._quiet(now) or not self._may_send("health"):
+            return False
+        self.push.send("JARVIS", "Something on your Mac needs attention", tag="health")
+        return True
+
+    def briefing_ready(self) -> None:
+        self.push.send("JARVIS", "Your morning briefing is ready", tag="briefing", url="/#briefing")
+
     def _may_send(self, kind: str) -> bool:
         now = time.monotonic()
         if now - self._last_sent.get(kind, -1e9) < self.min_interval_s:
             return False
         self._last_sent[kind] = now
         return True
+
+
+def _ts(iso: str) -> float:
+    try:
+        return datetime.fromisoformat(iso).timestamp()
+    except (TypeError, ValueError):
+        return time.time()

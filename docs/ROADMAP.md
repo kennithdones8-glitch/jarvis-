@@ -21,9 +21,10 @@ Approved model paths and what they cost:
 | M8 | Background service, health checks, encrypted backups | ✅ done · **Mac check pending** |
 | **v0.12** | **Reliable multi-process core:** task leases, audit privacy, stop kills Claude work, pinned web fetch, atomic approvals, hermetic tests | ✅ done in tests · **Mac checklist pending** |
 | **M7 (v0.13)** | **iPhone companion:** Tailscale (tailnet only), passkey pairing, Face ID on every approval, private push notifications, Home Screen app | ✅ done in tests + headless browser · **Mac/iPhone check pending** |
+| **v0.15** | **Proactive JARVIS:** morning briefing (live, never stored), quiet hours, reminders, health alerts | ✅ done in tests + headless browser · **Mac check pending** |
 | M6 | Mac voice: push-to-talk, local speech recognition, spoken replies, interrupt ≠ cancel | next |
 | **M4b (v0.14)** | **Touch ID for sensitive approvals on the Mac dashboard** | ✅ done in tests + headless browser · **Mac check pending** |
-| M9+ | Mac automation, proactive monitoring, self-improvement proposals (isolated worktrees, owner-approved) | later |
+| M9+ | Mac automation, deeper proactive monitoring (e.g. watched folders), self-improvement proposals (isolated worktrees, owner-approved) | later |
 | — | Search by meaning (embeddings) | only if keyword recall proves weak |
 
 Superseded: M3c/SearXNG web search (research now goes through Claude Code; the SearXNG tool is optional and

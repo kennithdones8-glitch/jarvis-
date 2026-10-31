@@ -99,6 +99,7 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("op", choices=["enable", "disable", "status"])
     p.add_argument("--port", type=int, default=8765)
     p.add_argument("--hostname", help="this Mac's Tailscale name (default: asked from the Tailscale app)")
+    sub.add_parser("briefing", help="what needs you, what finished or failed, and any problems")
     p = sub.add_parser("touchid", help="Touch ID for dashboard approvals: list | remove ID | reset --yes (recovery)")
     p.add_argument("op", nargs="?", choices=["list", "remove", "reset"], default="list")
     p.add_argument("key_id", nargs="?")
@@ -173,6 +174,10 @@ def main(argv: list[str] | None = None) -> int:
             return _remote(kernel, args)
         elif args.cmd == "devices":
             return _devices(kernel, args)
+        elif args.cmd == "briefing":
+            from .proactive import briefing_text, build_briefing
+
+            print(briefing_text(build_briefing(kernel)))
         elif args.cmd == "touchid":
             return _touchid(kernel, args)
         elif args.cmd == "allow-folder":

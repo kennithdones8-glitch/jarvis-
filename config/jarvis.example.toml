@@ -105,3 +105,11 @@ capabilities = ["chat", "summarize", "classify", "json", "extract"]
 context_tokens = 200000
 quality = 4
 speed = 5
+
+# Proactive JARVIS: a morning briefing, quiet hours and nudges (local times). Notifications are generic;
+# the briefing itself is built live when you open it and never stored.
+[proactive]
+enabled = true
+briefing_time = "08:00"
+quiet_hours = "22:00-07:00"   # "" for none
+approval_reminder_min = 60

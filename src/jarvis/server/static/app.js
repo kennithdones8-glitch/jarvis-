@@ -251,6 +251,7 @@ function renderFeed(d) {
           h("button", { class: "btn btn-approve btn-sm", type: "button", onclick: () => consent(m, true) }, "Send to Claude"),
           h("button", { class: "btn btn-sm", type: "button", onclick: () => consent(m, false) },
             m.endpoint === "/api/research" ? "Don't research" : "Answer locally")))
+    : m.briefing ? briefingCard(m)
     : h("div", { class: `msg jarvis${m.error ? " err" : ""}` }, h("span", { class: "who" }, "JARVIS"), m.text,
         m.sources && m.sources.length ? h("ul", { class: "sources" }, m.sources.filter((s) => /^https?:\/\//.test(s.url)).map((s) =>
           h("li", { class: s.verified ? "ok" : "warn" },
@@ -267,6 +268,42 @@ function renderFeed(d) {
   feed.replaceChildren(...items);
   if (nearBottom) feed.scrollTop = feed.scrollHeight;
 }
+
+// ---------------------------------------------------------------- morning briefing (built live, never stored)
+function briefingCard(m) {
+  const b = m.briefing;
+  return h("div", { class: "job briefing" },
+    h("div", { class: "kicker" }, `Briefing · since ${new Date(b.since).toLocaleString([], { weekday: "short", hour: "2-digit", minute: "2-digit", hour12: false })}`),
+    h("div", { class: "job-title" }, b.headline),
+    b.sections.length ? b.sections.map((s) => h("div", { class: `brief-sec${s.alert ? " alert" : ""}` },
+      h("h3", {}, s.title), h("ul", {}, s.items.map((i) => h("li", {}, i)))))
+      : h("div", { class: "d-why" }, "All quiet: nothing finished, failed or broke since the last briefing."),
+    h("div", { class: "row mt" }, h("button", { class: "btn btn-ghost btn-sm", type: "button", onclick: () => {
+      ui.convo = ui.convo.filter((x) => x !== m); render(); } }, "Dismiss")));
+}
+
+async function showBriefing() {
+  try {
+    const b = await api("/api/briefing");
+    ui.convo = ui.convo.filter((x) => !x.briefing);
+    ui.convo.push({ role: "assistant", briefing: b });
+    render();
+  } catch (e) { note(e.message); }
+}
+
+function maybeAutoBriefing(d) {
+  // Show today's briefing once per device when it's ready (or when opened from the notification).
+  const today = localDate();
+  let shown = null;
+  try { shown = localStorage.getItem("jarvis-briefing"); } catch (e) { /* storage unavailable: show from the link only */ }
+  const fromLink = location.hash === "#briefing";
+  if (fromLink) history.replaceState(null, "", location.pathname);
+  if (fromLink || (d && d.briefing && d.briefing.last_date && d.briefing.last_date === today && shown !== today)) {
+    try { localStorage.setItem("jarvis-briefing", today); } catch (e) { /* ignore */ }
+    showBriefing();
+  }
+}
+const localDate = () => { const n = new Date(); return `${n.getFullYear()}-${String(n.getMonth() + 1).padStart(2, "0")}-${String(n.getDate()).padStart(2, "0")}`; };
 
 // ---------------------------------------------------------------- missions
 const ICON = { done: "✓", started: "›", pending: "·", failed: "✗", uncertain: "?", skipped: "–" };
@@ -511,6 +548,7 @@ async function refresh() {
   try { ui.data = await api("/api/state"); ui.online = true; }
   catch (e) { ui.online = false; if (/not signed in/.test(e.message)) { location.reload(); return; } }
   render();
+  maybeAutoBriefing(ui.data);
 }
 
 document.addEventListener("DOMContentLoaded", () => {
@@ -523,6 +561,8 @@ document.addEventListener("DOMContentLoaded", () => {
     const reason = prompt("Emergency stop — pause every task and block new actions.\nReason (optional):", "");
     if (reason !== null) act("/api/stop", { reason: reason || "stopped from dashboard" });
   });
+  $("#briefbtn").addEventListener("click", showBriefing);
+  window.addEventListener("hashchange", () => maybeAutoBriefing(ui.data));
   $("#release").addEventListener("click", () => {
     if (confirm("Release the emergency stop? Paused tasks stay paused until you resume them.")) act("/api/release", { confirm: true });
   });

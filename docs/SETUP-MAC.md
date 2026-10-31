@@ -104,7 +104,13 @@ fingerprint. If Touch ID ever stops working:
 uv run jarvis touchid reset --yes
 ```
 
-## 8. Your iPhone (optional)
+## 8. Morning briefing
+
+On by default at 08:00 (needs JARVIS running, e.g. the background service). Click **Briefing** at the top of the
+dashboard any time, or run `uv run jarvis briefing`. Change the time or quiet hours in the `[proactive]` section
+of `jarvis.toml` (see `config/jarvis.example.toml`), then `uv run jarvis service restart`.
+
+## 9. Your iPhone (optional)
 
 Needs iOS 16.4 or later. Free; nothing is exposed to the internet.
 

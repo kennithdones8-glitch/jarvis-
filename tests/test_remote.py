@@ -100,6 +100,7 @@ def remote_dash(make_kernel, tmp_path, root):
     remote = RemoteAccess(k, HOST, push_opener=push)
     d = Dashboard(k, port=0, token="test-token", poll_s=0.05, remote=remote)
     d.notifier.min_interval_s = 0
+    d.notifier.schedule.quiet_hours = ""  # tests must not depend on the time of day
     d.start()
     yield d, script, root, push
     d.shutdown()
@@ -276,7 +277,8 @@ def test_approve_from_phone_with_face_id(remote_dash):
     appr = wait_for(lambda: phone.req("/api/state")[2]["approvals"])[0]
     # the notification arrives, with generic wording only
     msg = wait_for(lambda: [_decrypt(r, keys) for r in push.sent if b"decision" in _decrypt(r, keys)])[0]
-    assert json.loads(msg) == {"title": "JARVIS", "body": "JARVIS needs a decision", "tag": "approval"}
+    assert json.loads(msg) == {"title": "JARVIS", "body": "JARVIS needs a decision", "tag": "approval",
+                               "url": "/"}
     path = f"/api/approvals/{appr['id']}"
     assert phone.req(path, {"approve": True})[0] == 403
     assert phone.req(path, phone.face_id(path, {"approve": True}))[0] == 200
@@ -380,7 +382,8 @@ def test_notifier_batches_and_seeds(make_kernel, root):
     from jarvis.core import StepSpec
     (root / "input.txt").write_text("x")
     k.tasks.create("old", steps=[StepSpec("r", "fs", "read", {"path": f"{root}/input.txt"})])
-    n = Notifier(k, P(), min_interval_s=3600)
+    from jarvis.proactive import Schedule
+    n = Notifier(k, P(), min_interval_s=3600, schedule=Schedule(quiet_hours=""))
     assert n.poll() == [] and sent == []  # existing state isn't announced after a restart
     t1 = k.tasks.create("a", steps=[StepSpec("r", "fs", "read", {"path": f"{root}/input.txt"})])
     k.engine.run(t1)

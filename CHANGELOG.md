@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.15.0 — Proactive JARVIS
+
+- **Morning briefing** (default 08:00): what needs you, what finished or failed since the last briefing,
+  what's in progress, system problems, unconfirmed memories and Claude usage. Built from live data when opened
+  (dashboard **Briefing** button, the phone notification, or `jarvis briefing`) and never stored, so `forget`
+  and task deletion still remove everything. Notification text: "Your morning briefing is ready".
+- **Quiet hours** (default 22:00–07:00): notifications are held back; the briefing covers the night.
+- **Reminder** once when a decision has waited over an hour; **alert** when a health check turns bad
+  (generic wording, rate-limited).
+- `[proactive]` config section (validated). Notifications can open a specific JARVIS page (own paths only).
+- 11 new tests; headless-browser check of the briefing on desktop and phone sizes. Not yet checked on the Mac.
+
 ## 0.14.0 — Touch ID for Mac approvals
 
 - Optional **Touch ID** for the Mac dashboard (Systems → Touch ID). Once set up, approvals, consent, running

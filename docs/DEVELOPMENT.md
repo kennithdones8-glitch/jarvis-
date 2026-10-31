@@ -27,6 +27,7 @@ uv run pytest      # full suite, ~30 s
 | `tests/test_webauthn.py` | Passkey verification: registration/assertion round trip; wrong origin, RP, challenge, counter, key, missing Face ID; CBOR |
 | `tests/test_remote.py` | Pairing codes, device sessions, remote routing (Host split, no token cookie remotely), Face ID step-up bound to the exact request, approve from the phone, revoke, push encryption (RFC 8291 vector), endpoint allowlist, notifier, `jarvis remote`/`devices` with a stand-in `tailscale` |
 | `tests/test_touchid.py` | Touch ID: off by default, setup, request-bound step-up, adding/removing keys, pairing gated, phone keys can't confirm Mac actions, CLI reset |
+| `tests/test_proactive.py` | Quiet hours, briefing timing, briefing from live state (nothing stored), reminders, health alerts, dashboard announcement, CLI |
 | `tests/test_backup_service.py` | Encryption, tamper detection, restore with deletions kept, retention, LaunchAgent plist |
 | `tests/test_persona.py` | Persona honesty and ability list |
 | `tests/test_tasks.py` | End-to-end task with approval + verification, retries/backoff, uncertain outcomes, pause/cancel, corrupt checkpoints, **real subprocess crash + recovery** |

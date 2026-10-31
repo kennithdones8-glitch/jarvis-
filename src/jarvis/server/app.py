@@ -26,6 +26,7 @@ import secrets
 import threading
 import time
 import traceback
+from datetime import datetime
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any, Callable
@@ -117,6 +118,7 @@ def describe_event(event: str, p: dict[str, Any], *, task_id: str | None = None,
         "device.revoked": lambda: "A phone was removed",
         "push.subscribed": lambda: "Phone notifications turned on",
         "push.sent": lambda: f"Notification sent to {p.get('devices')} phone(s)",
+        "briefing.ready": lambda: "Morning briefing ready",
         "config.remote": lambda: "Phone access " + ("turned on" if p.get("enabled") else "turned off"),
     }
     goals = goals or {}
@@ -125,6 +127,12 @@ def describe_event(event: str, p: dict[str, Any], *, task_id: str | None = None,
     except Exception:
         text = json.dumps(p, ensure_ascii=False)
     return text[:180]
+
+
+def _last_briefing(kernel: Kernel) -> str | None:
+    from ..proactive import last_briefing_date
+
+    return last_briefing_date(kernel)
 
 
 def _tilde_evidence(evidence: Any) -> Any:
@@ -294,6 +302,25 @@ class Dashboard:
         k.audit.record("backup.created", file=r.path.name, bytes=r.bytes, verified=r.verified, automatic=True)
         return {"ok": True, "path": str(r.path)}
 
+    def maybe_briefing(self, now: datetime | None = None) -> bool:
+        """Announce the morning briefing once a day at the configured time (the content is built when opened)."""
+        from .. import proactive
+
+        now = now or datetime.now().astimezone()
+        schedule = proactive.Schedule.from_config(self.kernel.model_config.proactive)
+        if not schedule.briefing_due(now, proactive.last_briefing_date(self.kernel)):
+            return False
+        proactive.mark_briefing_sent(self.kernel, now)
+        self.kernel.audit.record("briefing.ready")
+        if self.notifier is not None:
+            self.notifier.briefing_ready()
+        return True
+
+    def briefing(self) -> dict[str, Any]:
+        from ..proactive import build_briefing
+
+        return build_briefing(self.kernel, health=self._health or None)
+
     def _maintenance_loop(self) -> None:
         while not self._stop.is_set():
             try:
@@ -303,6 +330,9 @@ class Dashboard:
                 if before is not None and before != self._health["ok"]:
                     bad = [i["name"] for i in self._health["items"] if not i["ok"]]
                     self.kernel.audit.record("health.changed", ok=self._health["ok"], problems=bad)
+                    if self.notifier is not None:
+                        self.notifier.health_changed(self._health["ok"])
+                self.maybe_briefing()
             except Exception as exc:
                 self.kernel.audit.record("dashboard.maintenance_error", error=f"{type(exc).__name__}: {exc}"[:300])
             self._stop.wait(self.maintenance_s)
@@ -484,6 +514,7 @@ class Dashboard:
                        "this_device": {"id": device["id"], "name": device["name"]} if device else None,
                        "devices": self.remote.devices.list() if self.remote else []},
             "touch_id": {"enabled": self.mac.enabled(), "keys": self.mac.keys()},
+            "briefing": {"last_date": _last_briefing(k)},
         }
 
     # ---- HTTP plumbing -----------------------------------------------------------------
@@ -617,6 +648,8 @@ class Dashboard:
                                        "records": mem.search_records(q, limit=10) if q.strip() else []})
         if m := re.fullmatch(r"/api/tasks/([\w-]+)/audit", url.path):
             return self._json(h, 200, self.kernel.audit.entries(task_id=m.group(1), limit=300))
+        if url.path == "/api/briefing":
+            return self._json(h, 200, self.briefing())
         if url.path == "/api/push/key" and self.remote is not None:
             return self._json(h, 200, {"key": self.remote.push.public_key})
         raise HttpError(404, "not found")

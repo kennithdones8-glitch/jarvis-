@@ -2,11 +2,11 @@
 
 A personal AI system for Mac and iPhone: persistent, permissioned, auditable, local-first.
 
-**Status: v0.14 — Touch ID for Mac approvals.** JARVIS chats (local models + Claude via your Pro plan),
+**Status: v0.15 — proactive JARVIS.** JARVIS chats (local models + Claude via your Pro plan),
 researches the web with verified sources, reads documents, plans and carries out file tasks with approvals,
 remembers what you tell it, runs in the background with encrypted backups, and can be used from your iPhone
 over your private Tailscale network, with Face ID on every approval, and can require Touch ID for approvals on
-the Mac. **Not built yet:** voice, Mac app automation, proactive monitoring. See [ROADMAP](docs/ROADMAP.md).
+the Mac. Each morning it tells you what needs you, what happened overnight and what's wrong. **Not built yet:** voice, Mac app automation, proactive monitoring. See [ROADMAP](docs/ROADMAP.md).
 
 ## What works today
 
@@ -31,6 +31,7 @@ the owner's Intel Mac (macOS 14.1.1). Untested-on-Mac items may still have Mac-s
 | Background service, health checks, encrypted backups | ✅ (plist content, crypto, restore) | **not yet** |
 | iPhone companion: Tailscale (tailnet only), passkey pairing, Face ID on every approval, private notifications, Home Screen app | ✅ + headless browser with a virtual passkey | **not yet** |
 | Touch ID for dashboard approvals on the Mac (optional; recovery via Terminal) | ✅ + headless browser with a virtual passkey | **not yet** |
+| Morning briefing (built live, never stored), quiet hours, waiting-decision reminders, health alerts | ✅ + headless browser | **not yet** |
 | Voice, Mac automation, proactive monitoring, self-improvement | — | ⏳ not started |
 
 ## Quick start
@@ -78,6 +79,7 @@ is sent over the network without your approval.
 | `jarvis allow-folder PATH [--remove]` / `jarvis folders` | Let JARVIS read a folder such as Downloads (changes still ask) |
 | `jarvis research "…" [--deep]` | Search the web and read pages, answer with verified sources |
 | `jarvis remote enable\|disable\|status` | Use JARVIS from your iPhone over Tailscale (tailnet only, never the internet) |
+| `jarvis briefing` | What needs you, what finished or failed since the last briefing, and any problems |
 | `jarvis touchid [list\|remove ID\|reset --yes]` | Touch ID keys for dashboard approvals; `reset` is the recovery if Touch ID stops working |
 | `jarvis devices [revoke ID]` | List paired phones / remove one (signs it out at once) |
 | `jarvis remember "…"` | Tell JARVIS something to remember |

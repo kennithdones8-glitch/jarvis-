@@ -152,6 +152,16 @@ Mac's `*.ts.net` name gets the phone path, where the Mac's token cookie is never
   adding/removing Touch ID keys need a fresh Touch ID. The passkey's site is `localhost`, so the dashboard
   page redirects from 127.0.0.1 to `http://localhost:PORT`.
 
+## Proactive JARVIS (`src/jarvis/proactive.py`, v0.15)
+
+The dashboard's maintenance loop (once a minute, in the existing process; no new background service)
+announces the morning briefing at `[proactive] briefing_time` (at most 4 hours late), and sends a generic
+alert when health turns bad. `Notifier` holds notifications back during quiet hours and reminds you once about
+a decision that has waited longer than `approval_reminder_min`. The briefing is computed from live state when
+opened (`/api/briefing`, `jarvis briefing`) and covers the time since the previous briefing. Only the date and
+time it was announced are stored (`meta` table). It calls no model and sends nothing off the Mac except the
+generic push.
+
 ## Service and backups
 
 `service.py` writes a per-user LaunchAgent that runs `uv run jarvis dashboard --no-open` at login and after
