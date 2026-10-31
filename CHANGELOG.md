@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.10.1 — Ask about missing files before planning
+
+- Found on the Mac: a request naming a file that doesn't exist was planned and run, then failed at step 0.
+  JARVIS now checks the files a plan would read *before* showing it, and asks "I can't find X. Did you
+  mean …?" with close matches from that folder. The planner also sees the folder of any file you mention.
+
 ## 0.10.0 — Documents
 
 - `doc.read` / `doc.info`: PDF (page ranges, scanned-PDF detection, password-protected and corrupt files

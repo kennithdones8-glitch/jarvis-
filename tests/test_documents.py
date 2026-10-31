@@ -221,3 +221,17 @@ def test_allow_folder_command(tmp_path, monkeypatch):
     assert cli_main(["--home", str(home), "allow-folder", str(downloads), "--remove"]) == 0
     policy = Policy.from_dict(tomllib.loads((home / "policy.toml").read_text()))
     assert downloads.resolve() not in policy.roots
+
+
+def test_missing_file_becomes_a_question_with_suggestions(orch, root):
+    o, script, _ = orch
+    (root / "report-2026.pdf").write_bytes(make_pdf(["x"]))
+    (root / "notes.txt").write_text("x")
+    script["plan"] = json.dumps({"goal": "g", "question": None, "cannot": None, "steps": [
+        {"description": "Read", "tool": "doc", "action": "read", "args": {"path": f"{root}/YOURFILE.pdf"}, "depends_on": []}]})
+    plan = o.plan(f"Summarise {root}/YOURFILE.pdf")
+    assert plan.kind == "clarify" and "can't find" in plan.message
+    assert "report-2026.pdf" in plan.message or "notes.txt" in plan.message
+    # the planner was shown the real folder's file names because the request mentioned a file in it
+    assert "report-2026.pdf" in o.planner.folder_context(f"Summarise {root}/YOURFILE.pdf")
+    assert o.kernel.tasks.list() == []

@@ -110,6 +110,7 @@ def test_invalid_plan_gets_one_repair_then_fails_honestly(orch):
 
 def test_repair_succeeds(orch):
     o, script, root = orch
+    (root / "notes" / "trip.txt").write_text("notes")
     good = summary_plan(root, f"{root}/notes/s.md")
     broken = json.loads(json.dumps(good))
     broken["steps"][1]["depends_on"] = []

@@ -181,6 +181,8 @@ class Planner:
                 path = canonical_path(raw.rstrip(".:)"))
             except Exception:
                 continue
+            if not path.is_dir():
+                path = path.parent  # a file (or a name that doesn't exist yet): show its folder instead
             if not any(is_within(path, r) for r in roots) or not path.is_dir():
                 continue
             try:
@@ -189,7 +191,41 @@ class Planner:
                 continue
             names = [f"{e.name}/" if e.is_dir() else e.name for e in entries if not e.name.startswith(".")]
             lines.append(f"Contents of {path} ({len(names)} items):\n" + "\n".join(f"- {n}" for n in names))
-        return "\n\n".join(lines) if lines else None
+        return "\n\n".join(dict.fromkeys(lines)) if lines else None
+
+    def missing_inputs(self, plan: Plan) -> str | None:
+        """Before showing a plan, check the files it will READ actually exist (paths written literally,
+        not produced by earlier steps). If not, ask instead of running a plan that will fail."""
+        import difflib
+        import os
+
+        from ..core.permissions import canonical_path
+
+        for spec in plan.steps:
+            key = (spec.tool, spec.action)
+            if key not in (("fs", "read"), ("doc", "read"), ("doc", "info"), ("fs", "move"), ("fs", "list"), ("fs", "search")):
+                continue
+            raw = spec.args.get("path")
+            if not isinstance(raw, str) or references(raw):
+                continue
+            try:
+                path = canonical_path(raw)
+            except Exception:
+                continue
+            if path.exists():
+                continue
+            shown = raw.replace(os.path.expanduser("~"), "~", 1)
+            folder = path.parent
+            names = sorted(e.name for e in folder.iterdir() if not e.name.startswith(".")) if folder.is_dir() else []
+            close = difflib.get_close_matches(path.name, names, n=5, cutoff=0.3)
+            if close:
+                hint = " Did you mean: " + ", ".join(close) + "?"
+            elif names:
+                hint = f" That folder contains: {', '.join(names[:12])}{'…' if len(names) > 12 else ''}."
+            else:
+                hint = " That folder is empty or doesn't exist."
+            return f"I can't find {shown}.{hint}"
+        return None
 
     def plan(self, request: str, *, task_id: str | None = None, local_only: bool = False) -> Plan:
         messages = [Message("system", self.system_prompt(), Category.SYSTEM_PROMPT)]
@@ -204,6 +240,8 @@ class Planner:
             try:
                 plan = validate(parse_json_output(r.text), self.registry)
                 plan.model, plan.attempts = f"{r.provider}/{r.model}", attempt
+                if plan.kind == "plan" and (missing := self.missing_inputs(plan)):
+                    return Plan("clarify", goal=plan.goal, message=missing, model=plan.model, attempts=attempt)
                 return plan
             except (InvalidModelOutput, PlanError) as exc:
                 problems = exc.problems if isinstance(exc, PlanError) else [str(exc)]
