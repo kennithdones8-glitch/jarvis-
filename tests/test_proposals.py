@@ -100,13 +100,13 @@ def test_a_rejected_idea_returns_only_if_the_evidence_doubles(make_kernel):
 
 def test_evidence_holds_no_private_text(make_kernel):
     k = make_kernel()
-    k.memory.remember("My locker code is 4512", origin="explicit", by="user:test")
+    k.memory.remember("My locker code is zebra-quartz", origin="explicit", by="user:test")  # text that can't occur by chance
     k.audit.record("chat.grounding", ok=False, unsupported_times=1, retried=True)
     for _ in range(3):
         k.audit.record("chat.grounding", ok=False, unsupported_times=1, retried=True)
     props = Proposals(k)
     props.refresh()
-    assert "4512" not in json.dumps(props.list())
+    assert "zebra-quartz" not in json.dumps(props.list()).lower()
 
 
 def test_dashboard_page_and_decisions(dash):
