@@ -88,17 +88,24 @@
       <svg id="core" class="core" viewBox="0 0 240 240" data-state="online" aria-hidden="true">
         <defs>
           <radialGradient id="arcglow">
-            <stop offset="0%" stop-color="#ffffff" stop-opacity="1"/>
-            <stop offset="35%" stop-color="#bff3ff" stop-opacity=".95"/>
-            <stop offset="70%" stop-color="#5fd6ff" stop-opacity=".35"/>
-            <stop offset="100%" stop-color="#5fd6ff" stop-opacity="0"/>
+            <stop class="g0" offset="0%"/><stop class="g1" offset="35%"/><stop class="g2" offset="70%"/><stop class="g3" offset="100%"/>
           </radialGradient>
+          <radialGradient id="bloom"><stop class="b0" offset="0%"/><stop class="b1" offset="55%"/><stop class="b2" offset="100%"/></radialGradient>
         </defs>
+        <circle class="bloom" cx="120" cy="120" r="119" fill="url(#bloom)"/>
         <circle class="r-ticks" cx="120" cy="120" r="112"/>
+        <circle class="r-outer" cx="120" cy="120" r="105"/>
         <circle class="r-a1" cx="120" cy="120" r="98"/>
         <circle class="r-a2" cx="120" cy="120" r="84"/>
+        <circle class="r-wave" cx="120" cy="120" r="77"/>
         <circle class="r-thin" cx="120" cy="120" r="70"/>
         <circle class="r-a3" cx="120" cy="120" r="58"/>
+        <circle class="r-inner" cx="120" cy="120" r="51"/>
+        <g class="gather">
+          <g class="orbit o1"><circle class="p" cx="120" cy="25" r="2.6"/></g>
+          <g class="orbit o2"><circle class="p" cx="120" cy="45" r="2"/><circle class="p" cx="120" cy="195" r="1.6"/></g>
+          <g class="orbit o3"><circle class="p" cx="120" cy="34" r="1.8"/></g>
+        </g>
         <circle class="glow" cx="120" cy="120" r="46" fill="url(#arcglow)"/>
         <circle class="heart" cx="120" cy="120" r="20"/>
       </svg>

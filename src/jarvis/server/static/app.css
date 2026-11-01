@@ -665,3 +665,57 @@ body:not([data-view="home"]) .recent-panel, body:not([data-view="home"]) .summar
 .d-scope { font-size: 13px; color: var(--muted); margin-top: 6px; }
 .d-preview { margin-top: 8px; }
 .d-preview > summary { cursor: pointer; color: var(--arc); font-size: 14px; }
+
+/* ================= Reactor upgrade: a colour per state, bloom, more rings, orbiting particles, voice waveform =================
+   Colour means the same as the label beside it:
+   blue ready · gold working (thinking, planning, executing, recovering) · violet researching · amber needs you
+   (a decision or your input) · cyan listening / speaking · green finished · red stopped / offline · grey connecting */
+.core-wrap { --hue: #5fd6ff; --hue-hi: #e6fbff; }
+.core-wrap:has(.core[data-state="connecting"]) { --hue: #7f9db0; --hue-hi: #d7e6ee; }
+.core-wrap:has(.core[data-state="thinking"]), .core-wrap:has(.core[data-state="planning"]),
+.core-wrap:has(.core[data-state="executing"]), .core-wrap:has(.core[data-state="recovering"]) { --hue: #f2b84b; --hue-hi: #ffe9b8; }
+.core-wrap:has(.core[data-state="researching"]) { --hue: #b48cff; --hue-hi: #efe4ff; }
+.core-wrap:has(.core[data-state="attention"]), .core-wrap:has(.core[data-state="blocked"]),
+.core-wrap:has(.core[data-state="degraded"]) { --hue: #ffb347; --hue-hi: #ffe2bd; }
+.core-wrap:has(.core[data-state="stopped"]), .core-wrap:has(.core[data-state="offline"]) { --hue: #ff3b47; --hue-hi: #ffc7cb; }
+.core-wrap:has(.core[data-listening]), .core-wrap:has(.core[data-speaking]) { --hue: #4ff5e8; --hue-hi: #d9fffb; }
+.core-wrap:has(.core[data-flash="done"]) { --hue: #7ee2a0; --hue-hi: #dcffe8; }
+.core-wrap:has(.core[data-flash="failed"]) { --hue: #ff3b47; --hue-hi: #ffc7cb; }
+
+.core { --heart: var(--hue); }
+.core .g0 { stop-color: #fff; stop-opacity: 1; } .core .g1 { stop-color: var(--hue-hi); stop-opacity: .95; }
+.core .g2 { stop-color: var(--hue); stop-opacity: .38; } .core .g3 { stop-color: var(--hue); stop-opacity: 0; }
+.core .b0 { stop-color: var(--hue); stop-opacity: .26; } .core .b1 { stop-color: var(--hue); stop-opacity: .07; }
+.core .b2 { stop-color: var(--hue); stop-opacity: 0; }
+.core .bloom { animation: breathe 6s ease-in-out infinite; }
+.core-wrap::after { box-shadow: 0 0 70px 14px color-mix(in srgb, var(--hue) 22%, transparent); transition: box-shadow .6s; }
+.core .heart { fill: var(--hue-hi); }
+.core .r-a1 { stroke: var(--hue); }
+.core .r-a3 { stroke: var(--hue); }
+.core .r-outer { stroke: var(--ring); stroke-width: 2.5; stroke-dasharray: 34 10 6 10; opacity: .7; animation: spin 70s linear infinite reverse; }
+.core .r-inner { stroke: var(--hue); stroke-width: 3; stroke-dasharray: 3 7; opacity: .7; animation: spin 18s linear infinite reverse; }
+.core .r-wave { stroke: var(--hue); stroke-width: 2; stroke-dasharray: 2 5; opacity: 0; transition: opacity .3s; }
+.core[data-listening] .r-wave, .core[data-speaking] .r-wave { opacity: 1; animation: wave .42s ease-in-out infinite alternate; }
+@keyframes wave { from { stroke-width: 1; transform: scale(.985); } to { stroke-width: 5; transform: scale(1.03); } }
+/* particles: orbit calmly when ready, faster while working, drawn in towards the core when JARVIS needs you */
+.core .p { fill: var(--hue-hi); filter: drop-shadow(0 0 4px var(--hue)); }
+.core .orbit, .core .gather { transform-box: view-box; transform-origin: 120px 120px; }
+.core .o1 { animation: spin 16s linear infinite; } .core .o2 { animation: spin 11s linear infinite reverse; }
+.core .o3 { animation: spin 24s linear infinite; }
+.core .gather { transition: transform .8s ease; }
+.core[data-state="thinking"] .o1, .core[data-state="planning"] .o1, .core[data-state="researching"] .o1, .core[data-state="executing"] .o1 { animation-duration: 6s; }
+.core[data-state="thinking"] .o2, .core[data-state="planning"] .o2, .core[data-state="researching"] .o2, .core[data-state="executing"] .o2 { animation-duration: 4.5s; }
+.core[data-state="thinking"] .o3, .core[data-state="planning"] .o3, .core[data-state="researching"] .o3, .core[data-state="executing"] .o3 { animation-duration: 8s; }
+.core[data-state="attention"] .gather, .core[data-state="blocked"] .gather { transform: scale(.72); }
+.core[data-state="stopped"] .orbit, .core[data-state="offline"] .orbit, .core[data-state="blocked"] .orbit { animation: none; }
+.core[data-state="stopped"] .p, .core[data-state="offline"] .p { opacity: .35; }
+.core[data-state="degraded"] .p { opacity: .4; }
+/* status pill dots use the same colours */
+.statuspill[data-state="attention"], .statuspill[data-state="blocked"] { border-color: #ffb347; color: #ffe2bd; }
+.statuspill[data-state="attention"] i, .statuspill[data-state="blocked"] i { background: #ffb347; box-shadow: 0 0 10px #ffb347; }
+.statuspill[data-state="researching"] i { background: #b48cff; box-shadow: 0 0 8px #b48cff; }
+.statuspill[data-state="online"] i { background: #5fd6ff; box-shadow: 0 0 8px #5fd6ff; }
+@media (prefers-reduced-motion: reduce) {
+  .core .orbit, .core .gather, .core .bloom, .core .r-wave, .core .r-outer, .core .r-inner { animation: none !important; transition: none !important; }
+}
+@media (prefers-reduced-motion: reduce) { .core-wrap::after { transition: none; } }
