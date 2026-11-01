@@ -42,14 +42,14 @@ ACTION_DOCS: dict[tuple[str, str], str] = {
                             '-> {"events": [{"title", "start", "end", "all_day", "location", "calendar"}]} (max 62 days)',
     ("calendar", "add"): 'calendar.add {"title", "start": "<ISO>", "end": "<ISO>", "calendar" (optional), "location" (optional), '
                          '"notes" (optional)} -> adds an event',
-    ("reminders", "list"): 'reminders.list {"list": "<name>" (optional)} -> {"reminders": [{"title", "due", "list", "notes"}]} (open ones)',
+    ("reminders", "list"): 'reminders.list {"list": "<name of one Reminders list>" (optional: omit it to see every list, e.g. for due or overdue questions)} -> {"reminders": [{"title", "due", "list", "notes"}]} (open ones)',
     ("reminders", "add"): 'reminders.add {"title", "due": "<ISO>" (optional), "list" (optional), "notes" (optional)} -> adds a reminder',
     ("reminders", "complete"): 'reminders.complete {"title": "<exact title>", "list" (optional)} -> ticks it off',
     ("notes", "search"): 'notes.search {"query": "<words>"} -> {"results": [{"title", "modified", "snippet"}]} (Apple Notes)',
     ("notes", "read"): 'notes.read {"title": "<exact title>"} -> {"content"}',
     ("notes", "create"): 'notes.create {"title", "body": "<text>", "folder" (optional)} -> new note in Apple Notes',
     ("mail", "draft"): 'mail.draft {"to": ["<email>"], "subject", "body"} -> saves a draft in Mail for the owner to send (never sends)',
-    ("apps", "open"): 'apps.open {"name": "<app name>"} -> opens an app',
+    ("apps", "open"): 'apps.open {"name": "<app name>"} -> opens an app (only when asked to open one; to write an email use mail.draft)',
 }
 REQUIRED_ARGS: dict[tuple[str, str], dict[str, type]] = {
     ("fs", "read"): {"path": str}, ("fs", "list"): {"path": str}, ("fs", "mkdir"): {"path": str},

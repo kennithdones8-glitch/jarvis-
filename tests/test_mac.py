@@ -35,7 +35,7 @@ class FakeMac:
         if name == "calendar.find":
             return {"found": any(e["title"] == args["title"] for e in self.events)}
         if name == "reminders.list":
-            return [r for r in self.reminders if not r["completed"]]
+            return [r for r in self.reminders if not r["completed"] and args.get("list") in (None, r["list"])]
         if name == "reminders.add":
             self.reminders.append({"title": args["title"], "due": args["due"], "completed": False, "notes": "", "list": "Reminders"})
             return {"title": args["title"], "list": "Reminders", "due": args["due"]}

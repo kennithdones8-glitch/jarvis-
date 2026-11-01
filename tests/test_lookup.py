@@ -161,3 +161,28 @@ def test_router_json_wrapped_in_prose_is_still_used(env):
     script["raw"] = "Sure! Here is the JSON:\n" + json.dumps({"lookups": [{"tool": "reminders", "action": "list", "args": {}}]})
     r = chat(d, "Anything overdue on my reminders?")
     assert fake.calls[0][0] == "reminders.list" and r["checked"] == ["Reminders"]
+
+
+def test_calendar_lookups_cover_whole_days(env):
+    from jarvis.orchestrator.lookup import whole_days
+    d, script, seen, fake, _ = env
+    tomorrow = (datetime.now().astimezone() + timedelta(days=1)).replace(second=0, microsecond=0)
+    narrow = {"from": tomorrow.replace(hour=14, minute=0).isoformat(), "to": tomorrow.replace(hour=15, minute=30).isoformat()}
+    script["lookups"] = [{"tool": "calendar", "action": "events", "args": narrow}]
+    chat(d, "Am I free tomorrow between 2pm and 3:30pm, and what's my first commitment?")
+    sent = fake.calls[0][1]
+    assert sent["from"].startswith(tomorrow.strftime("%Y-%m-%dT00:00"))
+    assert sent["to"].startswith((tomorrow + timedelta(days=1)).strftime("%Y-%m-%dT00:00"))
+    week_ = whole_days({"from": "2026-11-02T00:00", "to": "2026-11-09T00:00"})  # already whole days: unchanged span
+    assert week_["from"][:16] == "2026-11-02T00:00" and week_["to"][:16] == "2026-11-09T00:00"
+    assert whole_days({"from": "nonsense", "to": 3}) == {"from": "nonsense", "to": 3}
+
+
+def test_an_invented_reminders_list_falls_back_to_every_list(env):
+    d, script, seen, fake, _ = env
+    fake.reminders.append({"title": "Pay rent", "due": None, "completed": False, "notes": "", "list": "Reminders"})
+    script["lookups"] = [{"tool": "reminders", "action": "list", "args": {"list": "overdue"}}]
+    r = chat(d, "What's overdue?")
+    assert [c[1].get("list") for c in fake.calls] == ["overdue", None]
+    assert r["checked"] == ["Reminders (all lists; nothing open in “overdue”)"]
+    assert "Pay rent" in seen["answer_prompts"][-1]

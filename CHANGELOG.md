@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.17.9 — Lookups that ask the right question (from the benchmark on the owner's Mac)
+
+- Calendar lookups cover whole days: asked "am I free 2–3:30, and what's first tomorrow?", the model looked up
+  only 2–3:30 and missed the 9:00 meeting.
+- A Reminders lookup for a list that doesn't exist or has nothing open (models invent "overdue", "upcoming")
+  falls back to every list, and says so in the lookup's label.
+- Planner wording: `reminders.list` says to omit the list for due/overdue questions; `apps.open` says it is only
+  for opening an app (a model used it to "draft the email").
+
 ## 0.17.8 — Chat lookups explain themselves (found by the benchmark on the owner's Mac)
 
 - **Found:** in the first real benchmark run every planning task failed because no lookup ran at all, and the
