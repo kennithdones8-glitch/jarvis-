@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased — Dashboard extras (branch `extras-v1`: benchmarks page + Trust Contract + improvement ideas)
+
+- Combines `bench-page-v1`, `trust-contract-v1` and `proposals-v1`, plus two owner-approved changes:
+  - Deciding on an improvement idea from the phone needs Face ID (added to the phone's Face ID list).
+  - The header's Help, Briefing, Benchmarks, Trust and Ideas sit in one **More** menu; the emergency stop stays
+    on its own, always visible.
+
 ## Unreleased — Benchmark page and failures at a glance (branch `bench-page-v1`)
 
 - **Benchmarks page** (`/bench`, linked from the dashboard header; works on the paired iPhone): every run with

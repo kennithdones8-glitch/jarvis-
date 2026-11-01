@@ -502,3 +502,18 @@ def test_unauthenticated_challenges_are_bounded(make_kernel):
     assert len(remote._challenges) == MAX_OUTSTANDING
     with pytest.raises(DeviceError):  # the oldest was dropped
         remote._take(first, ("login",))
+
+
+def test_deciding_on_an_idea_from_the_phone_needs_face_id(remote_dash):
+    from jarvis.core.util import new_id, now_iso
+    d, *_ = remote_dash
+    phone, _ = paired(d)
+    pid = new_id("prop")
+    with d.kernel.db.tx() as c:
+        c.execute("INSERT INTO proposals (id, key, kind, title, body, state, created_at, updated_at) "
+                  "VALUES (?, 'k', 'investigate', 't', ?, 'open', ?, ?)", (pid, json.dumps({"size": 1}), now_iso(), now_iso()))
+    path = f"/api/proposals/{pid}/approve"
+    assert phone.req(path, {})[0] == 403  # no Face ID
+    assert d.proposals.list()[0]["state"] == "open"
+    assert phone.req(path, phone.face_id(path, {}))[0] == 200
+    assert d.proposals.list()[0]["state"] == "approved"

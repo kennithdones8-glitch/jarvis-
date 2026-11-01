@@ -412,3 +412,11 @@ a.btn { text-decoration: none; display: inline-block; }
 .trust .never li::marker { color: var(--red); }
 .trust .own li::marker { color: var(--ok); }
 .trust .asks li::marker { color: var(--arc); }
+/* header "More" menu: everything but the emergency stop, which always stays in view */
+.more { position: relative; }
+.more > summary { list-style: none; cursor: pointer; }
+.more > summary::-webkit-details-marker { display: none; }
+.more > summary::after { content: " ▾"; font-size: 11px; }
+.more-menu { position: absolute; right: 0; top: calc(100% + 6px); z-index: 30; display: grid; min-width: 180px;
+             background: var(--bg2); border: 1px solid var(--gold-line); padding: 6px; box-shadow: 0 10px 30px rgba(0,0,0,.6); }
+.more-menu .btn { text-align: left; width: 100%; }
