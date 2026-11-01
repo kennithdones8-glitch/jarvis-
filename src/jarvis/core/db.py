@@ -196,6 +196,21 @@ MIGRATIONS: list[str] = [
     """
     ALTER TABLE devices ADD COLUMN kind TEXT NOT NULL DEFAULT 'phone' CHECK (kind IN ('phone', 'mac'));
     """,
+    # v7: improvement proposals (propose-only: a decision records your answer and changes nothing by itself)
+    """
+    CREATE TABLE proposals (
+        id          TEXT PRIMARY KEY,
+        key         TEXT NOT NULL UNIQUE,
+        kind        TEXT NOT NULL,
+        title       TEXT NOT NULL,
+        body        TEXT NOT NULL,
+        state       TEXT NOT NULL DEFAULT 'open' CHECK (state IN ('open', 'approved', 'rejected', 'done')),
+        created_at  TEXT NOT NULL,
+        updated_at  TEXT NOT NULL,
+        decided_at  TEXT,
+        decided_by  TEXT
+    );
+    """,
 ]
 
 
