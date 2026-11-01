@@ -582,3 +582,57 @@ body:not([data-view="home"]) .recent-panel, body:not([data-view="home"]) .summar
 
 }
 @media (pointer: coarse), (max-width: 760px) { .matters-quiet a { display: inline-flex; align-items: center; min-height: 44px; padding: 0 6px; } }
+
+/* ================= Stage 3: reactor states — each look means exactly one real situation =================
+   The headline and status pill always say the same thing in words; colour and motion never stand alone.
+   connecting  slow breathing, dim       first load, nothing known yet
+   online      slow rotation              ready, nothing needs you
+   queued      as online, "Queued" label   a mission is waiting to start (nothing is running yet)
+   thinking    medium rotation            a reply is being written
+   planning    medium rotation + sweep    a plan is being worked out
+   researching medium rotation + blue sweep  a web research request is in flight
+   executing   fast rotation + sweep      a mission is running or verifying
+   recovering  slow blink of the outer ring  a mission is checking what finished before an interruption
+   attention   slow blue pulse            a decision is waiting for you
+   blocked     still, amber heart         a mission needs your input
+   degraded    dim, slow, amber           no model is available
+   stopped / offline  red, still          emergency stop / connection lost
+   + listening (inner pulse while the mic records), + speaking (heart pulse while a reply is read aloud),
+   + flash done / failed (one green / red ring, 4 s, when a mission finishes between two updates) */
+.core-wrap::before { content: ""; position: absolute; inset: 7%; border-radius: 50%; pointer-events: none; opacity: 0;
+  background: conic-gradient(from 0deg, transparent 0 78%, rgba(242, 184, 75, .26) 97%, transparent 100%); transition: opacity .4s; }
+.core-wrap:has(.core[data-state="planning"])::before, .core-wrap:has(.core[data-state="executing"])::before { opacity: 1; animation: spin 2.6s linear infinite; }
+.core-wrap:has(.core[data-state="researching"])::before { opacity: 1; animation: spin 2.2s linear infinite;
+  background: conic-gradient(from 0deg, transparent 0 78%, rgba(159, 232, 255, .32) 97%, transparent 100%); }
+.core[data-state="planning"] .r-a1, .core[data-state="researching"] .r-a1 { animation-duration: 6s; }
+.core[data-state="planning"] .r-a3, .core[data-state="researching"] .r-a3 { animation-duration: 4s; }
+.core[data-state="connecting"] circle { animation-duration: 90s; }
+.core[data-state="connecting"] .glow { opacity: .4; }
+.core[data-state="recovering"] .r-a1 { animation: spin 40s linear infinite, blink 1.6s ease-in-out infinite; }
+.core[data-state="blocked"] { --heart: #ffb347; }
+.core[data-state="blocked"] circle { animation: none !important; }
+.core[data-state="blocked"] .heart { fill: #ffd9a6; }
+.core[data-state="degraded"] { --heart: #ffb347; }
+.core[data-state="degraded"] .r-a1, .core[data-state="degraded"] .r-a2, .core[data-state="degraded"] .r-a3 { animation-duration: 120s; opacity: .45; }
+.core[data-state="degraded"] .glow { opacity: .3; }
+.core[data-listening] .r-thin { stroke: var(--arc); stroke-width: 3; opacity: 1; animation: listen .9s ease-in-out infinite alternate; }
+.core[data-speaking] .heart, .core[data-speaking] .glow { animation: speak .5s ease-in-out infinite alternate; }
+.core[data-flash="done"] .r-a1 { stroke: var(--ok); opacity: 1; animation: spin 40s linear infinite, flash 1.2s ease-out 3; }
+.core[data-flash="failed"] .r-a1 { stroke: var(--red); opacity: 1; animation: spin 40s linear infinite, flash 1.2s ease-out 3; }
+@keyframes blink { 50% { opacity: .25; } }
+@keyframes listen { from { opacity: .35; } to { opacity: 1; } }
+@keyframes speak { from { opacity: .6; } to { opacity: 1; } }
+@keyframes flash { from { stroke-width: 7; } to { stroke-width: 3; } }
+/* the status pill follows the same states */
+.statuspill[data-state="blocked"] { border-color: #ffb347; color: #ffe2bd; }
+.statuspill[data-state="blocked"] i, .statuspill[data-state="degraded"] i { background: #ffb347; box-shadow: 0 0 8px #ffb347; }
+.statuspill[data-state="planning"] i, .statuspill[data-state="researching"] i, .statuspill[data-state="recovering"] i { background: var(--gold); box-shadow: 0 0 8px var(--gold); }
+.statuspill[data-state="researching"] i { background: var(--arc); box-shadow: 0 0 8px var(--arc); }
+.statuspill[data-state="connecting"] i { background: var(--muted); box-shadow: none; }
+@media (prefers-reduced-motion: reduce) {
+  .core-wrap::before, .core[data-listening] .r-thin, .core[data-speaking] .heart, .core[data-speaking] .glow,
+  .core[data-flash] .r-a1, .core[data-state="recovering"] .r-a1 { animation: none !important; }
+}
+@media (prefers-reduced-motion: reduce) { .core-wrap::before { transition: none; } }
+.core[data-state="degraded"] .heart { opacity: .55; }
+.statuspill[data-state="queued"] i { background: var(--muted); box-shadow: none; }

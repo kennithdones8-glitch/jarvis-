@@ -135,7 +135,7 @@ function decisionKind(a) {
 // ---------------------------------------------------------------- headline, core, stats
 function situation(d) {
   if (!ui.online) return { core: "offline", cls: "stopped", kicker: "Link lost", main: "Connection to JARVIS lost", sub: "Retrying… is `jarvis dashboard` still running in Terminal?" };
-  if (!d) return { core: "thinking", cls: "", kicker: "Status", main: "Connecting…", sub: "" };
+  if (!d) return { core: "connecting", cls: "", kicker: "Status", main: "Connecting…", sub: "" };
   if (d.emergency_stop) return { core: "stopped", cls: "stopped", kicker: "Emergency stop", main: "All actions halted", sub: `${d.emergency_stop.reason} — release the stop when you're ready.` };
   if (d.approvals.length) {
     const a = d.approvals[0];
@@ -143,19 +143,24 @@ function situation(d) {
              main: a.summary.split(" — ")[0], sub: d.approvals.length > 1 ? `${d.approvals.length} decisions are waiting in Decisions.` : "Review it in Decisions." };
   }
   const blocked = d.tasks.find((t) => t.state === "blocked");
-  if (blocked) return { core: "attention", cls: "attention", kicker: "Blocked", main: blocked.goal, sub: blocked.next_action || "This task needs your input." };
-  const run = d.tasks.find((t) => ACTIVE.includes(t.state));
+  if (blocked) return { core: "blocked", cls: "attention", kicker: "Needs your input", main: blocked.goal, sub: blocked.next_action || "This task needs your input." };
+  // a mission that is actually doing something outranks one that is only queued
+  const run = d.tasks.find((t) => ACTIVE.includes(t.state) && t.state !== "queued") || d.tasks.find((t) => t.state === "queued");
+  if (run && run.state === "queued") return { core: "queued", cls: "", kicker: "Queued", main: run.goal, sub: "Starts as soon as the runner picks it up." };
   if (run) {
     const i = run.steps.findIndex((s) => s.state === "started" || s.state === "pending");
     const step = run.steps[i];
+    if (run.state === "recovering") return { core: "recovering", cls: "", kicker: "Recovering", main: run.goal,
+                                             sub: "Checking what finished before the interruption; uncertain steps are never repeated automatically." };
     return { core: "executing", cls: "", kicker: run.state === "verifying" ? "Verifying" : "Executing",
              main: run.goal, sub: step ? `Step ${i + 1} of ${run.steps.length} · ${step.description}` : "Checking the result" };
   }
   const job = d.jobs.find((j) => j.state === "planning" || j.state === "waiting_approval");
-  if (job) return { core: "thinking", cls: "", kicker: "Planning", main: job.request, sub: `Working out the steps · ${job.elapsed}s (about a minute on this Mac)` };
+  if (job) return { core: "planning", cls: "", kicker: "Planning", main: job.request, sub: `Working out the steps · ${job.elapsed}s (about a minute on this Mac)` };
+  if (ui.chatBusy && ui.chatEndpoint === "/api/research") return { core: "researching", cls: "", kicker: "Researching", main: "Searching the web", sub: "Every source is checked before it's cited." };
   if (ui.chatBusy) return { core: "thinking", cls: "", kicker: "Thinking", main: "Composing a reply", sub: "" };
   const online = d.models ? d.models.providers.reduce((n, p) => n + p.available.length, 0) : 0;
-  if (d.models && !online) return { core: "attention", cls: "attention", kicker: "Systems", main: "No model available", sub: "Is Ollama running? Open the Ollama app, then wait a few seconds." };
+  if (d.models && !online) return { core: "degraded", cls: "attention", kicker: "Systems", main: "No model available", sub: "Is Ollama running? Open the Ollama app, then wait a few seconds." };
   return { core: "online", cls: "", kicker: "All systems nominal", main: `${greeting()}.`, sub: `${plural(online, "model")} online · nothing needs you right now.` };
 }
 
@@ -262,6 +267,7 @@ async function streamChat(payload) {
 
 async function sendChat(payload, endpoint = "/api/chat") {
   ui.chatBusy = true;
+  ui.chatEndpoint = endpoint;
   render();
   try {
     const r = endpoint === "/api/chat" ? await streamChat(payload) : await api(endpoint, payload);
@@ -381,7 +387,7 @@ function renderVoice(d) {
   sp.textContent = `Voice replies: ${voice.speak ? "on" : "off"}`;
 }
 
-function stopSpeaking() { if ("speechSynthesis" in window) speechSynthesis.cancel(); }
+function stopSpeaking() { if ("speechSynthesis" in window) speechSynthesis.cancel(); delete $("#core").dataset.speaking; }
 
 async function localVoices() {
   let all = speechSynthesis.getVoices();
@@ -404,6 +410,9 @@ async function say(text) {
     || voices.find((v) => v.lang.startsWith(lang.slice(0, 2))) || voices[0];
   const u = new SpeechSynthesisUtterance(text.replace(/https?:\/\/\S+/g, "a link").slice(0, 1500));
   u.voice = pick; u.lang = pick.lang;
+  const core = $("#core");
+  u.onstart = () => { core.dataset.speaking = "1"; };
+  u.onend = u.onerror = () => { delete core.dataset.speaking; };
   stopSpeaking();
   speechSynthesis.speak(u);
 }
@@ -431,6 +440,7 @@ async function toggleMic() {
   rec.ondataavailable = (e) => { if (e.data.size) voice.chunks.push(e.data); };
   rec.onstop = () => finishRecording(rec.mimeType);
   voice.rec = rec;
+  $("#core").dataset.listening = "1";
   voice.started = Date.now();
   rec.start();
   micLabel("Stop · 0s", true);
@@ -445,6 +455,7 @@ async function finishRecording(type) {
   clearInterval(voice.timer);
   voice.stream.getTracks().forEach((t) => t.stop());
   voice.rec = null;
+  delete $("#core").dataset.listening;
   const blob = new Blob(voice.chunks, { type });
   voice.chunks = [];
   micLabel("Listening…", false);
@@ -995,9 +1006,28 @@ function restoreDraft() {
   try { const d = sessionStorage.getItem(DRAFT_KEY); if (d && !$("#cmd").value) $("#cmd").value = d; } catch (e) { /* none */ }
 }
 
+function flashOnFinish(d) {
+  const now = new Map(d.tasks.map((t) => [t.id, t.state]));
+  const before = ui.taskStates;
+  ui.taskStates = now;
+  if (!before) return;
+  let flash = null;
+  for (const [id, state] of now) {
+    if (before.get(id) === state || !before.has(id)) continue;
+    if (state === "failed") flash = "failed";
+    else if (state === "completed" && flash !== "failed") flash = "done";
+  }
+  if (!flash) return;
+  const core = $("#core");
+  core.dataset.flash = flash;
+  clearTimeout(ui.flashTimer);
+  ui.flashTimer = setTimeout(() => { delete core.dataset.flash; }, 4000);
+}
+
 async function refresh() {
   try { ui.data = await api("/api/state"); ui.online = true; }
   catch (e) { ui.online = false; if (/not signed in/.test(e.message)) { location.reload(); return; } }
+  if (ui.data) flashOnFinish(ui.data);
   render();
   maybeAutoBriefing(ui.data);
   maybeWelcome();
