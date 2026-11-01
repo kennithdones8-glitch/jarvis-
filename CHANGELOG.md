@@ -9,6 +9,10 @@
 - Reports start with **Failures at a glance** (one block per failing task), and the terminal prints it after a
   run, so failures no longer need a separate script to dig out.
 
+## 0.17.14 — Review fix
+
+- `bench compare`: a run whose start time has no zone no longer breaks the ordering (read as local time).
+
 ## 0.17.13 — `bench compare` orders runs by real time
 
 - With no folders given, `bench compare` picked the two latest runs by folder name (local clock time). On the

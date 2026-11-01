@@ -50,7 +50,7 @@ def latest_runs(out_dir: Path, n: int = 2) -> list[Path]:
     hour when the clocks go back (it happened on the owner's first before/after: the "after" folder sorted first)."""
     def started(p: Path) -> datetime:
         try:
-            return datetime.fromisoformat(json.loads(p.read_text())["meta"]["started"])
+            return datetime.fromisoformat(json.loads(p.read_text())["meta"]["started"]).astimezone()  # naive = local
         except (OSError, ValueError, KeyError, TypeError):
             return datetime.fromtimestamp(p.stat().st_mtime).astimezone()
     runs = sorted(out_dir.glob("*/results.json"), key=started)

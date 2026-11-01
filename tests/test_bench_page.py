@@ -84,3 +84,10 @@ def test_failures_at_a_glance_in_the_report(tmp_path):
     assert "looked up: Calendar, Mon 02 Nov–Tue 03 Nov" in head and "## a (run 1)" not in head
     assert "## a (run 1)" in text
     assert failures_at_a_glance([{"id": "a", "status": "pass"}]) == ["**No failures.**", ""]
+
+
+def test_a_start_time_without_a_zone_does_not_break_the_list(tmp_path):
+    from jarvis.bench.history import runs
+    _run(tmp_path, "20261101-090000-local", {"a": "p"}, started="2026-11-01T09:00:00")
+    _run(tmp_path, "20261101-100000-local", {"a": "p"}, started="2026-11-01T10:00:00+00:00")
+    assert len(runs(tmp_path)) == 2

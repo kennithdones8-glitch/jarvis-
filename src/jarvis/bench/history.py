@@ -32,7 +32,7 @@ def _load(path: Path) -> dict[str, Any] | None:
 
 def _started(meta: dict[str, Any]) -> str:
     try:
-        return datetime.fromisoformat(meta["started"]).isoformat()
+        return datetime.fromisoformat(meta["started"]).astimezone().isoformat()  # naive = local time
     except (KeyError, TypeError, ValueError):
         return ""
 

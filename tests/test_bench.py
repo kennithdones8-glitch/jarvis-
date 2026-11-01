@@ -335,3 +335,10 @@ def test_latest_runs_follow_real_time_across_the_clocks_going_back(tmp_path):
     before = _run(tmp_path, "20261101-013403-local", {"a": "p"}, started="2026-11-01T01:34:03-04:00")
     after = _run(tmp_path, "20261101-013114-local", {"a": "p"}, started="2026-11-01T01:31:14-05:00")
     assert latest_runs(tmp_path) == [before, after]
+
+
+def test_latest_runs_cope_with_a_start_time_without_a_zone(tmp_path):
+    from jarvis.bench.compare import latest_runs
+    a = _run(tmp_path, "20261101-090000-local", {"a": "p"}, started="2026-11-01T09:00:00")
+    b = _run(tmp_path, "20261101-100000-local", {"a": "p"}, started="2026-11-01T10:00:00+00:00")
+    assert set(latest_runs(tmp_path)) == {a, b}
