@@ -276,7 +276,8 @@ def test_cli(tmp_path, capsys):
     assert cli_main(["--home", str(home), "bench", "run", "nope"]) == 1
 
 
-def _run(tmp, name, outcomes, *, claude=0, hashes=None, violations=(), models="local", repeat=3):
+def _run(tmp, name, outcomes, *, claude=0, hashes=None, violations=(), models="local", repeat=3,
+         started="2026-11-01T00:00:00+00:00"):
     """A fake results.json: ``outcomes`` maps task id to a string of p/f per run (s = skipped)."""
     d = tmp / name
     d.mkdir(parents=True)
@@ -286,7 +287,7 @@ def _run(tmp, name, outcomes, *, claude=0, hashes=None, violations=(), models="l
             results.append({"id": tid, "run": i + 1, "status": {"p": "pass", "f": "fail", "s": "skipped"}[o],
                             "usage": {"claude_calls": claude if i == 0 and tid == next(iter(outcomes)) else 0},
                             "violations": list(violations) if tid == next(iter(outcomes)) and i == 0 else []})
-    meta = {"run_id": name, "models": models, "repeat": repeat, "jarvis_version": "x", "git_commit": "abc",
+    meta = {"run_id": name, "started": started, "models": models, "repeat": repeat, "jarvis_version": "x", "git_commit": "abc",
             "tasks": {t: (hashes or {}).get(t, "h-" + t) for t in outcomes}}
     (d / "results.json").write_text(json.dumps({"meta": meta, "results": results}))
     return d
@@ -319,11 +320,18 @@ def test_compare_applies_the_merge_rule(tmp_path):
 def test_compare_from_the_command_line(tmp_path, capsys):
     from jarvis.cli import main as cli_main
     out = tmp_path / "home" / "bench-results"
-    _run(out, "20261101-100000-local", {"a": "fff", "b": "fff"})
-    _run(out, "20261101-120000-local", {"a": "ppp", "b": "ppf"})
+    _run(out, "20261101-100000-local", {"a": "fff", "b": "fff"}, started="2026-11-01T10:00:00+00:00")
+    _run(out, "20261101-120000-local", {"a": "ppp", "b": "ppf"}, started="2026-11-01T12:00:00+00:00")
     assert cli_main(["--home", str(tmp_path / "home"), "bench", "compare"]) == 0
     text = capsys.readouterr().out
     assert "Verdict: MERGE" in text and "0/3 → 3/3" in text and "fixed" in text
     assert cli_main(["--home", str(tmp_path / "home"), "bench", "compare", str(out / "20261101-120000-local"),
                      str(out / "20261101-100000-local")]) == 3
     assert "NEW FAILURE" in capsys.readouterr().out
+
+
+def test_latest_runs_follow_real_time_across_the_clocks_going_back(tmp_path):
+    from jarvis.bench.compare import latest_runs
+    before = _run(tmp_path, "20261101-013403-local", {"a": "p"}, started="2026-11-01T01:34:03-04:00")
+    after = _run(tmp_path, "20261101-013114-local", {"a": "p"}, started="2026-11-01T01:31:14-05:00")
+    assert latest_runs(tmp_path) == [before, after]

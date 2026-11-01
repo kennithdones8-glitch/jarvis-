@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.17.13 — `bench compare` orders runs by real time
+
+- With no folders given, `bench compare` picked the two latest runs by folder name (local clock time). On the
+  owner's first before/after the clocks went back mid-run, so the "after" folder sorted first. Runs are now
+  ordered by their recorded start time, offset included.
+
 ## 0.17.12 — `jarvis bench compare`
 
 - `jarvis bench compare [BEFORE AFTER]` (no folders: the two latest runs) puts two benchmark runs side by side

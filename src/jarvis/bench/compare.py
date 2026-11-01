@@ -13,6 +13,7 @@ definition changed between the runs (different hash) are left out and listed, ne
 from __future__ import annotations
 
 import json
+from datetime import datetime
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -45,7 +46,14 @@ def load(run_dir: Path) -> dict[str, Any]:
 
 
 def latest_runs(out_dir: Path, n: int = 2) -> list[Path]:
-    runs = sorted(p for p in out_dir.glob("*/results.json"))
+    """The ``n`` most recent runs by their real start time. Folder names are local clock times, which repeat an
+    hour when the clocks go back (it happened on the owner's first before/after: the "after" folder sorted first)."""
+    def started(p: Path) -> datetime:
+        try:
+            return datetime.fromisoformat(json.loads(p.read_text())["meta"]["started"])
+        except (OSError, ValueError, KeyError, TypeError):
+            return datetime.fromtimestamp(p.stat().st_mtime).astimezone()
+    runs = sorted(out_dir.glob("*/results.json"), key=started)
     return [p.parent for p in runs[-n:]]
 
 
