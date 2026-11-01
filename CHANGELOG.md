@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.17.12 — `jarvis bench compare`
+
+- `jarvis bench compare [BEFORE AFTER]` (no folders: the two latest runs) puts two benchmark runs side by side
+  and applies the owner's merge rule: at least +2 tasks passing, no new failures, Claude calls up at most 25 %,
+  and no unapproved change in the "after" run. A task passes when more than half its runs pass. Tasks whose
+  definition changed, or that were skipped in either run, are listed as left out, never compared silently.
+  Exit code 0 = meets the rule, 3 = doesn't.
+
 ## 0.17.11 — Planner understands joined action names
 
 - A plan step written as `"tool": "apps", "action": "mail.draft"` (or `"tool": "mail.draft"`) is read as
