@@ -921,10 +921,19 @@ async function enableNotifications() {
 }
 
 // Events the server has no plain-English wording for yet (it falls back to raw data); worded here, nothing hidden.
-const EVENT_WORDS = { "proposals.refreshed": "Checked its own record for improvement ideas",
-                      "proposals.decided": "Recorded your decision on an improvement idea" };
+const EVENT_WORDS = { "proposals.refreshed": () => "Checked its own record for improvement ideas",
+                      "proposals.decided": (p) => `Recorded your decision on an improvement idea${p.state ? ` (${p.state})` : ""}`,
+                      "memory.important": (p) => (p.important ? "Starred a memory" : "Unstarred a memory") };
+function wordEvent(e) {
+  if (!/^\s*[{[]/.test(e.detail || "")) return e;  // the server already worded it
+  let payload = {};
+  try { payload = JSON.parse(e.detail) || {}; } catch (err) { payload = {}; }
+  const words = EVENT_WORDS[e.event] ? EVENT_WORDS[e.event](payload)
+    : e.event.replace(/[._]/g, " ").replace(/^\w/, (c) => c.toUpperCase());  // e.g. "Device step up"
+  return { ...e, detail: words };
+}
 function renderActivity(entries) {
-  entries = entries.map((e) => (EVENT_WORDS[e.event] && /^\s*[{[]/.test(e.detail || "") ? { ...e, detail: EVENT_WORDS[e.event] } : e));
+  entries = entries.map(wordEvent);
   $("#ticker").replaceChildren(...entries.slice(0, 6).map((e) => h("li", {}, h("time", {}, clock(e.ts)), e.detail)));
   $("#recent").replaceChildren(...(entries.length ? entries.slice(0, 6).map((e) => h("li", {}, h("time", {}, clock(e.ts)), h("span", {}, e.detail)))
     : [h("li", { class: "empty" }, "Nothing yet.")]));

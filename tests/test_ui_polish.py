@@ -46,5 +46,5 @@ def test_activity_never_shows_raw_data_for_idea_events(dash):
     raw = [e for e in state["audit"] if e["event"] == "proposals.refreshed"]
     assert raw and raw[0]["detail"].lstrip().startswith("{")  # the server's fallback the page rewords
     js = _js(d)
-    assert '"proposals.refreshed": "Checked its own record for improvement ideas"' in js
-    assert "entries = entries.map((e) => (EVENT_WORDS[e.event]" in js
+    assert '"proposals.refreshed": () => "Checked its own record for improvement ideas"' in js
+    assert "entries = entries.map(wordEvent);" in js and '"memory.important": (p) =>' in js
