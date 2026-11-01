@@ -726,7 +726,7 @@ def _bench(kernel: Kernel, args) -> int:
 
     from .bench import TaskError, load_tasks
     from .bench.baseline import score_file, template
-    from .bench.runner import BenchError, report, run_suite
+    from .bench.runner import BenchError, report, run_suite, summary_part
 
     out = kernel.home / "bench-results"
     try:
@@ -771,7 +771,7 @@ def _bench(kernel: Kernel, args) -> int:
         run_dir = run_suite(tasks, real_config=kernel.config_path, out_dir=out, models=args.models,
                             repeat=max(1, args.repeat), run_code=args.run_code, progress=print)
         print(f"\nReport: {run_dir / 'report.md'}")
-        print("\n".join((run_dir / "report.md").read_text().splitlines()[:16]))
+        print(summary_part((run_dir / "report.md").read_text()))
         return 0
     except (TaskError, BenchError) as exc:
         print(f"error: {exc}", file=sys.stderr)

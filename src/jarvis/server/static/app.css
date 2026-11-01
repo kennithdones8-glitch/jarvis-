@@ -399,3 +399,4 @@ pre.out { background: rgba(0, 0, 0, .35); border: 1px solid var(--gold-line); pa
 .tl-phase.approval, .tl-phase.cloud { color: var(--arc); }
 .tl-events li.problem .tl-phase { color: var(--red); }
 .tl-events li small { color: var(--muted); }
+a.btn { text-decoration: none; display: inline-block; }

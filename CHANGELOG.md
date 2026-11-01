@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased — Benchmark page and failures at a glance (branch `bench-page-v1`)
+
+- **Benchmarks page** (`/bench`, linked from the dashboard header; works on the paired iPhone): every run with
+  its score per category, one run's tasks with each failure's checks, lookups, approvals and answer, and a
+  before/after under the merge rule with any two runs. Read-only; only run folders inside `bench-results` can be
+  opened; same sign-in as the rest of the dashboard.
+- Reports start with **Failures at a glance** (one block per failing task), and the terminal prints it after a
+  run, so failures no longer need a separate script to dig out.
+
 ## 0.17.13 — `bench compare` orders runs by real time
 
 - With no folders given, `bench compare` picked the two latest runs by folder name (local clock time). On the

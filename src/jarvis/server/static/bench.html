@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="dark">
+<meta name="theme-color" content="#070504">
+<title>JARVIS · Benchmarks</title>
+<link rel="stylesheet" href="/static/app.css">
+<link rel="stylesheet" href="/static/bench.css">
+<script src="/static/bench.js" defer></script>
+</head>
+<body>
+<div class="backdrop" aria-hidden="true"></div>
+<header class="top">
+  <div class="wordmark">J.A.R.V.I.S.<span>Benchmarks</span></div>
+  <div class="top-right"><a class="btn btn-ghost" href="/">Back to JARVIS</a></div>
+</header>
+
+<main class="bench">
+  <section class="panel" aria-labelledby="cmp-h">
+    <header class="ph"><h2 id="cmp-h">Before / after</h2></header>
+    <div class="b-pick">
+      <label>Before <select id="before"></select></label>
+      <label>After <select id="after"></select></label>
+    </div>
+    <div id="compare" class="b-body" aria-live="polite"><p class="b-muted">Loading…</p></div>
+  </section>
+
+  <section class="panel" aria-labelledby="runs-h">
+    <header class="ph"><h2 id="runs-h">Runs</h2><span id="runcount" class="ph-count"></span></header>
+    <div id="runs" class="b-body"></div>
+  </section>
+
+  <section class="panel" aria-labelledby="run-h" id="runpanel" hidden>
+    <header class="ph"><h2 id="run-h">Run</h2></header>
+    <div id="run" class="b-body"></div>
+  </section>
+</main>
+</body>
+</html>

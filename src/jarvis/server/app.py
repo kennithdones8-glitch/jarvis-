@@ -780,7 +780,8 @@ class Dashboard:
         return body
 
     def _get(self, h: BaseHTTPRequestHandler, url, *, device: dict | None) -> None:
-        if url.path in ("/static/app.js", "/static/app.css", "/static/phone.js", "/static/qrcode.js"):
+        if url.path in ("/static/app.js", "/static/app.css", "/static/phone.js", "/static/qrcode.js",
+                        "/static/bench.js", "/static/bench.css"):
             ctype = "text/javascript" if url.path.endswith(".js") else "text/css"
             return self._send(h, 200, (STATIC / url.path.rsplit("/", 1)[1]).read_bytes(), f"{ctype}; charset=utf-8")
         if m := re.fullmatch(r"/static/fonts/(rajdhani-[567]00\.woff2)", url.path):
@@ -808,8 +809,28 @@ class Dashboard:
             return self._json(h, 200, self.kernel.audit.entries(task_id=m.group(1), limit=300))
         if url.path == "/api/briefing":
             return self._json(h, 200, self.briefing())
+        if url.path == "/bench":
+            return self._send(h, 200, (STATIC / "bench.html").read_bytes(), "text/html; charset=utf-8")
+        if url.path.startswith("/api/bench"):
+            return self._bench_api(h, url)
         if url.path == "/api/push/key" and self.remote is not None:
             return self._json(h, 200, {"key": self.remote.push.public_key})
+        raise HttpError(404, "not found")
+
+    def _bench_api(self, h: BaseHTTPRequestHandler, url) -> None:
+        """Benchmark history (read-only): ``/api/bench``, ``/api/bench/<run id>``, ``/api/bench/compare``."""
+        from ..bench import history
+        out = self.kernel.home / "bench-results"
+        q = parse_qs(url.query)
+        try:
+            if url.path == "/api/bench":
+                return self._json(h, 200, {"runs": history.runs(out)})
+            if url.path == "/api/bench/compare":
+                return self._json(h, 200, history.before_after(out, q.get("before", [None])[0], q.get("after", [None])[0]))
+            if m := re.fullmatch(r"/api/bench/([\w-]+)", url.path):
+                return self._json(h, 200, history.detail(out, m.group(1)))
+        except history.HistoryError as exc:
+            raise HttpError(404, str(exc)) from None
         raise HttpError(404, "not found")
 
     def _dispatch_remote(self, h: BaseHTTPRequestHandler, method: str, url) -> None:
