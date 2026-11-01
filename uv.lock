@@ -170,7 +170,7 @@ wheels = [
 
 [[package]]
 name = "jarvis"
-version = "0.17.13"
+version = "0.17.14"
 source = { editable = "." }
 dependencies = [
     { name = "cryptography" },

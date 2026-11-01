@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.17.14 — Review fix
+
+- `bench compare`: a run whose start time has no zone no longer breaks the ordering (read as local time).
+
 ## 0.17.13 — `bench compare` orders runs by real time
 
 - With no folders given, `bench compare` picked the two latest runs by folder name (local clock time). On the
