@@ -920,6 +920,13 @@ document.addEventListener("DOMContentLoaded", () => {
   setInterval(refresh, 1500);
 });
 
+// Pause every animation while the page is in the background (saves battery; CSS: .page-hidden).
+(() => {
+  const sync = () => document.documentElement.classList.toggle("page-hidden", document.hidden);
+  document.addEventListener("visibilitychange", sync);
+  sync();
+})();
+
 // Header "More" menu: close after choosing, or when tapping elsewhere.
 (() => {
   const more = document.getElementById("moremenu");

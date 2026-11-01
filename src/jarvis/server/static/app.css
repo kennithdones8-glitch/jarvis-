@@ -22,7 +22,7 @@
   --ok: #7ee2a0;
   --text: #f6ecdc;
   --muted: #a8977f;
-  --faint: #6b5c4b;
+  --faint: #8f7f6a;  /* 5.2:1 on the page, 4.8:1 on panels (was 3.2:1, below WCAG AA) */
   --display: "Rajdhani", "Avenir Next Condensed", "DIN Condensed", system-ui, sans-serif;
   --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
   --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
@@ -52,7 +52,7 @@ button { font: inherit; }
 .top { display: flex; justify-content: space-between; align-items: center; padding: 18px 28px 10px; gap: 16px; }
 .wordmark { font: 700 22px/1 var(--display); letter-spacing: .42em; color: var(--gold-hi);
             text-shadow: 0 0 18px rgba(242, 184, 75, .35); }
-.wordmark span { display: block; font-weight: 500; font-size: 11px; letter-spacing: .38em; color: var(--muted);
+.wordmark span { display: block; font-weight: 500; font-size: 12px; letter-spacing: .38em; color: var(--muted);
                  text-transform: uppercase; margin-top: 6px; text-shadow: none; }
 .top-right { display: flex; align-items: center; gap: 18px; }
 .clock { font: 600 18px var(--display); letter-spacing: .14em; color: var(--muted); font-variant-numeric: tabular-nums; }
@@ -148,7 +148,7 @@ h2 { margin: 0; font: 700 14px var(--display); letter-spacing: .32em; text-trans
 .stat { min-width: 112px; padding: 8px 14px; text-align: center; border-top: 1px solid var(--gold-line);
         border-bottom: 1px solid var(--gold-line); background: linear-gradient(180deg, var(--gold-faint), transparent); }
 .stat b { display: block; font: 700 26px/1.1 var(--display); color: var(--gold-hi); font-variant-numeric: tabular-nums; }
-.stat span { font: 600 11px var(--display); letter-spacing: .24em; text-transform: uppercase; color: var(--muted); }
+.stat span { font: 600 12px var(--display); letter-spacing: .24em; text-transform: uppercase; color: var(--muted); }
 .stat.alert b { color: var(--arc); text-shadow: 0 0 12px rgba(159, 232, 255, .6); }
 @media (max-width: 760px) { .stat { min-width: 0; flex: 1 1 40%; } }
 
@@ -233,7 +233,7 @@ details.more summary:hover { color: var(--gold); }
 .steps li { display: grid; grid-template-columns: 16px 1fr; gap: 8px; font-size: 13.5px; }
 .steps .ic { text-align: center; color: var(--faint); }
 .steps .done .ic { color: var(--gold); } .steps .started .ic { color: var(--arc); } .steps .failed .ic { color: var(--red); }
-.steps small { display: block; color: var(--faint); font: 11.5px var(--mono); overflow-wrap: anywhere; }
+.steps small { display: block; color: var(--faint); font: 12.5px var(--mono); overflow-wrap: anywhere; }
 pre.out { background: rgba(0, 0, 0, .35); border: 1px solid var(--gold-line); padding: 10px 12px; margin: 8px 0 0;
           white-space: pre-wrap; overflow-wrap: anywhere; font: 13px/1.5 var(--mono); color: var(--text); max-height: 240px; overflow: auto; }
 
@@ -301,7 +301,7 @@ pre.out { background: rgba(0, 0, 0, .35); border: 1px solid var(--gold-line); pa
 .mem-meta b { font-weight: 600; color: var(--muted); }
 .mem.unconfirmed .mem-meta b { color: var(--arc); }
 .mem .row { margin-top: 6px; gap: 4px; }
-.mem .btn-sm { padding: 2px 8px; font-size: 11.5px; }
+.mem .btn-sm { padding: 2px 8px; font-size: 12.5px; }
 .mem-star { color: var(--gold-hi); }
 .rail { min-width: 0; }
 .stack-rail { grid-template-columns: minmax(0, 1fr); }
@@ -321,7 +321,7 @@ pre.out { background: rgba(0, 0, 0, .35); border: 1px solid var(--gold-line); pa
 .health { display: grid; gap: 6px; padding: 0 0 12px 10px; margin-bottom: 12px; border-bottom: 1px solid var(--gold-faint); }
 .health-head { font: 700 13px var(--display); letter-spacing: .18em; text-transform: uppercase; display: flex; justify-content: space-between; gap: 8px; }
 .health-head.ok { color: var(--ok); } .health-head.bad { color: var(--red); }
-.health-head small { color: var(--faint); font: 500 11px var(--sans); letter-spacing: 0; text-transform: none; }
+.health-head small { color: var(--faint); font: 500 12px var(--sans); letter-spacing: 0; text-transform: none; }
 .health .light small { max-width: 60%; text-align: right; }
 
 /* ---------- iPhone companion: sign-in / pairing ---------- */
@@ -378,7 +378,7 @@ pre.out { background: rgba(0, 0, 0, .35); border: 1px solid var(--gold-line); pa
 .help-examples { display: flex; flex-wrap: wrap; gap: 8px; }
 .chip { background: rgba(0, 0, 0, .3); color: var(--text); border: 1px solid var(--gold-line); padding: 8px 10px;
         font: inherit; font-size: 14px; text-align: left; cursor: pointer; display: grid; gap: 2px; }
-.chip small { font: 600 11px var(--display); letter-spacing: .24em; text-transform: uppercase; color: var(--gold); }
+.chip small { font: 600 12px var(--display); letter-spacing: .24em; text-transform: uppercase; color: var(--gold); }
 .chip:hover, .chip:focus-visible { border-color: var(--gold); outline: none; }
 .welcome { margin: 10px 0 0; padding-left: 18px; display: grid; gap: 6px; }
 
@@ -395,7 +395,7 @@ pre.out { background: rgba(0, 0, 0, .35); border: 1px solid var(--gold-line); pa
 .timeline .tl-integrity.bad { color: var(--red); }
 .tl-events li span { overflow-wrap: anywhere; }
 .tl-events li.problem { color: #ffd0d3; }
-.tl-phase { font: 600 11px var(--display); letter-spacing: .18em; text-transform: uppercase; color: var(--gold); margin-right: 4px; }
+.tl-phase { font: 600 12px var(--display); letter-spacing: .18em; text-transform: uppercase; color: var(--gold); margin-right: 4px; }
 .tl-phase.approval, .tl-phase.cloud { color: var(--arc); }
 .tl-events li.problem .tl-phase { color: var(--red); }
 .tl-events li small { color: var(--muted); }
@@ -416,7 +416,21 @@ a.btn { text-decoration: none; display: inline-block; }
 .more { position: relative; }
 .more > summary { list-style: none; cursor: pointer; }
 .more > summary::-webkit-details-marker { display: none; }
-.more > summary::after { content: " ▾"; font-size: 11px; }
+.more > summary::after { content: " ▾"; font-size: 12px; }
 .more-menu { position: absolute; right: 0; top: calc(100% + 6px); z-index: 30; display: grid; min-width: 180px;
              background: var(--bg2); border: 1px solid var(--gold-line); padding: 6px; box-shadow: 0 10px 30px rgba(0,0,0,.6); }
 .more-menu .btn { text-align: left; width: 100%; }
+
+/* ================= Stage 0: touch targets, readable inputs, and no animation in the background ================= */
+/* Touch screens (and narrow windows): every control at least 44px tall, as Apple's guidelines ask. */
+@media (pointer: coarse), (max-width: 760px) {
+  .btn, .tab, .more > summary, .chip, .speak-toggle { min-height: 44px; }
+  .btn-sm, .mem .btn-sm { min-height: 44px; min-width: 44px; padding-top: 8px; padding-bottom: 8px; }
+  .more > summary { display: inline-flex; align-items: center; }
+  .more-menu .btn { display: flex; align-items: center; }
+  details > summary { min-height: 44px; display: flex; align-items: center; }
+  /* 16px stops iPhone zooming the page when you tap a text box */
+  input, textarea, select { font-size: 16px; min-height: 44px; }
+}
+/* While the page is in the background, nothing animates (set by app.js on visibilitychange). */
+.page-hidden *, .page-hidden *::before, .page-hidden *::after { animation-play-state: paused !important; }
