@@ -399,6 +399,10 @@ async function say(text) {
     || voices.find((v) => v.lang.startsWith(lang.slice(0, 2))) || voices[0];
   const u = new SpeechSynthesisUtterance(text.replace(/https?:\/\/\S+/g, "a link").slice(0, 1500));
   u.voice = pick; u.lang = pick.lang;
+  // The reactor pulses while JARVIS is speaking.
+  const core = $("#core");
+  u.onstart = () => { core.dataset.speaking = "1"; };
+  u.onend = u.onerror = () => { delete core.dataset.speaking; };
   stopSpeaking();
   speechSynthesis.speak(u);
 }
@@ -536,11 +540,12 @@ function briefingCard(m) {
       ui.convo = ui.convo.filter((x) => x !== m); render(); } }, "Dismiss")));
 }
 
-async function showBriefing() {
+async function showBriefing(first = false) {
   try {
     const b = await api("/api/briefing");
     ui.convo = ui.convo.filter((x) => !x.briefing);
-    ui.convo.push({ role: "assistant", briefing: b });
+    if (first) ui.convo.unshift({ role: "assistant", briefing: b });  // phone: the briefing is the first thing you see
+    else ui.convo.push({ role: "assistant", briefing: b });
     render();
   } catch (e) { note(e.message); }
 }
@@ -672,6 +677,7 @@ function missionCard(t) {
 function renderMissions(tasks) {
   const live = tasks.filter((t) => ![...["completed", "failed", "cancelled"]].includes(t.state)).length;
   $("#miscount").textContent = live ? `${live} live` : "";
+  badge("missions", live);
   $("#missions").replaceChildren(...(tasks.length ? tasks.slice(0, 12).map(missionCard)
     : [h("div", { class: "empty" }, "No missions yet. Switch to Do and describe a task.")]));
 }
@@ -682,6 +688,7 @@ function renderDecisions(list) {
   panel.classList.toggle("has-items", list.length > 0);
   $("#ap-h").textContent = list.length ? "Decision required" : "Decisions";
   $("#apcount").textContent = list.length > 1 ? String(list.length) : "";
+  badge("decisions", list.length);
   if (!list.length) { $("#approvals").replaceChildren(h("div", { class: "empty" }, "Nothing waiting for you.")); return; }
   $("#approvals").replaceChildren(...list.map((a) => {
     const target = a.resource && a.tool === "fs" ? h("div", { class: "d-target", title: a.resource }, "→ ", h("b", {}, base(a.resource)), ` in ${folder(a.resource)}`)
@@ -729,7 +736,9 @@ function renderSystems(d) {
         (await ask(`Remove ${x.name}? It will be signed out immediately and can't reconnect without pairing again.`, { ok: "Remove", danger: true })) &&
         act(`/api/devices/${x.id}/revoke`, {}) }, "Remove"))),
     !rem.this_device && rem.enabled ? h("button", { class: "btn btn-sm mt", type: "button", onclick: pairPhone }, "Pair a phone") : null,
-    !rem.enabled && !rem.this_device ? h("div", { class: "d-why" }, "Run `uv run jarvis remote enable` on the Mac to use JARVIS from your iPhone.") : null,
+    !rem.enabled && !rem.this_device ? h("div", { class: "d-why" }, "Run `uv run jarvis remote enable` on the Mac to use JARVIS from your iPhone. ",
+      h("a", { href: "/phone-setup" }, "Step-by-step guide")) : null,
+    rem.enabled && !rem.this_device ? h("a", { class: "d-why", href: "/phone-setup" }, "Phone setup guide") : null,
     rem.this_device ? h("div", { class: "row mt" },
       "PushManager" in window ? h("button", { class: "btn btn-sm", type: "button", onclick: enableNotifications }, "Enable notifications") : null,
       h("button", { class: "btn btn-ghost btn-sm", type: "button", onclick: async () => { await api("/api/logout", {}); location.reload(); } }, "Sign out")) : null);
@@ -873,11 +882,33 @@ async function act(path, body) {
   await refresh();
 }
 
+// ---------------------------------------------------------------- phone: one section at a time, Chat first
+const isPhone = () => window.matchMedia("(max-width: 760px)").matches;
+function setSection(tab) {
+  document.body.dataset.tab = tab;
+  document.querySelectorAll("#tabbar button").forEach((b) => b.setAttribute("aria-selected", String(b.dataset.tab === tab)));
+  try { sessionStorage.setItem("jarvis-tab", tab); } catch (e) { /* this visit only */ }
+  window.scrollTo(0, 0);
+}
+function badge(name, n) {
+  const el = $(`#badge-${name}`);
+  if (!el) return;
+  el.hidden = !n;
+  el.textContent = n > 9 ? "9+" : String(n || "");
+}
+function phoneBriefingFirst() {
+  // On the phone, today's briefing is the first thing you see, above the chat box (once per visit).
+  if (ui.phoneBriefed || !isPhone()) return;
+  ui.phoneBriefed = true;
+  if (!ui.convo.some((x) => x.briefing)) showBriefing(true);
+}
+
 async function refresh() {
   try { ui.data = await api("/api/state"); ui.online = true; }
   catch (e) { ui.online = false; if (/not signed in/.test(e.message)) { location.reload(); return; } }
   render();
   maybeAutoBriefing(ui.data);
+  if (ui.online) phoneBriefingFirst();
   maybeWelcome();
   renderVoice(ui.data);
 }
@@ -890,7 +921,7 @@ document.addEventListener("DOMContentLoaded", () => {
   $("#cmd").addEventListener("keydown", (e) => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) submitCommand(e); });
   // One tap, no questions: stopping is always safe (releasing it is what asks for confirmation).
   $("#estop").addEventListener("click", () => act("/api/stop", { reason: "stopped from the dashboard" }));
-  $("#briefbtn").addEventListener("click", showBriefing);
+  $("#briefbtn").addEventListener("click", () => showBriefing());
   $("#helpbtn").addEventListener("click", showHelp);
   $("#mic").addEventListener("click", toggleMic);
   $("#speak").addEventListener("click", toggleSpeak);
@@ -911,10 +942,20 @@ document.addEventListener("DOMContentLoaded", () => {
     $("#memtext").value = "";
   });
   $("#logbtn").addEventListener("click", () => $("#logdlg").showModal());
+  $("#logbtn2").addEventListener("click", () => $("#logdlg").showModal());
   $("#logclose").addEventListener("click", () => $("#logdlg").close());
   const tick = () => { $("#clock").textContent = new Date().toLocaleTimeString([], { hour12: false }); };
   tick(); setInterval(tick, 1000);
   setMode("ask");
+  document.querySelectorAll("#tabbar button").forEach((b) => b.addEventListener("click", () => setSection(b.dataset.tab)));
+  // On the phone, tapping "Decision required" at the top opens the Decisions section.
+  $(".headline").addEventListener("click", () => {
+    if (isPhone() && $(".headline").classList.contains("attention") && $("#decision-panel").classList.contains("has-items")) setSection("decisions");
+  });
+  let tab = "chat";
+  try { tab = sessionStorage.getItem("jarvis-tab") || "chat"; } catch (e) { /* default */ }
+  if (location.hash === "#decisions") tab = "decisions";
+  setSection(tab);
   if ("serviceWorker" in navigator && location.protocol === "https:") navigator.serviceWorker.register("/sw.js").catch(() => {});
   refresh();
   setInterval(refresh, 1500);

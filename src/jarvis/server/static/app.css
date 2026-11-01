@@ -420,3 +420,88 @@ a.btn { text-decoration: none; display: inline-block; }
 .more-menu { position: absolute; right: 0; top: calc(100% + 6px); z-index: 30; display: grid; min-width: 180px;
              background: var(--bg2); border: 1px solid var(--gold-line); padding: 6px; box-shadow: 0 10px 30px rgba(0,0,0,.6); }
 .more-menu .btn { text-align: left; width: 100%; }
+
+/* ================= phone: app-style sections with a tab bar (Chat first) ================= */
+.tabbar { display: none; }
+@media (max-width: 760px) {
+  body { padding-bottom: calc(66px + env(safe-area-inset-bottom)); font-size: 16px; }
+  .tabbar { display: grid; grid-template-columns: repeat(5, 1fr); position: fixed; left: 0; right: 0; bottom: 0; z-index: 40;
+            background: rgba(7, 5, 4, .94); border-top: 1px solid var(--gold-line); backdrop-filter: blur(12px);
+            padding: 0 max(4px, env(safe-area-inset-left)) env(safe-area-inset-bottom) max(4px, env(safe-area-inset-right)); }
+  .tabbar button { position: relative; background: none; border: 0; color: var(--muted); height: 62px; cursor: pointer;
+                   display: grid; place-items: center; align-content: center; gap: 3px;
+                   font: 600 11px var(--display); letter-spacing: .1em; text-transform: uppercase; }
+  .tabbar .ti { font-size: 18px; line-height: 1; letter-spacing: 0; }
+  .tabbar button[aria-selected="true"] { color: var(--gold-hi); box-shadow: inset 0 2px 0 var(--gold);
+                                          text-shadow: 0 0 12px rgba(242, 184, 75, .45); }
+  .tabbar .badge { position: absolute; top: 7px; left: calc(50% + 8px); min-width: 18px; height: 18px; padding: 0 5px;
+                   border-radius: 9px; background: var(--gold); color: #1a1208; font: 700 11px/18px var(--sans); letter-spacing: 0; }
+  .tabbar .badge.alert { background: var(--arc); box-shadow: 0 0 10px var(--arc); }
+
+  /* one section at a time */
+  body:not([data-tab="chat"]) .center { display: none; }
+  body:not([data-tab="missions"]) .missions-panel { display: none; }
+  body:not([data-tab="decisions"]) .decision-panel { display: none; }
+  body:not([data-tab="memory"]) .memory-panel { display: none; }
+  body:not([data-tab="status"]) .systems-panel { display: none; }
+  .hud { padding: 4px 12px 12px; gap: 12px; }
+  .panel { padding: 14px 14px; }
+
+  /* Chat: a compact status row (small reactor + headline), then the conversation, then the message box */
+  .center { display: grid; grid-template-columns: 76px 1fr; column-gap: 14px; align-items: center; }
+  .center > * { grid-column: 1 / -1; }
+  .center > .core-wrap { grid-column: 1; width: 76px; margin: 0; }
+  .center > .headline { grid-column: 2; text-align: left; }
+  .core-wrap::after { box-shadow: 0 0 26px 4px rgba(159, 232, 255, .16); }
+  .kicker { font-size: 11px; letter-spacing: .3em; }
+  .hl { font-size: 20px; margin-top: 2px; }
+  .hl-sub { font-size: 13px; margin-top: 2px; }
+  .stats { display: none; }
+  .feed { max-height: none; overflow: visible; margin: 12px 0; }
+  .msg { max-width: 96%; }
+  .cmd { position: sticky; bottom: calc(70px + env(safe-area-inset-bottom)); z-index: 20; margin-top: 4px;
+         background: linear-gradient(180deg, rgba(30, 19, 8, .97), rgba(12, 8, 4, .98)); }
+  textarea { font-size: 16px; }  /* below 16px, iOS zooms the page when you tap the box */
+  /* the message box: mode tabs above, then one row of text box + Send, where your thumb is */
+  .cmd { grid-template-columns: 1fr auto; gap: 8px; padding: 10px 10px 10px 14px; }
+  .cmd .tabs { grid-column: 1 / -1; justify-self: start; }
+  .cmd .tab { padding: 4px 10px; font-size: 12px; letter-spacing: .14em; }
+  .cmd textarea { grid-column: 1; min-height: 44px; }
+  .cmd .cmd-actions { grid-column: 2; }
+  .cmd .cmd-actions .btn { flex: none; padding: 10px 14px; }
+  .cmd::before, .cmd::after { display: none; }
+  .hint { font-size: 12px; }
+  #decision-panel.has-items { order: 0; }
+  .ticker { display: none; }  /* the activity strip: on the phone, the full log is in More → Activity log */
+}
+
+/* ================= cinematic touches (switched off when the device asks for reduced motion) ================= */
+/* the reactor sweeps while JARVIS thinks or works, and pulses while it speaks */
+.core-wrap::before { content: ""; position: absolute; inset: 6%; border-radius: 50%; pointer-events: none; opacity: 0;
+  background: conic-gradient(from 0deg, transparent 0 80%, rgba(159, 232, 255, .0) 80%, rgba(159, 232, 255, .28) 97%, transparent 100%);
+  transition: opacity .4s; }
+.core-wrap:has(.core[data-state="thinking"])::before, .core-wrap:has(.core[data-state="executing"])::before {
+  opacity: 1; animation: spin 2.4s linear infinite; }
+.core[data-speaking] .heart { animation: speak .5s ease-in-out infinite alternate; }
+.core[data-speaking] .glow { animation: speak .5s ease-in-out infinite alternate; }
+@keyframes speak { from { opacity: .65; } to { opacity: 1; filter: drop-shadow(0 0 14px var(--arc)) drop-shadow(0 0 30px var(--arc)); } }
+/* systems coming online: rings draw in and panels slide up once, when the page opens */
+.core circle.r-a1, .core circle.r-a3 { animation-name: spin, drawin; animation-duration: 40s, 1.4s; animation-timing-function: linear, ease-out;
+  animation-iteration-count: infinite, 1; }
+.core circle.r-a3 { animation-duration: 25s, 1.6s; }
+@keyframes drawin { from { stroke-dashoffset: 400; opacity: 0; } }
+.panel, .headline, .cmd { animation: rise .6s ease-out both; }
+.rail-left .panel { animation-delay: .08s; } .rail-right .panel { animation-delay: .16s; }
+@keyframes rise { from { opacity: 0; transform: translateY(10px); } }
+/* a faint scan line drifting over the HUD grid */
+.backdrop::before { content: ""; position: absolute; left: 0; right: 0; height: 140px; top: -140px; pointer-events: none;
+  background: linear-gradient(180deg, transparent, rgba(242, 184, 75, .05), transparent); animation: scan 9s linear infinite; }
+@keyframes scan { to { transform: translateY(calc(100vh + 140px)); } }
+@media (prefers-reduced-motion: reduce) {
+  .core-wrap::before, .backdrop::before, .core[data-speaking] .heart, .core[data-speaking] .glow { animation: none !important; }
+  .panel, .headline, .cmd { animation: none; }
+}
+.guide ol, .guide ul { margin: 0; padding: 4px 2px 4px 22px; display: grid; gap: 10px; }
+.guide code { font: 13px var(--mono); background: rgba(0, 0, 0, .45); border: 1px solid var(--gold-faint); padding: 1px 6px;
+              overflow-wrap: anywhere; color: var(--gold-hi); }
+.d-why a, .lead a, .guide a { color: var(--arc); text-underline-offset: 3px; }

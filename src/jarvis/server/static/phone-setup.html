@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="dark">
+<meta name="theme-color" content="#070504">
+<title>JARVIS · Phone setup</title>
+<link rel="stylesheet" href="/static/app.css">
+</head>
+<body>
+<div class="backdrop" aria-hidden="true"></div>
+<header class="top">
+  <div class="wordmark">J.A.R.V.I.S.<span>Phone setup</span></div>
+  <div class="top-right"><a class="btn btn-ghost" href="/">Back to JARVIS</a></div>
+</header>
+<main class="trust guide">
+  <p class="lead">About 5 minutes, at your Mac with your iPhone next to you. JARVIS stays private: your phone reaches it only
+    through your own Tailscale network, never the open internet, and every approval from the phone needs Face ID.</p>
+
+  <section class="panel" aria-labelledby="g1"><header class="ph"><h2 id="g1">1 · Tailscale on both</h2></header>
+    <ol>
+      <li>On the Mac: the Tailscale icon in the menu bar shows <b>Connected</b>.</li>
+      <li>On the iPhone: open the Tailscale app and switch it <b>on</b>, signed in to the <b>same account</b> as the Mac.</li>
+    </ol></section>
+
+  <section class="panel" aria-labelledby="g2"><header class="ph"><h2 id="g2">2 · Turn on phone access (Mac, Terminal)</h2></header>
+    <ol>
+      <li>In Terminal, go to your JARVIS folder: <code>cd ~/jarvis</code></li>
+      <li>Make sure JARVIS runs in the background: <code>uv run jarvis service status</code>. If it isn't installed:
+        <code>uv run jarvis service install</code></li>
+      <li>Turn on phone access: <code>uv run jarvis remote enable</code>. It prints an address ending in <code>.ts.net</code>:
+        that's JARVIS on your tailnet, and nowhere else.</li>
+    </ol></section>
+
+  <section class="panel" aria-labelledby="g3"><header class="ph"><h2 id="g3">3 · Pair (Mac screen + iPhone camera)</h2></header>
+    <ol>
+      <li>On the Mac dashboard: <b>Status</b> (the Systems panel) → <b>Phone</b> → <b>Pair a phone</b>. A QR code appears
+        (it works once, for 10 minutes).</li>
+      <li>On the iPhone: open the <b>Camera</b>, point it at the code, tap the link that appears.</li>
+      <li>Safari opens JARVIS. Give the phone a name and confirm with <b>Face ID</b>. That creates a passkey that stays
+        on your iPhone; there's no password to type or leak.</li>
+    </ol></section>
+
+  <section class="panel" aria-labelledby="g4"><header class="ph"><h2 id="g4">4 · Make it an app</h2></header>
+    <ol>
+      <li>In Safari, tap <b>Share</b> → <b>Add to Home Screen</b> → <b>Add</b>.</li>
+      <li>From now on open JARVIS from its Home Screen icon: full screen, like an app.</li>
+      <li>In the app: <b>Status</b> → <b>Notifications</b> → <b>Turn on</b> → <b>Allow</b>. Notifications only ever say things
+        like “JARVIS needs a decision”, never your content. (iPhone only allows this for Home Screen apps.)</li>
+    </ol></section>
+
+  <section class="panel" aria-labelledby="g5"><header class="ph"><h2 id="g5">5 · Check it works</h2></header>
+    <ol>
+      <li>On the phone, <b>Chat</b>: today's briefing is at the top. Ask “hello”.</li>
+      <li>On the Mac: <code>uv run jarvis devices list</code> shows your phone.</li>
+    </ol></section>
+
+  <section class="panel" aria-labelledby="g6"><header class="ph"><h2 id="g6">If something's off</h2></header>
+    <ul>
+      <li><b>The link from the QR code won't load:</b> Tailscale on the iPhone is off, or signed in to another account.</li>
+      <li><b>“Not signed in”:</b> pair again (step 3); the code may have expired.</li>
+      <li><b>No Notifications button:</b> open JARVIS from the Home Screen icon, not from Safari.</li>
+      <li><b>Lost the phone:</b> on the Mac, <code>uv run jarvis devices list</code>, then <code>uv run jarvis devices revoke ID</code>.
+        To turn phone access off entirely: <code>uv run jarvis remote disable</code>.</li>
+    </ul></section>
+</main>
+</body>
+</html>

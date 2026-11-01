@@ -1,5 +1,18 @@
 # Changelog
 
+## Unreleased — Phone layout and a livelier HUD (branch `phone-ui-v1`)
+
+- **On the phone, sections like an app:** a tab bar with Chat · Missions · Decisions (with a badge when something
+  needs you) · Memory · Status. Chat opens with today's briefing, then the conversation, with the message box
+  pinned just above the tab bar. Tapping “Decision required” jumps to Decisions. The text box uses 16px so iPhone
+  doesn't zoom when you tap it. The activity log moved into More on every screen size.
+- **Cinematic touches** (off when the device asks for reduced motion): the arc reactor sweeps while JARVIS thinks
+  or works and pulses while it speaks; rings draw in and panels rise when the page opens; a faint scan line
+  drifts over the HUD grid.
+- **Phone setup guide** (`/phone-setup`, linked from Status → Phone): Tailscale, `jarvis remote enable`, pairing
+  by QR code and Face ID, Add to Home Screen, notifications, and what to do if something's off. A test checks that
+  every command it names exists.
+
 ## 0.17.15 — Benchmarks page, Trust Contract, improvement ideas
 
 ### Owner-approved extras

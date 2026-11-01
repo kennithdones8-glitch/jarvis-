@@ -15,7 +15,7 @@
 <script src="/static/qrcode.js" defer></script>
 <script src="/static/app.js" defer></script>
 </head>
-<body>
+<body data-tab="chat">
 <div class="backdrop" aria-hidden="true"></div>
 
 <div id="stopbar" class="stopbar" role="alert" hidden>
@@ -32,6 +32,7 @@
       <div class="more-menu" role="menu">
         <button id="helpbtn" class="btn btn-ghost" type="button" role="menuitem" title="What you can ask JARVIS to do">Help</button>
         <button id="briefbtn" class="btn btn-ghost" type="button" role="menuitem" title="What needs you, what happened, and any problems">Briefing</button>
+        <button id="logbtn2" class="btn btn-ghost" type="button" role="menuitem" title="Everything JARVIS did, newest first">Activity log</button>
         <a class="btn btn-ghost" role="menuitem" href="/bench" title="Benchmark runs: scores over time, before vs after, failures">Benchmarks</a>
         <a class="btn btn-ghost" role="menuitem" href="/trust" title="What JARVIS does on its own, always asks about, and never does">Trust</a>
         <a class="btn btn-ghost" role="menuitem" href="/proposals" title="Improvements JARVIS suggests from its own record; you decide">Ideas</a>
@@ -120,6 +121,14 @@
     </section>
   </aside>
 </main>
+
+<nav class="tabbar" id="tabbar" aria-label="Sections">
+  <button type="button" data-tab="chat" aria-selected="true"><span class="ti" aria-hidden="true">◎</span>Chat</button>
+  <button type="button" data-tab="missions" aria-selected="false"><span class="ti" aria-hidden="true">▤</span>Missions<span class="badge" id="badge-missions" hidden></span></button>
+  <button type="button" data-tab="decisions" aria-selected="false"><span class="ti" aria-hidden="true">◆</span>Decisions<span class="badge alert" id="badge-decisions" hidden></span></button>
+  <button type="button" data-tab="memory" aria-selected="false"><span class="ti" aria-hidden="true">✦</span>Memory</button>
+  <button type="button" data-tab="status" aria-selected="false"><span class="ti" aria-hidden="true">≡</span>Status</button>
+</nav>
 
 <footer class="ticker">
   <span class="ticker-label">Activity</span>

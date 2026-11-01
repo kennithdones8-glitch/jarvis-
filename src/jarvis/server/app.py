@@ -816,6 +816,8 @@ class Dashboard:
             return self._send(h, 200, (STATIC / "bench.html").read_bytes(), "text/html; charset=utf-8")
         if url.path.startswith("/api/bench"):
             return self._bench_api(h, url)
+        if url.path == "/phone-setup":
+            return self._send(h, 200, (STATIC / "phone-setup.html").read_bytes(), "text/html; charset=utf-8")
         if url.path == "/trust":
             return self._send(h, 200, (STATIC / "trust.html").read_bytes(), "text/html; charset=utf-8")
         if url.path == "/api/trust":
