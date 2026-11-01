@@ -729,3 +729,20 @@ body:not([data-view="home"]) .recent-panel, body:not([data-view="home"]) .summar
 .mem-origin { font-size: 13.5px; color: var(--muted); margin-top: 4px; overflow-wrap: anywhere; }
 .mem-origin b { color: var(--text); font-weight: 600; }
 .mem.unconfirmed .mem-origin b { color: #ffe2bd; }
+
+/* ================= Stage 6: Systems in three parts; Briefing & ideas ================= */
+.sys-part { font: 600 13px var(--display); letter-spacing: .22em; text-transform: uppercase; color: var(--gold); margin: 18px 0 10px 10px; }
+.sys-part:first-child { margin-top: 0; }
+body:not([data-view="intelligence"]) .intel-panel { display: none; }
+body[data-view="intelligence"] .missions-panel, body[data-view="intelligence"] .decision-panel,
+body[data-view="intelligence"] .memory-panel, body[data-view="intelligence"] .systems-panel,
+body[data-view="intelligence"] .recent-panel, body[data-view="intelligence"] .summary-panel { display: none; }
+.intel-part { padding: 0 0 8px 10px; }
+.intel-part + .intel-part { border-top: 1px solid var(--gold-faint); margin-top: 14px; padding-top: 14px; }
+.ideas { list-style: none; margin: 8px 0 0; padding: 0; display: grid; gap: 8px; }
+.idea { display: grid; gap: 2px; padding: 8px 10px; border-left: 2px solid var(--gold-line); background: rgba(0, 0, 0, .22); }
+.idea.open { border-left-color: var(--arc); }
+.idea small { font: 600 12px var(--display); letter-spacing: .16em; text-transform: uppercase; color: var(--muted); }
+.idea.open small { color: var(--arc); }
+.idea b { font-weight: 600; overflow-wrap: anywhere; }
+.idea span { color: var(--muted); font-size: 14px; overflow-wrap: anywhere; }

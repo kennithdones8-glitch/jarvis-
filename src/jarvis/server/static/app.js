@@ -810,7 +810,7 @@ function renderSystems(d) {
   const healthBlock = health ? h("div", { class: "health" },
     h("div", { class: `health-head ${health.ok ? "ok" : "bad"}` },
       health.ok ? "✓ All systems healthy" : "⚠ Needs attention", h("small", {}, health.service ? "background service" : "running in Terminal")),
-    health.items.filter((i) => !i.ok || ["Backups"].includes(i.name)).map((i) =>
+    health.items.map((i) =>
       h("div", { class: `light${i.ok ? " on" : ""}`, title: i.detail }, h("i"), i.name, h("small", {}, i.detail))))
     : null;
   const rem = d.remote || { enabled: false, devices: [] };
@@ -839,9 +839,12 @@ function renderSystems(d) {
         act(`/api/touchid/${k.id}/remove`, {}) }, "Remove"))),
     h("button", { class: "btn btn-sm mt", type: "button", onclick: setupTouchId }, tid.enabled ? "Add another key" : "Set up Touch ID"),
     tid.enabled ? null : h("div", { class: "d-why" }, "Then every approval here asks for your fingerprint, not just this browser's sign-in."));
-  $("#system").replaceChildren(
-    healthBlock, touch, phone,
+  const part = (title) => h("h3", { class: "sys-part" }, title);
+  fill($("#system"),
+    part("Health"), healthBlock || h("div", { class: "empty" }, "Checking…"),
     h("div", { class: "lights" }, lights.length ? lights : h("div", { class: "empty" }, "No models configured")),
+    part("Setup"), touch, phone,
+    part("Configuration"),
     h("div", { class: "readouts" },
       ro("Privacy", (m.disabled_providers || []).length && !m.providers.some((p) => p.location === "cloud") ? "Local only" : "Cloud allowed with approval"),
       ro("Routing", { local_first: "Local first", best: "Best model", hybrid: "Hybrid (saves Claude usage)" }[m.routing_mode] || m.routing_mode || "—"),
@@ -967,6 +970,30 @@ function renderMemFilters(counts) {
       `${label} · ${counts[key]}`)));
 }
 
+// ---------------------------------------------------------------- briefing & ideas (read-only here)
+const IDEA_STATES = { open: "Waiting for you", approved: "Approved · to do", rejected: "Rejected", done: "Done" };
+async function loadIntel() {
+  const box = $("#intel");
+  box.replaceChildren(h("div", { class: "empty" }, "Loading…"));
+  let brief = null, ideas = null;
+  try { brief = await api("/api/briefing"); } catch (e) { brief = { error: e.message }; }
+  try { ideas = (await api("/api/proposals")).proposals; } catch (e) { ideas = { error: e.message }; }
+  const sections = brief.error ? [h("div", { class: "empty" }, `Couldn't build the briefing: ${brief.error}`)]
+    : [h("div", { class: "kicker" }, `Today's briefing · since ${new Date(brief.since).toLocaleString([], { weekday: "short", hour: "2-digit", minute: "2-digit" })}`),
+       h("div", { class: "job-title" }, brief.headline),
+       brief.sections.length ? brief.sections.map((x) => h("div", { class: `brief-sec${x.alert ? " alert" : ""}` }, h("h3", {}, x.title),
+         h("ul", {}, x.items.map((i) => h("li", {}, i))))) : h("div", { class: "d-why" }, "All quiet: nothing finished, failed or broke since the last briefing.")];
+  const ideaList = ideas.error ? [h("div", { class: "empty" }, `Couldn't load ideas: ${ideas.error}`)]
+    : !ideas.length ? [h("div", { class: "empty" }, "No ideas right now: nothing in JARVIS's record suggests a change.")]
+    : [h("ul", { class: "ideas" }, ideas.slice(0, 8).map((x) => h("li", { class: `idea ${x.state}` },
+        h("small", {}, `${IDEA_STATES[x.state] || x.state} · ${x.kind}`), h("b", {}, x.title), h("span", {}, x.problem))))];
+  fill(box, h("section", { class: "intel-part" }, sections.flat(Infinity)),
+    h("section", { class: "intel-part" }, h("h3", { class: "sys-part" }, "Improvement ideas"),
+      h("p", { class: "d-why" }, "JARVIS suggests these from its own record. It never changes itself: approving puts an idea on your to-do list."),
+      ideaList, h("div", { class: "row mt" }, h("a", { class: "btn btn-sm", href: "/proposals" }, "Open Ideas to decide"),
+        h("button", { class: "btn btn-ghost btn-sm", type: "button", onclick: loadIntel }, "Refresh"))));
+}
+
 async function memAct(path, body) {
   try { await call(path, body); } catch (e) { note(cancelled(e)); }
   await refresh(); await loadMemory(true);
@@ -1076,7 +1103,7 @@ async function act(path, body) {
 
 // ---------------------------------------------------------------- shell: sections, badges, sidebar, drafts
 // Sections are views of the same live page: switching never pauses, resumes or changes anything.
-const VIEWS = ["home", "missions", "decisions", "memory", "systems"];
+const VIEWS = ["home", "missions", "decisions", "memory", "systems", "intelligence"];
 function viewFromHash() {
   const m = location.hash.match(/^#\/(\w+)/);
   return m && VIEWS.includes(m[1]) ? m[1] : null;
@@ -1088,7 +1115,7 @@ function setView(view) {
   document.querySelectorAll("#sidenav a[data-view]").forEach((a) => {
     if (a.dataset.view === view) a.setAttribute("aria-current", "page"); else a.removeAttribute("aria-current");
   });
-  if (changed) { window.scrollTo(0, 0); if (ui.data) renderMissions(ui.data.tasks); }
+  if (changed) { window.scrollTo(0, 0); if (ui.data) renderMissions(ui.data.tasks); if (view === "intelligence") loadIntel(); }
 }
 function badge(name, n) {
   const el = $(`#badge-${name}`);

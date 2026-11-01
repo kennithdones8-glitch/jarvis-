@@ -36,7 +36,7 @@
         <button id="briefbtn" class="btn btn-ghost" type="button" role="menuitem" title="What needs you, what happened, and any problems">Briefing</button>
         <a class="btn btn-ghost" role="menuitem" href="/bench" title="Benchmark runs: scores over time, before vs after, failures">Benchmarks</a>
         <a class="btn btn-ghost" role="menuitem" href="/trust" title="What JARVIS does on its own, always asks about, and never does">Trust</a>
-        <a class="btn btn-ghost" role="menuitem" href="/proposals" title="Improvements JARVIS suggests from its own record; you decide">Ideas</a>
+        <a class="btn btn-ghost" role="menuitem" href="#/intelligence" title="Today's briefing and improvement ideas">Briefing &amp; ideas</a>
       </div>
     </details>
     <button id="estop" class="btn btn-danger" title="Pause every task and block new actions">Emergency stop</button>
@@ -50,7 +50,7 @@
   <a href="#/memory" data-view="memory" title="Memory"><span class="ni" aria-hidden="true">✦</span><span class="nl">Memory</span></a>
   <a href="#/systems" data-view="systems" title="Systems"><span class="ni" aria-hidden="true">≡</span><span class="nl">Systems</span></a>
   <div class="nav-more">
-    <a href="/proposals" title="Ideas"><span class="ni" aria-hidden="true">✧</span><span class="nl">Ideas</span></a>
+    <a href="#/intelligence" data-view="intelligence" title="Briefing &amp; ideas"><span class="ni" aria-hidden="true">✧</span><span class="nl">Briefing &amp; ideas</span></a>
     <a href="/bench" title="Benchmarks"><span class="ni" aria-hidden="true">▥</span><span class="nl">Benchmarks</span></a>
     <a href="/trust" title="Trust"><span class="ni" aria-hidden="true">⛨</span><span class="nl">Trust</span></a>
     <button type="button" id="navcollapse" aria-expanded="true" title="Collapse or expand the menu"><span class="ni" aria-hidden="true">⇤</span><span class="nl">Collapse</span></button>
@@ -149,6 +149,10 @@
     <section class="panel summary-panel" aria-labelledby="sum-h">
       <header class="ph"><h2 id="sum-h">Systems</h2><a class="btn btn-ghost btn-sm" href="#/systems">Details</a></header>
       <div id="summary" class="readouts"></div>
+    </section>
+    <section class="panel intel-panel" aria-labelledby="int-h">
+      <header class="ph"><h2 id="int-h">Briefing &amp; ideas</h2></header>
+      <div id="intel"></div>
     </section>
     <section class="panel systems-panel" aria-labelledby="sys-h">
       <header class="ph"><h2 id="sys-h">Systems</h2></header>

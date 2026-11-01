@@ -125,7 +125,9 @@ def test_dashboard_page_and_decisions(dash):
     status, _, body = call(d, "/proposals")
     assert status == 200 and b"/static/proposals.js" in body and b"style=" not in body
     assert "innerHTML" not in call(d, "/static/proposals.js")[2].decode()
-    assert b'href="/proposals"' in call(d, "/")[2]
+    # reachable from the dashboard: sidebar / More → Briefing & ideas → "Open Ideas to decide"
+    assert b'href="#/intelligence"' in call(d, "/")[2]
+    assert 'h("a", { class: "btn btn-sm", href: "/proposals" }, "Open Ideas to decide")' in call(d, "/static/app.js")[2].decode()
 
 
 def test_cli(tmp_path, capsys):
