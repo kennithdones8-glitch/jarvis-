@@ -1022,6 +1022,113 @@ async function loadIntel() {
         h("button", { class: "btn btn-ghost btn-sm", type: "button", onclick: loadIntel }, "Refresh"))));
 }
 
+// ---------------------------------------------------------------- projects for you
+// Ideas found by the local model in your own messages and memories; each shows the words it came from.
+// Nothing runs by itself: accepting makes a checklist, and a step becomes a reminder only through plan -> approve.
+const PROJ = { busy: false, timer: null, autoTried: false, notice: null };
+async function loadProjects(entering = false) {
+  const box = $("#projects");
+  if (!box) return;
+  if (entering && !box.childElementCount) box.replaceChildren(h("div", { class: "empty" }, "Loading…"));
+  let d;
+  try { d = await api("/api/projects"); } catch (e) { box.replaceChildren(h("div", { class: "empty" }, `Couldn't load projects: ${e.message}`)); return; }
+  // "On its own": at most once a day, when you open this page and there's enough to go on.
+  if (entering && !PROJ.autoTried && d.due && d.enough && !d.running) {
+    PROJ.autoTried = true;
+    try { await api("/api/projects/generate", {}); d.running = true; } catch (e) { /* the button still works */ }
+  }
+  renderProjects(d);
+  clearTimeout(PROJ.timer);
+  if (d.running && document.body.dataset.view === "projects") PROJ.timer = setTimeout(() => loadProjects(), 2000);
+}
+async function projAct(path, body = {}) {
+  if (PROJ.busy) return;
+  PROJ.busy = true;
+  try { await api(path, body); } catch (e) { PROJ.notice = e.message; }
+  PROJ.busy = false;
+  await loadProjects();
+}
+async function polishProjects() {
+  PROJ.notice = "Asking Claude…";
+  renderProjectsNotice();
+  let r;
+  try { r = await api("/api/projects/polish", {}); } catch (e) { PROJ.notice = `Couldn't polish: ${e.message}`; await loadProjects(); return; }
+  if (r.needs_approval) { PROJ.notice = null; PROJ.consent = r; await loadProjects(); return; }
+  PROJ.notice = r.polished ? `Polished ${plural(r.polished, "idea")} with ${(r.model || "").split("/").pop()}.` : r.reason;
+  await loadProjects();
+}
+async function projConsent(approve) {
+  const c = PROJ.consent;
+  PROJ.consent = null;
+  try { await call(`/api/approvals/${c.approval_id}`, { approve }); }
+  catch (e) { if (e.name === "NotAllowedError") { PROJ.consent = c; PROJ.notice = cancelled(e); await loadProjects(); return; } }
+  if (approve) await polishProjects();
+  else { PROJ.notice = "Not sent. Your ideas stay as they are."; await loadProjects(); }
+}
+async function stepReminder(idea, step) {
+  ui.lastFeed = "";
+  setMode("do");
+  try {
+    await api("/api/plan", { request: `Add a reminder: ${step.text} (project: ${idea.title})` });
+    location.hash = "#/home";
+    await refresh();
+  } catch (e) { PROJ.notice = `Could not start planning: ${e.message}`; await loadProjects(); }
+}
+function renderProjectsNotice() {
+  const n = $("#proj-notice");
+  if (n) { n.textContent = PROJ.notice || ""; n.hidden = !PROJ.notice; }
+}
+function projCard(x) {
+  const open = x.state === "open";
+  const evidence = x.evidence.length ? h("details", {},
+    h("summary", {}, `Based on ${plural(x.evidence.length, "thing")} you said or JARVIS remembers`),
+    x.evidence.map((q) => h("blockquote", {}, `${q.type === "memory" ? "Memory" : "You said"}: “${q.text}”`))) : null;
+  const steps = h("ol", {}, x.steps.map((st, i) => h("li", { class: `step${st.done ? " done" : ""}` },
+    open ? h("span", {}, `${i + 1}. ${st.text}`)
+      : [h("label", {}, h("input", { type: "checkbox", checked: st.done ? true : null,
+          onchange: (e) => projAct(`/api/projects/${x.id}/steps/${i}`, { done: e.target.checked }) }), h("span", {}, st.text)),
+         st.done ? null : h("button", { class: "btn btn-ghost btn-sm", type: "button", title: "Plan a reminder for this step; you approve it before anything is added",
+           onclick: () => stepReminder(x, st) }, "Remind me")])));
+  const buttons = open
+    ? [h("button", { class: "btn btn-approve btn-sm", type: "button", onclick: () => projAct(`/api/projects/${x.id}/accept`) }, "Start this project"),
+       h("button", { class: "btn btn-ghost btn-sm", type: "button", onclick: () => projAct(`/api/projects/${x.id}/dismiss`) }, "Not for me")]
+    : [h("button", { class: "btn btn-sm", type: "button", onclick: () => projAct(`/api/projects/${x.id}/done`) }, "Mark finished"),
+       h("button", { class: "btn btn-ghost btn-sm", type: "button", onclick: () => projAct(`/api/projects/${x.id}/reopen`) }, "Back to ideas")];
+  const doneCount = x.steps.filter((st) => st.done).length;
+  return h("li", { class: `proj ${x.state}` },
+    h("small", {}, [x.kind_label, x.time, open ? null : `${doneCount}/${x.steps.length} steps done`, x.source === "polished" ? "polished by Claude" : null].filter(Boolean).join(" · ")),
+    h("b", {}, x.title),
+    x.why ? h("div", { class: "why" }, x.why) : null,
+    evidence,
+    h("div", { class: "kicker" }, open ? "First plan" : "Checklist"),
+    steps,
+    h("div", { class: "row mt" }, buttons));
+}
+function renderProjects(d) {
+  const active = d.ideas.filter((x) => x.state === "active"), open = d.ideas.filter((x) => x.state === "open");
+  const status = d.running ? h("p", { class: "d-why proj-thinking", role: "status" }, "Thinking of ideas on this Mac… (about a minute)")
+    : d.error ? h("p", { class: "d-why" }, d.error)
+    : d.last_run ? h("p", { class: "d-why" }, `Last looked ${new Date(d.last_run * 1000).toLocaleString([], { weekday: "short", hour: "2-digit", minute: "2-digit" })}.`) : null;
+  const consent = PROJ.consent ? h("div", { class: "job consent", role: "alert" },
+    h("p", {}, PROJ.consent.summary),
+    h("p", { class: "d-why" }, "Only the idea titles, times and steps are sent. Never your messages, memories or the reasons."),
+    h("div", { class: "row mt" },
+      h("button", { class: "btn btn-approve btn-sm", type: "button", onclick: () => projConsent(true) }, "Send to Claude"),
+      h("button", { class: "btn btn-ghost btn-sm", type: "button", onclick: () => projConsent(false) }, "Don't send"))) : null;
+  fill($("#projects"),
+    h("section", { class: "proj-part" },
+      h("p", { class: "d-why" }, "JARVIS reads what you've told it and what it remembers, on this Mac only, and suggests projects that fit you: growth and side projects, and things to build into JARVIS. Each shows where the idea came from."),
+      status, h("p", { id: "proj-notice", class: "d-why", role: "status", hidden: PROJ.notice ? null : true }, PROJ.notice || ""), consent,
+      h("div", { class: "row mt" },
+        h("button", { class: "btn btn-sm", type: "button", disabled: d.running ? true : null, onclick: () => projAct("/api/projects/generate") }, "Find new ideas"),
+        open.length ? h("button", { class: "btn btn-ghost btn-sm", type: "button", disabled: d.running ? true : null,
+          title: "Sends only the idea list to Claude, after you approve", onclick: polishProjects }, "Polish with Claude") : null)),
+    active.length ? h("section", { class: "proj-part" }, h("h3", { class: "sys-part" }, "Your projects"), h("ul", { class: "proj-list" }, active.map(projCard))) : null,
+    h("section", { class: "proj-part" }, h("h3", { class: "sys-part" }, "Ideas"),
+      open.length ? h("ul", { class: "proj-list" }, open.map(projCard))
+        : h("div", { class: "empty" }, d.enough ? "No ideas waiting. Tap “Find new ideas”." : "Not enough to go on yet: talk with JARVIS a little, or tell it about your goals.")));
+}
+
 // ---------------------------------------------------------------- cinematic mode (presentation only)
 // A view of the same live page: big reactor, the conversation as subtitles, voice up front. Switching sends
 // nothing and changes nothing; decisions and problems stay visible in a slim strip, and Emergency stop stays put.
@@ -1273,7 +1380,7 @@ async function act(path, body) {
 
 // ---------------------------------------------------------------- shell: sections, badges, sidebar, drafts
 // Sections are views of the same live page: switching never pauses, resumes or changes anything.
-const VIEWS = ["home", "workspace", "missions", "decisions", "memory", "systems", "intelligence"];
+const VIEWS = ["home", "workspace", "missions", "decisions", "memory", "systems", "intelligence", "projects"];
 function viewFromHash() {
   const m = location.hash.match(/^#\/(\w+)/);
   return m && VIEWS.includes(m[1]) ? m[1] : null;
@@ -1285,7 +1392,7 @@ function setView(view) {
   document.querySelectorAll("#sidenav a[data-view]").forEach((a) => {
     if (a.dataset.view === view) a.setAttribute("aria-current", "page"); else a.removeAttribute("aria-current");
   });
-  if (changed) { window.scrollTo(0, 0); if (ui.data) renderMissions(ui.data.tasks); if (view === "intelligence") loadIntel(); }
+  if (changed) { window.scrollTo(0, 0); if (ui.data) renderMissions(ui.data.tasks); if (view === "intelligence") loadIntel(); if (view === "projects") loadProjects(true); }
 }
 function badge(name, n) {
   const el = $(`#badge-${name}`);

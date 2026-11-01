@@ -796,7 +796,7 @@ body.cinematic .cmd { position: sticky; bottom: calc(12px + env(safe-area-inset-
 body:not([data-view="workspace"]) .context-panel { display: none; }
 body[data-view="workspace"] .missions-panel, body[data-view="workspace"] .decision-panel, body[data-view="workspace"] .memory-panel,
 body[data-view="workspace"] .systems-panel, body[data-view="workspace"] .recent-panel, body[data-view="workspace"] .summary-panel,
-body[data-view="workspace"] .intel-panel { display: none !important; }
+body[data-view="workspace"] .intel-panel, body[data-view="workspace"] .projects-panel { display: none !important; }
 body[data-view="workspace"] .hud > .center { display: flex !important; grid-area: auto; }
 body[data-view="workspace"] .matters { display: none; }
 body[data-view="workspace"] .hud > .center > .core-wrap { width: min(120px, 30vw); }
@@ -843,3 +843,26 @@ html[data-density="compact"] .ph { margin-bottom: 8px; }
 kbd { font: 600 13px var(--mono); padding: 1px 6px; border: 1px solid var(--gold-line); border-bottom-width: 2px; background: rgba(0, 0, 0, .4); color: var(--gold-hi); }
 .keys { list-style: none; padding: 0; margin: 10px 0; display: grid; gap: 8px; }
 @media (pointer: coarse), (max-width: 760px) { .keys-only { display: none; } }
+
+/* ---- projects for you ---- */
+body:not([data-view="projects"]) .projects-panel { display: none; }
+body[data-view="projects"] .missions-panel, body[data-view="projects"] .decision-panel,
+body[data-view="projects"] .memory-panel, body[data-view="projects"] .systems-panel, body[data-view="projects"] .intel-panel,
+body[data-view="projects"] .recent-panel, body[data-view="projects"] .summary-panel, body[data-view="projects"] .context-panel { display: none; }
+.proj-part { padding: 0 0 8px 10px; }
+.proj-part + .proj-part { border-top: 1px solid var(--gold-faint); margin-top: 14px; padding-top: 14px; }
+.proj-list { list-style: none; margin: 8px 0 0; padding: 0; display: grid; gap: 12px; }
+.proj { display: grid; gap: 6px; padding: 12px 14px; border-left: 2px solid var(--arc); background: rgba(0, 0, 0, .22); min-width: 0; }
+.proj.active { border-left-color: var(--ok); }
+.proj b { font-size: 16px; overflow-wrap: anywhere; }
+.proj small { color: var(--muted); font-size: 12px; letter-spacing: .08em; }
+.proj .why { overflow-wrap: anywhere; }
+.proj details summary { cursor: pointer; color: var(--muted); }
+.proj blockquote { margin: 6px 0 0; padding: 4px 10px; border-left: 2px solid var(--gold-faint); color: var(--muted); overflow-wrap: anywhere; }
+.proj ol { margin: 0; padding-left: 0; list-style: none; display: grid; gap: 4px; }
+.proj li.step { display: flex; align-items: flex-start; gap: 8px; flex-wrap: wrap; }
+.proj li.step label { display: flex; gap: 8px; align-items: flex-start; flex: 1 1 200px; min-width: 0; overflow-wrap: anywhere; cursor: pointer; }
+.proj li.step.done label span { text-decoration: line-through; color: var(--muted); }
+.proj li.step input { margin-top: 3px; accent-color: var(--ok); }
+.proj .row { flex-wrap: wrap; }
+.proj-thinking { color: var(--arc); }

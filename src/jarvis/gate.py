@@ -101,7 +101,9 @@ SECURITY: dict[str, tuple[str, list[str]]] = {
         "test_lookup::lookup_results_are_private_and_the_question_stays_local",
         "test_research::asks_before_researching_and_never_falls_back_to_local",
         "test_audit::secrets_redacted_in_audit", "test_bench::runs_never_touch_the_real_jarvis",
-        "test_flight::holds_no_private_text"]),
+        "test_flight::holds_no_private_text",
+        "test_projects::ideas_come_from_the_local_model_and_must_cite_real_evidence",
+        "test_projects::polish_sends_only_the_idea_list_and_only_after_you_approve"]),
     "Honest reporting": ("Failures and unverified results are reported as such", [
         "test_tasks::failed_verification_is_not_reported_as_complete", "test_tasks::rejection_fails_task_honestly",
         "test_orchestrator::invalid_plan_gets_one_repair_then_fails_honestly",

@@ -211,6 +211,20 @@ MIGRATIONS: list[str] = [
         decided_by  TEXT
     );
     """,
+    # v8: project ideas for the owner (evidence is stored as references to records/memories, never copies)
+    """
+    CREATE TABLE project_ideas (
+        id          TEXT PRIMARY KEY,
+        kind        TEXT NOT NULL,
+        title       TEXT NOT NULL,
+        body        TEXT NOT NULL,
+        state       TEXT NOT NULL DEFAULT 'open' CHECK (state IN ('open', 'active', 'dismissed', 'done')),
+        source      TEXT NOT NULL DEFAULT 'local',
+        created_at  TEXT NOT NULL,
+        updated_at  TEXT NOT NULL,
+        decided_at  TEXT
+    );
+    """,
 ]
 
 

@@ -206,6 +206,8 @@ class Dashboard:
         self.lookup = LookupService(kernel, [str(r) for r in kernel.policy.roots])
         from ..proposals import Proposals
         self.proposals = Proposals(kernel)
+        from ..projects import ProjectIdeas
+        self.projects = ProjectIdeas(kernel)
         self._proposals_checked = -1e9
         self.token = token or secrets.token_urlsafe(32)
         self.jobs: dict[str, dict[str, Any]] = {}
@@ -823,6 +825,8 @@ class Dashboard:
             return self._json(h, 200, contract(self.kernel).as_dict())
         if url.path == "/proposals":
             return self._send(h, 200, (STATIC / "proposals.html").read_bytes(), "text/html; charset=utf-8")
+        if url.path == "/api/projects":
+            return self._json(h, 200, {"ideas": self.projects.list(), **self.projects.status()})
         if url.path == "/api/proposals":
             if time.monotonic() - self._proposals_checked > 600:  # look for new findings at most every 10 minutes
                 self.proposals.refresh()
@@ -1012,6 +1016,32 @@ class Dashboard:
             action: Callable[..., None] = getattr(k.engine, m.group(2))
             action(m.group(1), actor=actor)
             return {"ok": True, "state": k.tasks.get(m.group(1))["state"]}
+        if path == "/api/projects/generate":
+            # local model only; runs in the background (about a minute on this Mac), the page polls /api/projects
+            return {"started": self.projects.start()}
+        if path == "/api/projects/polish":
+            try:
+                return self.projects.polish()
+            except ApprovalRequired as exc:  # the usual consent: approve the send in Decisions, then polish again
+                appr = k.approvals.get(exc.approval_id)
+                return {"needs_approval": True, "approval_id": exc.approval_id, "summary": appr["summary"]}
+        if m := re.fullmatch(r"/api/projects/([\w-]+)/(accept|dismiss|done|reopen)", path):
+            state = {"accept": "active", "dismiss": "dismissed", "done": "done", "reopen": "open"}[m.group(2)]
+            try:
+                self.projects.decide(m.group(1), state, by=actor)
+            except KeyError:
+                raise HttpError(404, "no such idea") from None
+            return {"ok": True, "state": state}
+        if m := re.fullmatch(r"/api/projects/([\w-]+)/steps/(\d+)", path):
+            if not isinstance(body.get("done"), bool):
+                raise HttpError(400, "done must be true or false")
+            try:
+                self.projects.tick(m.group(1), int(m.group(2)), body["done"], by=actor)
+            except KeyError:
+                raise HttpError(404, "no such idea") from None
+            except ValueError as exc:
+                raise HttpError(400, str(exc)) from None
+            return {"ok": True}
         if m := re.fullmatch(r"/api/proposals/([\w-]+)/(approve|reject|done|reopen)", path):
             # Records your answer only; a proposal never changes JARVIS by itself (propose-only policy).
             state = {"approve": "approved", "reject": "rejected", "done": "done", "reopen": "open"}[m.group(2)]

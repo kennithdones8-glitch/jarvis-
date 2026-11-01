@@ -40,7 +40,7 @@ if mode == "garbage":
 if mode == "limit":
     print(json.dumps({{"type": "result", "is_error": True, "result": "Claude AI usage limit reached|1700000000"}})); sys.exit(1)
 system = args[args.index("--system-prompt") + 1]
-reply = os.environ.get("FAKE_PLAN", "{{}}") if "planning component" in system else "Claude says hello."
+reply = os.environ.get("FAKE_PLAN", "{{}}") if "planning component" in system else os.environ.get("FAKE_REPLY", "Claude says hello.")
 print(json.dumps({{"type": "result", "subtype": "success", "is_error": False, "result": reply,
                   "usage": {{"input_tokens": 42, "output_tokens": 7}}, "total_cost_usd": 0.01}}))
 '''
