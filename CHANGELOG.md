@@ -1,5 +1,16 @@
 # Changelog
 
+## Unreleased — Coding self-test (branch `coding-selftest-v1`, on top of answer checks)
+
+- Opt-in (`[coding] self_test = true`; off by default). When a local chat answer contains Python code for a
+  coding request, the local model writes 3–6 test cases from the request alone (never seeing the code), the code
+  runs on them in the macOS sandbox, and on any failure the model gets one chance to fix it. The fix is kept only
+  if it passes at least as many cases. The reply says how many cases ran and passed.
+- Sandbox for this: no network, no writing outside a temp folder, no reading files in the home folder (only the
+  Python installation), no starting programs, 10 s, empty environment. Nothing runs on other systems.
+- `jarvis bench run --coding-self-test` benchmarks with it on.
+- CI also runs on `outcome-fixes-*` and `coding-selftest-*` branches.
+
 ## Unreleased — Answer checks (branch `outcome-fixes-v1`, on top of Outcome Engine v1)
 
 Built from real wrong answers a small local model gave on the owner's Mac. Benchmarked before any merge.

@@ -22,7 +22,8 @@ ROOT = Path(__file__).resolve().parents[2]
 ALLOWED_SKIPS = {"test_live_ollama::real_ollama_round_trip", "test_live_ollama::real_ollama_speed"}
 # Checks that need macOS itself: allowed to skip elsewhere, required to pass on a Mac.
 MACOS_ONLY = {"test_macos_only::mac_app_scripts_compile", "test_macos_only::launch_agent_file_is_valid",
-              "test_macos_only::code_sandbox_blocks_network_and_outside_writes"}
+              "test_macos_only::code_sandbox_blocks_network_and_outside_writes",
+              "test_macos_only::chat_code_self_test_sandbox"}
 if sys.platform != "darwin":
     ALLOWED_SKIPS = ALLOWED_SKIPS | MACOS_ONLY
 
@@ -94,6 +95,7 @@ SECURITY: dict[str, tuple[str, list[str]]] = {
         "test_models::local_failure_falls_back_but_never_silently_sends_private_data",
         "test_models::approval_is_bound_to_exact_request", "test_models::secret_content_blocked",
         "test_models::audit_never_contains_message_content",
+        "test_codecheck::off_by_default",
         "test_audit_privacy::forget_removes_text_from_every_table_and_the_raw_files",
         "test_audit_privacy::audit_fingerprints_free_text_but_keeps_paths_and_structure",
         "test_memory::audit_holds_no_memory_text", "test_memory::memory_context_is_private_category",

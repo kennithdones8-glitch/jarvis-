@@ -41,6 +41,7 @@ class ModelConfig:
     remote: dict[str, Any] = field(default_factory=dict)
     proactive: dict[str, Any] = field(default_factory=dict)
     voice: dict[str, Any] = field(default_factory=dict)
+    coding: dict[str, Any] = field(default_factory=dict)
 
 
 def _check_keys(where: str, data: dict[str, Any], allowed: set[str]) -> None:
@@ -68,7 +69,7 @@ def _model(where: str, raw: dict[str, Any]) -> ModelInfo:
 
 def parse_model_config(data: dict[str, Any]) -> ModelConfig:
     _check_keys("jarvis.toml", data, {"budget", "privacy", "providers", "search", "routing", "memory", "backup",
-                                      "remote", "proactive", "voice"})
+                                      "remote", "proactive", "voice", "coding"})
     voice = data.get("voice", {})
     _check_keys("[voice]", voice, {"enabled", "server", "whisper_binary", "model", "language", "threads"})
     from .providers import is_loopback_url
@@ -101,6 +102,10 @@ def parse_model_config(data: dict[str, Any]) -> ModelConfig:
     _check_keys("[routing]", routing, {"mode"})
     if routing.get("mode", "local_first") not in ("local_first", "best", "hybrid"):
         raise ConfigError("[routing]: mode must be 'local_first', 'best' or 'hybrid'")
+    coding = data.get("coding", {})
+    _check_keys("[coding]", coding, {"self_test"})
+    if not isinstance(coding.get("self_test", False), bool):
+        raise ConfigError("[coding]: self_test must be true or false")
     search = data.get("search", {})
     _check_keys("[search]", search, {"searxng_url"})
     budget = data.get("budget", {})
@@ -139,7 +144,8 @@ def parse_model_config(data: dict[str, Any]) -> ModelConfig:
         raise ConfigError("[budget]: monthly_limit_usd cannot be negative")
     return ModelConfig(monthly_limit_usd=limit, local_only_categories=local_only, providers=tuple(providers),
                        searxng_url=search.get("searxng_url"), routing_mode=routing.get("mode", "local_first"),
-                       memory=dict(memory), backup=dict(backup), remote=dict(remote), proactive=proactive, voice=dict(voice))
+                       memory=dict(memory), backup=dict(backup), remote=dict(remote), proactive=proactive, voice=dict(voice),
+                       coding=dict(coding))
 
 
 def load_model_config(path: str | Path) -> ModelConfig:

@@ -130,7 +130,7 @@ class LookupService:
                               max_tokens=300, temperature=0.0)
         try:
             r = self.kernel.models.complete(Need("json", prefer="speed", local_only=True), request, purpose="chat lookup")
-            data = _lenient_json(r.text)
+            data = lenient_json(r.text)
         except Exception as exc:  # no local model, bad JSON, emergency stop…: answer without lookups
             why.append(f"choosing lookups failed: {type(exc).__name__}: {str(exc)[:160]}")
             return {}
@@ -202,7 +202,7 @@ class LookupService:
             return None, str(exc)[:160]
 
 
-def _lenient_json(text: str) -> Any:
+def lenient_json(text: str) -> Any:
     """The router's JSON, also when a small model wraps it in prose or replies with a bare list. It only ever
     selects read-only lookups, each still checked against the catalogue and the permission engine."""
     try:
