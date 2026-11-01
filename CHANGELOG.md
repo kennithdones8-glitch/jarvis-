@@ -23,6 +23,28 @@ failures and Claude calls within +25%.
   words overlap. Closes the `memory-preferences` gap found by the extended benchmark (the oracle now passes all 24).
 - Grounding check: calendar/reminder answers that mention a time not in the data get one retry, then "Unverified".
 
+- Review fixes: the grounding retry is always local (it can never turn into a consent question); profile
+  memories respect exclusions added later, and "I'm …" counts only for facts ("I'm vegetarian", not "I'm
+  meeting Sam").
+
+## 0.17.14 — Review fix
+
+- `bench compare`: a run whose start time has no zone no longer breaks the ordering (read as local time).
+
+## 0.17.13 — `bench compare` orders runs by real time
+
+- With no folders given, `bench compare` picked the two latest runs by folder name (local clock time). On the
+  owner's first before/after the clocks went back mid-run, so the "after" folder sorted first. Runs are now
+  ordered by their recorded start time, offset included.
+
+## 0.17.12 — `jarvis bench compare`
+
+- `jarvis bench compare [BEFORE AFTER]` (no folders: the two latest runs) puts two benchmark runs side by side
+  and applies the owner's merge rule: at least +2 tasks passing, no new failures, Claude calls up at most 25 %,
+  and no unapproved change in the "after" run. A task passes when more than half its runs pass. Tasks whose
+  definition changed, or that were skipped in either run, are listed as left out, never compared silently.
+  Exit code 0 = meets the rule, 3 = doesn't.
+
 ## 0.17.11 — Planner understands joined action names
 
 - A plan step written as `"tool": "apps", "action": "mail.draft"` (or `"tool": "mail.draft"`) is read as

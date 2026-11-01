@@ -178,3 +178,29 @@ def test_local_first_mode_keeps_ordinary_chat_free_of_extra_calls(chat_env):
     d, state, _ = chat_env
     chat(d, "Explain how rainbows form")
     assert state["router"] == 0 and state["triage"] == 0
+
+
+def test_passing_remarks_are_not_profile_facts_and_exclusions_apply_later(make_kernel, monkeypatch):
+    import re
+    k = make_kernel()
+    for text in ("I'm meeting Sam on Friday.", "I'm vegetarian.", "I'm allergic to penicillin."):
+        k.memory.remember(text, origin="explicit", by="user:test")
+    texts = [m["text"] for m in k.memory.profile()]
+    assert "I'm vegetarian" in texts and not any("Sam" in t for t in texts)
+    monkeypatch.setattr(k.memory, "_excluded", [re.compile(r"\ballergic\b")])  # a topic excluded after saving
+    assert not any("penicillin" in m["text"] for m in k.memory.profile())
+
+
+def test_a_retry_is_always_local(chat_env, monkeypatch):
+    """Never let a retry become a consent question (e.g. the first answer was local only because Claude was busy)."""
+    d, state, _ = chat_env
+    state["lookups"] = [{"tool": "calendar", "action": "events", "args": state["week"]}]
+    state["answers"] = ["Standup at 10am.", "Standup at 9:00."]
+    real, seen = d.kernel.models.complete, []
+
+    def spy(need, *a, **kw):
+        seen.append((kw.get("purpose"), need.local_only))
+        return real(need, *a, **kw)
+    monkeypatch.setattr(d.kernel.models, "complete", spy)
+    chat(d, "What's my first meeting tomorrow?")
+    assert [x for x in seen if "retry" in (x[0] or "")] == [("dashboard chat (answer check retry)", True)]

@@ -519,7 +519,8 @@ class Dashboard:
                 retry = msgs + [Message("assistant", r.text, Category.CONVERSATION),
                                 Message("user", "Check before answering again:\n" + "\n".join(f"- {x}" for x in problems)
                                         + "\nReply with the corrected answer only.", Category.CONVERSATION)]
-                r = self.kernel.models.complete(need, ChatRequest(tuple(retry), max_tokens=600),
+                # always local: the first answer was, and a retry must never become a consent question
+                r = self.kernel.models.complete(replace(need, local_only=True), ChatRequest(tuple(retry), max_tokens=600),
                                                 purpose="dashboard chat (answer check retry)", level=found.level)
                 bad = unsupported_times(r.text, found.context.content, message) if checks_times else []
             self.kernel.audit.record("chat.answer_check", problems=len(problems), retried=retried,
