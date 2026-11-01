@@ -62,3 +62,20 @@ async function load() {
   }
 }
 load();
+
+// Emergency stop on this page too: one tap, never asks — the same request the dashboard sends.
+(() => {
+  const b = document.getElementById("estop");
+  if (!b) return;
+  b.addEventListener("click", async () => {
+    b.disabled = true;
+    try {
+      const r = await fetch("/api/stop", { method: "POST", credentials: "same-origin",
+        headers: { "Content-Type": "application/json", "X-Requested-By": "jarvis" },
+        body: JSON.stringify({ reason: "stopped from the dashboard" }) });
+      b.textContent = r.ok ? "Stopped · release it on Home" : "Stop failed · use Home";
+    } catch (e) {
+      b.textContent = "Stop failed · use Home";
+    }
+  });
+})();

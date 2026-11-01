@@ -15,7 +15,7 @@
 <script src="/static/qrcode.js" defer></script>
 <script src="/static/app.js" defer></script>
 </head>
-<body>
+<body data-view="home">
 <div class="backdrop" aria-hidden="true"></div>
 
 <div id="stopbar" class="stopbar" role="alert" hidden>
@@ -25,6 +25,8 @@
 
 <header class="top">
   <div class="wordmark">J.A.R.V.I.S.<span>Personal systems</span></div>
+  <a id="statuspill" class="statuspill" href="#/home" role="status" aria-live="polite" title="What JARVIS is doing">
+    <i aria-hidden="true"></i><span id="statustext">Connecting…</span></a>
   <div class="top-right">
     <span id="clock" class="clock"></span>
     <details class="more" id="moremenu">
@@ -40,6 +42,20 @@
     <button id="estop" class="btn btn-danger" title="Pause every task and block new actions">Emergency stop</button>
   </div>
 </header>
+
+<nav class="sidenav" id="sidenav" aria-label="Sections">
+  <a href="#/home" data-view="home" title="Home"><span class="ni" aria-hidden="true">◎</span><span class="nl">Home</span></a>
+  <a href="#/missions" data-view="missions" title="Missions"><span class="ni" aria-hidden="true">▤</span><span class="nl">Missions</span><span class="badge" id="badge-missions" hidden></span></a>
+  <a href="#/decisions" data-view="decisions" title="Decisions"><span class="ni" aria-hidden="true">◆</span><span class="nl">Decisions</span><span class="badge alert" id="badge-decisions" hidden></span></a>
+  <a href="#/memory" data-view="memory" title="Memory"><span class="ni" aria-hidden="true">✦</span><span class="nl">Memory</span></a>
+  <a href="#/systems" data-view="systems" title="Systems"><span class="ni" aria-hidden="true">≡</span><span class="nl">Systems</span></a>
+  <div class="nav-more">
+    <a href="/proposals" title="Ideas"><span class="ni" aria-hidden="true">✧</span><span class="nl">Ideas</span></a>
+    <a href="/bench" title="Benchmarks"><span class="ni" aria-hidden="true">▥</span><span class="nl">Benchmarks</span></a>
+    <a href="/trust" title="Trust"><span class="ni" aria-hidden="true">⛨</span><span class="nl">Trust</span></a>
+    <button type="button" id="navcollapse" aria-expanded="true" title="Collapse or expand the menu"><span class="ni" aria-hidden="true">⇤</span><span class="nl">Collapse</span></button>
+  </div>
+</nav>
 
 <main class="hud">
   <aside class="rail rail-left stack-rail">

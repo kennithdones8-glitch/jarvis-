@@ -14,10 +14,22 @@
 <div class="backdrop" aria-hidden="true"></div>
 <header class="top">
   <div class="wordmark">J.A.R.V.I.S.<span>Benchmarks</span></div>
-  <div class="top-right"><a class="btn btn-ghost" href="/">Back to JARVIS</a></div>
+  <div class="top-right"><button id="estop" class="btn btn-danger" type="button" title="Pause every task and block new actions">Emergency stop</button></div>
 </header>
+<nav class="sidenav" id="sidenav" aria-label="Sections">
+  <a href="/#/home" title="Home"><span class="ni" aria-hidden="true">◎</span><span class="nl">Home</span></a>
+  <a href="/#/missions" title="Missions"><span class="ni" aria-hidden="true">▤</span><span class="nl">Missions</span></a>
+  <a href="/#/decisions" title="Decisions"><span class="ni" aria-hidden="true">◆</span><span class="nl">Decisions</span></a>
+  <a href="/#/memory" title="Memory"><span class="ni" aria-hidden="true">✦</span><span class="nl">Memory</span></a>
+  <a href="/#/systems" title="Systems"><span class="ni" aria-hidden="true">≡</span><span class="nl">Systems</span></a>
+  <div class="nav-more">
+    <a href="/proposals" title="Ideas"><span class="ni" aria-hidden="true">✧</span><span class="nl">Ideas</span></a>
+    <a href="/bench" aria-current="page" title="Benchmarks"><span class="ni" aria-hidden="true">▥</span><span class="nl">Benchmarks</span></a>
+    <a href="/trust" title="Trust"><span class="ni" aria-hidden="true">⛨</span><span class="nl">Trust</span></a>
+  </div>
+</nav>
 
-<main class="bench">
+<main class="page bench">
   <section class="panel" aria-labelledby="cmp-h">
     <header class="ph"><h2 id="cmp-h">Before / after</h2></header>
     <div class="b-pick">

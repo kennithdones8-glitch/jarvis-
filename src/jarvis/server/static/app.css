@@ -434,3 +434,79 @@ a.btn { text-decoration: none; display: inline-block; }
 }
 /* While the page is in the background, nothing animates (set by app.js on visibilitychange). */
 .page-hidden *, .page-hidden *::before, .page-hidden *::after { animation-play-state: paused !important; }
+
+/* ================= Stage 1: application shell — status pill, Mac sidebar, iPhone tab bar, one section at a time ================= */
+:root { --nav-w: 188px; --top-h: 74px; }
+body.nav-collapsed { --nav-w: 64px; }
+
+/* status pill: what JARVIS is doing, always in the top bar (text + dot, never colour alone) */
+.statuspill { display: inline-flex; align-items: center; gap: 8px; margin-right: auto; margin-left: 28px; min-height: 36px; padding: 4px 14px;
+  border: 1px solid var(--gold-line); color: var(--text); text-decoration: none; font: 600 14px var(--display); letter-spacing: .08em;
+  max-width: 46vw; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; background: rgba(0, 0, 0, .25); }
+.statuspill span { overflow: hidden; text-overflow: ellipsis; }
+.statuspill i { flex: none; width: 9px; height: 9px; border-radius: 50%; background: var(--ok); box-shadow: 0 0 8px var(--ok); }
+.statuspill[data-state="attention"] { border-color: var(--arc); color: var(--arc-hi); }
+.statuspill[data-state="attention"] i { background: var(--arc); box-shadow: 0 0 10px var(--arc); }
+.statuspill[data-state="thinking"] i, .statuspill[data-state="executing"] i { background: var(--gold); box-shadow: 0 0 8px var(--gold); }
+.statuspill[data-state="stopped"], .statuspill[data-state="offline"] { border-color: var(--red); color: #ffc7cb; }
+.statuspill[data-state="stopped"] i, .statuspill[data-state="offline"] i { background: var(--red); box-shadow: 0 0 8px var(--red); }
+
+/* navigation links (shared by sidebar and tab bar) */
+.sidenav a, .sidenav button { display: flex; align-items: center; gap: 12px; color: var(--muted); text-decoration: none; background: none;
+  border: 0; border-left: 2px solid transparent; padding: 10px 16px; min-height: 44px; font: 600 14px var(--display); letter-spacing: .14em;
+  text-transform: uppercase; cursor: pointer; position: relative; width: 100%; text-align: left; }
+.sidenav a:hover, .sidenav button:hover { color: var(--gold-hi); background: var(--gold-faint); }
+.sidenav a[aria-current="page"] { color: var(--gold-hi); border-left-color: var(--gold); background: var(--gold-dim); }
+.sidenav .ni { width: 22px; text-align: center; font-size: 17px; letter-spacing: 0; flex: none; }
+.sidenav .badge { margin-left: auto; min-width: 20px; height: 20px; padding: 0 6px; border-radius: 10px; background: var(--gold); color: #1a1208;
+  font: 700 12px/20px var(--sans); letter-spacing: 0; text-align: center; }
+.sidenav .badge.alert { background: var(--arc); color: #062029; box-shadow: 0 0 10px rgba(159, 232, 255, .6); }
+.nav-more { margin-top: auto; border-top: 1px solid var(--gold-faint); padding-top: 8px; display: grid; }
+
+/* Mac and wide windows: a sidebar under the top bar */
+@media (min-width: 761px) {
+  .sidenav { position: fixed; left: 0; top: var(--top-h); bottom: 0; width: var(--nav-w); display: flex; flex-direction: column;
+    padding: 8px 0 12px; border-right: 1px solid var(--gold-faint); background: rgba(7, 5, 4, .55); backdrop-filter: blur(6px); z-index: 25;
+    overflow-y: auto; }
+  .hud, .ticker { margin-left: var(--nav-w); }
+  body.nav-collapsed .sidenav .nl { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+  body.nav-collapsed .sidenav .badge { position: absolute; top: 4px; right: 6px; min-width: 18px; height: 18px; line-height: 18px; padding: 0 4px; }
+  body.nav-collapsed .sidenav a, body.nav-collapsed .sidenav button { justify-content: center; padding: 10px 0; }
+  body.nav-collapsed #navcollapse .ni { transform: scaleX(-1); }
+}
+@media (min-width: 761px) and (max-width: 1599px) {  /* only if you expand the sidebar on a narrower screen */
+  body:not(.nav-collapsed) .hud { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); grid-template-areas: "center center" "left right"; }
+}
+
+/* iPhone and narrow windows: the same links as a tab bar at the bottom */
+@media (max-width: 760px) {
+  body { padding-bottom: calc(68px + env(safe-area-inset-bottom)); }
+  .sidenav { position: fixed; left: 0; right: 0; bottom: 0; z-index: 40; display: grid; grid-template-columns: repeat(5, 1fr);
+    background: rgba(7, 5, 4, .95); border-top: 1px solid var(--gold-line); backdrop-filter: blur(12px);
+    padding: 0 max(4px, env(safe-area-inset-left)) env(safe-area-inset-bottom) max(4px, env(safe-area-inset-right)); }
+  .sidenav > a { flex-direction: column; justify-content: center; gap: 3px; padding: 6px 2px; min-height: 60px; border-left: 0;
+    font-size: 12px; letter-spacing: .06em; text-align: center; }
+  .sidenav > a[aria-current="page"] { box-shadow: inset 0 2px 0 var(--gold); background: none; }
+  .sidenav > a .badge { position: absolute; top: 6px; left: calc(50% + 6px); margin: 0; min-width: 18px; height: 18px; line-height: 18px; padding: 0 4px; }
+  .nav-more { display: none; }  /* Ideas, Benchmarks and Trust stay in the More menu on phones */
+  .statuspill { order: 3; flex: 1 1 100%; margin: 0; max-width: none; min-height: 44px; }
+  .ticker { display: none; }
+}
+
+/* one section at a time outside Home; Home keeps today's full overview */
+body:not([data-view="home"]) .center { display: none; }
+body[data-view="missions"] .memory-panel, body[data-view="missions"] .decision-panel, body[data-view="missions"] .systems-panel,
+body[data-view="decisions"] .missions-panel, body[data-view="decisions"] .memory-panel, body[data-view="decisions"] .systems-panel,
+body[data-view="memory"] .missions-panel, body[data-view="memory"] .decision-panel, body[data-view="memory"] .systems-panel,
+body[data-view="systems"] .missions-panel, body[data-view="systems"] .memory-panel, body[data-view="systems"] .decision-panel { display: none; }
+body:not([data-view="home"]) .hud { display: block; padding: 8px 28px 28px; }
+body:not([data-view="home"]) .rail { display: contents; }
+body:not([data-view="home"]) .hud .panel { max-width: 980px; margin: 0 auto 18px; }
+@media (max-width: 760px) {
+  /* phone Home: the conversation, plus Decisions on top whenever something needs you */
+  body[data-view="home"] .missions-panel, body[data-view="home"] .memory-panel, body[data-view="home"] .systems-panel,
+  body[data-view="home"] .decision-panel:not(.has-items) { display: none; }
+  body:not([data-view="home"]) .hud { padding: 8px 12px 16px; }
+}
+/* secondary pages (Benchmarks, Trust, Ideas) sit beside the same sidebar */
+@media (min-width: 761px) { main.page { margin-left: var(--nav-w); width: auto; } }

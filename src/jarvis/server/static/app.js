@@ -166,6 +166,10 @@ function renderHead(d) {
   $("#hl-kicker").textContent = s.kicker;
   $("#hl-main").textContent = s.main;
   $("#hl-sub").textContent = s.sub;
+  const pill = $("#statuspill");
+  pill.dataset.state = s.core;
+  $("#statustext").textContent = s.main && s.kicker !== "All systems nominal" ? `${s.kicker} · ${s.main}` : s.kicker;
+  pill.setAttribute("href", d && d.approvals && d.approvals.length ? "#/decisions" : "#/home");
   document.title = s.core === "attention" ? "● JARVIS — decision required" : "JARVIS";
   const stop = d && d.emergency_stop;
   $("#stopbar").hidden = !stop;
@@ -205,7 +209,7 @@ async function submitCommand(ev) {
   if (!text) return;
   if (ui.mode === "do") {
     $("#send").disabled = true;
-    try { await api("/api/plan", { request: text }); $("#cmd").value = ""; await refresh(); }
+    try { await api("/api/plan", { request: text }); $("#cmd").value = ""; clearDraft(); await refresh(); }
     catch (e) { note(`Could not start planning: ${e.message}`); }
     finally { $("#send").disabled = false; }
     return;
@@ -213,6 +217,7 @@ async function submitCommand(ev) {
   if (ui.chatBusy) return;
   ui.convo.push({ role: "user", text });
   $("#cmd").value = "";
+  clearDraft();
   if (ui.mode === "research") { await sendChat({ question: text, session: ui.session }, "/api/research"); return; }
   const history = ui.convo.slice(0, -1).filter((m) => !m.error && !m.consent).map((m) => ({ role: m.role, content: m.text }));
   await sendChat({ message: text, history, session: ui.session });
@@ -672,6 +677,7 @@ function missionCard(t) {
 function renderMissions(tasks) {
   const live = tasks.filter((t) => ![...["completed", "failed", "cancelled"]].includes(t.state)).length;
   $("#miscount").textContent = live ? `${live} live` : "";
+  badge("missions", live);
   $("#missions").replaceChildren(...(tasks.length ? tasks.slice(0, 12).map(missionCard)
     : [h("div", { class: "empty" }, "No missions yet. Switch to Do and describe a task.")]));
 }
@@ -682,6 +688,7 @@ function renderDecisions(list) {
   panel.classList.toggle("has-items", list.length > 0);
   $("#ap-h").textContent = list.length ? "Decision required" : "Decisions";
   $("#apcount").textContent = list.length > 1 ? String(list.length) : "";
+  badge("decisions", list.length);
   if (!list.length) { $("#approvals").replaceChildren(h("div", { class: "empty" }, "Nothing waiting for you.")); return; }
   $("#approvals").replaceChildren(...list.map((a) => {
     const target = a.resource && a.tool === "fs" ? h("div", { class: "d-target", title: a.resource }, "→ ", h("b", {}, base(a.resource)), ` in ${folder(a.resource)}`)
@@ -873,6 +880,42 @@ async function act(path, body) {
   await refresh();
 }
 
+// ---------------------------------------------------------------- shell: sections, badges, sidebar, drafts
+// Sections are views of the same live page: switching never pauses, resumes or changes anything.
+const VIEWS = ["home", "missions", "decisions", "memory", "systems"];
+function viewFromHash() {
+  const m = location.hash.match(/^#\/(\w+)/);
+  return m && VIEWS.includes(m[1]) ? m[1] : null;
+}
+function setView(view) {
+  if (!VIEWS.includes(view)) view = "home";
+  const changed = document.body.dataset.view !== view;
+  document.body.dataset.view = view;
+  document.querySelectorAll("#sidenav a[data-view]").forEach((a) => {
+    if (a.dataset.view === view) a.setAttribute("aria-current", "page"); else a.removeAttribute("aria-current");
+  });
+  if (changed) window.scrollTo(0, 0);
+}
+function badge(name, n) {
+  const el = $(`#badge-${name}`);
+  if (!el) return;
+  el.hidden = !n;
+  el.textContent = n > 9 ? "9+" : String(n || "");
+  el.setAttribute("aria-label", `${n} ${name === "decisions" ? "waiting for you" : "live"}`);
+}
+function setNavCollapsed(collapsed) {
+  document.body.classList.toggle("nav-collapsed", collapsed);
+  $("#navcollapse").setAttribute("aria-expanded", String(!collapsed));
+  try { localStorage.setItem("jarvis-nav-collapsed", collapsed ? "1" : "0"); } catch (e) { /* this visit only */ }
+}
+// The unsent message survives reloads and section changes (this browser tab only; gone when the tab closes).
+const DRAFT_KEY = "jarvis-draft";
+function saveDraft() { try { sessionStorage.setItem(DRAFT_KEY, $("#cmd").value); } catch (e) { /* not kept */ } }
+function clearDraft() { try { sessionStorage.removeItem(DRAFT_KEY); } catch (e) { /* nothing kept */ } }
+function restoreDraft() {
+  try { const d = sessionStorage.getItem(DRAFT_KEY); if (d && !$("#cmd").value) $("#cmd").value = d; } catch (e) { /* none */ }
+}
+
 async function refresh() {
   try { ui.data = await api("/api/state"); ui.online = true; }
   catch (e) { ui.online = false; if (/not signed in/.test(e.message)) { location.reload(); return; } }
@@ -915,6 +958,15 @@ document.addEventListener("DOMContentLoaded", () => {
   const tick = () => { $("#clock").textContent = new Date().toLocaleTimeString([], { hour12: false }); };
   tick(); setInterval(tick, 1000);
   setMode("ask");
+  setView(viewFromHash() || "home");
+  window.addEventListener("hashchange", () => { const v = viewFromHash(); if (v) setView(v); });
+  // Below 1600px the sidebar starts as icons so Home keeps its three columns; your own choice always wins.
+  let collapsed = window.innerWidth < 1600;
+  try { const saved = localStorage.getItem("jarvis-nav-collapsed"); if (saved !== null) collapsed = saved === "1"; } catch (e) { /* default */ }
+  setNavCollapsed(collapsed);
+  $("#navcollapse").addEventListener("click", () => setNavCollapsed(!document.body.classList.contains("nav-collapsed")));
+  restoreDraft();
+  $("#cmd").addEventListener("input", saveDraft);
   if ("serviceWorker" in navigator && location.protocol === "https:") navigator.serviceWorker.register("/sw.js").catch(() => {});
   refresh();
   setInterval(refresh, 1500);
