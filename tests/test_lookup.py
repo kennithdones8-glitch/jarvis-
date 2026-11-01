@@ -186,3 +186,36 @@ def test_an_invented_reminders_list_falls_back_to_every_list(env):
     assert [c[1].get("list") for c in fake.calls] == ["overdue", None]
     assert r["checked"] == ["Reminders (all lists; nothing open in “overdue”)"]
     assert "Pay rent" in seen["answer_prompts"][-1]
+
+
+@pytest.fixture
+def new_york(monkeypatch):
+    import time as _time
+    monkeypatch.setenv("TZ", "America/New_York")
+    _time.tzset()
+    yield
+    monkeypatch.undo()
+    _time.tzset()
+
+
+def test_whole_days_and_the_fixture_survive_the_clocks_going_back(new_york):
+    """US clocks went back on 1 Nov 2026, the day of the first real benchmark run: "tomorrow 9:00" came out as 8:00."""
+    from jarvis.bench.runner import FixtureMac
+    from jarvis.orchestrator.lookup import whole_days
+    w = whole_days({"from": "2026-11-02T14:00", "to": "2026-11-02T15:30"})
+    assert w["from"] == "2026-11-02T00:00:00-05:00" and w["to"] == "2026-11-03T00:00:00-05:00"
+    w = whole_days({"from": "2026-10-31T10:00:00-04:00", "to": "2026-11-01T10:00:00-05:00"})
+    assert w["from"] == "2026-10-31T00:00:00-04:00" and w["to"] == "2026-11-02T00:00:00-05:00"
+    before = datetime.fromisoformat("2026-11-01T01:12:00-04:00")
+    fx = FixtureMac({"events": [{"title": "Standup", "day": 1, "start": "09:00", "end": "09:30"}]}, now=before)
+    assert fx.events[0]["start"] == "2026-11-02T09:00:00-05:00"
+
+
+def test_reminders_say_how_far_off_they_are():
+    from jarvis.orchestrator.lookup import _when, render
+    now = datetime.now().astimezone()
+    assert _when((now - timedelta(days=2)).isoformat()) == "OVERDUE by 2 days"
+    assert _when((now + timedelta(days=5)).isoformat()) == "in 5 days"
+    text = render(("reminders", "list"), {"reminders": [{"title": "Pay rent", "due": (now - timedelta(days=1)).isoformat(),
+                                                          "list": "Home"}, {"title": "Milk", "due": None, "list": "Home"}]})
+    assert "Pay rent (due " in text and "OVERDUE by 1 day)" in text and "- Milk [Home]" in text

@@ -184,3 +184,13 @@ def test_writes_verified_detects_tampering(tmp_path):
     assert not writes_verified({}, [step]).ok
     f.unlink()
     assert not writes_verified({}, [step]).ok
+
+
+def test_opening_an_app_nobody_asked_for_is_sent_back():
+    from jarvis.core import StepSpec
+    from jarvis.orchestrator.planner import Plan, unrequested
+    steps = [StepSpec(description="Open Mail", tool="apps", action="open", args={"name": "Mail"}),
+             StepSpec(description="Draft", tool="mail", action="draft", args={})]
+    plan = Plan("plan", steps=steps)
+    assert unrequested(plan, "Draft an email to sam@example.com about Friday")[0].startswith("step 0: apps.open")
+    assert unrequested(plan, "Open Mail and draft an email to Sam") == []

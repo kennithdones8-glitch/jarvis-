@@ -123,6 +123,17 @@ class Plan:
     attempts: int = 1
 
 
+OPEN_WORDS = re.compile(r"\b(open|launch|start|show|bring up)\b", re.I)
+
+
+def unrequested(plan: Plan, request: str) -> list[str]:
+    """Steps the owner didn't ask for that models add anyway (each would be one more approval to answer)."""
+    return [f"step {i}: apps.open only opens an app; use it only when the owner asks to open one "
+            "(mail.draft, notes.create and calendar.add work without opening the app)"
+            for i, st in enumerate(plan.steps) if (st.tool, st.action) == ("apps", "open")
+            and not OPEN_WORDS.search(request)]
+
+
 def available_actions(registry: ToolRegistry) -> list[tuple[str, str]]:
     return [key for key in ACTION_DOCS if registry.action(*key) is not None]
 
@@ -266,6 +277,8 @@ class Planner:
                                      temperature=0.0, json_mode=True), purpose="plan a task", task_id=task_id)
             try:
                 plan = validate(parse_json_output(r.text), self.registry)
+                if plan.kind == "plan" and (extra := unrequested(plan, request)):
+                    raise PlanError(extra)
                 plan.model, plan.attempts = f"{r.provider}/{r.model}", attempt
                 if plan.kind == "plan" and (missing := self.missing_inputs(plan)):
                     return Plan("clarify", goal=plan.goal, message=missing, model=plan.model, attempts=attempt)

@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.17.10 — Daylight saving, due dates, unrequested steps (from the benchmark on the owner's Mac)
+
+- **Fixed (benchmark):** the stand-in Mac placed "tomorrow 9:00" with today's UTC offset, so across the
+  1 Nov clock change it became 8:00 and even a perfect answer failed. Times are now local wall-clock times.
+- **Fixed:** whole-day calendar lookups had the same offset mistake across a clock change.
+- Reminder lookups say how far off each one is ("OVERDUE by 2 days", "in 5 days") and the lookup carries the
+  current time, so a small model doesn't have to do date arithmetic (it called overdue items not overdue).
+- A plan that opens an app the owner didn't ask to open is sent back to the model once with the reason
+  (a model kept adding "open Mail" before drafting an email: one more approval for nothing).
+- `planning-free` also accepts "free slot" / "free between" as a yes (and "no free" as a no). Its task hash
+  changes, so compare it only between runs made with this version.
+
 ## 0.17.9 — Lookups that ask the right question (from the benchmark on the owner's Mac)
 
 - Calendar lookups cover whole days: asked "am I free 2–3:30, and what's first tomorrow?", the model looked up

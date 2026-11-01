@@ -23,6 +23,7 @@ import tempfile
 import time
 import tomllib
 from datetime import datetime, timedelta
+from datetime import time as dtime
 from pathlib import Path
 from typing import Any, Callable
 
@@ -46,7 +47,8 @@ class FixtureMac:
 
         def at(day: int, hhmm: str) -> str:
             h, m = (int(x) for x in hhmm.split(":"))
-            return (now + timedelta(days=day)).replace(hour=h, minute=m, second=0, microsecond=0).isoformat()
+            # wall-clock time on that day in the local zone, so a daylight-saving change in between doesn't shift it
+            return datetime.combine(now.date() + timedelta(days=day), dtime(h, m)).astimezone().isoformat()
         self.events = [{"title": e["title"], "start": at(e.get("day", 0), e["start"]), "end": at(e.get("day", 0), e["end"]),
                         "all_day": False, "location": e.get("location", ""), "calendar": e.get("calendar", "Home"),
                         "recurrence": None, "excluded": []} for e in mac.get("events", [])]
