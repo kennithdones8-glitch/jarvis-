@@ -8,6 +8,13 @@
   opened; same sign-in as the rest of the dashboard.
 - Reports start with **Failures at a glance** (one block per failing task), and the terminal prints it after a
   run, so failures no longer need a separate script to dig out.
+## Unreleased — Trust Contract (branch `trust-contract-v1`)
+
+- `jarvis trust` and a **Trust** page in the dashboard (phone too): what JARVIS does on its own, always asks
+  about, and never does, plus where your data may go and what it may spend. Generated every time from the live
+  permission engine (it asks the engine about every action, inside each approved folder), policy, privacy
+  settings, grants and budget, so it can't drift. Built-in promises name the release-gate item that proves them;
+  a test fails if one names an item that doesn't exist.
 
 ## 0.17.14 — Review fix
 

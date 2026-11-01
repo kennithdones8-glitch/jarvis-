@@ -781,7 +781,7 @@ class Dashboard:
 
     def _get(self, h: BaseHTTPRequestHandler, url, *, device: dict | None) -> None:
         if url.path in ("/static/app.js", "/static/app.css", "/static/phone.js", "/static/qrcode.js",
-                        "/static/bench.js", "/static/bench.css"):
+                        "/static/bench.js", "/static/bench.css", "/static/trust.js"):
             ctype = "text/javascript" if url.path.endswith(".js") else "text/css"
             return self._send(h, 200, (STATIC / url.path.rsplit("/", 1)[1]).read_bytes(), f"{ctype}; charset=utf-8")
         if m := re.fullmatch(r"/static/fonts/(rajdhani-[567]00\.woff2)", url.path):
@@ -813,6 +813,11 @@ class Dashboard:
             return self._send(h, 200, (STATIC / "bench.html").read_bytes(), "text/html; charset=utf-8")
         if url.path.startswith("/api/bench"):
             return self._bench_api(h, url)
+        if url.path == "/trust":
+            return self._send(h, 200, (STATIC / "trust.html").read_bytes(), "text/html; charset=utf-8")
+        if url.path == "/api/trust":
+            from ..trust import contract
+            return self._json(h, 200, contract(self.kernel).as_dict())
         if url.path == "/api/push/key" and self.remote is not None:
             return self._json(h, 200, {"key": self.remote.push.public_key})
         raise HttpError(404, "not found")

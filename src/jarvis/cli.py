@@ -111,6 +111,8 @@ def main(argv: list[str] | None = None) -> int:
     p = sub.add_parser("drill", help="recovery drills on a throwaway JARVIS: crashes, stops, races, damage, restore")
     p.add_argument("only", nargs="*", help="run only drills whose name contains these words")
     p.add_argument("--json", action="store_true")
+    p = sub.add_parser("trust", help="the Trust Contract: what JARVIS does on its own, asks about, and never does")
+    p.add_argument("--json", action="store_true")
     p = sub.add_parser("gate", help="release gate: full tests, linter, and every security item (run from the repo)")
     p.add_argument("--json", action="store_true")
     p = sub.add_parser("bench", help="benchmark: list | run [IDS] | baseline | score-baseline FILE | report RUN_DIR | "
@@ -211,6 +213,11 @@ def main(argv: list[str] | None = None) -> int:
             return _devices(kernel, args)
         elif args.cmd == "voice":
             return _voice(kernel, args)
+        elif args.cmd == "trust":
+            from . import trust
+
+            c = trust.contract(kernel)
+            print(json.dumps(c.as_dict(), indent=2) if args.json else trust.as_text(c))
         elif args.cmd == "trace":
             from . import flight
 
