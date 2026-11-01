@@ -1,13 +1,15 @@
 # Changelog
 
-## Unreleased — Dashboard extras (branch `extras-v1`: benchmarks page + Trust Contract + improvement ideas)
+## 0.17.15 — Benchmarks page, Trust Contract, improvement ideas
 
-- Combines `bench-page-v1`, `trust-contract-v1` and `proposals-v1`, plus two owner-approved changes:
+### Owner-approved extras
+
+- Two owner-approved changes:
   - Deciding on an improvement idea from the phone needs Face ID (added to the phone's Face ID list).
   - The header's Help, Briefing, Benchmarks, Trust and Ideas sit in one **More** menu; the emergency stop stays
     on its own, always visible.
 
-## Unreleased — Benchmark page and failures at a glance (branch `bench-page-v1`)
+### Benchmark page and failures at a glance
 
 - **Benchmarks page** (`/bench`, linked from the dashboard header; works on the paired iPhone): every run with
   its score per category, one run's tasks with each failure's checks, lookups, approvals and answer, and a
@@ -15,14 +17,14 @@
   opened; same sign-in as the rest of the dashboard.
 - Reports start with **Failures at a glance** (one block per failing task), and the terminal prints it after a
   run, so failures no longer need a separate script to dig out.
-## Unreleased — Trust Contract (branch `trust-contract-v1`)
+### Trust Contract
 
 - `jarvis trust` and a **Trust** page in the dashboard (phone too): what JARVIS does on its own, always asks
   about, and never does, plus where your data may go and what it may spend. Generated every time from the live
   permission engine (it asks the engine about every action, inside each approved folder), policy, privacy
   settings, grants and budget, so it can't drift. Built-in promises name the release-gate item that proves them;
   a test fails if one names an item that doesn't exist.
-## Unreleased — Improvement proposals (branch `proposals-v1`)
+### Improvement proposals
 
 - JARVIS studies its own record and suggests improvements: benchmark tasks failing in most runs, actions that
   keep timing out or failing, routine actions you always approve (with the exact policy rule you could add
