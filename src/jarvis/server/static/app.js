@@ -651,6 +651,28 @@ const localDate = () => { const n = new Date(); return `${n.getFullYear()}-${Str
 // ---------------------------------------------------------------- missions
 const ICON = { done: "✓", started: "›", pending: "·", failed: "✗", uncertain: "?", skipped: "–" };
 
+function stepText(t) {
+  // Counts of real steps only; never a percentage or an estimate.
+  const n = t.steps.length;
+  const done = t.steps.filter((s) => s.state === "done" || s.state === "skipped").length;
+  if (!n) return "No steps yet";
+  if (["completed", "failed", "cancelled"].includes(t.state) || done === n) return `${done} of ${n} steps done`;
+  return `Step ${Math.min(done + 1, n)} of ${n}`;
+}
+
+function missionRow(t) {
+  // Home: one line per mission; Open shows its full card in Missions.
+  return h("li", { class: `mrow ${NEEDS.includes(t.state) ? "needs" : t.state === "failed" ? "bad" : ""}` },
+    h("div", { class: "mrow-text" }, h("small", {}, STATE_WORDS[t.state] || t.state), h("b", {}, t.goal), h("span", {}, stepText(t))),
+    h("button", { class: "btn btn-ghost btn-sm", type: "button", onclick: () => openMission(t.id) }, "Open"));
+}
+
+function openMission(id) {
+  ui.open.add(id);
+  location.hash = "#/missions";
+  setTimeout(() => { const el = document.getElementById(`m-${id}`); if (el) el.scrollIntoView({ block: "start" }); }, 60);
+}
+
 function missionCard(t) {
   const done = t.steps.filter((s) => s.state === "done" || s.state === "skipped").length;
   const cls = NEEDS.includes(t.state) ? "needs" : ACTIVE.includes(t.state) ? "active"
@@ -658,27 +680,37 @@ function missionCard(t) {
   const cur = t.steps.find((s) => s.state === "started") || t.steps.find((s) => s.state === "pending");
   const files = (t.evidence && t.evidence.files) || [];
   const controls = [];
-  if (["queued", "running", "awaiting_approval"].includes(t.state)) controls.push(h("button", { class: "btn btn-ghost btn-sm", type: "button", onclick: () => act(`/api/tasks/${t.id}/pause`, {}) }, "Pause"));
+  if (["queued", "running", "awaiting_approval"].includes(t.state)) controls.push(h("button", { class: "btn btn-ghost btn-sm", type: "button",
+    title: "Pause: stops after the current step. Nothing is undone; resume any time.", onclick: () => act(`/api/tasks/${t.id}/pause`, {}) }, "Pause"));
   controls.push(h("button", { class: "btn btn-ghost btn-sm", type: "button", onclick: () => showTimeline(t.id) }, "Timeline"));
-  if (["paused", "blocked"].includes(t.state)) controls.push(h("button", { class: "btn btn-sm", type: "button", onclick: () => act(`/api/tasks/${t.id}/resume`, {}) }, "Resume"));
-  if (!["completed", "failed", "cancelled"].includes(t.state)) controls.push(h("button", { class: "btn btn-ghost btn-sm", type: "button", onclick: async () => (await ask("Cancel this task? Steps already done are not undone.", { ok: "Cancel task", danger: true })) && act(`/api/tasks/${t.id}/cancel`, {}) }, "Cancel"));
+  const uncertain = t.steps.filter((s) => s.state === "uncertain");
+  if (["paused", "blocked"].includes(t.state) && !uncertain.length) controls.push(h("button", { class: "btn btn-sm", type: "button", onclick: () => act(`/api/tasks/${t.id}/resume`, {}) }, "Resume"));
+  if (!["completed", "failed", "cancelled"].includes(t.state)) controls.push(h("button", { class: "btn btn-ghost btn-sm", type: "button",
+    title: "Cancel: ends the mission for good, after the current step. Anything already done stays done.",
+    onclick: async () => (await ask(`Cancel “${t.goal}”?\n\nIt stops for good after the current step. Anything already done (files saved, events added, drafts created) is not undone.`,
+      { ok: "Cancel mission", danger: true })) && act(`/api/tasks/${t.id}/cancel`, {}) }, "Cancel"));
 
   const details = h("details", { class: "more" }, h("summary", {}, `${done}/${t.steps.length} steps · details`),
     h("ol", { class: "steps" }, t.steps.map((s) => h("li", { class: s.state }, h("span", { class: "ic" }, ICON[s.state] || "·"),
       h("div", {}, s.description, h("small", {}, s.call + (s.attempts > 1 ? ` · attempt ${s.attempts}` : "")),
+        s.state === "uncertain" ? h("div", { class: "m-err" }, "Outcome unknown: JARVIS never repeats this automatically.") : null,
         s.error ? h("div", { class: "m-err" }, s.error) : null)))),
     t.final_text ? h("pre", { class: "out" }, t.final_text) : null);
   if (ui.open.has(t.id)) details.open = true;
   details.addEventListener("toggle", () => details.open ? ui.open.add(t.id) : ui.open.delete(t.id));
 
-  return h("article", { class: `mission ${cls}` },
+  return h("article", { class: `mission ${cls}`, id: `m-${t.id}` },
     h("div", { class: "m-state" }, STATE_WORDS[t.state] || t.state),
     h("div", { class: "m-title" }, t.goal),
-    h("div", { class: "segs", role: "progressbar", "aria-label": "Progress", "aria-valuemin": 0, "aria-valuemax": t.steps.length, "aria-valuenow": done },
+    h("div", { class: "segs", role: "progressbar", "aria-label": "Progress", "aria-valuemin": 0, "aria-valuemax": t.steps.length, "aria-valuenow": done,
+               "aria-valuetext": stepText(t) },
       t.steps.map((s) => h("i", { class: s.state, title: `${s.description} — ${s.state}` }))),
+    h("div", { class: "m-steps" }, stepText(t)),
     cur && !["completed", "failed", "cancelled"].includes(t.state) ? h("div", { class: "m-now" }, "Now: ", h("b", {}, cur.description)) : null,
     t.state === "failed" && t.error ? h("div", { class: "m-err" }, t.error) : null,
     t.state === "blocked" && t.next_action ? h("div", { class: "m-err" }, t.next_action) : null,
+    uncertain.length ? h("div", { class: "m-err" }, `${plural(uncertain.length, "step")} with an unknown outcome. Check whether it happened; `
+      + "this mission can't be resumed until that's settled, and the dashboard has no control for it yet, so cancel it if needed.") : null,
     files.map((f) => h("div", { class: `m-ok${f.content_matches ? "" : " bad"}`, title: f.path },
       f.content_matches ? `✓ Saved & verified · ${base(f.path)}` : `✗ Verification failed · ${base(f.path)}`)),
     details,
@@ -689,11 +721,47 @@ function renderMissions(tasks) {
   const live = tasks.filter((t) => ![...["completed", "failed", "cancelled"]].includes(t.state)).length;
   $("#miscount").textContent = live ? `${live} live` : "";
   badge("missions", live);
-  $("#missions").replaceChildren(...(tasks.length ? tasks.slice(0, 12).map(missionCard)
-    : [h("div", { class: "empty" }, "No missions yet. Switch to Do and describe a task.")]));
+  if (!tasks.length) {
+    $("#missions").replaceChildren(h("div", { class: "empty" }, "No missions yet. Switch to Do and describe a task."));
+    return;
+  }
+  const finished = (t) => ["completed", "failed", "cancelled"].includes(t.state);
+  if (document.body.dataset.view !== "missions") {
+    // what needs you first, then what's running, paused, failed, and only then what finished fine
+    const rank = (t) => NEEDS.includes(t.state) ? 0 : ACTIVE.includes(t.state) ? 1 : t.state === "paused" ? 2 : t.state === "failed" ? 3 : 4;
+    const list = tasks.map((t, i) => [rank(t), i, t]).sort((x, y) => x[0] - y[0] || x[1] - y[1]).map((x) => x[2]).slice(0, 5);
+    fill($("#missions"), h("ol", { class: "mrows" }, list.map(missionRow)),
+      tasks.length > list.length ? h("a", { class: "btn btn-ghost btn-sm", href: "#/missions" }, `All ${tasks.length} missions`) : null);
+    return;
+  }
+  const groups = [["Needs you", (t) => NEEDS.includes(t.state)], ["In progress", (t) => ACTIVE.includes(t.state)],
+                  ["Paused", (t) => t.state === "paused"], ["Finished", finished]];
+  fill($("#missions"), groups.map(([title, test]) => {
+    const g = tasks.filter(test);
+    return g.length ? [h("h3", { class: "m-group" }, `${title} · ${g.length}`), g.map(missionCard)] : null;
+  }));
 }
 
 // ---------------------------------------------------------------- decisions
+// How much a decision shows grows with its risk (from the tier the action declares, and whether data leaves the Mac).
+function riskOf(a) {
+  if (a.tool === "egress") return { level: "data", icon: "⇪", label: "Data leaves this Mac" };
+  if (a.tier >= 4 || a.action === "delete") return { level: "high", icon: "▲", label: "High risk" };
+  if (a.tier === 3) return { level: "high", icon: "▲", label: "External action" };
+  if (a.tier === 2) return { level: "review", icon: "◆", label: "Review carefully" };
+  return { level: "routine", icon: "·", label: "Routine" };
+}
+
+function egressLines(text) {
+  // The consent summary already says what is sent and why; show those parts instead of hiding them.
+  const purpose = (text.match(/purpose: (.*?)(\. Provider data use:|$)/) || [])[1];
+  const use = (text.match(/Provider data use: (.*?)\.?$/) || [])[1];
+  return h("ul", { class: "d-facts" },
+    purpose ? h("li", {}, h("b", {}, "Why: "), purpose) : null,
+    use ? h("li", {}, h("b", {}, "Provider's data use: "), use) : null,
+    !purpose && !use ? h("li", {}, text) : null);
+}
+
 function renderDecisions(list) {
   const panel = $("#decision-panel");
   panel.classList.toggle("has-items", list.length > 0);
@@ -704,12 +772,21 @@ function renderDecisions(list) {
   $("#approvals").replaceChildren(...list.map((a) => {
     const target = a.resource && a.tool === "fs" ? h("div", { class: "d-target", title: a.resource }, "→ ", h("b", {}, base(a.resource)), ` in ${folder(a.resource)}`)
       : a.resource ? h("div", { class: "d-target" }, a.resource) : null;
-    return h("article", { class: "decision" },
-      h("div", { class: "d-kind" }, decisionKind(a)),
-      h("div", { class: "d-title" }, a.summary.split(" — ")[0]),
+    const risk = riskOf(a);
+    const [head, ...rest] = a.summary.split(" — ");
+    const more = rest.join(" — ");
+    const preview = a.preview === null ? null : risk.level === "routine"
+      ? h("details", { class: "d-preview" }, h("summary", {}, "Show exactly what will be written"), h("pre", { class: "out" }, a.preview))
+      : h("pre", { class: "out", "aria-label": "Exactly what will be written" }, a.preview);
+    return h("article", { class: `decision risk-${risk.level}` },
+      h("div", { class: "d-kind" }, decisionKind(a), h("span", { class: "d-risk" }, `${risk.icon} ${risk.label}`)),
+      h("div", { class: "d-title" }, head),
       target,
+      a.tool === "egress" && more ? egressLines(more) : more && risk.level !== "routine" ? h("div", { class: "d-why" }, more) : null,
       h("div", { class: "d-why" }, a.reason === "no standing policy covers this action" ? "Asking because no standing permission covers this." : a.reason),
-      a.preview !== null ? h("pre", { class: "out", "aria-label": "Exactly what will be written" }, a.preview) : null,
+      preview,
+      risk.level !== "routine" ? h("div", { class: "d-scope" }, "Approving applies once, to exactly this. Any change asks you again.") : null,
+      a.task_id && a.tool !== "egress" ? h("div", { class: "d-scope" }, "Rejecting stops this step; JARVIS won't try this on the same target again in this mission.") : null,
       h("div", { class: "row mt" },
         h("button", { class: "btn btn-approve", type: "button", onclick: () => act(`/api/approvals/${a.id}`, { approve: true }) }, "Approve"),
         h("button", { class: "btn btn-danger", type: "button", onclick: () => act(`/api/approvals/${a.id}`, { approve: false }) }, "Reject")));
@@ -881,7 +958,7 @@ async function forgetMatching() {
 // Decisions are not repeated here: their own panel sits beside (Mac) or above (iPhone) this list on Home.
 const DAY_MS = 24 * 3600 * 1000;
 // replaceChildren with optional parts: leaves out null/false instead of printing "null"
-const fill = (el, ...kids) => el.replaceChildren(...kids.flat().filter((k) => k !== null && k !== undefined && k !== false));
+const fill = (el, ...kids) => el.replaceChildren(...kids.flat(Infinity).filter((k) => k !== null && k !== undefined && k !== false));
 function renderMatters(d) {
   const items = [];
   const go = (hash) => () => { location.hash = hash; };
@@ -984,7 +1061,7 @@ function setView(view) {
   document.querySelectorAll("#sidenav a[data-view]").forEach((a) => {
     if (a.dataset.view === view) a.setAttribute("aria-current", "page"); else a.removeAttribute("aria-current");
   });
-  if (changed) window.scrollTo(0, 0);
+  if (changed) { window.scrollTo(0, 0); if (ui.data) renderMissions(ui.data.tasks); }
 }
 function badge(name, n) {
   const el = $(`#badge-${name}`);
