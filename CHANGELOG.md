@@ -11,6 +11,9 @@ failures and Claude calls within +25%.
   words overlap. Closes the `memory-preferences` gap found by the extended benchmark (the oracle now passes all 24).
 - Grounding check: calendar/reminder answers that mention a time not in the data get one retry, then "Unverified".
 
+- Review fixes: the grounding retry is always local (it can never turn into a consent question); profile
+  memories respect exclusions added later, and "I'm …" counts only for facts ("I'm vegetarian", not "I'm
+  meeting Sam").
 ## 0.17.11 — Planner understands joined action names
 
 - A plan step written as `"tool": "apps", "action": "mail.draft"` (or `"tool": "mail.draft"`) is read as

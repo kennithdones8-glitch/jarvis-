@@ -516,7 +516,9 @@ class Dashboard:
                                     Message("user", f"Check: your answer mentions {', '.join(bad)}, which isn't in the "
                                             "looked-up data. Answer again using only times from the <lookup> data.",
                                             Category.CONVERSATION)]
-                    r = self.kernel.models.complete(need, ChatRequest(tuple(retry), max_tokens=600),
+                    # always local: the first answer was, and a retry must never become a consent question
+                    r = self.kernel.models.complete(replace(need, local_only=True),
+                                                    ChatRequest(tuple(retry), max_tokens=600),
                                                     purpose="dashboard chat (grounding retry)", level=found.level)
                     bad = unsupported_times(r.text, found.context.content, message)
                 grounded = not bad
