@@ -719,3 +719,13 @@ body:not([data-view="home"]) .recent-panel, body:not([data-view="home"]) .summar
   .core .orbit, .core .gather, .core .bloom, .core .r-wave, .core .r-outer, .core .r-inner { animation: none !important; transition: none !important; }
 }
 @media (prefers-reduced-motion: reduce) { .core-wrap::after { transition: none; } }
+
+/* ================= Stage 5: memory — who said it, when, and what forgetting does ================= */
+.mem-about { color: var(--muted); font-size: 14px; margin: -6px 0 10px 10px; }
+.memfilters { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 10px 10px; }
+.memf { padding: 4px 10px; font-size: 13px; }
+.memf.on { border-color: var(--gold); background: var(--gold-dim); color: var(--gold-hi); }
+.memf.review:not(.on) { border-color: #ffb347; }
+.mem-origin { font-size: 13.5px; color: var(--muted); margin-top: 4px; overflow-wrap: anywhere; }
+.mem-origin b { color: var(--text); font-weight: 600; }
+.mem.unconfirmed .mem-origin b { color: #ffe2bd; }

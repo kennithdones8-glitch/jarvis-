@@ -919,11 +919,22 @@ async function loadMemory(force) {
   try { res = await api(`/api/memory?q=${encodeURIComponent(ui.memQ)}`); } catch (e) { return; }
   const c = res.counts;
   $("#memcount").textContent = c.memories ? `${c.memories}${c.unconfirmed ? ` · ${c.unconfirmed} to review` : ""}` : "";
-  const items = res.memories.map((m) => {
+  const all = res.memories;
+  const mc = { all: all.length, explicit: all.filter((m) => m.origin === "explicit").length,
+                   observed: all.filter((m) => m.origin !== "explicit").length, starred: all.filter((m) => m.important).length };
+  const shown = all.filter(MEM_FILTERS[ui.memFilter || "all"][1]);
+  renderMemFilters(mc);
+  const items = shown.map((m) => {
     const confirmed = m.origin === "explicit";
+    const day = (iso) => (iso || "").slice(0, 10);
+    const reconfirmed = confirmed && m.verified_at && day(m.verified_at) !== day(m.created_at);
     return h("article", { class: `mem ${confirmed ? "confirmed" : "unconfirmed"}` },
-      h("div", { class: "mem-text" }, m.important ? h("span", { class: "mem-star", title: "Important" }, "★ ") : null, m.text),
-      h("div", { class: "mem-meta" }, h("b", {}, confirmed ? "Confirmed" : "Unconfirmed"), ` · ${m.kind} · ${m.created_at.slice(0, 10)}`),
+      h("div", { class: "mem-text" }, m.important ? h("span", { class: "mem-star", title: "Starred: always worth remembering" }, "★ ") : null, m.text),
+      h("div", { class: "mem-origin" }, confirmed
+        ? reconfirmed ? ["✓ ", h("b", {}, "Confirmed by you"), " · noticed earlier, then confirmed"]
+          : ["✓ ", h("b", {}, "Stated by you"), m.source_record ? " · in a conversation" : " · added here"]
+        : ["? ", h("b", {}, "Inferred by JARVIS"), " from a conversation · already used in answers · confirm it or delete it"]),
+      h("div", { class: "mem-meta" }, `${m.kind} · added ${day(m.created_at)}` + (reconfirmed ? ` · confirmed ${day(m.verified_at)}` : "")),
       h("div", { class: "row" },
         confirmed ? null : h("button", { class: "btn btn-sm", type: "button", onclick: () => memAct(`/api/memory/${m.id}/confirm`, {}) }, "Confirm"),
         h("button", { class: "btn btn-ghost btn-sm", type: "button", onclick: () => {
@@ -937,7 +948,23 @@ async function loadMemory(force) {
       h("button", { class: "btn btn-danger btn-sm", type: "button", onclick: forgetMatching }, "Forget all of this")));
   }
   $("#memlist").replaceChildren(...(items.length ? items : [h("div", { class: "empty" },
-    ui.memQ ? "Nothing remembered about that." : "Nothing remembered yet. Tell JARVIS something, or say “remember that…” in chat.")]));
+    all.length && ui.memFilter && ui.memFilter !== "all" ? `No ${MEM_FILTERS[ui.memFilter][0].toLowerCase()} memories${ui.memQ ? " match" : ""}.`
+      : ui.memQ ? "Nothing remembered about that." : "Nothing remembered yet. Tell JARVIS something, or say “remember that…” in chat.")]));
+}
+
+// Filters only change what's shown; they never change what JARVIS remembers or uses.
+const MEM_FILTERS = {
+  all: ["All", () => true],
+  explicit: ["Stated by you", (m) => m.origin === "explicit"],
+  observed: ["Inferred", (m) => m.origin !== "explicit"],
+  starred: ["Starred", (m) => !!m.important],
+};
+function renderMemFilters(counts) {
+  const cur = ui.memFilter || "all";
+  $("#memfilters").replaceChildren(...Object.entries(MEM_FILTERS).map(([key, [label]]) =>
+    h("button", { class: `chip memf${key === cur ? " on" : ""}${key === "observed" && counts.observed ? " review" : ""}`, type: "button",
+                  "aria-pressed": String(key === cur), onclick: () => { ui.memFilter = key; ui.memKey = null; loadMemory(true); } },
+      `${label} · ${counts[key]}`)));
 }
 
 async function memAct(path, body) {
@@ -948,7 +975,7 @@ async function memAct(path, body) {
 async function forgetMatching() {
   const preview = await api("/api/memory/forget", { query: ui.memQ });
   const tasks = (preview.tasks || []).filter((t) => t.deletable).length;
-  if (!await ask(`Permanently delete ${plural(preview.memories.length, "memory").replace("memorys", "memories")}, ${plural(preview.records.length, "conversation record")} and ${plural(tasks, "finished task")} about “${ui.memQ}”?`, { ok: "Forget", danger: true })) return;
+  if (!await ask(`Permanently delete ${plural(preview.memories.length, "memory").replace("memorys", "memories")}, ${plural(preview.records.length, "conversation record")} and ${plural(tasks, "finished task")} about “${ui.memQ}”?\n\nThis can't be undone. If you later restore an older backup, these deletions are applied again, so nothing comes back.`, { ok: "Forget", danger: true })) return;
   await memAct("/api/memory/forget", { query: ui.memQ, confirm: true });
 }
 
