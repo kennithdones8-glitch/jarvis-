@@ -30,6 +30,7 @@ STEP_UP = (
     r"/api/memory/forget",
     r"/api/devices/[\w-]+/revoke",
     r"/api/proposals/[\w-]+/(approve|reject|done|reopen)",  # owner-approved: decisions on improvement ideas
+    r"/api/tasks/[\w-]+/steps/[\w-]+/resolve",  # owner-approved: saying whether an uncertain step happened
 )
 
 

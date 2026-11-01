@@ -551,7 +551,7 @@ class Dashboard:
                 "created_at": t["created_at"], "updated_at": t["updated_at"], "error": t["error"],
                 "next_action": t["next_action"], "runner": t["context"].get("runner"),
                 "evidence": _tilde_evidence((t["result"] or {}).get("evidence")),
-                "steps": [{"n": s["idx"], "description": s["description"], "call": f"{s['tool']}.{s['action']}",
+                "steps": [{"id": s["id"], "n": s["idx"], "description": s["description"], "call": f"{s['tool']}.{s['action']}",
                            "state": s["state"], "attempts": s["attempts"], "error": s["error"]} for s in steps],
                 "final_text": next((s["result"].get("text") for s in reversed(steps) if s["tool"] == "llm"
                                     and s["state"] == "done" and isinstance(s["result"], dict)), None),
@@ -1001,6 +1001,13 @@ class Dashboard:
                 raise HttpError(400, "'approve' must be true or false")
             k.approvals.decide(m.group(1), approve=approve, by=actor)
             return {"ok": True}
+        if m := re.fullmatch(r"/api/tasks/([\w-]+)/steps/([\w-]+)/resolve", path):
+            # You say whether an interrupted step (outcome unknown) actually happened. Never guessed by JARVIS.
+            happened = body.get("happened")
+            if not isinstance(happened, bool):
+                raise HttpError(400, "happened must be true or false")
+            k.engine.resolve_uncertain(m.group(1), m.group(2), happened=happened, actor=actor)
+            return {"ok": True, "state": k.tasks.get(m.group(1))["state"]}
         if m := re.fullmatch(r"/api/tasks/([\w-]+)/(pause|resume|cancel)", path):
             action: Callable[..., None] = getattr(k.engine, m.group(2))
             action(m.group(1), actor=actor)

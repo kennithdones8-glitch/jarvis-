@@ -825,3 +825,6 @@ body[data-view="workspace"] .hud .context-panel { max-width: none; margin: 0; }
   body[data-view="workspace"] .cmd { position: static; }
 }
 @media (pointer: coarse), (max-width: 760px) { .sources a { display: inline-flex; align-items: center; min-height: 44px; } }
+/* settling a step whose outcome is unknown */
+.settle { margin-top: 8px; padding: 8px 10px; border: 1px dashed #ffb347; display: grid; gap: 6px; }
+.settle .m-err { margin-top: 0; }

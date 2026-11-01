@@ -59,7 +59,8 @@ const b64u = {
 };
 // Must match the server's STEP_UP list; the server enforces it regardless of what this page does.
 const FACE_ID = [/^\/api\/approvals\/[\w-]+$/, /^\/api\/release$/, /^\/api\/plan\/\w+\/run$/,
-                 /^\/api\/memory\/[\w-]+\/(delete|edit)$/, /^\/api\/devices\/[\w-]+\/revoke$/];
+                 /^\/api\/memory\/[\w-]+\/(delete|edit)$/, /^\/api\/devices\/[\w-]+\/revoke$/,
+                 /^\/api\/tasks\/[\w-]+\/steps\/[\w-]+\/resolve$/];
 const TOUCH_ID = [...FACE_ID, /^\/api\/devices\/pair$/, /^\/api\/touchid\/enroll\/options$/, /^\/api\/touchid\/[\w-]+\/remove$/];
 const onPhone = () => !!(ui.data && ui.data.remote && ui.data.remote.this_device);
 const touchIdOn = () => !onPhone() && !!(ui.data && ui.data.touch_id && ui.data.touch_id.enabled);
@@ -674,6 +675,14 @@ function openMission(id) {
   setTimeout(() => { const el = document.getElementById(`m-${id}`); if (el) el.scrollIntoView({ block: "start" }); }, 60);
 }
 
+async function settleStep(t, s, happened) {
+  const q = happened
+    ? `Mark “${s.description}” as done?\n\nJARVIS will treat it as finished and carry on with the next step when the mission continues.`
+    : `Mark “${s.description}” as not done?\n\nWhen the mission continues, JARVIS will do this step again. Only choose this if you've checked it really didn't happen; otherwise it may happen twice.`;
+  if (!await ask(q, { ok: happened ? "Yes, it happened" : "Do it again", danger: !happened })) return;
+  act(`/api/tasks/${t.id}/steps/${s.id}/resolve`, { happened });
+}
+
 function missionCard(t) {
   const done = t.steps.filter((s) => s.state === "done" || s.state === "skipped").length;
   const cls = NEEDS.includes(t.state) ? "needs" : ACTIVE.includes(t.state) ? "active"
@@ -710,8 +719,11 @@ function missionCard(t) {
     cur && !["completed", "failed", "cancelled"].includes(t.state) ? h("div", { class: "m-now" }, "Now: ", h("b", {}, cur.description)) : null,
     t.state === "failed" && t.error ? h("div", { class: "m-err" }, t.error) : null,
     t.state === "blocked" && t.next_action ? h("div", { class: "m-err" }, t.next_action) : null,
-    uncertain.length ? h("div", { class: "m-err" }, `${plural(uncertain.length, "step")} with an unknown outcome. Check whether it happened; `
-      + "this mission can't be resumed until that's settled, and the dashboard has no control for it yet, so cancel it if needed.") : null,
+    uncertain.map((s) => h("div", { class: "settle" },
+      h("div", { class: "m-err" }, `Outcome unknown: “${s.description}”. JARVIS never repeats this by itself. Check whether it happened, then tell it:`),
+      h("div", { class: "row" },
+        h("button", { class: "btn btn-sm", type: "button", onclick: () => settleStep(t, s, true) }, "Yes, it happened"),
+        h("button", { class: "btn btn-ghost btn-sm", type: "button", onclick: () => settleStep(t, s, false) }, "No, it didn't")))),
     files.map((f) => h("div", { class: `m-ok${f.content_matches ? "" : " bad"}`, title: f.path },
       f.content_matches ? `✓ Saved & verified · ${base(f.path)}` : `✗ Verification failed · ${base(f.path)}`)),
     details,

@@ -39,6 +39,7 @@ SECURITY: dict[str, tuple[str, list[str]]] = {
         "test_lookup::lookups_can_never_change_anything", "test_mac::arguments_go_as_data_never_into_the_script",
         "test_mac::note_body_is_escaped_html"]),
     "Permission bypass": ("Every change passes the permission engine and, where needed, your approval", [
+        "test_settle_steps::settling_from_the_phone_needs_face_id",
         "test_permissions::outside_root_denied", "test_permissions::path_traversal_denied",
         "test_permissions::symlink_escape_denied", "test_permissions::deny_beats_allow",
         "test_permissions::high_tiers_never_auto_allowed", "test_permissions::protected_paths_not_writable_but_readable",
