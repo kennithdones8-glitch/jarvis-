@@ -1,6 +1,6 @@
 [project]
 name = "jarvis"
-version = "0.17.10"
+version = "0.17.11"
 description = "JARVIS: a permissioned, auditable personal AI system for Mac and iPhone"
 requires-python = ">=3.12"
 # The kernel (src/jarvis/core) uses only the standard library; these serve documents, passkeys/push/backups and

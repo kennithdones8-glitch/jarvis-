@@ -138,6 +138,19 @@ def available_actions(registry: ToolRegistry) -> list[tuple[str, str]]:
     return [key for key in ACTION_DOCS if registry.action(*key) is not None]
 
 
+def action_key(tool: Any, action: Any, allowed: set[tuple[str, str]]) -> tuple[Any, Any]:
+    """The (tool, action) a step names, also accepting joined spellings small models use: tool "mail.draft",
+    action "mail.draft", or "apps" + "mail.draft". Only ever resolves to an action that is available."""
+    if (tool, action) in allowed:
+        return tool, action
+    for joined in (action, tool, f"{tool}.{action}"):
+        if isinstance(joined, str) and joined.count(".") >= 1:
+            t, a = joined.split(".")[-2:]
+            if (t, a) in allowed:
+                return t, a
+    return tool, action
+
+
 def validate(data: Any, registry: ToolRegistry) -> Plan:
     if not isinstance(data, dict):
         raise PlanError(["reply must be a JSON object"])
@@ -160,11 +173,12 @@ def validate(data: Any, registry: ToolRegistry) -> Plan:
         if not isinstance(raw, dict):
             problems.append(f"{where}: must be an object")
             continue
-        key = (raw.get("tool"), raw.get("action"))
+        key = action_key(raw.get("tool"), raw.get("action"), allowed)
         args = raw.get("args")
         deps = raw.get("depends_on", [])
         if key not in allowed:
-            problems.append(f"{where}: {key[0]}.{key[1]} is not an available action")
+            problems.append(f"{where}: {key[0]}.{key[1]} is not an available action (write the tool and the "
+                            f"action separately, e.g. \"tool\": \"mail\", \"action\": \"draft\")")
             continue
         if not isinstance(args, dict):
             problems.append(f"{where}: args must be an object")

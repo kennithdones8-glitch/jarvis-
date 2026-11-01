@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.17.11 — Planner understands joined action names
+
+- A plan step written as `"tool": "apps", "action": "mail.draft"` (or `"tool": "mail.draft"`) is read as
+  `mail.draft`; a small model gave up on the email task after writing it that way. Only actions that exist are
+  ever matched, and the error for a truly unknown one now shows the expected spelling.
+
 ## 0.17.10 — Daylight saving, due dates, unrequested steps (from the benchmark on the owner's Mac)
 
 - **Fixed (benchmark):** the stand-in Mac placed "tomorrow 9:00" with today's UTC offset, so across the
