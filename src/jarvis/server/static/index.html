@@ -29,9 +29,11 @@
     <i aria-hidden="true"></i><span id="statustext">Connecting…</span></a>
   <div class="top-right">
     <span id="clock" class="clock"></span>
+    <button id="cineexit" class="btn btn-ghost cine-only" type="button" title="Back to the full dashboard">Exit cinematic</button>
     <details class="more" id="moremenu">
       <summary class="btn btn-ghost" title="Help, briefing, benchmarks, trust and improvement ideas">More</summary>
       <div class="more-menu" role="menu">
+        <button id="cinebtn" class="btn btn-ghost" type="button" role="menuitem" aria-pressed="false" title="A full-screen, voice-friendly view of JARVIS. Nothing running is affected.">Cinematic mode</button>
         <button id="helpbtn" class="btn btn-ghost" type="button" role="menuitem" title="What you can ask JARVIS to do">Help</button>
         <button id="briefbtn" class="btn btn-ghost" type="button" role="menuitem" title="What needs you, what happened, and any problems">Briefing</button>
         <a class="btn btn-ghost" role="menuitem" href="/bench" title="Benchmark runs: scores over time, before vs after, failures">Benchmarks</a>
@@ -42,6 +44,8 @@
     <button id="estop" class="btn btn-danger" title="Pause every task and block new actions">Emergency stop</button>
   </div>
 </header>
+
+<div id="cinestrip" class="cinestrip cine-only" role="status" aria-live="polite" hidden></div>
 
 <nav class="sidenav" id="sidenav" aria-label="Sections">
   <a href="#/home" data-view="home" title="Home"><span class="ni" aria-hidden="true">◎</span><span class="nl">Home</span></a>

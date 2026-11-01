@@ -746,3 +746,48 @@ body[data-view="intelligence"] .recent-panel, body[data-view="intelligence"] .su
 .idea.open small { color: var(--arc); }
 .idea b { font-weight: 600; overflow-wrap: anywhere; }
 .idea span { color: var(--muted); font-size: 14px; overflow-wrap: anywhere; }
+
+/* ================= Stage 7: cinematic mode — same live page, immersive layout ================= */
+.cine-only { display: none; }
+body.cinematic #cineexit { display: inline-flex; align-items: center; }
+body.cinematic .cinestrip:not([hidden]) { display: flex; }
+.cinestrip { justify-content: center; flex-wrap: wrap; gap: 8px; padding: 6px 16px 0; }
+.cine-item { background: rgba(0, 0, 0, .4); border: 1px solid #ffb347; color: #ffe2bd; padding: 8px 14px; min-height: 40px; cursor: pointer;
+  font: 600 14px var(--display); letter-spacing: .08em; }
+.cine-item:hover { background: rgba(255, 179, 71, .12); }
+/* everything except the conversation centre steps aside; the top bar (status + Emergency stop) stays */
+body.cinematic .sidenav, body.cinematic .rail, body.cinematic .ticker { display: none !important; }
+body.cinematic .hud { display: flex !important; flex-direction: column; align-items: center; margin-left: 0 !important;
+  padding: 8px 16px 32px !important; min-height: calc(100vh - 90px); justify-content: center; }
+body.cinematic .center { display: flex !important; flex-direction: column; align-items: center; width: 100%; max-width: 860px; }
+body.cinematic .center > .core-wrap { width: min(440px, 72vw, 46vh) !important; margin: 0 0 8px; grid-column: auto; }
+body.cinematic .center > .headline { text-align: center; grid-column: auto; }
+body.cinematic .hl { font-size: clamp(24px, 4vw, 40px); }
+body.cinematic .matters, body.cinematic .suggest, body.cinematic .hint, body.cinematic .stats { display: none !important; }
+/* the conversation as subtitles: only the last two messages, large and centred */
+body.cinematic .feed { max-height: none; overflow: visible; margin: 10px 0; }
+body.cinematic .feed > * { display: none; }
+body.cinematic .feed > .msg:nth-last-child(-n+2) { display: block; justify-self: center; text-align: center; max-width: 100%;
+  font-size: clamp(17px, 2.2vw, 22px); background: none; border: 0; }
+body.cinematic .feed > .msg.user:nth-last-child(-n+2) { color: var(--muted); font-size: clamp(15px, 1.8vw, 18px); }
+body.cinematic .cmd { position: static; max-width: 640px; }
+body.cinematic #mic:not([hidden]) { order: -1; border-color: var(--arc); color: var(--arc); }
+body.cinematic { padding-bottom: 0; }
+@media (max-width: 760px) {
+  body.cinematic .center > .core-wrap { width: min(300px, 70vw) !important; }
+  body.cinematic .cmd { position: sticky; bottom: calc(12px + env(safe-area-inset-bottom)); }
+}
+@media (pointer: coarse), (max-width: 760px) { .cine-item { min-height: 44px; } }
+body.cinematic .center > .core-wrap { width: min(440px, 72vw, 38vh) !important; }
+body.cinematic .cmd { position: sticky; bottom: calc(12px + env(safe-area-inset-bottom)); z-index: 20;
+  background: linear-gradient(180deg, rgba(30, 19, 8, .97), rgba(12, 8, 4, .98)); }
+@media (max-width: 760px) { body.cinematic .center > .core-wrap { width: min(300px, 70vw, 36vh) !important; } }
+@media (max-width: 760px) { body.cinematic .center > .core-wrap { width: min(250px, 62vw, 28vh) !important; } body.cinematic .cinestrip { padding-top: 4px; } }
+@media (max-width: 760px) {
+  body.cinematic .feed > .msg:nth-last-child(2) { display: none; }  /* phones: only the latest line */
+  body.cinematic .hl-sub { display: none; }
+  body.cinematic .center > .core-wrap { width: min(230px, 58vw, 24vh) !important; }
+  body.cinematic .cine-item { padding: 6px 10px; font-size: 13px; }
+}
+@media (max-width: 760px) { body.cinematic .hud { justify-content: flex-start; min-height: 0; padding-top: 4px !important; } }
+@media (max-width: 760px) and (max-height: 720px) { body.cinematic .center > .core-wrap { width: min(200px, 50vw, 19vh) !important; } body.cinematic .wordmark span { display: none; } }

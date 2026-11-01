@@ -994,6 +994,36 @@ async function loadIntel() {
         h("button", { class: "btn btn-ghost btn-sm", type: "button", onclick: loadIntel }, "Refresh"))));
 }
 
+// ---------------------------------------------------------------- cinematic mode (presentation only)
+// A view of the same live page: big reactor, the conversation as subtitles, voice up front. Switching sends
+// nothing and changes nothing; decisions and problems stay visible in a slim strip, and Emergency stop stays put.
+function setCinematic(on) {
+  document.body.classList.toggle("cinematic", on);
+  $("#cinebtn").setAttribute("aria-pressed", String(on));
+  $("#cinebtn").textContent = on ? "Leave cinematic mode" : "Cinematic mode";
+  try { localStorage.setItem("jarvis-cinematic", on ? "1" : "0"); } catch (e) { /* this visit only */ }
+  if (ui.data) renderCineStrip(ui.data);
+}
+function renderCineStrip(d) {
+  const strip = $("#cinestrip");
+  const day = Date.now() - 24 * 3600 * 1000;
+  const parts = [];
+  if (d.approvals.length) parts.push(["◆", plural(d.approvals.length, "decision") + " waiting", "#/decisions"]);
+  const blocked = d.tasks.filter((t) => t.state === "blocked").length;
+  if (blocked) parts.push(["!", `${blocked} need${blocked === 1 ? "s" : ""} your input`, "#/missions"]);
+  const failed = d.tasks.filter((t) => t.state === "failed" && Date.parse(t.updated_at) > day).length;
+  if (failed) parts.push(["✗", `${failed} failed today`, "#/missions"]);
+  const problems = d.health && !d.health.ok ? d.health.items.filter((i) => !i.ok).length : 0;
+  if (problems) parts.push(["⚠", plural(problems, "system problem"), "#/systems"]);
+  strip.hidden = !parts.length || !document.body.classList.contains("cinematic");
+  if (parts.length > 1 && window.innerHeight < 720 && window.innerWidth <= 760) {
+    // short phone screens: one line instead of several, so the conversation keeps its room
+    parts.splice(0, parts.length, ["◆", `${parts.length} things need you`, "#/home"]);
+  }
+  strip.replaceChildren(...parts.map(([icon, text, hash]) => h("button", { class: "cine-item", type: "button", onclick: () => {
+    setCinematic(false); location.hash = hash; } }, h("span", { "aria-hidden": "true" }, icon), " ", text)));
+}
+
 async function memAct(path, body) {
   try { await call(path, body); } catch (e) { note(cancelled(e)); }
   await refresh(); await loadMemory(true);
@@ -1087,6 +1117,7 @@ function render() {
   renderFeed(d);
   if (!d) return;
   renderMatters(d);
+  renderCineStrip(d);
   renderSuggestions(d);
   renderSummary(d);
   renderMissions(d.tasks);
@@ -1200,6 +1231,11 @@ document.addEventListener("DOMContentLoaded", () => {
   tick(); setInterval(tick, 1000);
   setMode("ask");
   setView(viewFromHash() || "home");
+  let cine = false;
+  try { cine = localStorage.getItem("jarvis-cinematic") === "1"; } catch (e) { /* default off */ }
+  setCinematic(cine);
+  $("#cinebtn").addEventListener("click", () => setCinematic(!document.body.classList.contains("cinematic")));
+  $("#cineexit").addEventListener("click", () => setCinematic(false));
   window.addEventListener("hashchange", () => { const v = viewFromHash(); if (v) setView(v); });
   // Below 1600px the sidebar starts as icons so Home keeps its three columns; your own choice always wins.
   let collapsed = window.innerWidth < 1600;
