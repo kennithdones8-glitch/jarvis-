@@ -113,8 +113,9 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--json", action="store_true")
     p = sub.add_parser("gate", help="release gate: full tests, linter, and every security item (run from the repo)")
     p.add_argument("--json", action="store_true")
-    p = sub.add_parser("bench", help="benchmark: list | run [IDS] | baseline | score-baseline FILE | report RUN_DIR")
-    p.add_argument("op", choices=["list", "run", "baseline", "score-baseline", "report"])
+    p = sub.add_parser("bench", help="benchmark: list | run [IDS] | baseline | score-baseline FILE | report RUN_DIR | "
+                       "compare [BEFORE AFTER]")
+    p.add_argument("op", choices=["list", "run", "baseline", "score-baseline", "report", "compare"])
     p.add_argument("ids", nargs="*", help="task ids (run), or the file / folder (score-baseline, report)")
     p.add_argument("--models", choices=["local", "hybrid"], default="local",
                    help="local: Claude off (default). hybrid: your settings, uses your Claude Pro plan")
@@ -750,6 +751,16 @@ def _bench(kernel: Kernel, args) -> int:
                 print(f"{x['status'].upper():<8} {x['id']:<22} " + "; ".join(c["detail"] for c in x["checks"] if c["passed"] is False))
             print(f"\nSaved {r['path']}")
             return 0
+        if args.op == "compare":
+            from .bench.compare import as_text, compare, latest_runs, load
+            dirs = [Path(x).expanduser() for x in args.ids] if args.ids else latest_runs(out)
+            if len(dirs) != 2:
+                print("usage: jarvis bench compare BEFORE_DIR AFTER_DIR (or no folders: the two latest runs)",
+                      file=sys.stderr)
+                return 1
+            c = compare(load(dirs[0]), load(dirs[1]))
+            print(as_text(c))
+            return 0 if c.merge else 3
         if args.op == "report":
             data = _json.loads((Path(args.ids[0]).expanduser() / "results.json").read_text())
             print(report(data["meta"], data["results"]))
