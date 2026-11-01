@@ -4,7 +4,7 @@ Off unless the owner turns it on (`[coding] self_test = true` in jarvis.toml). F
 1. The local model writes 3–6 test cases from the owner's request alone (it never sees the answer's code, so the
    tests can't simply copy its mistakes).
 2. The answer's code runs on them in a child process: macOS sandbox with no network, no writing outside a temp
-   folder, no reading files in the owner's home folder (only the Python installation), no starting other programs, 10 s,
+   folder, no reading files in the owner's home folder (only the Python installation), no starting other programs (only Python's own launcher), 10 s,
    empty environment, isolated Python.
 3. If any case fails, the model gets the failures once and may fix the code (or say a case contradicts the request).
    The new answer is kept only if its code passes at least as many cases as before.
@@ -46,7 +46,7 @@ JSON format: {{"cases": [{{"call": "{name}(...)", "expected": "..."}}]}}"""
 PROFILE = """(version 1)(allow default)(deny network*)
 (deny file-write*)(allow file-write* (subpath "{tmp}") (literal "/dev/null"))
 (deny file-read-data (subpath "{home}"))(allow file-read-data (subpath "{tmp}"){python_reads})
-(deny process-exec*)(allow process-exec* (literal "{python}"))"""
+(deny process-exec*)(allow process-exec*{python_execs})"""
 
 HARNESS = r'''
 import json, sys
@@ -122,8 +122,12 @@ def _argv(tmp: str) -> list[str]:
     python = os.path.realpath(sys.executable)
     if sys.platform == "darwin" and Path("/usr/bin/sandbox-exec").exists():
         reads = {os.path.realpath(p) for p in (sys.base_prefix, sys.prefix, os.path.dirname(python))}
-        profile = PROFILE.format(tmp=os.path.realpath(tmp), home=os.path.realpath(Path.home()), python=python,
-                                 python_reads="".join(f' (subpath "{r}")' for r in sorted(reads)))
+        # Framework builds (Homebrew, python.org) start a second binary inside the installation (Python.app), so
+        # programs may be started from the Python installation only; shells and everything else stay blocked.
+        install = {os.path.realpath(sys.base_prefix), os.path.dirname(python)}
+        profile = PROFILE.format(tmp=os.path.realpath(tmp), home=os.path.realpath(Path.home()),
+                                 python_reads="".join(f' (subpath "{r}")' for r in sorted(reads)),
+                                 python_execs="".join(f' (subpath "{r}")' for r in sorted(install)))
         return ["/usr/bin/sandbox-exec", "-p", profile, python, "-I", "-S", "-B"]
     if ALLOW_UNSANDBOXED:
         return [python, "-I", "-S", "-B"]

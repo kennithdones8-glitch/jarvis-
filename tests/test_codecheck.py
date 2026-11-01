@@ -56,8 +56,9 @@ def test_running_cases(unsandboxed):
     assert broken.cases == 0  # a test with a broken expectation doesn't count against the code
 
 
-@pytest.mark.skipif(sys.platform == "darwin", reason="checks the non-macOS refusal")
-def test_nothing_runs_without_a_sandbox():
+def test_nothing_runs_without_a_sandbox(monkeypatch):
+    monkeypatch.setattr(codecheck.sys, "platform", "linux")  # as on any system without sandbox-exec
+    monkeypatch.setattr(codecheck, "ALLOW_UNSANDBOXED", False)
     with pytest.raises(SandboxUnavailable):
         run_cases("def f(): return 1", [{"call": "f()", "expected": "1"}])
 

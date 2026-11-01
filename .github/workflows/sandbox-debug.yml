@@ -26,6 +26,8 @@ jobs:
                                  env={"PATH": "/usr/bin:/bin", "HOME": tmp}, capture_output=True, text=True, timeout=20)
               print("rc", r.returncode, "\nstdout", r.stdout, "\nstderr", r.stderr[-3000:])
           PY
+      - name: The sandbox tests themselves
+        run: uv run pytest -q tests/test_codecheck.py tests/test_macos_only.py
       - name: Recent sandbox denials
         if: always()
         run: log show --last 3m --predicate 'sender == "Sandbox"' --style compact 2>/dev/null | tail -40 || true
