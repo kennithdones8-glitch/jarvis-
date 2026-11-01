@@ -10,6 +10,54 @@ failures and Claude calls within +25%.
 - Profile memories (name, diet, family, preferences, anything marked important) are always used, not only when
   words overlap. Closes the `memory-preferences` gap found by the extended benchmark (the oracle now passes all 24).
 - Grounding check: calendar/reminder answers that mention a time not in the data get one retry, then "Unverified".
+
+## 0.17.11 — Planner understands joined action names
+
+- A plan step written as `"tool": "apps", "action": "mail.draft"` (or `"tool": "mail.draft"`) is read as
+  `mail.draft`; a small model gave up on the email task after writing it that way. Only actions that exist are
+  ever matched, and the error for a truly unknown one now shows the expected spelling.
+
+## 0.17.10 — Daylight saving, due dates, unrequested steps (from the benchmark on the owner's Mac)
+
+- **Fixed (benchmark):** the stand-in Mac placed "tomorrow 9:00" with today's UTC offset, so across the
+  1 Nov clock change it became 8:00 and even a perfect answer failed. Times are now local wall-clock times.
+- **Fixed:** whole-day calendar lookups had the same offset mistake across a clock change.
+- Reminder lookups say how far off each one is ("OVERDUE by 2 days", "in 5 days") and the lookup carries the
+  current time, so a small model doesn't have to do date arithmetic (it called overdue items not overdue).
+- A plan that opens an app the owner didn't ask to open is sent back to the model once with the reason
+  (a model kept adding "open Mail" before drafting an email: one more approval for nothing).
+- `planning-free` also accepts "free slot" / "free between" as a yes (and "no free" as a no). Its task hash
+  changes, so compare it only between runs made with this version.
+
+## 0.17.9 — Lookups that ask the right question (from the benchmark on the owner's Mac)
+
+- Calendar lookups cover whole days: asked "am I free 2–3:30, and what's first tomorrow?", the model looked up
+  only 2–3:30 and missed the 9:00 meeting.
+- A Reminders lookup for a list that doesn't exist or has nothing open (models invent "overdue", "upcoming")
+  falls back to every list, and says so in the lookup's label.
+- Planner wording: `reminders.list` says to omit the list for due/overdue questions; `apps.open` says it is only
+  for opening an app (a model used it to "draft the email").
+
+## 0.17.8 — Chat lookups explain themselves (found by the benchmark on the owner's Mac)
+
+- **Found:** in the first real benchmark run every planning task failed because no lookup ran at all, and the
+  reason was thrown away. The lookup step now records why it looked nothing up (no lookup words, the model
+  chose none, its reply wasn't usable, a lookup was unknown or missing dates…). Chat replies carry these as
+  `lookup_notes`, and benchmark results store them.
+- The lookup step accepts what small local models often send: JSON wrapped in prose, a bare list, or
+  `"calendar.events"` as one name. It still only ever runs read-only lookups, each checked by the permission
+  engine as before.
+
+## 0.17.7 — Calendar reads without `whose` filters (still found on the owner's Mac)
+
+- **Fixed:** 0.17.6's bounded `whose` questions still timed out on the owner's Mac (macOS 14), although the
+  calendars hold only ~170 events and each calendar read by itself in at most 10 s. The script now bulk-reads
+  each calendar's start, end and repeat rule, picks events that overlap the range (or repeat and began before
+  it ends) in the script, and reads the other details only for those. At most 200 events; hitting the cap is
+  reported in `incomplete`.
+- New test runs the real calendar script under Node against a fake Calendar, so the filtering logic is
+  exercised on every platform, not just syntax-checked on macOS.
+
 ## 0.17.6 — Calendar speed fix (found on the owner's Mac)
 
 - **Fixed:** reading the calendar asked Calendar for every event that started before the end of the range, i.e. the

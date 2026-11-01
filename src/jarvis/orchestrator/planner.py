@@ -42,14 +42,14 @@ ACTION_DOCS: dict[tuple[str, str], str] = {
                             '-> {"events": [{"title", "start", "end", "all_day", "location", "calendar"}]} (max 62 days)',
     ("calendar", "add"): 'calendar.add {"title", "start": "<ISO>", "end": "<ISO>", "calendar" (optional), "location" (optional), '
                          '"notes" (optional)} -> adds an event',
-    ("reminders", "list"): 'reminders.list {"list": "<name>" (optional)} -> {"reminders": [{"title", "due", "list", "notes"}]} (open ones)',
+    ("reminders", "list"): 'reminders.list {"list": "<name of one Reminders list>" (optional: omit it to see every list, e.g. for due or overdue questions)} -> {"reminders": [{"title", "due", "list", "notes"}]} (open ones)',
     ("reminders", "add"): 'reminders.add {"title", "due": "<ISO>" (optional), "list" (optional), "notes" (optional)} -> adds a reminder',
     ("reminders", "complete"): 'reminders.complete {"title": "<exact title>", "list" (optional)} -> ticks it off',
     ("notes", "search"): 'notes.search {"query": "<words>"} -> {"results": [{"title", "modified", "snippet"}]} (Apple Notes)',
     ("notes", "read"): 'notes.read {"title": "<exact title>"} -> {"content"}',
     ("notes", "create"): 'notes.create {"title", "body": "<text>", "folder" (optional)} -> new note in Apple Notes',
     ("mail", "draft"): 'mail.draft {"to": ["<email>"], "subject", "body"} -> saves a draft in Mail for the owner to send (never sends)',
-    ("apps", "open"): 'apps.open {"name": "<app name>"} -> opens an app',
+    ("apps", "open"): 'apps.open {"name": "<app name>"} -> opens an app (only when asked to open one; to write an email use mail.draft)',
 }
 REQUIRED_ARGS: dict[tuple[str, str], dict[str, type]] = {
     ("fs", "read"): {"path": str}, ("fs", "list"): {"path": str}, ("fs", "mkdir"): {"path": str},
@@ -123,8 +123,32 @@ class Plan:
     attempts: int = 1
 
 
+OPEN_WORDS = re.compile(r"\b(open|launch|start|show|bring up)\b", re.I)
+
+
+def unrequested(plan: Plan, request: str) -> list[str]:
+    """Steps the owner didn't ask for that models add anyway (each would be one more approval to answer)."""
+    return [f"step {i}: apps.open only opens an app; use it only when the owner asks to open one "
+            "(mail.draft, notes.create and calendar.add work without opening the app)"
+            for i, st in enumerate(plan.steps) if (st.tool, st.action) == ("apps", "open")
+            and not OPEN_WORDS.search(request)]
+
+
 def available_actions(registry: ToolRegistry) -> list[tuple[str, str]]:
     return [key for key in ACTION_DOCS if registry.action(*key) is not None]
+
+
+def action_key(tool: Any, action: Any, allowed: set[tuple[str, str]]) -> tuple[Any, Any]:
+    """The (tool, action) a step names, also accepting joined spellings small models use: tool "mail.draft",
+    action "mail.draft", or "apps" + "mail.draft". Only ever resolves to an action that is available."""
+    if (tool, action) in allowed:
+        return tool, action
+    for joined in (action, tool, f"{tool}.{action}"):
+        if isinstance(joined, str) and joined.count(".") >= 1:
+            t, a = joined.split(".")[-2:]
+            if (t, a) in allowed:
+                return t, a
+    return tool, action
 
 
 def validate(data: Any, registry: ToolRegistry) -> Plan:
@@ -149,11 +173,12 @@ def validate(data: Any, registry: ToolRegistry) -> Plan:
         if not isinstance(raw, dict):
             problems.append(f"{where}: must be an object")
             continue
-        key = (raw.get("tool"), raw.get("action"))
+        key = action_key(raw.get("tool"), raw.get("action"), allowed)
         args = raw.get("args")
         deps = raw.get("depends_on", [])
         if key not in allowed:
-            problems.append(f"{where}: {key[0]}.{key[1]} is not an available action")
+            problems.append(f"{where}: {key[0]}.{key[1]} is not an available action (write the tool and the "
+                            f"action separately, e.g. \"tool\": \"mail\", \"action\": \"draft\")")
             continue
         if not isinstance(args, dict):
             problems.append(f"{where}: args must be an object")
@@ -266,6 +291,8 @@ class Planner:
                                      temperature=0.0, json_mode=True), purpose="plan a task", task_id=task_id)
             try:
                 plan = validate(parse_json_output(r.text), self.registry)
+                if plan.kind == "plan" and (extra := unrequested(plan, request)):
+                    raise PlanError(extra)
                 plan.model, plan.attempts = f"{r.provider}/{r.model}", attempt
                 if plan.kind == "plan" and (missing := self.missing_inputs(plan)):
                     return Plan("clarify", goal=plan.goal, message=missing, model=plan.model, attempts=attempt)

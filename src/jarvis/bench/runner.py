@@ -23,6 +23,7 @@ import tempfile
 import time
 import tomllib
 from datetime import datetime, timedelta
+from datetime import time as dtime
 from pathlib import Path
 from typing import Any, Callable
 
@@ -46,7 +47,8 @@ class FixtureMac:
 
         def at(day: int, hhmm: str) -> str:
             h, m = (int(x) for x in hhmm.split(":"))
-            return (now + timedelta(days=day)).replace(hour=h, minute=m, second=0, microsecond=0).isoformat()
+            # wall-clock time on that day in the local zone, so a daylight-saving change in between doesn't shift it
+            return datetime.combine(now.date() + timedelta(days=day), dtime(h, m)).astimezone().isoformat()
         self.events = [{"title": e["title"], "start": at(e.get("day", 0), e["start"]), "end": at(e.get("day", 0), e["end"]),
                         "all_day": False, "location": e.get("location", ""), "calendar": e.get("calendar", "Home"),
                         "recurrence": None, "excluded": []} for e in mac.get("events", [])]
@@ -211,6 +213,7 @@ def run_task(task: Task, *, config_text: str, models: str, keep: Path | None = N
                     outcome["answer"] = r.get("text") or r.get("error") or ("(needed approval: " + r.get("summary", "") + ")"
                                                                            if r.get("needs_approval") else "")
                     outcome["checked"] = r.get("checked", [])
+                    outcome["lookup_notes"] = r.get("lookup_notes", [])
                 else:
                     r = d.research(task.prompt, session="bench")
                     outcome["answer"] = r.get("answer") or r.get("error") or ""
@@ -229,7 +232,8 @@ def run_task(task: Task, *, config_text: str, models: str, keep: Path | None = N
               **{key: outcome[key] for key in ("answer", "seconds", "approvals", "tool_calls", "plan_kind", "violations",
                                                "error")},
               "mac_calls": [n for n, _ in outcome["mac_calls"]], "usage": outcome.get("usage", {}),
-              "checked": outcome.get("checked", []), "outcome": outcome}
+              "checked": outcome.get("checked", []), "lookup_notes": outcome.get("lookup_notes", []),
+              "outcome": outcome}
     if k is not None:
         k.close()
     if keep is not None:

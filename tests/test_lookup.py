@@ -133,3 +133,89 @@ def test_persona_matches_the_new_abilities():
     assert "remembering" not in cannot
     plain = priming_messages(chat_abilities(True))[0].content
     assert "reminders" in plain.split("can NOT")[1]  # without lookups it still says it can't
+
+
+def test_small_model_spellings_are_accepted_and_skips_are_explained(env):
+    d, script, seen, fake, _ = env
+    script["raw"] = json.dumps([{"tool": "calendar.events", "args": week()}, {"tool": "weather", "action": "now"},
+                                {"tool": "calendar", "action": "events"}])  # a bare list, a joined name, junk
+    r = chat(d, "Am I free tomorrow afternoon?")
+    assert fake.calls[0][0] == "calendar.events" and r["checked"][0].startswith("Calendar, ")
+    assert "ignored unknown lookup weather.now" in r["lookup_notes"]
+    assert "ignored calendar.events: missing from, to" in r["lookup_notes"]
+
+
+def test_when_nothing_is_looked_up_the_reason_is_given(env):
+    d, script, seen, fake, _ = env
+    script["raw"] = "sorry, I can't do JSON"
+    r = chat(d, "What's on my calendar this week?")
+    assert fake.calls == [] and any(n.startswith("choosing lookups failed") for n in r["lookup_notes"])
+    script.pop("raw")
+    script["lookups"] = []
+    assert "the model chose no lookups" in chat(d, "What's on my calendar next week?")["lookup_notes"]
+    assert chat(d, "Explain how rainbows form")["lookup_notes"] == ["no lookup words in the message"]
+
+
+def test_router_json_wrapped_in_prose_is_still_used(env):
+    d, script, seen, fake, _ = env
+    script["raw"] = "Sure! Here is the JSON:\n" + json.dumps({"lookups": [{"tool": "reminders", "action": "list", "args": {}}]})
+    r = chat(d, "Anything overdue on my reminders?")
+    assert fake.calls[0][0] == "reminders.list" and r["checked"] == ["Reminders"]
+
+
+def test_calendar_lookups_cover_whole_days(env):
+    from jarvis.orchestrator.lookup import whole_days
+    d, script, seen, fake, _ = env
+    tomorrow = (datetime.now().astimezone() + timedelta(days=1)).replace(second=0, microsecond=0)
+    narrow = {"from": tomorrow.replace(hour=14, minute=0).isoformat(), "to": tomorrow.replace(hour=15, minute=30).isoformat()}
+    script["lookups"] = [{"tool": "calendar", "action": "events", "args": narrow}]
+    chat(d, "Am I free tomorrow between 2pm and 3:30pm, and what's my first commitment?")
+    sent = fake.calls[0][1]
+    assert sent["from"].startswith(tomorrow.strftime("%Y-%m-%dT00:00"))
+    assert sent["to"].startswith((tomorrow + timedelta(days=1)).strftime("%Y-%m-%dT00:00"))
+    week_ = whole_days({"from": "2026-11-02T00:00", "to": "2026-11-09T00:00"})  # already whole days: unchanged span
+    assert week_["from"][:16] == "2026-11-02T00:00" and week_["to"][:16] == "2026-11-09T00:00"
+    assert whole_days({"from": "nonsense", "to": 3}) == {"from": "nonsense", "to": 3}
+
+
+def test_an_invented_reminders_list_falls_back_to_every_list(env):
+    d, script, seen, fake, _ = env
+    fake.reminders.append({"title": "Pay rent", "due": None, "completed": False, "notes": "", "list": "Reminders"})
+    script["lookups"] = [{"tool": "reminders", "action": "list", "args": {"list": "overdue"}}]
+    r = chat(d, "What's overdue?")
+    assert [c[1].get("list") for c in fake.calls] == ["overdue", None]
+    assert r["checked"] == ["Reminders (all lists; nothing open in “overdue”)"]
+    assert "Pay rent" in seen["answer_prompts"][-1]
+
+
+@pytest.fixture
+def new_york(monkeypatch):
+    import time as _time
+    monkeypatch.setenv("TZ", "America/New_York")
+    _time.tzset()
+    yield
+    monkeypatch.undo()
+    _time.tzset()
+
+
+def test_whole_days_and_the_fixture_survive_the_clocks_going_back(new_york):
+    """US clocks went back on 1 Nov 2026, the day of the first real benchmark run: "tomorrow 9:00" came out as 8:00."""
+    from jarvis.bench.runner import FixtureMac
+    from jarvis.orchestrator.lookup import whole_days
+    w = whole_days({"from": "2026-11-02T14:00", "to": "2026-11-02T15:30"})
+    assert w["from"] == "2026-11-02T00:00:00-05:00" and w["to"] == "2026-11-03T00:00:00-05:00"
+    w = whole_days({"from": "2026-10-31T10:00:00-04:00", "to": "2026-11-01T10:00:00-05:00"})
+    assert w["from"] == "2026-10-31T00:00:00-04:00" and w["to"] == "2026-11-02T00:00:00-05:00"
+    before = datetime.fromisoformat("2026-11-01T01:12:00-04:00")
+    fx = FixtureMac({"events": [{"title": "Standup", "day": 1, "start": "09:00", "end": "09:30"}]}, now=before)
+    assert fx.events[0]["start"] == "2026-11-02T09:00:00-05:00"
+
+
+def test_reminders_say_how_far_off_they_are():
+    from jarvis.orchestrator.lookup import _when, render
+    now = datetime.now().astimezone()
+    assert _when((now - timedelta(days=2)).isoformat()) == "OVERDUE by 2 days"
+    assert _when((now + timedelta(days=5)).isoformat()) == "in 5 days"
+    text = render(("reminders", "list"), {"reminders": [{"title": "Pay rent", "due": (now - timedelta(days=1)).isoformat(),
+                                                          "list": "Home"}, {"title": "Milk", "due": None, "list": "Home"}]})
+    assert "Pay rent (due " in text and "OVERDUE by 1 day)" in text and "- Milk [Home]" in text

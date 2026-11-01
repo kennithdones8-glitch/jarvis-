@@ -184,3 +184,22 @@ def test_writes_verified_detects_tampering(tmp_path):
     assert not writes_verified({}, [step]).ok
     f.unlink()
     assert not writes_verified({}, [step]).ok
+
+
+def test_opening_an_app_nobody_asked_for_is_sent_back():
+    from jarvis.core import StepSpec
+    from jarvis.orchestrator.planner import Plan, unrequested
+    steps = [StepSpec(description="Open Mail", tool="apps", action="open", args={"name": "Mail"}),
+             StepSpec(description="Draft", tool="mail", action="draft", args={})]
+    plan = Plan("plan", steps=steps)
+    assert unrequested(plan, "Draft an email to sam@example.com about Friday")[0].startswith("step 0: apps.open")
+    assert unrequested(plan, "Open Mail and draft an email to Sam") == []
+
+
+def test_joined_action_names_from_small_models_are_understood():
+    from jarvis.orchestrator.planner import action_key
+    allowed = {("mail", "draft"), ("apps", "open")}
+    assert action_key("apps", "mail.draft", allowed) == ("mail", "draft")
+    assert action_key("mail.draft", None, allowed) == ("mail", "draft")
+    assert action_key("apps", "open", allowed) == ("apps", "open")
+    assert action_key("shell", "rm.rf", allowed) == ("shell", "rm.rf")  # never invents an action

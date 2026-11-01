@@ -37,36 +37,33 @@ PRELUDE = "function run(argv) { const a = JSON.parse(argv[0]); return JSON.strin
 SCRIPTS: dict[str, str] = {
     "calendar.events": """
 function main(a) {
-  // Never ask for all events before a date: a calendar's whole history (and subscribed holiday/birthday calendars)
-  // can be thousands of events and take minutes. Two bounded questions per calendar instead:
-  //  1) events that overlap the window;  2) repeating events that began before it (their later dates may fall in it).
+  // No `whose` filters: on a real Mac (macOS 14) the date/recurrence filters could stall Calendar for minutes, while
+  // reading three properties of every event in a calendar takes a few seconds even for subscribed holiday calendars.
+  // So: bulk-read start, end and repeat rule; pick what overlaps the window, or repeats and began before it ends;
+  // then read the remaining details for just those events.
   const Cal = Application("Calendar");
-  const from = new Date(a.from), to = new Date(a.to);
+  const from = new Date(a.from), to = new Date(a.to), max = a.max || 200;
   const cals = a.calendar ? [Cal.calendars.byName(a.calendar)] : Cal.calendars();
   const out = [], timing = [];
-  const take = (sel, cname, withExcluded) => {
-    const n = sel.summary(), s = sel.startDate(), e = sel.endDate(), ad = sel.alldayEvent(), loc = sel.location(),
-          rec = sel.recurrence();
-    let ex = [];
-    if (withExcluded) { try { ex = sel.excludedDates(); } catch (err) { ex = []; } }
-    for (let i = 0; i < n.length; i++) {
-      const recurring = !!rec[i];
-      out.push({title: n[i] || "", start: s[i].toISOString(), end: e[i].toISOString(), all_day: !!ad[i],
-                location: loc[i] || "", calendar: cname, recurrence: recurring ? rec[i] : null,
-                excluded: recurring && ex[i] ? ex[i].map((d) => d.toISOString()) : []});
-    }
-    return n.length;
-  };
   for (const c of cals) {
-    const t0 = Date.now(), cname = c.name(), row = {calendar: cname};
+    const t0 = Date.now(), row = {calendar: "?", overlapping: 0, repeating: 0};
     try {
-      row.overlapping = take(c.events.whose({_and: [{startDate: {_lessThan: to}}, {endDate: {_greaterThan: from}}]}),
-                             cname, true);
-    } catch (err) { row.error = "overlap: " + String(err).slice(0, 120); }
-    try {
-      row.repeating = take(c.events.whose({_and: [{startDate: {_lessThan: from}}, {recurrence: {_beginsWith: "FREQ"}}]}),
-                           cname, true);
-    } catch (err) { row.error = (row.error ? row.error + "; " : "") + "repeating: " + String(err).slice(0, 120); }
+      const cname = c.name(); row.calendar = cname;
+      const evs = c.events, s = evs.startDate(), e = evs.endDate(), rec = evs.recurrence();
+      for (let i = 0; i < s.length && out.length < max; i++) {
+        const recurring = !!rec[i];
+        const overlaps = s[i] < to && e[i] > from;
+        if (!overlaps && !(recurring && s[i] < to)) continue;
+        const ev = evs[i];
+        let ex = [];
+        if (recurring) { try { ex = (ev.excludedDates() || []).map((d) => d.toISOString()); } catch (err) { ex = []; } }
+        out.push({title: ev.summary() || "", start: s[i].toISOString(), end: e[i].toISOString(),
+                  all_day: !!ev.alldayEvent(), location: ev.location() || "", calendar: cname,
+                  recurrence: recurring ? rec[i] : null, excluded: ex});
+        if (overlaps) row.overlapping++; else row.repeating++;
+      }
+      if (out.length >= max) row.error = "stopped at " + max + " events";
+    } catch (err) { row.error = String(err).slice(0, 160); }
     row.seconds = (Date.now() - t0) / 1000;
     timing.push(row);
   }
@@ -333,7 +330,7 @@ class MacTool:
             end = _when(args, "to")
             if end <= start or end - start > timedelta(days=MAX_RANGE_DAYS):
                 raise MacError(f"the date range must be forward and at most {MAX_RANGE_DAYS} days")
-            raw = self.run("calendar.events", {"from": _iso(start), "to": _iso(end), "calendar": cal})
+            raw = self.run("calendar.events", {"from": _iso(start), "to": _iso(end), "calendar": cal, "max": MAX_ITEMS})
             timing = raw.get("timing", []) if isinstance(raw, dict) else []
             raw = raw["events"] if isinstance(raw, dict) else raw
             seen, unique = set(), []

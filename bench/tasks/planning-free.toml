@@ -15,10 +15,10 @@ events = [
 
 [[checks]]
 type = "contains_any"
-values = ["you're free", "you are free", "yes", "available", "nothing scheduled", "no events", "nothing on"]
+values = ["you're free", "you are free", "yes", "available", "nothing scheduled", "no events", "nothing on", "free slot", "free between"]
 [[checks]]
 type = "not_contains"
-values = ["not free", "aren't free", "are not free", "you're busy", "you are busy"]
+values = ["not free", "aren't free", "are not free", "you're busy", "you are busy", "no free"]
 [[checks]]
 type = "contains_all"
 values = ["standup"]
