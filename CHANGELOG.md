@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.17.8 — Chat lookups explain themselves (found by the benchmark on the owner's Mac)
+
+- **Found:** in the first real benchmark run every planning task failed because no lookup ran at all, and the
+  reason was thrown away. The lookup step now records why it looked nothing up (no lookup words, the model
+  chose none, its reply wasn't usable, a lookup was unknown or missing dates…). Chat replies carry these as
+  `lookup_notes`, and benchmark results store them.
+- The lookup step accepts what small local models often send: JSON wrapped in prose, a bare list, or
+  `"calendar.events"` as one name. It still only ever runs read-only lookups, each checked by the permission
+  engine as before.
+
 ## 0.17.7 — Calendar reads without `whose` filters (still found on the owner's Mac)
 
 - **Fixed:** 0.17.6's bounded `whose` questions still timed out on the owner's Mac (macOS 14), although the

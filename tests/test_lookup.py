@@ -133,3 +133,31 @@ def test_persona_matches_the_new_abilities():
     assert "remembering" not in cannot
     plain = priming_messages(chat_abilities(True))[0].content
     assert "reminders" in plain.split("can NOT")[1]  # without lookups it still says it can't
+
+
+def test_small_model_spellings_are_accepted_and_skips_are_explained(env):
+    d, script, seen, fake, _ = env
+    script["raw"] = json.dumps([{"tool": "calendar.events", "args": week()}, {"tool": "weather", "action": "now"},
+                                {"tool": "calendar", "action": "events"}])  # a bare list, a joined name, junk
+    r = chat(d, "Am I free tomorrow afternoon?")
+    assert fake.calls[0][0] == "calendar.events" and r["checked"][0].startswith("Calendar, ")
+    assert "ignored unknown lookup weather.now" in r["lookup_notes"]
+    assert "ignored calendar.events: missing from, to" in r["lookup_notes"]
+
+
+def test_when_nothing_is_looked_up_the_reason_is_given(env):
+    d, script, seen, fake, _ = env
+    script["raw"] = "sorry, I can't do JSON"
+    r = chat(d, "What's on my calendar this week?")
+    assert fake.calls == [] and any(n.startswith("choosing lookups failed") for n in r["lookup_notes"])
+    script.pop("raw")
+    script["lookups"] = []
+    assert "the model chose no lookups" in chat(d, "What's on my calendar next week?")["lookup_notes"]
+    assert chat(d, "Explain how rainbows form")["lookup_notes"] == ["no lookup words in the message"]
+
+
+def test_router_json_wrapped_in_prose_is_still_used(env):
+    d, script, seen, fake, _ = env
+    script["raw"] = "Sure! Here is the JSON:\n" + json.dumps({"lookups": [{"tool": "reminders", "action": "list", "args": {}}]})
+    r = chat(d, "Anything overdue on my reminders?")
+    assert fake.calls[0][0] == "reminders.list" and r["checked"] == ["Reminders"]

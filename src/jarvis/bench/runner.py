@@ -211,6 +211,7 @@ def run_task(task: Task, *, config_text: str, models: str, keep: Path | None = N
                     outcome["answer"] = r.get("text") or r.get("error") or ("(needed approval: " + r.get("summary", "") + ")"
                                                                            if r.get("needs_approval") else "")
                     outcome["checked"] = r.get("checked", [])
+                    outcome["lookup_notes"] = r.get("lookup_notes", [])
                 else:
                     r = d.research(task.prompt, session="bench")
                     outcome["answer"] = r.get("answer") or r.get("error") or ""
@@ -229,7 +230,8 @@ def run_task(task: Task, *, config_text: str, models: str, keep: Path | None = N
               **{key: outcome[key] for key in ("answer", "seconds", "approvals", "tool_calls", "plan_kind", "violations",
                                                "error")},
               "mac_calls": [n for n, _ in outcome["mac_calls"]], "usage": outcome.get("usage", {}),
-              "checked": outcome.get("checked", []), "outcome": outcome}
+              "checked": outcome.get("checked", []), "lookup_notes": outcome.get("lookup_notes", []),
+              "outcome": outcome}
     if k is not None:
         k.close()
     if keep is not None:

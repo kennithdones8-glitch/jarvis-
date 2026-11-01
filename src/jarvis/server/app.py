@@ -509,7 +509,8 @@ class Dashboard:
         memory.learn_from(session, message, r.text)
         return {"text": r.text, "model": f"{r.provider}/{r.model}", "seconds": round(time.time() - started, 1),
                 "tokens": r.usage.output_tokens, "note": r.note, "memories_used": len(recalled),
-                "checked": found.checked, "offer_plan": found.change}
+                "checked": found.checked, "offer_plan": found.change,
+                "lookup_notes": found.why + found.notes}
 
     def research(self, question: str, *, deep: bool = False, session: str = "dashboard") -> dict[str, Any]:
         from ..orchestrator.research import research_request, result_payload
