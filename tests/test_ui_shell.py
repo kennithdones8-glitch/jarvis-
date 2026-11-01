@@ -4,7 +4,7 @@ import re
 
 from test_dashboard import call
 
-VIEWS = ["home", "missions", "decisions", "memory", "systems", "intelligence"]
+VIEWS = ["home", "workspace", "missions", "decisions", "memory", "systems", "intelligence"]
 
 
 def test_sidebar_sections_and_status(dash):
@@ -30,7 +30,7 @@ def test_sections_only_change_what_is_shown(dash):
     js = call(d, "/static/app.js")[2].decode()
     body = js.split("function setView(view)")[1].split("\n}\n")[0]
     assert "api(" not in body and "call(" not in body and "act(" not in body  # no requests: nothing paused or changed
-    assert 'const VIEWS = ["home", "missions", "decisions", "memory", "systems", "intelligence"];' in js
+    assert 'const VIEWS = ["home", "workspace", "missions", "decisions", "memory", "systems", "intelligence"];' in js
 
 
 def test_drafts_survive_and_are_cleared_when_sent(dash):

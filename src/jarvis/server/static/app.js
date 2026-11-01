@@ -205,6 +205,7 @@ function setMode(mode) {
   for (const m of Object.keys(MODES)) $(`#tab-${m}`).setAttribute("aria-selected", mode === m);
   $("#cmd").placeholder = MODES[mode][0];
   $("#modehint").textContent = MODES[mode][1];
+  if (ui.data && $("#context")) renderContext(ui.data);
   $("#cmd").focus();
 }
 
@@ -1024,6 +1025,42 @@ function renderCineStrip(d) {
     setCinematic(false); location.hash = hash; } }, h("span", { "aria-hidden": "true" }, icon), " ", text)));
 }
 
+// ---------------------------------------------------------------- workspace: context beside the conversation
+// Only what the latest reply and the live state already contain; contexts JARVIS can't support (code, files)
+// are not shown at all rather than shown empty.
+function renderContext(d) {
+  const box = $("#context");
+  const part = (title) => h("h3", { class: "sys-part" }, title);
+  const last = [...ui.convo].reverse().find((m) => m.role === "assistant" && !m.welcome && !m.help && !m.briefing
+                                                  && !m.consent && !m.error && !m.live && typeof m.text === "string");
+  const answer = [];
+  if (!last) {
+    answer.push(part("The latest answer"), h("div", { class: "empty" }, "Ask something: what JARVIS looked up and its sources appear here."));
+  } else {
+    const srcs = (last.sources || []).filter((x) => /^https?:\/\//.test(x.url));
+    answer.push(part(srcs.length ? "Sources for the latest answer" : "The latest answer"));
+    if (srcs.length) answer.push(h("ul", { class: "sources" }, srcs.map((x) => h("li", { class: x.verified ? "ok" : "warn" },
+      h("a", { href: x.url, target: "_blank", rel: "noopener noreferrer" }, x.url.replace(/^https?:\/\//, "")),
+      x.verified ? " ✓ verified" : " · not seen by the research tools"))));
+    if (last.checked && last.checked.length) answer.push(h("div", { class: "ctx-line" }, h("b", {}, "Looked up: "), last.checked.join(" · ")));
+    else if (!srcs.length) answer.push(h("div", { class: "ctx-line" }, "Nothing was looked up for this answer."));
+    if (last.meta) answer.push(h("div", { class: "ctx-line" }, h("b", {}, "Answered by: "), last.meta));
+    if (last.plan) answer.push(h("div", { class: "ctx-line" }, "This sounds like something to do: the reply offers to turn it into a plan."));
+  }
+  const t = d.tasks.find((x) => NEEDS.includes(x.state)) || d.tasks.find((x) => ACTIVE.includes(x.state));
+  const mission = [part("Current mission")];
+  if (!t) {
+    mission.push(h("div", { class: "empty" }, "No mission running. Switch to Do to start one."));
+  } else {
+    mission.push(h("div", { class: "ctx-mission" }, h("small", {}, `${STATE_WORDS[t.state] || t.state} · ${stepText(t)}`), h("b", {}, t.goal)),
+      h("ol", { class: "steps" }, t.steps.map((x) => h("li", { class: x.state }, h("span", { class: "ic" }, ICON[x.state] || "·"), h("div", {}, x.description)))),
+      t.next_action && t.state === "blocked" ? h("div", { class: "m-err" }, t.next_action) : null,
+      h("div", { class: "row mt" }, h("button", { class: "btn btn-sm", type: "button", onclick: () => openMission(t.id) }, "Open in Missions"),
+        h("button", { class: "btn btn-ghost btn-sm", type: "button", onclick: () => showTimeline(t.id) }, "Timeline")));
+  }
+  fill(box, answer, mission, part("Mode"), h("div", { class: "ctx-line" }, MODES[ui.mode][1]));
+}
+
 async function memAct(path, body) {
   try { await call(path, body); } catch (e) { note(cancelled(e)); }
   await refresh(); await loadMemory(true);
@@ -1118,6 +1155,7 @@ function render() {
   if (!d) return;
   renderMatters(d);
   renderCineStrip(d);
+  renderContext(d);
   renderSuggestions(d);
   renderSummary(d);
   renderMissions(d.tasks);
@@ -1134,7 +1172,7 @@ async function act(path, body) {
 
 // ---------------------------------------------------------------- shell: sections, badges, sidebar, drafts
 // Sections are views of the same live page: switching never pauses, resumes or changes anything.
-const VIEWS = ["home", "missions", "decisions", "memory", "systems", "intelligence"];
+const VIEWS = ["home", "workspace", "missions", "decisions", "memory", "systems", "intelligence"];
 function viewFromHash() {
   const m = location.hash.match(/^#\/(\w+)/);
   return m && VIEWS.includes(m[1]) ? m[1] : null;
