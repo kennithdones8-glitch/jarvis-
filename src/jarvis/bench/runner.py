@@ -309,6 +309,52 @@ def run_suite(tasks: list[Task], *, real_config: Path, out_dir: Path, models: st
     return run_dir
 
 
+EVERY_RUN = "# Every run"
+
+
+def failures_at_a_glance(results: list[dict]) -> list[str]:
+    """One short block per failing task (its first failed run): what failed, what JARVIS looked up or asked to
+    approve, and the start of the answer. Printed in the terminal after a run, so nothing needs digging out."""
+    first: dict[str, dict] = {}
+    totals: dict[str, list[int]] = {}
+    for r in results:
+        if r.get("status") not in ("pass", "fail"):
+            continue
+        t = totals.setdefault(r["id"], [0, 0])
+        t[0] += r["status"] == "pass"
+        t[1] += 1
+        if r["status"] == "fail":
+            first.setdefault(r["id"], r)
+    if not first:
+        return ["**No failures.**", ""]
+    out = ["## Failures at a glance", ""]
+    for tid, r in first.items():
+        passed, scored = totals[tid]
+        out.append(f"### {tid} · passed {passed} of {scored}")
+        out += [f"- ✗ {c['type']}: {str(c['detail'])[:200]}" for c in r.get("checks", []) if c.get("passed") is False]
+        if r.get("error"):
+            out.append(f"- error: {str(r['error'])[:200]}")
+        looked = r.get("checked") or []
+        notes = r.get("lookup_notes") or []
+        if looked or notes:
+            out.append(f"- looked up: {', '.join(looked) or 'nothing'}" + (f" ({'; '.join(notes)[:200]})" if notes else ""))
+        if r.get("approvals"):
+            out.append("- approvals: " + "; ".join(f"{a['tool']}.{a['action']} “{str(a.get('summary', ''))[:60]}” → "
+                                                   f"{'approved' if a.get('approved') else 'rejected'}"
+                                                   for a in r["approvals"]))
+        if r.get("plan_kind") and r["plan_kind"] != "plan":
+            out.append(f"- plan: {r['plan_kind']}")
+        answer = " ".join((r.get("answer") or "").split())
+        out.append(f"- answer: {answer[:300]}{'…' if len(answer) > 300 else ''}" if answer else "- answer: (none)")
+        out.append("")
+    return out
+
+
+def summary_part(report_text: str) -> str:
+    """The report up to the per-run details: totals, categories and failures at a glance."""
+    return report_text.split(EVERY_RUN, 1)[0].rstrip()
+
+
 def report(meta: dict, results: list[dict]) -> str:
     scored = [r for r in results if r.get("status") in ("pass", "fail")]
     lines = [f"# JARVIS benchmark · {meta['run_id']}", "",
@@ -326,6 +372,8 @@ def report(meta: dict, results: list[dict]) -> str:
     cost = sum(r.get("usage", {}).get("cost_usd", 0) for r in results)
     secs = sum(r.get("seconds", 0) for r in results)
     lines += ["", f"Claude calls: {claude} · local model calls: {local} · cost: ${cost:.2f} · total time: {secs / 60:.1f} min", ""]
+    lines += failures_at_a_glance(results)
+    lines += [EVERY_RUN, ""]
     for r in results:
         lines.append(f"## {r['id']} (run {r.get('run', 1)}) · {r.get('status', '?').upper()}")
         lines.append(f"{r['title']} · {r.get('seconds', 0)}s" + (f" · {r['note']}" if r.get("note") else ""))

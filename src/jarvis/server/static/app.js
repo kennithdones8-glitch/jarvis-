@@ -919,3 +919,12 @@ document.addEventListener("DOMContentLoaded", () => {
   refresh();
   setInterval(refresh, 1500);
 });
+
+// Header "More" menu: close after choosing, or when tapping elsewhere.
+(() => {
+  const more = document.getElementById("moremenu");
+  if (!more) return;
+  more.querySelectorAll(".more-menu .btn").forEach((b) => b.addEventListener("click", () => { more.open = false; }));
+  document.addEventListener("click", (e) => { if (more.open && !more.contains(e.target)) more.open = false; });
+  document.addEventListener("keydown", (e) => { if (e.key === "Escape") more.open = false; });
+})();

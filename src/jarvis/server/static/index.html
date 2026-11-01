@@ -27,8 +27,16 @@
   <div class="wordmark">J.A.R.V.I.S.<span>Personal systems</span></div>
   <div class="top-right">
     <span id="clock" class="clock"></span>
-    <button id="helpbtn" class="btn btn-ghost" type="button" title="What you can ask JARVIS to do">Help</button>
-    <button id="briefbtn" class="btn btn-ghost" type="button" title="What needs you, what happened, and any problems">Briefing</button>
+    <details class="more" id="moremenu">
+      <summary class="btn btn-ghost" title="Help, briefing, benchmarks, trust and improvement ideas">More</summary>
+      <div class="more-menu" role="menu">
+        <button id="helpbtn" class="btn btn-ghost" type="button" role="menuitem" title="What you can ask JARVIS to do">Help</button>
+        <button id="briefbtn" class="btn btn-ghost" type="button" role="menuitem" title="What needs you, what happened, and any problems">Briefing</button>
+        <a class="btn btn-ghost" role="menuitem" href="/bench" title="Benchmark runs: scores over time, before vs after, failures">Benchmarks</a>
+        <a class="btn btn-ghost" role="menuitem" href="/trust" title="What JARVIS does on its own, always asks about, and never does">Trust</a>
+        <a class="btn btn-ghost" role="menuitem" href="/proposals" title="Improvements JARVIS suggests from its own record; you decide">Ideas</a>
+      </div>
+    </details>
     <button id="estop" class="btn btn-danger" title="Pause every task and block new actions">Emergency stop</button>
   </div>
 </header>

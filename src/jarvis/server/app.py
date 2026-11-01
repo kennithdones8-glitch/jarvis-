@@ -204,6 +204,9 @@ class Dashboard:
         self.orch = Orchestrator(kernel)
         from ..orchestrator.lookup import LookupService
         self.lookup = LookupService(kernel, [str(r) for r in kernel.policy.roots])
+        from ..proposals import Proposals
+        self.proposals = Proposals(kernel)
+        self._proposals_checked = -1e9
         self.token = token or secrets.token_urlsafe(32)
         self.jobs: dict[str, dict[str, Any]] = {}
         self._lock = threading.Lock()
@@ -780,7 +783,8 @@ class Dashboard:
         return body
 
     def _get(self, h: BaseHTTPRequestHandler, url, *, device: dict | None) -> None:
-        if url.path in ("/static/app.js", "/static/app.css", "/static/phone.js", "/static/qrcode.js"):
+        if url.path in ("/static/app.js", "/static/app.css", "/static/phone.js", "/static/qrcode.js",
+                        "/static/bench.js", "/static/bench.css", "/static/trust.js", "/static/proposals.js"):
             ctype = "text/javascript" if url.path.endswith(".js") else "text/css"
             return self._send(h, 200, (STATIC / url.path.rsplit("/", 1)[1]).read_bytes(), f"{ctype}; charset=utf-8")
         if m := re.fullmatch(r"/static/fonts/(rajdhani-[567]00\.woff2)", url.path):
@@ -808,8 +812,40 @@ class Dashboard:
             return self._json(h, 200, self.kernel.audit.entries(task_id=m.group(1), limit=300))
         if url.path == "/api/briefing":
             return self._json(h, 200, self.briefing())
+        if url.path == "/bench":
+            return self._send(h, 200, (STATIC / "bench.html").read_bytes(), "text/html; charset=utf-8")
+        if url.path.startswith("/api/bench"):
+            return self._bench_api(h, url)
+        if url.path == "/trust":
+            return self._send(h, 200, (STATIC / "trust.html").read_bytes(), "text/html; charset=utf-8")
+        if url.path == "/api/trust":
+            from ..trust import contract
+            return self._json(h, 200, contract(self.kernel).as_dict())
+        if url.path == "/proposals":
+            return self._send(h, 200, (STATIC / "proposals.html").read_bytes(), "text/html; charset=utf-8")
+        if url.path == "/api/proposals":
+            if time.monotonic() - self._proposals_checked > 600:  # look for new findings at most every 10 minutes
+                self.proposals.refresh()
+                self._proposals_checked = time.monotonic()
+            return self._json(h, 200, {"proposals": self.proposals.list()})
         if url.path == "/api/push/key" and self.remote is not None:
             return self._json(h, 200, {"key": self.remote.push.public_key})
+        raise HttpError(404, "not found")
+
+    def _bench_api(self, h: BaseHTTPRequestHandler, url) -> None:
+        """Benchmark history (read-only): ``/api/bench``, ``/api/bench/<run id>``, ``/api/bench/compare``."""
+        from ..bench import history
+        out = self.kernel.home / "bench-results"
+        q = parse_qs(url.query)
+        try:
+            if url.path == "/api/bench":
+                return self._json(h, 200, {"runs": history.runs(out)})
+            if url.path == "/api/bench/compare":
+                return self._json(h, 200, history.before_after(out, q.get("before", [None])[0], q.get("after", [None])[0]))
+            if m := re.fullmatch(r"/api/bench/([\w-]+)", url.path):
+                return self._json(h, 200, history.detail(out, m.group(1)))
+        except history.HistoryError as exc:
+            raise HttpError(404, str(exc)) from None
         raise HttpError(404, "not found")
 
     def _dispatch_remote(self, h: BaseHTTPRequestHandler, method: str, url) -> None:
@@ -969,6 +1005,14 @@ class Dashboard:
             action: Callable[..., None] = getattr(k.engine, m.group(2))
             action(m.group(1), actor=actor)
             return {"ok": True, "state": k.tasks.get(m.group(1))["state"]}
+        if m := re.fullmatch(r"/api/proposals/([\w-]+)/(approve|reject|done|reopen)", path):
+            # Records your answer only; a proposal never changes JARVIS by itself (propose-only policy).
+            state = {"approve": "approved", "reject": "rejected", "done": "done", "reopen": "open"}[m.group(2)]
+            try:
+                self.proposals.decide(m.group(1), state, by=actor)
+            except KeyError:
+                raise HttpError(404, "no such proposal") from None
+            return {"ok": True, "state": state}
         if path == "/api/stop":
             k.engine.emergency_stop(by=actor, reason=str(body.get("reason") or "stopped from dashboard")[:200])
             return {"ok": True}

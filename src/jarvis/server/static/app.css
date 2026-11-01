@@ -399,3 +399,24 @@ pre.out { background: rgba(0, 0, 0, .35); border: 1px solid var(--gold-line); pa
 .tl-phase.approval, .tl-phase.cloud { color: var(--arc); }
 .tl-events li.problem .tl-phase { color: var(--red); }
 .tl-events li small { color: var(--muted); }
+.trust .row { display: flex; gap: 10px; flex-wrap: wrap; padding: 4px 2px; }
+.trust .pre { white-space: pre-wrap; }
+.trust section p { margin: 4px 2px; }
+a.btn { text-decoration: none; display: inline-block; }
+.trust { display: grid; gap: 18px; padding: 8px max(16px, env(safe-area-inset-left)) 48px max(16px, env(safe-area-inset-right));
+          max-width: 760px; width: 100%; margin: 0 auto; }
+.trust ul { margin: 0; padding: 4px 2px 4px 20px; display: grid; gap: 8px; }
+.trust li { overflow-wrap: anywhere; }
+.trust li small { display: block; color: var(--faint); font-size: 12px; }
+.trust .lead { color: var(--muted); margin: 0; padding: 0 2px; }
+.trust .never li::marker { color: var(--red); }
+.trust .own li::marker { color: var(--ok); }
+.trust .asks li::marker { color: var(--arc); }
+/* header "More" menu: everything but the emergency stop, which always stays in view */
+.more { position: relative; }
+.more > summary { list-style: none; cursor: pointer; }
+.more > summary::-webkit-details-marker { display: none; }
+.more > summary::after { content: " ▾"; font-size: 11px; }
+.more-menu { position: absolute; right: 0; top: calc(100% + 6px); z-index: 30; display: grid; min-width: 180px;
+             background: var(--bg2); border: 1px solid var(--gold-line); padding: 6px; box-shadow: 0 10px 30px rgba(0,0,0,.6); }
+.more-menu .btn { text-align: left; width: 100%; }

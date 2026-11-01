@@ -1,5 +1,39 @@
 # Changelog
 
+## Unreleased — Dashboard extras (branch `extras-v1`: benchmarks page + Trust Contract + improvement ideas)
+
+- Combines `bench-page-v1`, `trust-contract-v1` and `proposals-v1`, plus two owner-approved changes:
+  - Deciding on an improvement idea from the phone needs Face ID (added to the phone's Face ID list).
+  - The header's Help, Briefing, Benchmarks, Trust and Ideas sit in one **More** menu; the emergency stop stays
+    on its own, always visible.
+
+## Unreleased — Benchmark page and failures at a glance (branch `bench-page-v1`)
+
+- **Benchmarks page** (`/bench`, linked from the dashboard header; works on the paired iPhone): every run with
+  its score per category, one run's tasks with each failure's checks, lookups, approvals and answer, and a
+  before/after under the merge rule with any two runs. Read-only; only run folders inside `bench-results` can be
+  opened; same sign-in as the rest of the dashboard.
+- Reports start with **Failures at a glance** (one block per failing task), and the terminal prints it after a
+  run, so failures no longer need a separate script to dig out.
+## Unreleased — Trust Contract (branch `trust-contract-v1`)
+
+- `jarvis trust` and a **Trust** page in the dashboard (phone too): what JARVIS does on its own, always asks
+  about, and never does, plus where your data may go and what it may spend. Generated every time from the live
+  permission engine (it asks the engine about every action, inside each approved folder), policy, privacy
+  settings, grants and budget, so it can't drift. Built-in promises name the release-gate item that proves them;
+  a test fails if one names an item that doesn't exist.
+## Unreleased — Improvement proposals (branch `proposals-v1`)
+
+- JARVIS studies its own record and suggests improvements: benchmark tasks failing in most runs, actions that
+  keep timing out or failing, routine actions you always approve (with the exact policy rule you could add
+  yourself), actions you keep rejecting, calendar answers still unverified after a retry, frequent fallbacks.
+  Deterministic counts from the audit log, approvals and the latest benchmark; no model, nothing leaves the Mac,
+  no private text in the evidence.
+- Propose-only: deciding (dashboard **Ideas** page, phone too, or `jarvis proposals approve|reject|done ID`)
+  records your answer and changes nothing. `jarvis proposals brief ID` turns an approved idea into a task brief
+  for Claude Code that follows the engineering constitution. A rejected idea returns only if its evidence doubles.
+- Database v7: `proposals` table.
+
 ## 0.17.14 — Review fix
 
 - `bench compare`: a run whose start time has no zone no longer breaks the ordering (read as local time).

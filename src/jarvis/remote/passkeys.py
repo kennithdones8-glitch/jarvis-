@@ -29,6 +29,7 @@ STEP_UP = (
     r"/api/memory/[\w-]+/(delete|edit)",
     r"/api/memory/forget",
     r"/api/devices/[\w-]+/revoke",
+    r"/api/proposals/[\w-]+/(approve|reject|done|reopen)",  # owner-approved: decisions on improvement ideas
 )
 
 
