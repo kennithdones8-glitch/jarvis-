@@ -160,3 +160,23 @@ def test_config_is_checked(tmp_path):
         parse_model_config({"coding": {"self_test": "yes"}})
     with pytest.raises(ConfigError):
         parse_model_config({"coding": {"run_anything": True}})
+
+
+def test_the_function_the_question_names_is_the_one_tested():
+    answer = "```python\ndef _unit(u):\n    return {'h': 3600}[u]\n\ndef seconds(text):\n    return 0\n```"
+    assert code_of(answer, DURATION)[1] == "seconds"
+    assert code_of(answer)[1] == "_unit"  # no question: the first definition
+
+
+def test_the_fix_is_always_local(coding_env, monkeypatch):
+    make, state, _ = coding_env
+    d = make()
+    state["answers"] = [BUGGY, FIXED]
+    real, seen = d.kernel.models.complete, []
+
+    def spy(need, *a, **kw):
+        seen.append((kw.get("purpose"), need.local_only))
+        return real(need, *a, **kw)
+    monkeypatch.setattr(d.kernel.models, "complete", spy)
+    chat(d, DURATION)
+    assert ("dashboard chat (coding self-test fix)", True) in seen

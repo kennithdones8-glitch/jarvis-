@@ -97,12 +97,14 @@ def wants_code(question: str) -> bool:
     return bool(WANTS_CODE.search(question or ""))
 
 
-def code_of(answer: str) -> tuple[str, str] | None:
-    """(code, function name) from the answer's last Python block that defines a function."""
+def code_of(answer: str, question: str = "") -> tuple[str, str] | None:
+    """(code, function name) from the answer's last Python block that defines a function. The function tested is
+    the one the question names (`seconds(text)`), so a helper defined first isn't mistaken for it."""
     for block in reversed(CODE.findall(answer or "")):
         names = DEF.findall(block)
         if names:
-            return block, names[-1] if len(names) == 1 else names[0]
+            asked = [n for n in names if re.search(rf"\b{re.escape(n)}\s*\(", question or "")]
+            return block, (asked or names)[0]
     return None
 
 

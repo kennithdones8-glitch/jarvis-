@@ -551,7 +551,7 @@ class Dashboard:
     def _self_test(self, message: str, msgs: list, r, need, level) -> tuple[Any, dict | None]:
         """Coding self-test (opt-in): local tests from the request alone, run in the sandbox, one fix if any fail.
         Returns the answer to show and a summary (counts only); never raises."""
-        code, name = code_of(r.text)
+        code, name = code_of(r.text, message)
         prompt = TEST_PROMPT.format(name=name, max=MAX_CASES)
         try:
             t = self.kernel.models.complete(
@@ -578,9 +578,10 @@ class Dashboard:
                                     + first.describe()[:1500] + "\nFix the code if it is wrong. If a case contradicts "
                                     "my request, keep the code right and say which case. Reply with the complete "
                                     "corrected code in one Python code block.", Category.CONVERSATION)]
-            r2 = self.kernel.models.complete(need, ChatRequest(tuple(retry), max_tokens=900),
+            # always local: the first answer was, and a fix must never become a consent question
+            r2 = self.kernel.models.complete(replace(need, local_only=True), ChatRequest(tuple(retry), max_tokens=900),
                                              purpose="dashboard chat (coding self-test fix)", level=level)
-            again = code_of(r2.text)
+            again = code_of(r2.text, message)
             if again:
                 second = run_cases(again[0], cases)
                 if second.error is None and (first.error is not None or second.passed >= first.passed):
