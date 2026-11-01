@@ -1,0 +1,31 @@
+name: Sandbox debug (temporary)
+on:
+  push:
+    branches: ["coding-selftest-*"]
+permissions:
+  contents: read
+jobs:
+  debug:
+    runs-on: macos-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+      - uses: astral-sh/setup-uv@6b9c6063abd6010835644d4c2e1bef4cf5cd0fca
+      - run: uv sync --locked
+      - name: Run one case in the sandbox and show everything
+        run: |
+          uv run python - <<'PY'
+          import os, subprocess, sys, tempfile
+          from jarvis import codecheck
+          print("executable", sys.executable, "->", os.path.realpath(sys.executable))
+          print("prefix", sys.prefix, "base", sys.base_prefix)
+          with tempfile.TemporaryDirectory() as tmp:
+              argv = codecheck._argv(tmp)
+              print("profile:\n", argv[2])
+              r = subprocess.run(argv + ["-c", "print('hello from sandbox')"], cwd=tmp,
+                                 env={"PATH": "/usr/bin:/bin", "HOME": tmp}, capture_output=True, text=True, timeout=20)
+              print("rc", r.returncode, "\nstdout", r.stdout, "\nstderr", r.stderr[-3000:])
+          PY
+      - name: Recent sandbox denials
+        if: always()
+        run: log show --last 3m --predicate 'sender == "Sandbox"' --style compact 2>/dev/null | tail -40 || true
