@@ -63,6 +63,11 @@
       <header class="ph"><h2 id="mis-h">Missions</h2><span id="miscount" class="ph-count"></span></header>
       <div id="missions" class="stack"></div>
     </section>
+    <section class="panel recent-panel" aria-labelledby="rec-h">
+      <header class="ph"><h2 id="rec-h">Recent activity</h2>
+        <button id="recentlog" class="btn btn-ghost btn-sm" type="button">Full log</button></header>
+      <ol id="recent" class="activity recent"></ol>
+    </section>
     <section class="panel memory-panel" aria-labelledby="mem-h">
       <header class="ph"><h2 id="mem-h">Memory</h2><span id="memcount" class="ph-count"></span></header>
       <form id="memsearch" class="memform" role="search">
@@ -104,6 +109,7 @@
       <div id="hl-sub" class="hl-sub"></div>
     </div>
     <div id="stats" class="stats"></div>
+    <section id="matters" class="matters" aria-label="What matters now" aria-live="polite"></section>
 
     <div id="feed" class="feed" aria-live="polite"></div>
 
@@ -120,6 +126,7 @@
         <button class="btn btn-primary" id="send" type="submit">Send</button>
       </div>
     </form>
+    <div id="suggest" class="suggest" aria-label="Things you can ask right now"></div>
     <p id="modehint" class="hint"></p>
     <button id="speak" class="btn btn-ghost btn-sm speak-toggle" type="button" hidden aria-pressed="false"
             title="Read replies aloud with this device's built-in voice">Voice replies: off</button>
@@ -129,6 +136,10 @@
     <section id="decision-panel" class="panel decision-panel" aria-labelledby="ap-h">
       <header class="ph"><h2 id="ap-h">Decisions</h2><span id="apcount" class="ph-count"></span></header>
       <div id="approvals" class="stack"></div>
+    </section>
+    <section class="panel summary-panel" aria-labelledby="sum-h">
+      <header class="ph"><h2 id="sum-h">Systems</h2><a class="btn btn-ghost btn-sm" href="#/systems">Details</a></header>
+      <div id="summary" class="readouts"></div>
     </section>
     <section class="panel systems-panel" aria-labelledby="sys-h">
       <header class="ph"><h2 id="sys-h">Systems</h2></header>

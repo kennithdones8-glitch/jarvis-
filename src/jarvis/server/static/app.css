@@ -510,3 +510,75 @@ body:not([data-view="home"]) .hud .panel { max-width: 980px; margin: 0 auto 18px
 }
 /* secondary pages (Benchmarks, Trust, Ideas) sit beside the same sidebar */
 @media (min-width: 761px) { main.page { margin-left: var(--nav-w); width: auto; } }
+
+/* ================= Stage 2: Command Center Home ================= */
+/* The stats row and the bottom ticker are folded into the Systems summary and Recent activity cards. */
+.stats, .ticker { display: none; }
+/* Home shows Recent activity + Systems summary; Memory and full Systems have their own sections */
+body[data-view="home"] .memory-panel, body[data-view="home"] .systems-panel { display: none; }
+body:not([data-view="home"]) .recent-panel, body:not([data-view="home"]) .summary-panel { display: none; }
+
+/* centre column order: who JARVIS is and what it's doing, what matters, the conversation, then the box to type in */
+.center > .core-wrap { order: 0; } .center > .headline { order: 1; } .center > .matters { order: 2; }
+.center > .feed { order: 3; } .center > .cmd { order: 4; } .center > .suggest { order: 5; }
+.center > .hint { order: 6; } .center > .speak-toggle { order: 7; }
+.core-wrap { width: min(220px, 48vw); }
+
+/* what matters now */
+.matters { width: 100%; max-width: 720px; margin: 14px 0 4px; }
+.matters-h { margin: 0 0 8px 2px; font-size: 13px; }
+.matters-quiet { text-align: center; color: var(--muted); font-size: 14px; margin: 4px 0; }
+.matters-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.matter { display: grid; grid-template-columns: 28px 1fr auto; gap: 10px; align-items: center; padding: 10px 12px;
+  border: 1px solid var(--gold-line); border-left-width: 3px; background: rgba(0, 0, 0, .3); }
+.matter.attention { border-left-color: var(--arc); }
+.matter.bad { border-left-color: var(--red); }
+.m-icon { font: 700 16px var(--display); text-align: center; color: var(--gold); }
+.matter.attention .m-icon { color: var(--arc); } .matter.bad .m-icon { color: var(--red); }
+.m-text { display: grid; gap: 2px; min-width: 0; }
+.m-text small { font: 600 12px var(--display); letter-spacing: .18em; text-transform: uppercase; color: var(--muted); }
+.m-text b { font-weight: 600; overflow-wrap: anywhere; }
+.m-text span { color: var(--muted); font-size: 14px; overflow-wrap: anywhere; }
+
+/* suggestions under the box */
+.suggest { width: 100%; max-width: 720px; display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; margin-top: 10px; }
+.suggest:empty { display: none; }
+.suggest .chip { max-width: 100%; }
+
+/* recent activity and systems summary cards */
+.recent { margin: 0; }
+.recent .empty { display: block; }
+.summary-panel .ro b.ok { color: var(--ok); } .summary-panel .ro b.bad { color: var(--red); }
+
+/* iPhone Home: compact head (small reactor beside the headline), then what matters, then the conversation;
+   the message box stays just above the tab bar */
+@media (max-width: 760px) {
+  body[data-view="home"] .recent-panel, body[data-view="home"] .summary-panel { display: none; }
+  .center { display: grid; grid-template-columns: 72px 1fr; column-gap: 14px; align-items: center; }
+  .center > * { grid-column: 1 / -1; }
+  .center > .core-wrap { grid-column: 1; width: 72px; margin: 0; }
+  .center > .headline { grid-column: 2; text-align: left; }
+  .core-wrap::after { box-shadow: 0 0 24px 4px rgba(159, 232, 255, .16); }
+  .kicker { font-size: 12px; letter-spacing: .26em; }
+  .hl { font-size: 20px; margin-top: 2px; } .hl-sub { font-size: 14px; margin-top: 2px; }
+  .feed { max-height: none; overflow: visible; }
+  .cmd { position: sticky; bottom: calc(72px + env(safe-area-inset-bottom)); z-index: 20;
+         background: linear-gradient(180deg, rgba(30, 19, 8, .97), rgba(12, 8, 4, .98)); }
+  .matter { grid-template-columns: 24px 1fr; }
+  .matter .btn { grid-column: 2; justify-self: start; }
+}
+/* when something needs you, the reactor steps back so the list and the message box fit on a laptop screen */
+@media (min-width: 761px) { body.has-matters .center > .core-wrap { width: min(150px, 40vw); } }
+.matters-quiet a { color: var(--arc); }
+@media (max-width: 760px) {
+  /* compact message box on the phone: mode tabs above, then text box + Send in one row */
+  .cmd { grid-template-columns: 1fr auto; gap: 8px; padding: 8px 10px 8px 12px; }
+  .cmd .tabs { grid-column: 1 / -1; justify-self: start; }
+  .cmd .tab { padding: 4px 12px; font-size: 12px; letter-spacing: .14em; }
+  .cmd textarea { grid-column: 1; }
+  .cmd .cmd-actions { grid-column: 2; }
+  .cmd .cmd-actions .btn { flex: none; }
+  .cmd::before, .cmd::after { display: none; }
+
+}
+@media (pointer: coarse), (max-width: 760px) { .matters-quiet a { display: inline-flex; align-items: center; min-height: 44px; padding: 0 6px; } }

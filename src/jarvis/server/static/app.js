@@ -816,6 +816,8 @@ async function enableNotifications() {
 
 function renderActivity(entries) {
   $("#ticker").replaceChildren(...entries.slice(0, 6).map((e) => h("li", {}, h("time", {}, clock(e.ts)), e.detail)));
+  $("#recent").replaceChildren(...(entries.length ? entries.slice(0, 6).map((e) => h("li", {}, h("time", {}, clock(e.ts)), h("span", {}, e.detail)))
+    : [h("li", { class: "empty" }, "Nothing yet.")]));
   $("#activity").replaceChildren(...entries.map((e) => h("li", {}, h("time", {}, clock(e.ts)), h("span", {}, e.detail))));
 }
 
@@ -863,11 +865,88 @@ async function forgetMatching() {
 }
 
 // ---------------------------------------------------------------- loop
+// ---------------------------------------------------------------- Home: what matters now, suggestions, systems summary
+// Everything here is read from the same /api/state snapshot; nothing is estimated or invented.
+// Decisions are not repeated here: their own panel sits beside (Mac) or above (iPhone) this list on Home.
+const DAY_MS = 24 * 3600 * 1000;
+// replaceChildren with optional parts: leaves out null/false instead of printing "null"
+const fill = (el, ...kids) => el.replaceChildren(...kids.flat().filter((k) => k !== null && k !== undefined && k !== false));
+function renderMatters(d) {
+  const items = [];
+  const go = (hash) => () => { location.hash = hash; };
+  for (const t of d.tasks) {
+    if (t.state === "blocked") {
+      items.push({ cls: "attention", icon: "!", label: "Needs your input", title: t.goal,
+                   sub: t.next_action || "This mission is waiting for you.", action: ["Open", () => showTimeline(t.id)] });
+    } else if (t.state === "paused") {
+      items.push({ cls: "", icon: "Ⅱ", label: "Paused", title: t.goal, sub: "Nothing runs until you resume it in Missions.",
+                   action: ["Missions", go("#/missions")] });
+    } else if (t.state === "failed" && Date.now() - Date.parse(t.updated_at) < DAY_MS) {
+      items.push({ cls: "bad", icon: "✗", label: "Failed", title: t.goal, sub: t.error || "The timeline shows what happened.",
+                   action: ["Timeline", () => showTimeline(t.id)] });
+    }
+  }
+  if (d.health && !d.health.ok) {
+    for (const i of d.health.items.filter((x) => !x.ok)) {
+      items.push({ cls: "bad", icon: "⚠", label: "System", title: i.name, sub: i.detail, action: ["Details", go("#/systems")] });
+    }
+  }
+  const box = $("#matters");
+  document.body.classList.toggle("has-matters", items.length > 0);
+  if (!items.length) {
+    box.replaceChildren(h("p", { class: "matters-quiet" }, d.approvals.length ? "Nothing else needs you." : "Nothing needs you right now."));
+    return;
+  }
+  fill(box, h("h2", { class: "matters-h" }, "What matters now"),
+    h("ul", { class: "matters-list" }, items.slice(0, 3).map((x) => h("li", { class: `matter ${x.cls}` },
+      h("span", { class: "m-icon", "aria-hidden": "true" }, x.icon),
+      h("div", { class: "m-text" }, h("small", {}, x.label), h("b", {}, x.title), h("span", {}, x.sub)),
+      h("button", { class: "btn btn-sm", type: "button", onclick: x.action[1] }, x.action[0])))),
+    items.length > 3 ? h("p", { class: "matters-quiet" }, `+${items.length - 3} more in `,
+      h("a", { href: "#/missions" }, "Missions"), " and ", h("a", { href: "#/systems" }, "Systems"), ".") : null);
+}
+
+function renderSuggestions(d) {
+  // Three things this JARVIS can do right now (same capability-aware list as Help); hidden once you're mid-conversation.
+  const box = $("#suggest");
+  if (ui.convo.some((m) => m.role === "user")) { box.replaceChildren(); return; }
+  const key = JSON.stringify(d.capabilities || {});
+  if (box.dataset.key === key && box.childElementCount) return;
+  box.dataset.key = key;
+  const picks = helpExamples(d).map(([mode, , , ex]) => [mode, ex[0][0]]).slice(0, 3);
+  box.replaceChildren(...picks.map(([mode, text]) => h("button", { class: "chip", type: "button", onclick: () => {
+    setMode(mode);
+    $("#cmd").value = text;
+    saveDraft();
+    $("#cmd").focus();
+  } }, h("small", {}, mode === "do" ? "Do" : mode === "research" ? "Research" : "Ask"), text)));
+}
+
+function renderSummary(d) {
+  // The numbers that used to be the stats row, plus health, in one place on Home; full detail is in Systems.
+  const m = d.models || { providers: [], budget: {} };
+  const online = m.providers.reduce((n, p) => n + p.available.length, 0);
+  const total = m.providers.reduce((n, p) => n + p.configured.length, 0);
+  const active = d.tasks.filter((t) => ACTIVE.includes(t.state)).length;
+  const claude = (m.cloud_usage || []).find((u) => u.provider === "claude");
+  const ro = (label, value, cls) => h("div", { class: "ro" }, h("span", {}, label), h("b", { class: cls || null }, value));
+  fill($("#summary"),
+    ro("Health", !d.health ? "Checking…" : d.health.ok ? "✓ Healthy" : `⚠ ${plural(d.health.items.filter((i) => !i.ok).length, "problem")}`,
+       d.health && !d.health.ok ? "bad" : d.health ? "ok" : null),
+    ro("Models online", `${online} of ${total}`, total && !online ? "bad" : null),
+    ro("Missions active", String(active)),
+    claude ? ro("Claude", claude.limited_until ? `resets ${clock(claude.limited_until)}` : `${claude.calls} calls · 5h`) : null,
+    ro("Spent this month", `$${(m.budget.spent_this_month_usd || 0).toFixed(2)} of $${(m.budget.monthly_limit_usd || 0).toFixed(2)}`));
+}
+
 function render() {
   const d = ui.data;
   renderHead(d);
   renderFeed(d);
   if (!d) return;
+  renderMatters(d);
+  renderSuggestions(d);
+  renderSummary(d);
   renderMissions(d.tasks);
   renderDecisions(d.approvals);
   renderSystems(d);
@@ -954,6 +1033,7 @@ document.addEventListener("DOMContentLoaded", () => {
     $("#memtext").value = "";
   });
   $("#logbtn").addEventListener("click", () => $("#logdlg").showModal());
+  $("#recentlog").addEventListener("click", () => $("#logdlg").showModal());
   $("#logclose").addEventListener("click", () => $("#logdlg").close());
   const tick = () => { $("#clock").textContent = new Date().toLocaleTimeString([], { hour12: false }); };
   tick(); setInterval(tick, 1000);
