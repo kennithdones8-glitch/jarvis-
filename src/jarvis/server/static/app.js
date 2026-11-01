@@ -605,10 +605,12 @@ function welcomeCard(m) {
   return h("div", { class: "job helpcard" },
     h("div", { class: "kicker" }, "Welcome to JARVIS"),
     h("ul", { class: "welcome" },
-      h("li", {}, h("b", {}, "Command box"), " (bottom): Ask a question, Do a task, or Research the web."),
-      h("li", {}, h("b", {}, "Missions"), ": tasks JARVIS is working on, step by step."),
-      h("li", {}, h("b", {}, "Decisions"), ": anything JARVIS wants to change waits here for your Approve or Reject."),
-      h("li", {}, h("b", {}, "Emergency stop"), " (top): pauses everything at once.")),
+      h("li", {}, h("b", {}, "Home"), " shows what JARVIS is doing, what matters now, and the box to ask, do or research."),
+      h("li", {}, h("b", {}, "Decisions"), ": nothing changes until you approve it. The badge shows when something is waiting."),
+      h("li", {}, h("b", {}, "Missions"), ": tasks step by step; pause or cancel any time. ", h("b", {}, "Workspace"), " puts sources and context beside the chat."),
+      h("li", {}, h("b", {}, "The reactor"), "'s colour tells you the state: blue ready, gold working, amber needs you, red stopped."),
+      h("li", {}, h("b", {}, "Emergency stop"), " (top right) pauses everything at once, on every page."),
+      isPhone() ? null : h("li", {}, "Keyboard: ", h("kbd", {}, "/"), " to type, ", h("kbd", {}, "g"), " then a letter to jump, ", h("kbd", {}, "?"), " for all shortcuts.")),
     h("div", { class: "row mt" },
       h("button", { class: "btn btn-sm", type: "button", onclick: () => { dismiss(m); showHelp(); } }, "What can I say?"),
       h("button", { class: "btn btn-ghost btn-sm", type: "button", onclick: () => dismiss(m) }, "Got it")));
@@ -1073,6 +1075,80 @@ function renderContext(d) {
   fill(box, answer, mission, part("Mode"), h("div", { class: "ctx-line" }, MODES[ui.mode][1]));
 }
 
+const isPhone = () => window.matchMedia("(max-width: 760px), (pointer: coarse)").matches;
+
+// ---------------------------------------------------------------- display settings (this device only)
+const DISPLAY_KEY = "jarvis-display";
+const DISPLAY = { text: [["normal", "Normal"], ["large", "Large"], ["larger", "Larger"]],
+                  density: [["comfortable", "Comfortable"], ["compact", "Compact"]] };
+function loadDisplay() {
+  let d = {};
+  try { d = JSON.parse(localStorage.getItem(DISPLAY_KEY) || "{}") || {}; } catch (e) { d = {}; }
+  return { text: DISPLAY.text.some(([k]) => k === d.text) ? d.text : "normal",
+           density: DISPLAY.density.some(([k]) => k === d.density) ? d.density : "comfortable" };
+}
+function applyDisplay(d) {
+  const root = document.documentElement;
+  root.dataset.text = d.text;
+  root.dataset.density = d.density;
+}
+function showDisplaySettings() {
+  const cur = loadDisplay();
+  const choose = (key) => h("div", { class: "row", role: "group", "aria-label": key === "text" ? "Text size" : "Density" },
+    DISPLAY[key].map(([value, label]) => h("button", { class: `chip${cur[key] === value ? " on" : ""}`, type: "button", "aria-pressed": String(cur[key] === value),
+      onclick: (e) => {
+        cur[key] = value;
+        try { localStorage.setItem(DISPLAY_KEY, JSON.stringify(cur)); } catch (err) { /* this visit only */ }
+        applyDisplay(cur);
+        e.target.parentNode.querySelectorAll("button").forEach((b) => { const on = b === e.target; b.classList.toggle("on", on); b.setAttribute("aria-pressed", String(on)); });
+      } }, label)));
+  const dlg = h("dialog", { class: "pairdlg askdlg", "aria-labelledby": "disp-h" },
+    h("h2", { id: "disp-h" }, "Display"),
+    h("p", { class: "hl-sub" }, "Only for this device. Reduced motion follows your system setting."),
+    h("h3", { class: "sys-part" }, "Text size"), choose("text"),
+    h("h3", { class: "sys-part" }, "Density"), choose("density"),
+    h("div", { class: "row mt" }, h("button", { class: "btn", type: "button", onclick: () => { dlg.close(); dlg.remove(); } }, "Done")));
+  dlg.addEventListener("close", () => dlg.remove());
+  document.body.append(dlg);
+  dlg.showModal();
+}
+
+// ---------------------------------------------------------------- keyboard shortcuts (Mac): they only move around
+// None of them approves, rejects, sends, runs, pauses, cancels or stops anything.
+const GO_KEYS = { h: "home", w: "workspace", m: "missions", d: "decisions", r: "memory", s: "systems", i: "intelligence" };
+function showShortcuts() {
+  const row = (keys, what) => h("li", {}, keys.map((k) => h("kbd", {}, k)), " ", what);
+  const dlg = h("dialog", { class: "pairdlg askdlg", "aria-labelledby": "keys-h" },
+    h("h2", { id: "keys-h" }, "Keyboard shortcuts"),
+    h("ul", { class: "keys" },
+      row(["/"], "type a message"), row(["g", "h"], "Home"), row(["g", "w"], "Workspace"), row(["g", "m"], "Missions"),
+      row(["g", "d"], "Decisions"), row(["g", "r"], "Memory"), row(["g", "s"], "Systems"), row(["g", "i"], "Briefing & ideas"),
+      row(["c"], "cinematic mode on / off"), row(["Esc"], "stop reading aloud, close menus"), row(["?"], "this list")),
+    h("p", { class: "hl-sub" }, "Shortcuts only move around. Approving, sending and stopping always need a click or tap."),
+    h("div", { class: "row mt" }, h("button", { class: "btn", type: "button", onclick: () => { dlg.close(); dlg.remove(); } }, "Close")));
+  dlg.addEventListener("close", () => dlg.remove());
+  document.body.append(dlg);
+  dlg.showModal();
+}
+function onShortcut(e) {
+  const t = e.target;
+  if (e.metaKey || e.ctrlKey || e.altKey || document.querySelector("dialog[open]")) return;
+  if (t && (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName))) return;
+  if (ui.goPending) {
+    ui.goPending = false;
+    if (GO_KEYS[e.key]) { e.preventDefault(); location.hash = `#/${GO_KEYS[e.key]}`; }
+    return;
+  }
+  if (e.key === "/") {
+    e.preventDefault();
+    if (!["home", "workspace"].includes(document.body.dataset.view)) { location.hash = "#/home"; setView("home"); }  // show the box before focusing it
+    $("#cmd").focus();
+  }
+  else if (e.key === "g") { ui.goPending = true; setTimeout(() => { ui.goPending = false; }, 1200); }
+  else if (e.key === "c") setCinematic(!document.body.classList.contains("cinematic"));
+  else if (e.key === "?") showShortcuts();
+}
+
 async function memAct(path, body) {
   try { await call(path, body); } catch (e) { note(cancelled(e)); }
   await refresh(); await loadMemory(true);
@@ -1280,6 +1356,10 @@ document.addEventListener("DOMContentLoaded", () => {
   const tick = () => { $("#clock").textContent = new Date().toLocaleTimeString([], { hour12: false }); };
   tick(); setInterval(tick, 1000);
   setMode("ask");
+  applyDisplay(loadDisplay());
+  document.addEventListener("keydown", onShortcut);
+  $("#displaybtn").addEventListener("click", showDisplaySettings);
+  $("#keysbtn").addEventListener("click", showShortcuts);
   setView(viewFromHash() || "home");
   let cine = false;
   try { cine = localStorage.getItem("jarvis-cinematic") === "1"; } catch (e) { /* default off */ }

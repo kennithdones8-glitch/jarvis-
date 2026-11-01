@@ -828,3 +828,18 @@ body[data-view="workspace"] .hud .context-panel { max-width: none; margin: 0; }
 /* settling a step whose outcome is unknown */
 .settle { margin-top: 8px; padding: 8px 10px; border: 1px dashed #ffb347; display: grid; gap: 6px; }
 .settle .m-err { margin-top: 0; }
+
+/* ================= Polish: display settings (per device), shortcuts, welcome ================= */
+/* text size: the whole page scales, layout included, so nothing overflows */
+html[data-text="large"] body { zoom: 1.12; }
+html[data-text="larger"] body { zoom: 1.25; }
+/* compact density: tighter panels and gaps */
+html[data-density="compact"] .panel { padding: 10px 12px; }
+html[data-density="compact"] .hud { gap: 10px; }
+html[data-density="compact"] .rail-left, html[data-density="compact"] .rail-right { gap: 10px; }
+html[data-density="compact"] .stack, html[data-density="compact"] .mrows, html[data-density="compact"] .matters-list { gap: 6px; }
+html[data-density="compact"] .ph { margin-bottom: 8px; }
+.chip.on { border-color: var(--gold); background: var(--gold-dim); color: var(--gold-hi); }
+kbd { font: 600 13px var(--mono); padding: 1px 6px; border: 1px solid var(--gold-line); border-bottom-width: 2px; background: rgba(0, 0, 0, .4); color: var(--gold-hi); }
+.keys { list-style: none; padding: 0; margin: 10px 0; display: grid; gap: 8px; }
+@media (pointer: coarse), (max-width: 760px) { .keys-only { display: none; } }
