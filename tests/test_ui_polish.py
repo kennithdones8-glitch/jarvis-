@@ -36,3 +36,15 @@ def test_welcome_describes_the_current_dashboard(dash):
     assert "Command box" not in welcome  # the old layout
     for text in ("what matters now", "nothing changes until you approve it", "Emergency stop", "Workspace"):
         assert text in welcome, text
+
+
+def test_activity_never_shows_raw_data_for_idea_events(dash):
+    d, _, _ = dash
+    from jarvis.proposals import Proposals
+    Proposals(d.kernel).refresh()
+    state = __import__("json").loads(call(d, "/api/state")[2])
+    raw = [e for e in state["audit"] if e["event"] == "proposals.refreshed"]
+    assert raw and raw[0]["detail"].lstrip().startswith("{")  # the server's fallback the page rewords
+    js = _js(d)
+    assert '"proposals.refreshed": "Checked its own record for improvement ideas"' in js
+    assert "entries = entries.map((e) => (EVENT_WORDS[e.event]" in js

@@ -920,7 +920,11 @@ async function enableNotifications() {
   } catch (e) { note(`Couldn't turn on notifications: ${e.message}. On iPhone, add JARVIS to your Home Screen first.`); }
 }
 
+// Events the server has no plain-English wording for yet (it falls back to raw data); worded here, nothing hidden.
+const EVENT_WORDS = { "proposals.refreshed": "Checked its own record for improvement ideas",
+                      "proposals.decided": "Recorded your decision on an improvement idea" };
 function renderActivity(entries) {
+  entries = entries.map((e) => (EVENT_WORDS[e.event] && /^\s*[{[]/.test(e.detail || "") ? { ...e, detail: EVENT_WORDS[e.event] } : e));
   $("#ticker").replaceChildren(...entries.slice(0, 6).map((e) => h("li", {}, h("time", {}, clock(e.ts)), e.detail)));
   $("#recent").replaceChildren(...(entries.length ? entries.slice(0, 6).map((e) => h("li", {}, h("time", {}, clock(e.ts)), h("span", {}, e.detail)))
     : [h("li", { class: "empty" }, "Nothing yet.")]));
