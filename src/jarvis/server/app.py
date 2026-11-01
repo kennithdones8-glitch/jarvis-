@@ -40,6 +40,7 @@ from ..core.approvals import ApprovalStateError
 from ..core.killswitch import EmergencyStop
 from ..core.tasks import InvalidTransition, TaskState
 from ..core.tools import ApprovalRequired
+from ..orchestrator.answer_checks import chat_problems
 from ..orchestrator.grounding import applies, unsupported_times
 from ..models import ChatRequest, Message, Need, NoModelAvailable
 from ..models.types import Category
@@ -506,19 +507,24 @@ class Dashboard:
             r = self.kernel.models.complete(need, ChatRequest(tuple(msgs), max_tokens=600), purpose="dashboard chat",
                                             on_token=on_token, level=found.level)
             grounded, retried = None, False
-            if found.context is not None and applies(found.checked):
-                bad = unsupported_times(r.text, found.context.content, message)
-                # One retry with the problem pointed out, then show it as unverified rather than hide it. Only for a
-                # local answer: retrying a Claude answer would be a new request needing your consent again.
-                if bad and r.provider in self.kernel.models.router.local:
-                    retried = True
-                    retry = msgs + [Message("assistant", r.text, Category.CONVERSATION),
-                                    Message("user", f"Check: your answer mentions {', '.join(bad)}, which isn't in the "
-                                            "looked-up data. Answer again using only times from the <lookup> data.",
-                                            Category.CONVERSATION)]
-                    r = self.kernel.models.complete(need, ChatRequest(tuple(retry), max_tokens=600),
-                                                    purpose="dashboard chat (grounding retry)", level=found.level)
-                    bad = unsupported_times(r.text, found.context.content, message)
+            checks_times = found.context is not None and applies(found.checked)
+            bad = unsupported_times(r.text, found.context.content, message) if checks_times else []
+            problems = ([f"your answer mentions {', '.join(bad)}, which isn't in the looked-up data: use only times "
+                         "from the <lookup> data"] if bad else [])
+            problems += chat_problems(message, r.text, looked_up=found.context is not None)
+            # One retry with the problems pointed out, then show what's still wrong rather than hide it. Only for a
+            # local answer: retrying a Claude answer would be a new request needing your consent again.
+            if problems and r.provider in self.kernel.models.router.local:
+                retried = True
+                retry = msgs + [Message("assistant", r.text, Category.CONVERSATION),
+                                Message("user", "Check before answering again:\n" + "\n".join(f"- {x}" for x in problems)
+                                        + "\nReply with the corrected answer only.", Category.CONVERSATION)]
+                r = self.kernel.models.complete(need, ChatRequest(tuple(retry), max_tokens=600),
+                                                purpose="dashboard chat (answer check retry)", level=found.level)
+                bad = unsupported_times(r.text, found.context.content, message) if checks_times else []
+            self.kernel.audit.record("chat.answer_check", problems=len(problems), retried=retried,
+                                     still=len(chat_problems(message, r.text, looked_up=found.context is not None, puzzle=False)))
+            if checks_times:
                 grounded = not bad
                 self.kernel.audit.record("chat.grounding", ok=grounded, unsupported_times=len(bad), retried=retried)
                 if bad:

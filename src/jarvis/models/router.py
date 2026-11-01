@@ -85,8 +85,11 @@ HARD_SIGNALS = re.compile(
 
 
 def hard_signals(text: str) -> bool:
-    """Deterministic: code, reasoning words, high-stakes topics, several questions, or a long request."""
-    return bool(HARD_SIGNALS.search(text)) or text.count("?") >= 3 or len(text) > 1200
+    """Deterministic: code, reasoning words, high-stakes topics, several questions, a puzzle with several conditions,
+    or a long request."""
+    from ..orchestrator.answer_checks import is_puzzle  # plain regexes; no import cycle
+
+    return bool(HARD_SIGNALS.search(text)) or text.count("?") >= 3 or len(text) > 1200 or is_puzzle(text)
 
 
 class ModelRouter:

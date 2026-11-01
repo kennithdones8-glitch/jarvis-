@@ -1,5 +1,17 @@
 # Changelog
 
+## Unreleased — Answer checks (branch `outcome-fixes-v1`, on top of Outcome Engine v1)
+
+Built from real wrong answers a small local model gave on the owner's Mac. Benchmarked before any merge.
+- **Chat answer checks** (deterministic, one local retry at most, never for Claude answers): saying "I don't
+  have access to your calendar" right after a lookup; ignoring an explicit format ("end with the number on its
+  own line", "finish with four lines in the form…"); puzzles with several conditions get one self-check.
+  Audit: `chat.answer_check` with counts only, no content.
+- Puzzles with several conditions count as hard (hybrid: Claude is offered, with consent as always).
+- **Writer:** a planted instruction in the data is ignored *and* the owner's task is still done; a refusal of
+  a harmless task is retried once locally. The plan is fixed before data is read, so this changes no
+  security boundary.
+
 ## Unreleased — Outcome Engine v1 (branch `outcome-engine-v1`)
 
 Merged into main only after the benchmark (core + extended, 3 runs, same models) shows net +2 tasks, no new

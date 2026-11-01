@@ -145,7 +145,7 @@ def test_a_cloud_answer_is_flagged_but_never_retried(chat_env, monkeypatch):
     monkeypatch.setattr(d.kernel.models, "complete", as_if_claude)
     r = chat(d, "What's my first meeting tomorrow?")
     assert r["grounded"] is False and "Unverified" in r["note"]
-    assert calls.count("dashboard chat (grounding retry)") == 0 and d.kernel.approvals.pending() == []
+    assert calls.count("dashboard chat (answer check retry)") == 0 and d.kernel.approvals.pending() == []
 
 
 def test_answers_without_calendar_data_are_not_checked(chat_env):

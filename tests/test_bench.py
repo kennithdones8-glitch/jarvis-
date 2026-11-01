@@ -26,6 +26,8 @@ def oracle(body):
     """Answers like a good assistant would, using only what JARVIS put in front of it."""
     system, user = body["messages"][0]["content"], _last_user(body)
     everything = json.dumps(body["messages"])
+    if user.startswith("Check before answering again"):  # the answer self-check: a right answer stays as it was
+        return [m["content"] for m in body["messages"] if m["role"] == "assistant"][-1]
     if "lookup step of JARVIS" in system:
         start = (datetime.now().astimezone() + timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0)
         if "free" in user:
