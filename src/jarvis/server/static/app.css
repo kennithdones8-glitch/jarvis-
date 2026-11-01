@@ -399,6 +399,9 @@ pre.out { background: rgba(0, 0, 0, .35); border: 1px solid var(--gold-line); pa
 .tl-phase.approval, .tl-phase.cloud { color: var(--arc); }
 .tl-events li.problem .tl-phase { color: var(--red); }
 .tl-events li small { color: var(--muted); }
+.trust .row { display: flex; gap: 10px; flex-wrap: wrap; padding: 4px 2px; }
+.trust .pre { white-space: pre-wrap; }
+.trust section p { margin: 4px 2px; }
 a.btn { text-decoration: none; display: inline-block; }
 .trust { display: grid; gap: 18px; padding: 8px max(16px, env(safe-area-inset-left)) 48px max(16px, env(safe-area-inset-right));
           max-width: 760px; width: 100%; margin: 0 auto; }

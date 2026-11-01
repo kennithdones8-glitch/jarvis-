@@ -15,6 +15,17 @@
   permission engine (it asks the engine about every action, inside each approved folder), policy, privacy
   settings, grants and budget, so it can't drift. Built-in promises name the release-gate item that proves them;
   a test fails if one names an item that doesn't exist.
+## Unreleased — Improvement proposals (branch `proposals-v1`)
+
+- JARVIS studies its own record and suggests improvements: benchmark tasks failing in most runs, actions that
+  keep timing out or failing, routine actions you always approve (with the exact policy rule you could add
+  yourself), actions you keep rejecting, calendar answers still unverified after a retry, frequent fallbacks.
+  Deterministic counts from the audit log, approvals and the latest benchmark; no model, nothing leaves the Mac,
+  no private text in the evidence.
+- Propose-only: deciding (dashboard **Ideas** page, phone too, or `jarvis proposals approve|reject|done ID`)
+  records your answer and changes nothing. `jarvis proposals brief ID` turns an approved idea into a task brief
+  for Claude Code that follows the engineering constitution. A rejected idea returns only if its evidence doubles.
+- Database v7: `proposals` table.
 
 ## 0.17.14 — Review fix
 

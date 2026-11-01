@@ -113,6 +113,9 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--json", action="store_true")
     p = sub.add_parser("trust", help="the Trust Contract: what JARVIS does on its own, asks about, and never does")
     p.add_argument("--json", action="store_true")
+    p = sub.add_parser("proposals", help="improvements JARVIS suggests from its own record (propose-only: you decide)")
+    p.add_argument("op", nargs="?", default="list", choices=["list", "refresh", "show", "approve", "reject", "done", "brief"])
+    p.add_argument("id", nargs="?")
     p = sub.add_parser("gate", help="release gate: full tests, linter, and every security item (run from the repo)")
     p.add_argument("--json", action="store_true")
     p = sub.add_parser("bench", help="benchmark: list | run [IDS] | baseline | score-baseline FILE | report RUN_DIR | "
@@ -218,6 +221,8 @@ def main(argv: list[str] | None = None) -> int:
 
             c = trust.contract(kernel)
             print(json.dumps(c.as_dict(), indent=2) if args.json else trust.as_text(c))
+        elif args.cmd == "proposals":
+            return _proposals(kernel, args)
         elif args.cmd == "trace":
             from . import flight
 
@@ -725,6 +730,43 @@ listening on 127.0.0.1 only.""")
     finally:
         if started:
             voice.process.stop()
+    return 0
+
+
+def _proposals(kernel: Kernel, args) -> int:
+    from .proposals import Proposals
+
+    props = Proposals(kernel)
+    if args.op in ("list", "refresh"):
+        r = props.refresh()
+        items = props.list()
+        if args.op == "refresh":
+            print(f"{r['added']} new, {r['updated']} updated")
+        for p in items:
+            print(f"{p['id']}  [{p['state']:<8}] {p['kind']:<11} {p['title']}")
+        if not items:
+            print("No proposals: nothing in the record suggests a change right now.")
+        return 0
+    if not args.id:
+        print(f"usage: jarvis proposals {args.op} ID", file=sys.stderr)
+        return 1
+    try:
+        if args.op == "show":
+            p = props.get(args.id)
+            print(f"{p['title']}  [{p['state']}]\n\n{p['problem']}\n\nEvidence:\n" + "\n".join(f"  - {e}" for e in p["evidence"])
+                  + f"\n\nSuggestion:\n{p['suggestion']}\n\nRisk: {p['risk']}")
+        elif args.op == "brief":
+            print(props.brief(args.id))
+        else:
+            state = {"approve": "approved", "reject": "rejected", "done": "done"}[args.op]
+            props.decide(args.id, state, by="user:cli")
+            print(f"{args.id}: {state}." + (" Nothing was changed; this only records your answer." if args.op != "done" else ""))
+    except KeyError:
+        print(f"no proposal {args.id}", file=sys.stderr)
+        return 1
+    except PermissionError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 1
     return 0
 
 
