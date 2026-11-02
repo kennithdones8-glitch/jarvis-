@@ -69,3 +69,20 @@ def test_chat_code_self_test_sandbox():
     finally:
         secret.unlink(missing_ok=True)
         outside.unlink(missing_ok=True)
+
+
+def test_launcher_app_compiles_and_holds_no_secret(tmp_path):
+    """`jarvis app install` with Apple's real osacompile: a valid applet, marked as ours, no dashboard link inside."""
+    from jarvis import launcher
+    from jarvis.service import dashboard_token
+    home = tmp_path / "home"
+    home.mkdir()
+    token = dashboard_token(home)
+    app = launcher.install(home, custom_home=True, dest_dir=tmp_path / "Apps")
+    assert app.name == "JARVIS.app" and launcher.is_ours(app)
+    assert (app / "Contents" / "Info.plist").is_file() and (app / "Contents" / "Resources" / "Scripts" / "main.scpt").is_file()
+    src = subprocess.run(["/usr/bin/osadecompile", str(app / "Contents" / "Resources" / "Scripts" / "main.scpt")],
+                         capture_output=True, text=True, timeout=60)
+    assert src.returncode == 0 and "open" in src.stdout and str(home) in src.stdout
+    assert token not in src.stdout and not any(token in p.read_bytes().decode("latin-1") for p in app.rglob("*") if p.is_file())
+    assert launcher.uninstall(tmp_path / "Apps") and not app.exists()

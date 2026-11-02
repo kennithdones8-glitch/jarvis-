@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased — JARVIS.app launcher (branch `mac-launcher-v1`)
+
+- `jarvis app install` makes `~/Applications/JARVIS.app`: double-click (or click it in the Dock) to open the
+  dashboard. It's a tiny AppleScript applet compiled on your Mac with Apple's `osacompile` (no download, no new
+  packages) and runs exactly what `jarvis open` runs, with the same `uv`, repository and data folder as the
+  background service. No link or password is stored in it; if JARVIS isn't running it says how to start it. It
+  never starts, stops or changes JARVIS. `jarvis app uninstall` removes it; neither command touches an app that
+  JARVIS didn't make.
+
 ## Unreleased — Coding self-test (branch `coding-selftest-v1`, on top of answer checks)
 
 - Opt-in (`[coding] self_test = true`; off by default). When a local chat answer contains Python code for a

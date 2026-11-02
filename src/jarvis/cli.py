@@ -65,6 +65,10 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--port", type=int, default=8765)
     p = sub.add_parser("open", help="open the dashboard in your browser")
     p.add_argument("--port", type=int, default=8765)
+    p = sub.add_parser("app", help="JARVIS.app for your Dock: install | uninstall (opens the dashboard; changes nothing)")
+    p.add_argument("op", choices=["install", "uninstall"])
+    p.add_argument("--dir", help="where to put JARVIS.app (default: ~/Applications)")
+    p.add_argument("--port", type=int, default=8765)
     p = sub.add_parser("backup", help="encrypted backups: now [--to DIR] | list | verify FILE | restore FILE --yes")
     p.add_argument("op", choices=["now", "list", "verify", "restore"])
     p.add_argument("file", nargs="?")
@@ -210,6 +214,8 @@ def main(argv: list[str] | None = None) -> int:
                 return 1
             webbrowser.open(url)
             print(url)
+        elif args.cmd == "app":
+            return _app(kernel, args)
         elif args.cmd == "backup":
             return _backup(kernel, args)
         elif args.cmd == "remote":
@@ -562,6 +568,24 @@ def _with_consent(kernel: Kernel, call):
                 print("Keeping it on this Mac — using a local model.", file=sys.stderr)
                 local = True
     return call(True)
+
+
+def _app(kernel: Kernel, args) -> int:
+    from . import launcher
+
+    dest = Path(args.dir).expanduser() if args.dir else None
+    try:
+        if args.op == "install":
+            custom = bool(args.home) or "JARVIS_HOME" in __import__("os").environ
+            app = launcher.install(kernel.home, custom_home=custom, dest_dir=dest, port=args.port)
+            print(f"Made {app}. Double-click it (or drag it to your Dock) to open the dashboard.")
+            print("It runs `jarvis open` from this folder; it stores no link or password and changes nothing.")
+        else:
+            print("Removed JARVIS.app." if launcher.uninstall(dest) else "JARVIS.app wasn't installed there.")
+    except launcher.LauncherError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 1
+    return 0
 
 
 def _service(kernel: Kernel, args) -> int:

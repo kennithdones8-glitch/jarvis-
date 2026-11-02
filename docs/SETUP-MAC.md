@@ -100,6 +100,13 @@ uv run jarvis open
 ```
 Set the Ollama app to launch at login too.
 
+Optional: a JARVIS icon for your Dock that opens the dashboard with a double-click:
+```bash
+uv run jarvis app install
+```
+It goes in `~/Applications` (drag it to the Dock). It runs `jarvis open`, so it stores no link or password and
+changes nothing; if JARVIS isn't running it tells you how to start it. Remove it with `uv run jarvis app uninstall`.
+
 ## 7. Touch ID for approvals (optional)
 
 Dashboard → **Systems → Touch ID → Set up Touch ID**. From then on, approvals in the dashboard ask for your

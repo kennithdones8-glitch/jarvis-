@@ -23,7 +23,8 @@ ALLOWED_SKIPS = {"test_live_ollama::real_ollama_round_trip", "test_live_ollama::
 # Checks that need macOS itself: allowed to skip elsewhere, required to pass on a Mac.
 MACOS_ONLY = {"test_macos_only::mac_app_scripts_compile", "test_macos_only::launch_agent_file_is_valid",
               "test_macos_only::code_sandbox_blocks_network_and_outside_writes",
-              "test_macos_only::chat_code_self_test_sandbox"}
+              "test_macos_only::chat_code_self_test_sandbox",
+              "test_macos_only::launcher_app_compiles_and_holds_no_secret"}
 if sys.platform != "darwin":
     ALLOWED_SKIPS = ALLOWED_SKIPS | MACOS_ONLY
 
