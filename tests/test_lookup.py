@@ -171,8 +171,10 @@ def test_calendar_lookups_cover_whole_days(env):
     script["lookups"] = [{"tool": "calendar", "action": "events", "args": narrow}]
     chat(d, "Am I free tomorrow between 2pm and 3:30pm, and what's my first commitment?")
     sent = fake.calls[0][1]
-    assert sent["from"].startswith(tomorrow.strftime("%Y-%m-%dT00:00"))
-    assert sent["to"].startswith((tomorrow + timedelta(days=1)).strftime("%Y-%m-%dT00:00"))
+    at = lambda s: datetime.fromisoformat(s.replace("Z", "+00:00"))  # noqa: E731  (the script gets UTC times)
+    local_midnight = lambda d: datetime(d.year, d.month, d.day).astimezone()  # noqa: E731
+    assert at(sent["from"]) == local_midnight(tomorrow)  # the same moment, whatever the Mac's time zone
+    assert at(sent["to"]) == local_midnight(tomorrow + timedelta(days=1))
     week_ = whole_days({"from": "2026-11-02T00:00", "to": "2026-11-09T00:00"})  # already whole days: unchanged span
     assert week_["from"][:16] == "2026-11-02T00:00" and week_["to"][:16] == "2026-11-09T00:00"
     assert whole_days({"from": "nonsense", "to": 3}) == {"from": "nonsense", "to": 3}
