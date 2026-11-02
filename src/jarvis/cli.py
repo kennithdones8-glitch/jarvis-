@@ -123,8 +123,8 @@ def main(argv: list[str] | None = None) -> int:
     p = sub.add_parser("gate", help="release gate: full tests, linter, and every security item (run from the repo)")
     p.add_argument("--json", action="store_true")
     p = sub.add_parser("bench", help="benchmark: list | run [IDS] | baseline | score-baseline FILE | report RUN_DIR | "
-                       "compare [BEFORE AFTER]")
-    p.add_argument("op", choices=["list", "run", "baseline", "score-baseline", "report", "compare"])
+                       "compare [BEFORE AFTER | --before DIR.. --after DIR..] | rescore RUN_DIR..")
+    p.add_argument("op", choices=["list", "run", "baseline", "score-baseline", "report", "compare", "rescore"])
     p.add_argument("ids", nargs="*", help="task ids (run), or the file / folder (score-baseline, report)")
     p.add_argument("--models", choices=["local", "hybrid"], default="local",
                    help="local: Claude off (default). hybrid: your settings, uses your Claude Pro plan")
@@ -135,6 +135,9 @@ def main(argv: list[str] | None = None) -> int:
                    help="run with the coding self-test on (code runs only inside the macOS sandbox)")
     p.add_argument("--set", choices=["core", "extended", "all"], default="core",
                    help="core: the 12 compared with the Claude app (default); extended: 12 more; all: both")
+    p.add_argument("--before", nargs="+", metavar="DIR", help="compare: one or more runs pooled as 'before'")
+    p.add_argument("--after", nargs="+", metavar="DIR", help="compare: one or more runs pooled as 'after'")
+    p.add_argument("--rescored", action="store_true", help="compare: use runs' re-scored results where they exist")
     p = sub.add_parser("mac", help="Mac apps (Calendar, Reminders, Notes): check — read-only test that also lets macOS ask for permission")
     p.add_argument("op", choices=["check"])
     p = sub.add_parser("doctor", help="check the whole installation and say what to fix")
@@ -826,14 +829,37 @@ def _bench(kernel: Kernel, args) -> int:
             return 0
         if args.op == "compare":
             from .bench.compare import as_text, compare, latest_runs, load
-            dirs = [Path(x).expanduser() for x in args.ids] if args.ids else latest_runs(out)
-            if len(dirs) != 2:
-                print("usage: jarvis bench compare BEFORE_DIR AFTER_DIR (or no folders: the two latest runs)",
-                      file=sys.stderr)
-                return 1
-            c = compare(load(dirs[0]), load(dirs[1]))
+            if args.before or args.after:
+                if not (args.before and args.after) or args.ids:
+                    print("usage: jarvis bench compare --before DIR [DIR..] --after DIR [DIR..]", file=sys.stderr)
+                    return 1
+                before = [Path(x).expanduser() for x in args.before]
+                after = [Path(x).expanduser() for x in args.after]
+            else:
+                dirs = [Path(x).expanduser() for x in args.ids] if args.ids else latest_runs(out)
+                if len(dirs) != 2:
+                    print("usage: jarvis bench compare BEFORE_DIR AFTER_DIR (or no folders: the two latest runs), or "
+                          "--before DIR [DIR..] --after DIR [DIR..] to pool several runs per side", file=sys.stderr)
+                    return 1
+                before, after = [dirs[0]], [dirs[1]]
+            c = compare([load(d, rescored=args.rescored) for d in before], [load(d, rescored=args.rescored) for d in after])
             print(as_text(c))
-            return 0 if c.merge else 3
+            return {"MERGE": 0, "DON'T MERGE": 3, "INCONCLUSIVE": 4}[c.verdict]
+        if args.op == "rescore":
+            from .bench.rescore import rescore
+            if not args.ids:
+                print("usage: jarvis bench rescore RUN_DIR [RUN_DIR..]", file=sys.stderr)
+                return 1
+            for d in args.ids:
+                r = rescore(Path(d).expanduser())
+                print(f"{Path(d).name}: wrote {Path(r['path']).name}")
+                for tid, n in r["changed"].items():
+                    print(f"  re-scored {tid}: {n['before']} → {n['after']} of {n['runs']} runs passing")
+                for tid, why in r["refused"].items():
+                    print(f"  not re-scored {tid}: {why}")
+                if not r["changed"] and not r["refused"]:
+                    print("  nothing to re-score: every task is unchanged")
+            return 0
         if args.op == "report":
             data = _json.loads((Path(args.ids[0]).expanduser() / "results.json").read_text())
             print(report(data["meta"], data["results"]))

@@ -299,20 +299,20 @@ def test_compare_applies_the_merge_rule(tmp_path):
     from jarvis.bench.compare import compare, load
     before = load(_run(tmp_path, "1-before", {"a": "ppf", "b": "fff", "c": "fff", "d": "pfp", "e": "sss"}, claude=4))
     good = load(_run(tmp_path, "2-good", {"a": "ppp", "b": "ppf", "c": "pfp", "d": "ppp", "e": "sss"}, claude=5))
-    c = compare(before, good)
+    c = compare(before, good, min_runs=3)  # the rule's logic; the 5-run minimum has its own test
     assert c.merge and c.net == 2 and c.fixed == ["b", "c"] and c.new_failures == []
     assert "e: not scored in both runs (skipped)" in c.left_out
 
     regress = load(_run(tmp_path, "3-regress", {"a": "fff", "b": "ppp", "c": "ppp", "d": "ppp", "e": "sss"}, claude=4))
-    r = compare(before, regress)
+    r = compare(before, regress, min_runs=3)
     assert not r.merge and r.new_failures == ["a"] and r.net == 1
 
     costly = load(_run(tmp_path, "4-costly", {"a": "ppp", "b": "ppp", "c": "ppp", "d": "ppp", "e": "sss"}, claude=6))
-    assert any("Claude calls rose from 4 to 6" in x for x in compare(before, costly).reasons)
+    assert any("Claude calls rose from 4 to 6" in x for x in compare(before, costly, min_runs=3).reasons)
 
     unsafe = load(_run(tmp_path, "5-unsafe", {"a": "ppp", "b": "ppp", "c": "ppp", "d": "ppp", "e": "sss"},
                        violations=["fs.write ran without an approval"]))
-    assert "changes made without an approval in the after run" in compare(before, unsafe).reasons
+    assert "changes made without an approval in the after run" in compare(before, unsafe, min_runs=3).reasons
 
     changed = load(_run(tmp_path, "6-changed", {"a": "ppp", "b": "ppp", "c": "ppp", "d": "ppp", "e": "sss"},
                         hashes={"b": "other"}))
@@ -324,12 +324,46 @@ def test_compare_from_the_command_line(tmp_path, capsys):
     out = tmp_path / "home" / "bench-results"
     _run(out, "20261101-100000-local", {"a": "fff", "b": "fff"}, started="2026-11-01T10:00:00+00:00")
     _run(out, "20261101-120000-local", {"a": "ppp", "b": "ppf"}, started="2026-11-01T12:00:00+00:00")
-    assert cli_main(["--home", str(tmp_path / "home"), "bench", "compare"]) == 0
+    assert cli_main(["--home", str(tmp_path / "home"), "bench", "compare"]) == 4  # 3 runs a side: too few
     text = capsys.readouterr().out
-    assert "Verdict: MERGE" in text and "0/3 → 3/3" in text and "fixed" in text
+    assert "Verdict: INCONCLUSIVE" in text and "0/3 → 3/3" in text and "fixed" in text
     assert cli_main(["--home", str(tmp_path / "home"), "bench", "compare", str(out / "20261101-120000-local"),
-                     str(out / "20261101-100000-local")]) == 3
+                     str(out / "20261101-100000-local")]) == 4
     assert "NEW FAILURE" in capsys.readouterr().out
+    # pooling two runs a side reaches the 5-run minimum: a firm verdict
+    _run(out, "20261101-110000-local", {"a": "fff", "b": "fff"}, started="2026-11-01T11:00:00+00:00")
+    _run(out, "20261101-130000-local", {"a": "ppp", "b": "pfp"}, started="2026-11-01T13:00:00+00:00")
+    assert cli_main(["--home", str(tmp_path / "home"), "bench", "compare",
+                     "--before", str(out / "20261101-100000-local"), str(out / "20261101-110000-local"),
+                     "--after", str(out / "20261101-120000-local"), str(out / "20261101-130000-local")]) == 0
+    text = capsys.readouterr().out
+    assert "Verdict: MERGE" in text and "0/6 → 6/6" in text and "clear change, p=0.0022" in text
+    assert "        + 20261101-110000-local" in text
+    assert cli_main(["--home", str(tmp_path / "home"), "bench", "compare", "--before", str(out / "x")]) == 1
+
+
+def test_pooled_verdicts_need_five_runs_and_say_when_it_could_be_luck(tmp_path):
+    from jarvis.bench.compare import as_text, compare, fisher_p, load
+    assert round(fisher_p(0, 6, 6, 6), 4) == 0.0022 and round(fisher_p(2, 3, 0, 3), 1) == 0.4
+    assert fisher_p(3, 3, 3, 3) == 1.0 and fisher_p(0, 0, 1, 1) == 1.0
+    b1 = load(_run(tmp_path, "b1", {"a": "fff", "b": "ppp", "c": "fff"}))
+    b2 = load(_run(tmp_path, "b2", {"a": "fff", "b": "ppp", "c": "pff"}))
+    a1 = load(_run(tmp_path, "a1", {"a": "ppp", "b": "ppp", "c": "ppf"}))
+    a2 = load(_run(tmp_path, "a2", {"a": "ppp", "b": "ppp", "c": "ppp"}))
+    one = compare(b1, a1)
+    assert one.verdict == "INCONCLUSIVE" and not one.merge and "fewest here: 3" in one.inconclusive[0]
+    pooled = compare([b1, b2], [a1, a2])
+    rows = {r["id"]: r for r in pooled.rows}
+    assert pooled.verdict == "MERGE" and rows["a"]["before"] == "0/6" and rows["a"]["after"] == "6/6"
+    assert rows["a"]["clear"] and not rows["b"]["clear"]  # 0/6 → 6/6 is real; unchanged is not a change
+    assert not rows["c"]["clear"] and rows["c"]["p"] == 0.0801  # 1/6 → 5/6 still could be luck at 6 runs
+    # an unapproved change is never "inconclusive", however few the runs
+    bad = load(_run(tmp_path, "bad", {"a": "ppp", "b": "ppp", "c": "ppp"}, violations=["fs.write without approval"]))
+    assert compare(b1, bad).verdict == "DON'T MERGE"
+    # a task whose definition differs within one side is left out, not pooled
+    b3 = load(_run(tmp_path, "b3", {"a": "fff", "b": "ppp", "c": "fff"}, hashes={"a": "other"}))
+    assert "a: the task changed between the runs" in compare([b1, b3], [a1, a2]).left_out
+    assert "Verdict: INCONCLUSIVE (not enough runs to decide)" in as_text(one)
 
 
 def test_latest_runs_follow_real_time_across_the_clocks_going_back(tmp_path):
@@ -344,3 +378,76 @@ def test_latest_runs_cope_with_a_start_time_without_a_zone(tmp_path):
     a = _run(tmp_path, "20261101-090000-local", {"a": "p"}, started="2026-11-01T09:00:00")
     b = _run(tmp_path, "20261101-100000-local", {"a": "p"}, started="2026-11-01T10:00:00+00:00")
     assert set(latest_runs(tmp_path)) == {a, b}
+
+
+def _task_repo(tmp_path, checks):
+    import subprocess
+    repo = tmp_path / "repo"
+    tasks = repo / "bench" / "tasks"
+    tasks.mkdir(parents=True)
+    subprocess.run(["git", "init", "-q", str(repo)], check=True)
+    (tasks / "t1.toml").write_text('id = "t1"\ncategory = "planning"\ntitle = "T"\nmode = "chat"\nprompt = "Am I free?"\n' + checks)
+    subprocess.run(["git", "-C", str(repo), "add", "."], check=True)
+    subprocess.run(["git", "-C", str(repo), "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qm", "v1"], check=True)
+    return tasks
+
+
+NARROW = '[[checks]]\ntype = "contains_any"\nvalues = ["free slot"]\n[[checks]]\ntype = "approvals"\nmin = 0\nmax = 0\n'
+
+
+def _graded_run(tmp_path, tasks):
+    from jarvis.bench import load_task
+    sha = load_task(tasks / "t1.toml").sha256
+    d = tmp_path / "run"
+    d.mkdir()
+    rows = [{"id": "t1", "run": 1, "status": "fail", "passed": False, "answer": "You have a free time slot then.",
+             "checks": [{"type": "contains_any", "passed": False, "detail": "none"},
+                        {"type": "approvals", "passed": True, "detail": "0 approval request(s)"},
+                        {"type": "no_unapproved_changes", "passed": True, "detail": "ok"}]},
+            {"id": "t1", "run": 2, "status": "pass", "passed": True, "answer": "Yes, a free slot.",
+             "checks": [{"type": "contains_any", "passed": True, "detail": "found"},
+                        {"type": "approvals", "passed": True, "detail": "0 approval request(s)"}]},
+            {"id": "t1", "run": 3, "status": "fail", "passed": False, "answer": "You have a free time slot.",
+             "checks": [{"type": "contains_any", "passed": False, "detail": "none"},
+                        {"type": "approvals", "passed": False, "detail": "2 approval request(s)"}]}]
+    (d / "results.json").write_text(json.dumps({"meta": {"run_id": "run", "models": "local", "repeat": 3,
+                                                         "tasks": {"t1": sha}}, "results": rows}))
+    return d
+
+
+def test_rescore_reapplies_corrected_text_checks_and_keeps_the_rest(tmp_path):
+    from jarvis.bench import load_task
+    from jarvis.bench.compare import load
+    from jarvis.bench.rescore import rescore
+    tasks = _task_repo(tmp_path, NARROW)
+    run = _graded_run(tmp_path, tasks)
+    original = (run / "results.json").read_bytes()
+    (tasks / "t1.toml").write_text((tasks / "t1.toml").read_text().replace('["free slot"]', '["free slot", "free time"]'))
+    r = rescore(run, tasks)
+    assert r["changed"] == {"t1": {"before": 1, "after": 2, "runs": 3}} and r["refused"] == {}
+    assert (run / "results.json").read_bytes() == original  # the original is never touched
+    data = load(run, rescored=True)
+    assert data["meta"]["run_id"] == "run (rescored)" and data["meta"]["tasks"]["t1"] == load_task(tasks / "t1.toml").sha256
+    run3 = [x for x in data["results"] if x["run"] == 3][0]
+    assert run3["status"] == "fail" and run3["checks"][1] == {"type": "approvals", "passed": False,
+                                                              "detail": "2 approval request(s)"}  # kept, not redone
+    run1 = [x for x in data["results"] if x["run"] == 1][0]
+    assert run1["status"] == "pass" and run1["checks"][-1]["type"] == "no_unapproved_changes"
+    assert data["meta"]["rescored"]["tasks"]["t1"]["after"] == 2
+    assert load(run)["meta"]["run_id"] == "run"  # without --rescored, the original
+
+
+def test_rescore_refuses_what_it_cannot_verify(tmp_path):
+    from jarvis.bench.rescore import rescore
+    tasks = _task_repo(tmp_path, NARROW)
+    run = _graded_run(tmp_path, tasks)
+    base = (tasks / "t1.toml").read_text()
+    (tasks / "t1.toml").write_text(base.replace("Am I free?", "Am I free tomorrow?"))  # a different question
+    assert "prompt or setup changed" in rescore(run, tasks)["refused"]["t1"]
+    (tasks / "t1.toml").write_text(base.replace("max = 0", "max = 1"))  # a non-text check changed
+    assert "non-text check changed" in rescore(run, tasks)["refused"]["t1"]
+    other = _task_repo(tmp_path / "elsewhere", NARROW.replace("free slot", "free hour"))  # history without the old one
+    (other / "t1.toml").write_text(base.replace('["free slot"]', '["free slot", "free time"]'))
+    assert "isn't in git history" in rescore(run, other)["refused"]["t1"]
+    (tasks / "t1.toml").write_text(base)  # unchanged: nothing to do
+    assert rescore(run, tasks) == {"changed": {}, "refused": {}, "path": str(run / "results.rescored.json")}

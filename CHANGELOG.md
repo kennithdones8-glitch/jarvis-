@@ -1,5 +1,17 @@
 # Changelog
 
+## Unreleased: fairer benchmarks (branch `bench-pooled-v1`, owner's choice)
+
+- `bench compare` pools several runs per side (`--before A B --after C D`). The merge rule now also needs at least
+  5 runs of every compared task on each side; otherwise the verdict is **INCONCLUSIVE** (exit code 4). Each changed
+  task is marked *clear change* or *could be luck* (two-sided Fisher exact test). The Benchmarks page shows the same.
+- `bench rescore RUN_DIR`: after correcting a text check, re-applies it to saved answers (`results.rescored.json`,
+  original untouched) so old and new runs are judged alike; `bench compare --rescored` uses it. Refuses tasks whose
+  prompt, setup or non-text checks changed.
+- `planning-free` also accepts "free time" ("you have a free time slot between 2pm and 3:30pm" means yes). The
+  `reasoning-flour` check stays as it is: the task asks for the number on its own line, so that's JARVIS's to fix.
+- No change to JARVIS's behaviour.
+
 ## 0.18.0 — Redesigned dashboard, Projects for you, Outcome Engine, JARVIS.app, fingerprint at sign-in
 
 Tested on the owner's Mac (Intel, macOS 14.1.1) on an isolated copy of their data before release; release gate

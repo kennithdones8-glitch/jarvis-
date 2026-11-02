@@ -94,8 +94,8 @@ async function showCompare() {
     const pb = c.rows.filter((r) => r.was).length, pa = c.rows.filter((r) => r.now).length;
     fill(box,
       h("div", { class: `verdict ${c.merge ? "ok" : "no"}` },
-        h("strong", {}, c.merge ? "Meets the merge rule" : "Doesn't meet the merge rule"),
-        c.reasons.length ? h("ul", {}, c.reasons.map((r) => h("li", {}, r))) : null),
+        h("strong", {}, c.merge ? "Meets the merge rule" : c.verdict === "INCONCLUSIVE" ? "Not enough runs to decide" : "Doesn't meet the merge rule"),
+        [...(c.inconclusive || []), ...c.reasons].length ? h("ul", {}, [...(c.inconclusive || []), ...c.reasons].map((r) => h("li", {}, r))) : null),
       h("div", { class: "b-nums" },
         h("span", {}, "Tasks passing ", h("b", {}, `${pb} → ${pa}`), ` of ${c.rows.length}`),
         h("span", {}, "Net ", h("b", {}, (c.net > 0 ? "+" : "") + c.net)),
@@ -103,9 +103,10 @@ async function showCompare() {
       h("table", { class: "b-table" },
         h("thead", {}, h("tr", {}, h("th", {}, "Task"), h("th", { class: "n" }, "Before"), h("th", { class: "n" }, "After"), h("th", {}, ""))),
         h("tbody", {}, c.rows.map((r) => h("tr", {}, h("td", {}, r.id), h("td", { class: "n" }, r.before), h("td", { class: "n" }, r.after),
-          h("td", {}, r.now && !r.was ? h("span", { class: "tag-fixed" }, "fixed") : r.was && !r.now ? h("span", { class: "tag-broke" }, "new failure") : ""))))),
+          h("td", {}, r.now && !r.was ? h("span", { class: "tag-fixed" }, "fixed") : r.was && !r.now ? h("span", { class: "tag-broke" }, "new failure") : "",
+            r.before !== r.after ? h("span", { class: "b-muted" }, r.clear ? " clear change" : " could be luck") : ""))))),
       c.left_out.length ? h("p", { class: "b-muted" }, "Left out: " + c.left_out.join("; ")) : null,
-      h("p", { class: "b-muted" }, "A task passes when more than half its runs pass. Rule: at least +2 tasks, no new failures, Claude calls up at most 25%, no unapproved changes."));
+      h("p", { class: "b-muted" }, "A task passes when more than half its runs pass. Rule: at least +2 tasks, no new failures, Claude calls up at most 25%, no unapproved changes, and at least 5 runs of each task per side (pool several runs with: jarvis bench compare --before … --after …)."));
   } catch (e) {
     box.replaceChildren(h("p", { class: "b-muted" }, `Couldn't compare: ${e.message}`));
   }

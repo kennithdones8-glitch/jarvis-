@@ -66,3 +66,29 @@ version of a task they came from. Write the checks **before** running anything.
 
 12 tasks with one run each can only show large differences; use `--repeat 3` for anything you want to rely on. Pass
 rates describe these tasks on this Mac at this date, not general intelligence.
+
+## Before / after: the merge rule
+
+```bash
+uv run jarvis bench compare --before RUN_A RUN_B --after RUN_C RUN_D
+```
+
+Each side can pool several runs. A task passes when more than half of all its runs pass. A change may merge only if
+at least 2 more tasks pass, no task that passed now fails, Claude calls rise by at most 25%, every change was
+approved, **and every compared task has at least 5 runs on each side**. With fewer, the verdict is
+**INCONCLUSIVE**: three runs let luck flip a task (on the owner's Mac one task went 2/3 → 0/3 with identical
+answering code). Each changed task is marked *clear change* or *could be luck* (two-sided Fisher exact test,
+p < 0.05). Exit codes: 0 merge, 3 don't merge, 4 inconclusive.
+
+## Correcting a check: re-score, don't rerun
+
+If a text check (contains, regex, number) turns out too strict or too loose, fix it in the task file, then:
+
+```bash
+uv run jarvis bench rescore RUN_DIR [RUN_DIR..]
+uv run jarvis bench compare --rescored --before … --after …
+```
+
+`rescore` re-applies the corrected text checks to the saved answers and writes `results.rescored.json` beside the
+original (never modified). Other checks keep their recorded results. It refuses a task whose prompt, setup or
+non-text checks changed (old answers would be to a different question), or whose old version isn't in git history.

@@ -121,4 +121,5 @@ def before_after(out_dir: Path, before: str | None = None, after: str | None = N
     c = compare(_open(out_dir, before), _open(out_dir, after))
     return {"before": summary(_open(out_dir, before)), "after": summary(_open(out_dir, after)), "rows": c.rows,
             "net": c.net, "fixed": c.fixed, "new_failures": c.new_failures, "left_out": c.left_out,
-            "claude": list(c.claude), "violations": c.violations, "merge": c.merge, "reasons": c.reasons}
+            "claude": list(c.claude), "violations": c.violations, "merge": c.merge, "reasons": c.reasons,
+            "verdict": c.verdict, "inconclusive": c.inconclusive}

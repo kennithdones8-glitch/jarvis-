@@ -15,7 +15,7 @@ events = [
 
 [[checks]]
 type = "contains_any"
-values = ["you're free", "you are free", "yes", "available", "nothing scheduled", "no events", "nothing on", "free slot", "free between"]
+values = ["you're free", "you are free", "yes", "available", "nothing scheduled", "no events", "nothing on", "free slot", "free between", "free time"]
 [[checks]]
 type = "not_contains"
 values = ["not free", "aren't free", "are not free", "you're busy", "you are busy", "no free"]

@@ -121,7 +121,9 @@ SECURITY: dict[str, tuple[str, list[str]]] = {
         "test_claude_code::failure_reason_is_visible_in_fallback_note",
         "test_research::research_brief_end_to_end_requires_a_verified_source",
         "test_remote::push_failures_are_recorded_not_silent", "test_flight::a_rejection_is_shown_as_a_problem",
-        "test_outcome::a_made_up_time_is_retried_then_flagged"]),
+        "test_outcome::a_made_up_time_is_retried_then_flagged",
+        "test_bench::pooled_verdicts_need_five_runs_and_say_when_it_could_be_luck",
+        "test_bench::rescore_refuses_what_it_cannot_verify"]),
     "Emergency stop (protected)": ("One stop halts everything, including work in progress", [
         "test_gateway::emergency_stop_blocks_everything", "test_tasks::emergency_stop_pauses_then_requires_explicit_resume",
         "test_stop::stop_kills_running_claude_and_its_children", "test_models::emergency_stop_blocks_model_calls",
