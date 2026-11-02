@@ -44,3 +44,28 @@ def test_code_sandbox_blocks_network_and_outside_writes():
     ok, _ = _code_tests({"answer": "```python\ndef f():\n    return 1\n```"}, {"function": "f", "cases": [[[], 1]]},
                         run_code=True)
     assert ok is True  # ordinary code still runs
+
+
+def test_chat_code_self_test_sandbox():
+    """Model-written code in the coding self-test: it runs, but can't read the owner's files, reach the network,
+    write outside its temp folder, or start other programs."""
+    from jarvis.codecheck import run_cases
+    assert run_cases("def add(a, b):\n    return a + b", [{"call": "add(2, 3)", "expected": "5"}]).all_passed
+    secret = Path.home() / "jarvis-sandbox-read-test.txt"
+    secret.write_text("private")
+    outside = Path.home() / "jarvis-sandbox-write-test.txt"
+    try:
+        attempts = {
+            "read a file in the home folder": f"def go():\n    return open({str(secret)!r}).read()",
+            "network": "def go():\n    import socket\n    socket.create_connection(('1.1.1.1', 80), timeout=3)\n    return 'private'",
+            "write outside": f"def go():\n    open({str(outside)!r}, 'w').write('x')\n    return 'private'",
+            "start a program": "def go():\n    import subprocess\n    return subprocess.run(['/bin/echo', 'private'], "
+                               "capture_output=True, text=True).stdout.strip()",
+        }
+        for what, code in attempts.items():
+            run = run_cases(code, [{"call": "go()", "expected": "'private'"}])
+            assert run.passed == 0, f"the sandbox allowed: {what}"
+        assert not outside.exists()
+    finally:
+        secret.unlink(missing_ok=True)
+        outside.unlink(missing_ok=True)

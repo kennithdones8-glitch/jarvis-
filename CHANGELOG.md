@@ -1,5 +1,43 @@
 # Changelog
 
+## Unreleased — Coding self-test (branch `coding-selftest-v1`, on top of answer checks)
+
+- Opt-in (`[coding] self_test = true`; off by default). When a local chat answer contains Python code for a
+  coding request, the local model writes 3–6 test cases from the request alone (never seeing the code), the code
+  runs on them in the macOS sandbox, and on any failure the model gets one chance to fix it. The fix is kept only
+  if it passes at least as many cases. The reply says how many cases ran and passed.
+- Sandbox for this: no network, no writing outside a temp folder, no reading files in the home folder (only the
+  Python installation), no starting programs, 10 s, empty environment. Nothing runs on other systems.
+- `jarvis bench run --coding-self-test` benchmarks with it on.
+- CI also runs on `outcome-fixes-*` and `coding-selftest-*` branches.
+
+## Unreleased — Answer checks (branch `outcome-fixes-v1`, on top of Outcome Engine v1)
+
+Built from real wrong answers a small local model gave on the owner's Mac. Benchmarked before any merge.
+- **Chat answer checks** (deterministic, one local retry at most, never for Claude answers): saying "I don't
+  have access to your calendar" right after a lookup; ignoring an explicit format ("end with the number on its
+  own line", "finish with four lines in the form…"); puzzles with several conditions get one self-check.
+  Audit: `chat.answer_check` with counts only, no content.
+- Puzzles with several conditions count as hard (hybrid: Claude is offered, with consent as always).
+- **Writer:** a planted instruction in the data is ignored *and* the owner's task is still done; a refusal of
+  a harmless task is retried once locally. The plan is fixed before data is read, so this changes no
+  security boundary.
+
+## Unreleased — Outcome Engine v1 (branch `outcome-engine-v1`)
+
+Merged into main only after the benchmark (core + extended, 3 runs, same models) shows net +2 tasks, no new
+failures and Claude calls within +25%.
+- One local "goal reader" call picks lookups and rates difficulty (hybrid: one local call instead of two).
+- No downgrades: clear signs of hard work (code, "prove", "debug", money/legal/medical, several questions, long
+  requests) always route as hard.
+- Profile memories (name, diet, family, preferences, anything marked important) are always used, not only when
+  words overlap. Closes the `memory-preferences` gap found by the extended benchmark (the oracle now passes all 24).
+- Grounding check: calendar/reminder answers that mention a time not in the data get one retry, then "Unverified".
+
+- Review fixes: the grounding retry is always local (it can never turn into a consent question); profile
+  memories respect exclusions added later, and "I'm …" counts only for facts ("I'm vegetarian", not "I'm
+  meeting Sam").
+
 ## 0.17.15 — Benchmarks page, Trust Contract, improvement ideas
 
 ### Owner-approved extras

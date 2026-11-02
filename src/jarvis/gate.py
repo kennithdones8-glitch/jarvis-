@@ -22,7 +22,8 @@ ROOT = Path(__file__).resolve().parents[2]
 ALLOWED_SKIPS = {"test_live_ollama::real_ollama_round_trip", "test_live_ollama::real_ollama_speed"}
 # Checks that need macOS itself: allowed to skip elsewhere, required to pass on a Mac.
 MACOS_ONLY = {"test_macos_only::mac_app_scripts_compile", "test_macos_only::launch_agent_file_is_valid",
-              "test_macos_only::code_sandbox_blocks_network_and_outside_writes"}
+              "test_macos_only::code_sandbox_blocks_network_and_outside_writes",
+              "test_macos_only::chat_code_self_test_sandbox"}
 if sys.platform != "darwin":
     ALLOWED_SKIPS = ALLOWED_SKIPS | MACOS_ONLY
 
@@ -95,13 +96,15 @@ SECURITY: dict[str, tuple[str, list[str]]] = {
         "test_models::local_failure_falls_back_but_never_silently_sends_private_data",
         "test_models::approval_is_bound_to_exact_request", "test_models::secret_content_blocked",
         "test_models::audit_never_contains_message_content",
+        "test_codecheck::off_by_default",
         "test_audit_privacy::forget_removes_text_from_every_table_and_the_raw_files",
         "test_audit_privacy::audit_fingerprints_free_text_but_keeps_paths_and_structure",
         "test_memory::audit_holds_no_memory_text", "test_memory::memory_context_is_private_category",
         "test_lookup::lookup_results_are_private_and_the_question_stays_local",
         "test_research::asks_before_researching_and_never_falls_back_to_local",
         "test_audit::secrets_redacted_in_audit", "test_bench::runs_never_touch_the_real_jarvis",
-        "test_flight::holds_no_private_text",
+        "test_flight::holds_no_private_text", "test_outcome::profile_reaches_the_answering_model_as_private_memory",
+        "test_outcome::forgotten_profile_facts_stay_forgotten",
         "test_projects::ideas_come_from_the_local_model_and_must_cite_real_evidence",
         "test_projects::polish_sends_only_the_idea_list_and_only_after_you_approve"]),
     "Honest reporting": ("Failures and unverified results are reported as such", [
@@ -111,7 +114,8 @@ SECURITY: dict[str, tuple[str, list[str]]] = {
         "test_lookup::persona_matches_the_new_abilities",
         "test_claude_code::failure_reason_is_visible_in_fallback_note",
         "test_research::research_brief_end_to_end_requires_a_verified_source",
-        "test_remote::push_failures_are_recorded_not_silent", "test_flight::a_rejection_is_shown_as_a_problem"]),
+        "test_remote::push_failures_are_recorded_not_silent", "test_flight::a_rejection_is_shown_as_a_problem",
+        "test_outcome::a_made_up_time_is_retried_then_flagged"]),
     "Emergency stop (protected)": ("One stop halts everything, including work in progress", [
         "test_gateway::emergency_stop_blocks_everything", "test_tasks::emergency_stop_pauses_then_requires_explicit_resume",
         "test_stop::stop_kills_running_claude_and_its_children", "test_models::emergency_stop_blocks_model_calls",

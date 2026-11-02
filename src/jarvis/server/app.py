@@ -27,6 +27,7 @@ import secrets
 import threading
 import time
 import traceback
+from dataclasses import replace
 from datetime import datetime
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -39,6 +40,10 @@ from ..core.approvals import ApprovalStateError
 from ..core.killswitch import EmergencyStop
 from ..core.tasks import InvalidTransition, TaskState
 from ..core.tools import ApprovalRequired
+from ..codecheck import MAX_CASES, TEST_PROMPT, SandboxUnavailable, code_of, parse_cases, run_cases, wants_code
+from ..orchestrator.answer_checks import chat_problems
+from ..orchestrator.lookup import lenient_json
+from ..orchestrator.grounding import applies, unsupported_times
 from ..models import ChatRequest, Message, Need, NoModelAvailable
 from ..models.types import Category
 from ..orchestrator import Orchestrator
@@ -491,7 +496,9 @@ class Dashboard:
              session: str = "dashboard", on_token=None) -> dict[str, Any]:
         memory = self.kernel.memory
         started = time.time()
-        found = self.lookup.run(message)  # calendar / reminders / notes / files, read-only, chosen locally
+        # Goal reader: one local call picks read-only lookups (calendar, reminders, notes, files) and, in hybrid mode,
+        # rates difficulty so routing needs no second call.
+        found = self.lookup.run(message, rate=self.kernel.models.router.mode == "hybrid")
         msgs = list(priming_messages(chat_abilities(memory.settings.enabled, lookups=bool(self.lookup.available()))))
         recalled = memory.recall(message)
         if context := memory.context_message(recalled):
@@ -503,19 +510,94 @@ class Dashboard:
             msgs.append(found.context)
         msgs.append(Message("user", message, Category.CONVERSATION))
         try:
-            r = self.kernel.models.complete(Need("chat", prefer="auto", local_only=local_only),
-                                            ChatRequest(tuple(msgs), max_tokens=600), purpose="dashboard chat",
-                                            on_token=on_token)
+            need = Need("chat", prefer="auto", local_only=local_only)
+            r = self.kernel.models.complete(need, ChatRequest(tuple(msgs), max_tokens=600), purpose="dashboard chat",
+                                            on_token=on_token, level=found.level)
+            grounded, retried = None, False
+            checks_times = found.context is not None and applies(found.checked)
+            bad = unsupported_times(r.text, found.context.content, message) if checks_times else []
+            problems = ([f"your answer mentions {', '.join(bad)}, which isn't in the looked-up data: use only times "
+                         "from the <lookup> data"] if bad else [])
+            problems += chat_problems(message, r.text, looked_up=found.context is not None)
+            # One retry with the problems pointed out, then show what's still wrong rather than hide it. Only for a
+            # local answer: retrying a Claude answer would be a new request needing your consent again.
+            if problems and r.provider in self.kernel.models.router.local:
+                retried = True
+                retry = msgs + [Message("assistant", r.text, Category.CONVERSATION),
+                                Message("user", "Check before answering again:\n" + "\n".join(f"- {x}" for x in problems)
+                                        + "\nReply with the corrected answer only.", Category.CONVERSATION)]
+                # always local: the first answer was, and a retry must never become a consent question
+                r = self.kernel.models.complete(replace(need, local_only=True), ChatRequest(tuple(retry), max_tokens=600),
+                                                purpose="dashboard chat (answer check retry)", level=found.level)
+                bad = unsupported_times(r.text, found.context.content, message) if checks_times else []
+            self.kernel.audit.record("chat.answer_check", problems=len(problems), retried=retried,
+                                     still=len(chat_problems(message, r.text, looked_up=found.context is not None, puzzle=False)))
+            if checks_times:
+                grounded = not bad
+                self.kernel.audit.record("chat.grounding", ok=grounded, unsupported_times=len(bad), retried=retried)
+                if bad:
+                    r = replace(r, note=((r.note + " ") if r.note else "")
+                                + f"⚠ Unverified: mentions {', '.join(bad)}, not found in your calendar or reminders.")
+            code_test = None
+            if (self.kernel.model_config.coding.get("self_test") and r.provider in self.kernel.models.router.local
+                    and wants_code(message) and code_of(r.text)):
+                r, code_test = self._self_test(message, msgs, r, need, found.level)
         except NoModelAvailable as exc:
             return {"error": f"No model available: {exc}", "reasons": exc.reasons}
         except ApprovalRequired as exc:
             appr = self.kernel.approvals.get(exc.approval_id)
             return {"needs_approval": True, "approval_id": exc.approval_id, "summary": appr["summary"]}
         memory.learn_from(session, message, r.text)
-        return {"text": r.text, "model": f"{r.provider}/{r.model}", "seconds": round(time.time() - started, 1),
+        return {"code_test": code_test, "text": r.text, "model": f"{r.provider}/{r.model}", "seconds": round(time.time() - started, 1),
                 "tokens": r.usage.output_tokens, "note": r.note, "memories_used": len(recalled),
-                "checked": found.checked, "offer_plan": found.change,
+                "checked": found.checked, "offer_plan": found.change, "grounded": grounded,
                 "lookup_notes": found.why + found.notes}
+
+    def _self_test(self, message: str, msgs: list, r, need, level) -> tuple[Any, dict | None]:
+        """Coding self-test (opt-in): local tests from the request alone, run in the sandbox, one fix if any fail.
+        Returns the answer to show and a summary (counts only); never raises."""
+        code, name = code_of(r.text, message)
+        prompt = TEST_PROMPT.format(name=name, max=MAX_CASES)
+        try:
+            t = self.kernel.models.complete(
+                Need("json", prefer="auto", local_only=True),
+                ChatRequest((Message("system", prompt, Category.SYSTEM_PROMPT),
+                             Message("user", message, Category.CONVERSATION, local_only=True)),
+                            max_tokens=500, temperature=0.0, json_mode=True), purpose="coding self-test cases")
+            cases = parse_cases(lenient_json(t.text), name)
+        except Exception as exc:  # no local model, bad JSON…: show the answer untested, and say so
+            self.kernel.audit.record("chat.code_test", ran=False, reason=type(exc).__name__)
+            return r, {"ran": False, "reason": "couldn't write test cases"}
+        if not cases:
+            self.kernel.audit.record("chat.code_test", ran=False, reason="no usable cases")
+            return r, {"ran": False, "reason": "no usable test cases"}
+        try:
+            first = run_cases(code, cases)
+        except SandboxUnavailable as exc:
+            self.kernel.audit.record("chat.code_test", ran=False, reason="no sandbox")
+            return r, {"ran": False, "reason": str(exc)}
+        best, best_run, fixed = r, first, False
+        if not first.all_passed:
+            retry = msgs + [Message("assistant", r.text, Category.CONVERSATION),
+                            Message("user", "JARVIS ran your code on test cases written from my request:\n"
+                                    + first.describe()[:1500] + "\nFix the code if it is wrong. If a case contradicts "
+                                    "my request, keep the code right and say which case. Reply with the complete "
+                                    "corrected code in one Python code block.", Category.CONVERSATION)]
+            # always local: the first answer was, and a fix must never become a consent question
+            r2 = self.kernel.models.complete(replace(need, local_only=True), ChatRequest(tuple(retry), max_tokens=900),
+                                             purpose="dashboard chat (coding self-test fix)", level=level)
+            again = code_of(r2.text, message)
+            if again:
+                second = run_cases(again[0], cases)
+                if second.error is None and (first.error is not None or second.passed >= first.passed):
+                    best, best_run, fixed = r2, second, True
+        self.kernel.audit.record("chat.code_test", ran=True, cases=best_run.cases, passed=best_run.passed,
+                                 first_passed=first.passed, fixed=fixed, error=best_run.error is not None)
+        summary = {"ran": True, "cases": best_run.cases, "passed": best_run.passed, "fixed": fixed,
+                   "error": best_run.error}
+        note = (f"🧪 Tested on {best_run.cases} case(s) JARVIS wrote: {best_run.passed} passed"
+                + (" (after one fix)" if fixed else "") + (f"; it failed to run: {best_run.error}" if best_run.error else ""))
+        return replace(best, note=((best.note + " ") if best.note else "") + note), summary
 
     def research(self, question: str, *, deep: bool = False, session: str = "dashboard") -> dict[str, Any]:
         from ..orchestrator.research import research_request, result_payload

@@ -127,6 +127,8 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--repeat", type=int, default=1)
     p.add_argument("--run-code", action="store_true", help="run coding answers against hidden tests (sandboxed)")
     p.add_argument("--b1", action="store_true", help="baseline with the same information JARVIS gets")
+    p.add_argument("--coding-self-test", action="store_true",
+                   help="run with the coding self-test on (code runs only inside the macOS sandbox)")
     p.add_argument("--set", choices=["core", "extended", "all"], default="core",
                    help="core: the 12 compared with the Claude app (default); extended: 12 more; all: both")
     p = sub.add_parser("mac", help="Mac apps (Calendar, Reminders, Notes): check — read-only test that also lets macOS ask for permission")
@@ -818,7 +820,8 @@ def _bench(kernel: Kernel, args) -> int:
                   "throwaway folder with made-up data, which may be sent to Claude without asking. Your real JARVIS\n"
                   "settings and permissions are untouched.\n")
         run_dir = run_suite(tasks, real_config=kernel.config_path, out_dir=out, models=args.models,
-                            repeat=max(1, args.repeat), run_code=args.run_code, progress=print)
+                            repeat=max(1, args.repeat), run_code=args.run_code, progress=print,
+                            coding_self_test=args.coding_self_test)
         print(f"\nReport: {run_dir / 'report.md'}")
         print(summary_part((run_dir / "report.md").read_text()))
         return 0

@@ -5,7 +5,7 @@ name: Release gate
 
 on:
   push:
-    branches: [main]
+    branches: [main, "outcome-engine-*", "outcome-fixes-*", "coding-selftest-*"]
   pull_request:
   workflow_dispatch:
 

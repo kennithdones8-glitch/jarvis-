@@ -26,6 +26,8 @@ def oracle(body):
     """Answers like a good assistant would, using only what JARVIS put in front of it."""
     system, user = body["messages"][0]["content"], _last_user(body)
     everything = json.dumps(body["messages"])
+    if user.startswith("Check before answering again"):  # the answer self-check: a right answer stays as it was
+        return [m["content"] for m in body["messages"] if m["role"] == "assistant"][-1]
     if "lookup step of JARVIS" in system:
         start = (datetime.now().astimezone() + timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0)
         if "free" in user:
@@ -171,9 +173,9 @@ def test_extended_set_is_solvable_and_its_checks_are_sound(config, tmp_path):
     run_dir = run_suite(tasks, real_config=config(oracle), out_dir=tmp_path / "out", run_code=True)
     res = results_of(run_dir)
     failed = {k: [c for c in v["checks"] if c["passed"] is not True] for k, v in res.items() if v["status"] not in ("pass", "skipped")}
-    # Known gap, kept on purpose as a target for the Outcome Engine: memory recall is by keywords, so "suggest a
-    # dinner and greet me by name" never brings up "call me Ken" / "I'm vegetarian". Even a perfect model fails it.
-    assert set(failed) == {"memory-preferences"}
+    # memory-preferences was a known gap (keyword recall never brought up "call me Ken" / "I'm vegetarian" for
+    # "suggest a dinner and greet me by name"); the Outcome Engine's profile memories close it.
+    assert failed == {}
     assert res["research-teapot"]["status"] == "skipped"
     assert res["tooluse-email-draft"]["mac_calls"] == ["mail.draft"]
     assert "notes.create" in res["tooluse-note"]["mac_calls"]

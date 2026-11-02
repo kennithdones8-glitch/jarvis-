@@ -23,7 +23,7 @@ from typing import Any
 from .core.util import new_id, now_iso
 from .models import ChatRequest, Message, Need
 from .models.types import Category
-from .orchestrator.lookup import _lenient_json as lenient_json
+from .orchestrator.lookup import lenient_json
 
 KINDS = {"growth": "Growth & side project", "jarvis": "Project for JARVIS"}
 STATES = ("open", "active", "dismissed", "done")

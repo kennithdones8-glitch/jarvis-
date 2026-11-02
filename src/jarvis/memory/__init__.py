@@ -75,6 +75,14 @@ def fts_query(text: str) -> str | None:
     return " OR ".join(f'"{w}"' for w in dict.fromkeys(words)) or None
 
 
+PROFILE_LIMIT = 8
+PROFILE = re.compile(
+    r"^\s*(please\s+)?(call me|my name is|(i'?m|i am) (a|an|vegetarian|vegan|pescatarian|allergic|intolerant|from|"
+    r"based|married|single|divorced|left-handed|right-handed|retired|\d+)|i prefer|i like|i love|i hate|i don'?t|i do not|i never|i always|"
+    r"i live|i work|i'?m allergic|my (wife|husband|partner|girlfriend|boyfriend|sister|brother|mother|mum|mom|father|"
+    r"dad|son|daughter|kids?|children|dog|cat|birthday|favourite|favorite|job|dentist|doctor))\b", re.I)
+
+
 @dataclass(frozen=True)
 class MemorySettings:
     enabled: bool = True
@@ -249,9 +257,24 @@ class MemoryStore:
 
     # ---- recall for prompts ------------------------------------------------------------
     def recall(self, query: str) -> list[dict[str, Any]]:
+        """Your profile (who you are, what you prefer) plus memories matching the words of ``query``.
+        The profile is included even when the words don't overlap: "greet me" should know you're Ken."""
         if not self.settings.enabled:
             return []
-        return self.search(query, limit=self.settings.recall_limit)
+        out = {m["id"]: m for m in self.profile()}
+        for m in self.search(query, limit=self.settings.recall_limit):
+            out.setdefault(m["id"], m)
+        return list(out.values())
+
+    def profile(self, limit: int = PROFILE_LIMIT) -> list[dict[str, Any]]:
+        """Confirmed facts about you: memories marked important, or that read like a profile fact ("call me…",
+        "I'm vegetarian", "I prefer…", "my sister…"). Unconfirmed guesses never count. Small and capped."""
+        rows = self.db.query("SELECT * FROM memories WHERE origin = 'explicit' ORDER BY important DESC, created_at DESC "
+                             "LIMIT 200")
+        # Exclusions are checked when a memory is saved; checked again here because the profile goes into every
+        # prompt, and a topic excluded later must stop being sent.
+        picked = [dict(r) for r in rows if (r["important"] or PROFILE.match(r["text"])) and not self.excluded(r["text"])]
+        return picked[:limit]
 
     @staticmethod
     def context_message(memories: list[dict[str, Any]]) -> Message | None:
