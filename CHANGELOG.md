@@ -1,6 +1,25 @@
 # Changelog
 
-## Unreleased: fingerprint at sign-in, then only for the dangerous few (branch `stepup-login-v1`, owner's choice)
+## 0.18.0 — Redesigned dashboard, Projects for you, Outcome Engine, JARVIS.app, fingerprint at sign-in
+
+Tested on the owner's Mac (Intel, macOS 14.1.1) on an isolated copy of their data before release; release gate
+passes on GitHub's macOS Intel, macOS and Ubuntu machines. Database v6/v7 → v8 on first start (adds proposals
+and project ideas); back up first, older versions refuse a v8 database.
+
+- **Dashboard redesign** (stages 0–9c): readable contrast and touch targets; sidebar / tab bar sections (Home,
+  Workspace, Missions, Decisions, Memory, Systems, Briefing & ideas); a reactor whose colour follows JARVIS's real
+  state; missions with honest pause/cancel and uncertain steps you can settle; cinematic mode; display settings
+  and keyboard shortcuts; Emergency stop on every page.
+- **Projects for you**: the local model suggests growth/side projects and JARVIS projects from your own messages
+  and memories, each with the quotes it's based on and a first plan; optional polish with Claude sends only the
+  idea list, after you approve.
+- **Outcome Engine, answer checks, grounding check**: pooled over 6 runs per task on the owner's Mac, local models
+  only: main 14 → 17 of 22 tasks passing (memory-preferences 0/6 → 6/6, recovery-injection 0/6 → 6/6), no task
+  worse. Coding self-test included, off by default.
+- **Benchmarks, Trust Contract and improvement ideas pages** (from 0.17.15).
+- **JARVIS.app** launcher (`jarvis app install`) and the **fingerprint-at-sign-in** model, below.
+
+### Fingerprint at sign-in, then only for the dangerous few
 
 - **Mac:** once Touch ID is set up, the dashboard asks for Touch ID when you sign in (per browser session, at most
   12 hours; a restart of JARVIS signs you out). Setting up Touch ID signs that browser in. While signed out, nothing
@@ -14,7 +33,7 @@
 - Every action still needs your approval exactly as before; only how you confirm it changed. Trust page, security
   notes and setup guide updated. Recovery unchanged: `jarvis touchid reset --yes`.
 
-## Unreleased — JARVIS.app launcher (branch `mac-launcher-v1`)
+### JARVIS.app launcher
 
 - `jarvis app install` makes `~/Applications/JARVIS.app`: double-click (or click it in the Dock) to open the
   dashboard. It's a tiny AppleScript applet compiled on your Mac with Apple's `osacompile` (no download, no new
@@ -23,7 +42,7 @@
   never starts, stops or changes JARVIS. `jarvis app uninstall` removes it; neither command touches an app that
   JARVIS didn't make.
 
-## Unreleased — Coding self-test (branch `coding-selftest-v1`, on top of answer checks)
+### Coding self-test
 
 - Opt-in (`[coding] self_test = true`; off by default). When a local chat answer contains Python code for a
   coding request, the local model writes 3–6 test cases from the request alone (never seeing the code), the code
@@ -34,7 +53,7 @@
 - `jarvis bench run --coding-self-test` benchmarks with it on.
 - CI also runs on `outcome-fixes-*` and `coding-selftest-*` branches.
 
-## Unreleased — Answer checks (branch `outcome-fixes-v1`, on top of Outcome Engine v1)
+### Answer checks
 
 Built from real wrong answers a small local model gave on the owner's Mac. Benchmarked before any merge.
 - **Chat answer checks** (deterministic, one local retry at most, never for Claude answers): saying "I don't
@@ -46,7 +65,7 @@ Built from real wrong answers a small local model gave on the owner's Mac. Bench
   a harmless task is retried once locally. The plan is fixed before data is read, so this changes no
   security boundary.
 
-## Unreleased — Outcome Engine v1 (branch `outcome-engine-v1`)
+### Outcome Engine v1
 
 Merged into main only after the benchmark (core + extended, 3 runs, same models) shows net +2 tasks, no new
 failures and Claude calls within +25%.
