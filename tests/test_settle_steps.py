@@ -1,4 +1,4 @@
-"""Settling a step whose outcome is unknown: only you can, with Face ID on the phone; never guessed."""
+"""Settling a step whose outcome is unknown: only you can (signed in); never guessed."""
 
 import json
 
@@ -54,14 +54,14 @@ def test_only_a_clear_yes_or_no_and_only_for_uncertain_steps(dash):
     assert call(d, f"/api/tasks/{tid}/steps/{sid}/resolve", {"happened": True}, headers={"X-Requested-By": "x"})[0] == 403
 
 
-def test_settling_from_the_phone_needs_face_id(remote_dash):  # noqa: F811
+def test_settling_from_the_phone_is_one_tap_once_signed_in(remote_dash):  # noqa: F811
     d, *_ = remote_dash
     phone, _ = paired(d)
     tid, sid = _uncertain(d.kernel)
     path = f"/api/tasks/{tid}/steps/{sid}/resolve"
-    assert phone.req(path, {"happened": True})[0] == 403
+    assert phone.req(path, {"happened": True}, cookie="")[0] == 401  # not signed in: no
     assert d.kernel.tasks.step(sid)["state"] == "uncertain"
-    assert phone.req(path, phone.face_id(path, {"happened": True}))[0] == 200
+    assert phone.req(path, {"happened": True})[0] == 200  # owner's choice: one tap
     assert d.kernel.tasks.step(sid)["state"] == "done"
 
 
@@ -71,4 +71,4 @@ def test_page_offers_yes_no_with_honest_warnings(dash):
     settle = js.split("async function settleStep(t, s, happened) {")[1].split("\n}\n")[0]
     assert "JARVIS will do this step again" in settle and "it may happen twice" in settle
     assert "act(`/api/tasks/${t.id}/steps/${s.id}/resolve`, { happened })" in settle
-    assert "/^\\/api\\/tasks\\/[\\w-]+\\/steps\\/[\\w-]+\\/resolve$/" in js  # Face ID / Touch ID on the client too
+    assert "resolve$/" not in js  # one tap: not in the page's fingerprint list (owner's choice)

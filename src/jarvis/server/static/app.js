@@ -57,11 +57,18 @@ const b64u = {
   toBuf: (s) => Uint8Array.from(atob(s.replace(/-/g, "+").replace(/_/g, "/") + "===".slice((s.length + 3) % 4)), (c) => c.charCodeAt(0)).buffer,
   fromBuf: (b) => btoa(String.fromCharCode(...new Uint8Array(b))).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, ""),
 };
-// Must match the server's STEP_UP list; the server enforces it regardless of what this page does.
-const FACE_ID = [/^\/api\/approvals\/[\w-]+$/, /^\/api\/release$/, /^\/api\/plan\/\w+\/run$/,
-                 /^\/api\/memory\/[\w-]+\/(delete|edit)$/, /^\/api\/devices\/[\w-]+\/revoke$/,
-                 /^\/api\/tasks\/[\w-]+\/steps\/[\w-]+\/resolve$/];
+// The fingerprint is for signing in. After that only the dangerous few ask again (must match the server's STEP_UP,
+// which enforces it regardless of what this page does): releasing the emergency stop, changing or forgetting
+// memories, removing a phone, plus approving a high-risk action (risk tier 4).
+const FACE_ID = [/^\/api\/release$/, /^\/api\/memory\/[\w-]+\/(delete|edit)$/, /^\/api\/devices\/[\w-]+\/revoke$/];
 const TOUCH_ID = [...FACE_ID, /^\/api\/devices\/pair$/, /^\/api\/touchid\/enroll\/options$/, /^\/api\/touchid\/[\w-]+\/remove$/];
+const HIGH_RISK = 4;
+const highRiskApproval = (path, body) => {
+  const m = path.match(/^\/api\/approvals\/([\w-]+)$/);
+  if (!m || !body || body.approve !== true) return false;
+  const a = ui.data && ui.data.approvals.find((x) => x.id === m[1]);
+  return !!a && a.tier >= HIGH_RISK;
+};
 const onPhone = () => !!(ui.data && ui.data.remote && ui.data.remote.this_device);
 const touchIdOn = () => !onPhone() && !!(ui.data && ui.data.touch_id && ui.data.touch_id.enabled);
 const bio = () => (onPhone() ? "Face ID" : "Touch ID");
@@ -90,8 +97,12 @@ async function withTap(op, label) {
 
 async function call(path, body) {
   const list = onPhone() ? FACE_ID : touchIdOn() ? TOUCH_ID : [];
-  const needs = list.some((r) => r.test(path)) || ((onPhone() || touchIdOn()) && path === "/api/memory/forget" && body.confirm === true);
-  if (!needs) return api(path, body);
+  const needs = list.some((r) => r.test(path)) || ((onPhone() || touchIdOn()) && path === "/api/memory/forget" && body.confirm === true)
+    || ((onPhone() || touchIdOn()) && highRiskApproval(path, body));
+  if (!needs) {
+    try { return await api(path, body); }
+    catch (e) { if (!/is required for this action/.test(e.message)) throw e; }  // the server knows best: ask, then retry
+  }
   const o = await api("/api/stepup/options", { path, body });
   const a = await withTap(() => navigator.credentials.get({ publicKey: {
     challenge: b64u.toBuf(o.challenge), rpId: o.rpId, timeout: o.timeout, userVerification: o.userVerification,
@@ -884,7 +895,7 @@ async function setupTouchId() {
       excludeCredentials: p.excludeCredentials.map((x) => ({ ...x, id: b64u.toBuf(x.id) })) } }), "Set up Touch ID");
     await api("/api/touchid/enroll/finish", { name, challengeId: o.challengeId, credential: { ...credJSON(c),
       response: { clientDataJSON: b64u.fromBuf(c.response.clientDataJSON), attestationObject: b64u.fromBuf(c.response.attestationObject) } } });
-    ui.convo.push({ role: "assistant", text: "Touch ID is on. Approvals here now ask for your fingerprint." });
+    ui.convo.push({ role: "assistant", text: "Touch ID is on. You sign in with it; after that only dangerous actions ask again (releasing the stop, changing memories, high-risk approvals)." });
   } catch (e) { note(cancelled(e)); }
   await refresh();
 }
@@ -1432,9 +1443,50 @@ function flashOnFinish(d) {
   ui.flashTimer = setTimeout(() => { delete core.dataset.flash; }, 4000);
 }
 
+// ---------------------------------------------------------------- Touch ID sign-in (Mac, once Touch ID is set up)
+// The one fingerprint per browser session (at most every 12 hours). Emergency stop works without it.
+function showSignIn() {
+  document.body.classList.add("locked");  // nothing readable behind the sign-in box; the header and Emergency stop stay
+  if (document.getElementById("signin")) return;
+  const msg = h("p", { class: "hl-sub", role: "status" }, "Your dashboard is protected with Touch ID.");
+  const btn = h("button", { class: "btn btn-approve", type: "button", onclick: async () => {
+    btn.disabled = true;
+    msg.textContent = "Touch the sensor…";
+    try {
+      const o = await api("/api/touchid/signin/options", {});
+      const a = await withTap(() => navigator.credentials.get({ publicKey: {
+        challenge: b64u.toBuf(o.challenge), rpId: o.rpId, timeout: o.timeout, userVerification: o.userVerification,
+        allowCredentials: o.allowCredentials.map((c) => ({ ...c, id: b64u.toBuf(c.id) })) } }), "Sign in with Touch ID");
+      await api("/api/touchid/signin", { challengeId: o.challengeId, credential: { ...credJSON(a),
+        response: { clientDataJSON: b64u.fromBuf(a.response.clientDataJSON), authenticatorData: b64u.fromBuf(a.response.authenticatorData),
+                    signature: b64u.fromBuf(a.response.signature) } } });
+      location.reload();
+    } catch (e) {
+      msg.textContent = e.name === "NotAllowedError" ? "Touch ID was cancelled. Try again." : `Couldn't sign in: ${e.message}`;
+      btn.disabled = false;
+    }
+  } }, "Sign in with Touch ID");
+  // The sign-in box blocks the rest of the page, so Emergency stop is right here too (it never needs signing in).
+  const stop = h("button", { class: "btn btn-danger", type: "button", onclick: async () => {
+    stop.disabled = true;
+    try { await api("/api/stop", { reason: "stopped from the sign-in screen" }); stop.textContent = "Stopped · sign in to release it"; }
+    catch (e) { stop.disabled = false; stop.textContent = `Stop failed: ${e.message}`; }
+  } }, "Emergency stop");
+  const dlg = h("dialog", { class: "pairdlg", id: "signin" },
+    h("h2", {}, "Sign in"), msg, h("div", { class: "row mt center" }, btn, stop),
+    h("p", { class: "d-why" }, "Emergency stop works without signing in. Touch ID not working? In Terminal: uv run jarvis touchid reset --yes"));
+  dlg.addEventListener("cancel", (e) => e.preventDefault());  // Esc doesn't skip sign-in
+  document.body.append(dlg);
+  dlg.showModal();
+}
+
 async function refresh() {
   try { ui.data = await api("/api/state"); ui.online = true; }
-  catch (e) { ui.online = false; if (/not signed in/.test(e.message)) { location.reload(); return; } }
+  catch (e) {
+    ui.online = false;
+    if (/Touch ID sign-in required/.test(e.message)) { showSignIn(); return; }
+    if (/not signed in/.test(e.message)) { location.reload(); return; }
+  }
   if (ui.data) flashOnFinish(ui.data);
   render();
   maybeAutoBriefing(ui.data);

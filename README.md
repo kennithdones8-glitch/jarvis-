@@ -6,7 +6,7 @@ A personal AI system for Mac and iPhone: persistent, permissioned, auditable, lo
 your Pro plan) and looks things up in your calendar, reminders, notes and files before answering; researches the
 web with verified sources; reads documents; plans and carries out tasks with approvals (files, Calendar, Reminders,
 Notes, Mail drafts); remembers what you tell it; runs in the background with encrypted backups; works from your
-iPhone over your private Tailscale network with Face ID on every approval, and can require Touch ID on the Mac.
+iPhone over your private Tailscale network with Face ID sign-in, and can require Touch ID sign-in on the Mac (dangerous actions ask again).
 Each morning it tells you what's on today, what needs you and what's wrong. You can talk to it (whisper.cpp on your
 Mac). `jarvis bench` measures it on fixed tasks; `jarvis gate` must pass before a release.
 **Much of v0.12–v0.17 is not yet confirmed on the Mac** (see the table). **Not built yet:** watched folders,
@@ -33,8 +33,8 @@ the owner's Intel Mac (macOS 14.1.1). Untested-on-Mac items may still have Mac-s
 | Memory: archive + facts with provenance, recall, review/correct/delete, forget (incl. task history) | ✅ | not yet |
 | Dashboard (holographic HUD), live replies, Help and welcome | ✅ + headless browser | ✅ opens (v0.16.x) · live replies not yet |
 | Background service, health checks, encrypted backups | ✅ (plist content, crypto, restore) | ✅ service installed, backup saved + verified, passphrase in Keychain · restore not yet |
-| iPhone companion: Tailscale (tailnet only), passkey pairing, Face ID on every approval, private notifications, Home Screen app | ✅ + headless browser with a virtual passkey | **not yet** |
-| Touch ID for dashboard approvals on the Mac (optional; recovery via Terminal) | ✅ + headless browser with a virtual passkey | ✅ set up · approving with it not yet |
+| iPhone companion: Tailscale (tailnet only), passkey pairing, Face ID sign-in (and for the dangerous few), private notifications, Home Screen app | ✅ + headless browser with a virtual passkey | **not yet** |
+| Touch ID sign-in on the Mac, and for the dangerous few (optional; recovery via Terminal) | ✅ + headless browser with a virtual passkey | ✅ set up · approving with it not yet |
 | Morning briefing (built live, never stored) incl. today's calendar and reminders due, quiet hours, reminders, health alerts | ✅ + headless browser | **not yet** |
 | Voice: push-to-talk on Mac and iPhone, local whisper.cpp (loopback only, audio never stored), on-device spoken replies | ✅ protocol stand-in + headless browser with a fake microphone | **not yet** (real whisper.cpp not built here) |
 | `jarvis doctor`: one-command check of the whole installation | ✅ | ✅ (v0.16.4) |

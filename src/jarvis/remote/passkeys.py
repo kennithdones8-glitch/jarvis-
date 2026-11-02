@@ -8,6 +8,7 @@ replayed or reused for a different action.
 from __future__ import annotations
 
 import hashlib
+import re
 import secrets
 import threading
 import time
@@ -21,17 +22,32 @@ from .webauthn import b64url_encode, verify_assertion, verify_registration
 CHALLENGE_TTL = 120
 MAX_OUTSTANDING = 256  # sign-in challenges can be requested before sign-in; keep memory bounded
 
-# Requests to these need a fresh passkey assertion bound to the exact request (path + body).
+# Sign-in is the fingerprint moment (Face ID on the phone, Touch ID on the Mac). After that, ordinary approvals are
+# one tap (owner's choice). These dangerous few still need a fresh passkey assertion bound to the exact request:
 STEP_UP = (
-    r"/api/approvals/[\w-]+",
-    r"/api/release",
-    r"/api/plan/\w+/run",
+    r"/api/release",                      # release the emergency stop
     r"/api/memory/[\w-]+/(delete|edit)",
     r"/api/memory/forget",
     r"/api/devices/[\w-]+/revoke",
-    r"/api/proposals/[\w-]+/(approve|reject|done|reopen)",  # owner-approved: decisions on improvement ideas
-    r"/api/tasks/[\w-]+/steps/[\w-]+/resolve",  # owner-approved: saying whether an uncertain step happened
 )
+# ...and approving a HIGH-RISK (tier 4) action. Everything else (lower tiers, rejecting, running a plan, idea
+# decisions, settling an uncertain step) is one tap once you're signed in.
+APPROVAL = r"/api/approvals/([\w-]+)"
+HIGH_RISK_TIER = 4
+
+
+def needs_step_up(path: str, body: dict[str, Any], patterns: tuple[str, ...], tier_of) -> bool:
+    """Whether this request needs a fresh fingerprint. ``tier_of(approval_id)`` gives an approval's risk tier."""
+    if path == "/api/memory/forget" and body.get("confirm") is not True:
+        return False  # a preview changes nothing
+    if any(re.fullmatch(p, path) for p in patterns):
+        return True
+    if (m := re.fullmatch(APPROVAL, path)) and body.get("approve") is True:
+        try:
+            return int(tier_of(m.group(1))) >= HIGH_RISK_TIER
+        except KeyError:
+            return False  # no such approval: the request itself fails
+    return False
 
 
 class PasskeyRP:

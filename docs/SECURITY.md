@@ -51,12 +51,12 @@ Fixed guarantees, independent of policy:
 | Other web pages driving the dashboard | Host-header check (DNS rebinding), custom header + Origin check (CSRF), strict CSP, no framing | ✅ tested |
 | Content from files injecting into the UI | All data rendered as text, never HTML; CSP forbids inline script | ✅ by construction, browser-checked |
 | iPhone / remote access | Reachable only inside your tailnet (`tailscale serve`, never `funnel`); dashboard still bound to 127.0.0.1; phone requests identified by the Tailscale Host and never accept the Mac's token cookie; passkey sign-in (Face ID, user verification required) → Secure HttpOnly SameSite=Strict session cookie | ✅ tested + headless browser (virtual passkey) — **Mac/iPhone check pending** |
-| Stolen phone session | Every sensitive action needs a fresh Face ID bound to that exact request (path + body), single use; pairing new devices is Mac-only; `jarvis devices revoke` / dashboard Remove kills sessions at once | ✅ tested |
+| Stolen phone session | Signing in needs Face ID (session up to 30 days, owner's choice). The dangerous few (releasing the stop, changing or forgetting memories, removing a device, approving a **high-risk** action) need a fresh Face ID bound to that exact request (path + body), single use; ordinary approvals are one tap while signed in (owner's choice, v0.18); pairing new devices is Mac-only; `jarvis devices revoke` / dashboard Remove kills sessions at once | ✅ tested |
 | Pairing code interception | Code is random, single use, 10 minutes, stored hashed, only shown on the Mac; the passkey is bound to the Tailscale name | ✅ tested |
 | Notification content leaking (lock screen, Apple) | Payloads are encrypted for the phone only (RFC 8291) and contain only generic text; details need sign-in. The briefing notification says only "Your morning briefing is ready"; its content is built when you open it and never stored | ✅ tested (decrypted as the phone would) |
 | Notification links opening other sites | The payload link must be a JARVIS path (`/…`); the service worker checks again | ✅ tested (server side) |
 | Push used to reach arbitrary hosts | Only https endpoints on known push services are accepted | ✅ tested |
-| Voice used to approve or authenticate | A transcript is only chat text: it can't approve, and approvals still need a tap (+ Touch ID / Face ID). Voice identity is not authentication | ✅ by construction |
+| Voice used to approve or authenticate | A transcript is only chat text: it can't approve, and approvals still need a tap (and a fingerprint for the dangerous few). Voice identity is not authentication | ✅ by construction |
 | Audio leaving the Mac / lingering | Recogniser must be on loopback (config and client refuse anything else; no system proxy); audio held in memory only, never written; audit records only length and timing; phone audio travels inside Tailscale | ✅ tested with a whisper.cpp protocol stand-in — real whisper.cpp **Mac check pending** |
 | Spoken replies sent to a cloud voice | Only voices marked on-device (`localService`) are used; otherwise JARVIS says it can't read aloud | ✅ headless browser (no local voice → refused) |
 | Page features abused (camera, location) | `Permissions-Policy` allows only the microphone, only for JARVIS itself | ✅ tested |
@@ -79,7 +79,7 @@ Fixed guarantees, independent of policy:
 | Stop not stopping work in progress | Claude Code runs as a tracked process group, killed on emergency stop (from any process) or deadline | ✅ tested (v0.12) — in-process tools still finish their current call |
 | Spending one approval twice | Find-and-consume in one transaction | ✅ tested (v0.12) |
 | Backup passphrase in the process list | Written to the Keychain via `security -i` on stdin | ✅ tested with a stand-in — **Mac check pending** |
-| Dashboard approvals without step-up auth | Optional Touch ID (v0.14): once set up, approvals, consent, running plans, releasing the stop, memory edits/forget, pairing a phone and adding/removing keys need a fresh Touch ID bound to that exact request; the dashboard cookie alone can't approve | ✅ tested + headless browser — **Mac check pending**. Off until you set it up. Does not cover the CLI (see limitations) |
+| Dashboard approvals without step-up auth | Optional Touch ID (v0.14; sign-in model v0.18, owner's choice): once set up, the dashboard needs a Touch ID sign-in (per browser session, at most 12 hours; emergency stop always works without it). Then ordinary approvals, consent, running plans and idea decisions are one tap; releasing the stop, memory edits/forget, pairing a phone, adding/removing keys and approving a **high-risk** action need a fresh Touch ID bound to that exact request. The dashboard link alone can't use the dashboard | ✅ tested + headless browser — **Mac check pending**. Off until you set it up. Does not cover the CLI (see limitations) |
 
 ### Added in v0.17
 
@@ -106,7 +106,8 @@ Config can only make a category stricter. It can never make one less strict.
 ## Known limitations
 
 - Voice identity is not authentication, and neither is "being on the tailnet": a phone also needs its passkey.
-  Anyone who can unlock your iPhone (Face ID or passcode) can approve from it. Remove a lost phone from the Mac.
+  Anyone who can unlock your iPhone (Face ID or passcode) can approve from it, and while a phone or Mac browser is
+  signed in, ordinary approvals are one tap (owner's choice). Remove a lost phone from the Mac.
 - Touch ID protects the **dashboard** path (a script or browser extension holding the dashboard cookie, or
   someone at your unlocked Mac using the open dashboard). It is not a boundary against software running as
   your macOS user: such software can also use the `jarvis` CLI (`approve`, `touchid reset --yes`) or edit

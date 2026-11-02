@@ -1,5 +1,19 @@
 # Changelog
 
+## Unreleased: fingerprint at sign-in, then only for the dangerous few (branch `stepup-login-v1`, owner's choice)
+
+- **Mac:** once Touch ID is set up, the dashboard asks for Touch ID when you sign in (per browser session, at most
+  12 hours; a restart of JARVIS signs you out). Setting up Touch ID signs that browser in. While signed out, nothing
+  is shown except the header, and the sign-in box has its own **Emergency stop** (stopping never needs signing in).
+- **iPhone:** Face ID at sign-in as before (stays signed in up to 30 days, unchanged).
+- **One tap once signed in:** ordinary approvals and consent, running a plan, idea decisions, settling an uncertain
+  step, rejecting anything.
+- **Still a fresh fingerprint bound to that exact request:** releasing the emergency stop, editing, deleting or
+  forgetting memories, removing a phone, pairing a phone and adding/removing Touch ID keys (Mac), and approving a
+  **high-risk** (tier 4) action.
+- Every action still needs your approval exactly as before; only how you confirm it changed. Trust page, security
+  notes and setup guide updated. Recovery unchanged: `jarvis touchid reset --yes`.
+
 ## Unreleased — JARVIS.app launcher (branch `mac-launcher-v1`)
 
 - `jarvis app install` makes `~/Applications/JARVIS.app`: double-click (or click it in the Dock) to open the

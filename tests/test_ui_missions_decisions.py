@@ -62,7 +62,7 @@ def test_egress_summary_format_matches_what_the_card_parses():
 def test_approve_and_reject_requests_are_unchanged():
     assert JS.count("act(`/api/approvals/${a.id}`, { approve: true })") == 1
     assert JS.count("act(`/api/approvals/${a.id}`, { approve: false })") == 1
-    assert "/^\\/api\\/approvals\\/[\\w-]+$/" in JS  # still in the Face ID / Touch ID list
+    assert "const highRiskApproval = (path, body) =>" in JS and "a.tier >= HIGH_RISK" in JS  # fingerprint for tier 4
 
 
 def test_pause_and_cancel_say_what_they_do_and_uncertain_steps_block_resume():

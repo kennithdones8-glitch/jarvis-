@@ -41,7 +41,7 @@ SECURITY: dict[str, tuple[str, list[str]]] = {
         "test_lookup::lookups_can_never_change_anything", "test_mac::arguments_go_as_data_never_into_the_script",
         "test_mac::note_body_is_escaped_html"]),
     "Permission bypass": ("Every change passes the permission engine and, where needed, your approval", [
-        "test_settle_steps::settling_from_the_phone_needs_face_id",
+        "test_settle_steps::settling_from_the_phone_is_one_tap_once_signed_in",
         "test_permissions::outside_root_denied", "test_permissions::path_traversal_denied",
         "test_permissions::symlink_escape_denied", "test_permissions::deny_beats_allow",
         "test_permissions::high_tiers_never_auto_allowed", "test_permissions::protected_paths_not_writable_but_readable",
@@ -52,7 +52,12 @@ SECURITY: dict[str, tuple[str, list[str]]] = {
         "test_documents::move_destination_outside_roots_or_protected_refused_even_if_approved",
         "test_bench::a_change_without_approval_is_caught", "test_remote::release_needs_face_id_bound_to_exact_request",
         "test_remote::pairing_is_mac_only_and_code_single_use", "test_remote::dashboard_token_is_not_accepted_remotely",
-        "test_touchid::setup_then_actions_need_touch_id", "test_dashboard::csrf_defences",
+        "test_touchid::setting_up_signs_this_browser_in_and_others_must_sign_in", "test_touchid::sign_in_flow",
+        "test_touchid::signed_in_ordinary_approvals_are_one_tap_but_high_risk_needs_touch_id",
+        "test_touchid::releasing_the_stop_needs_touch_id_bound_to_the_request",
+        "test_remote::high_risk_approvals_still_need_face_id_bound_to_the_request",
+        "test_ui_stepup_pages::the_dangerous_few_and_only_high_risk_approvals_need_the_fingerprint",
+        "test_dashboard::csrf_defences",
         "test_dashboard::requires_session", "test_dashboard::dns_rebinding_host_refused"]),
     "Interrupted tasks and recovery": ("After a crash, real state is checked before anything resumes", [
         "test_tasks::crash_recovery_resumes_idempotent_step",
@@ -121,7 +126,7 @@ SECURITY: dict[str, tuple[str, list[str]]] = {
         "test_gateway::emergency_stop_blocks_everything", "test_tasks::emergency_stop_pauses_then_requires_explicit_resume",
         "test_stop::stop_kills_running_claude_and_its_children", "test_models::emergency_stop_blocks_model_calls",
         "test_streaming::emergency_stop_cuts_a_reply_off_mid_sentence", "test_dashboard::emergency_stop_and_release",
-        "test_gateway::emergency_stop_after_claim_restores_the_approval"]),
+        "test_gateway::emergency_stop_after_claim_restores_the_approval", "test_ui_stepup_pages::sign_in_screen_keeps_emergency_stop_one_click_away"]),
     "Budget guard (protected)": ("No spending: paid use is refused under a $0 budget", [
         "test_models::paid_model_excluded_under_zero_budget", "test_models::budget_guard_blocks_and_records",
         "test_bench::settings_for_a_run"]),

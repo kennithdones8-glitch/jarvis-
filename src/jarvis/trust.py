@@ -157,7 +157,8 @@ def contract(kernel) -> Contract:
     if remote.get("enabled"):
         c.phone += [Line("Only your paired iPhone can connect, through your Tailscale network (never the open internet)",
                          "settings: [remote]"),
-                    Line("Every approval from the phone needs Face ID; pairing new devices only at the Mac",
+                    Line("Signing in from the phone needs Face ID, and so do releasing the emergency stop, changing or "
+                         "forgetting memories and approving high-risk actions; pairing new devices only at the Mac",
                          "release gate: Permission bypass")]
     else:
         c.phone.append(Line("Phone access is off: the dashboard only answers on this Mac", "settings: [remote]"))

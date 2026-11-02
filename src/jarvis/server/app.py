@@ -53,6 +53,12 @@ from ..status import models_status
 
 STATIC = Path(__file__).parent / "static"
 COOKIE = "jarvis_session"
+TOUCHID_COOKIE = "jarvis_touchid"
+TOUCHID_SIGNIN = "Touch ID sign-in required"
+# Reachable before Touch ID sign-in (once it is set up): the page shell and its files, signing in, and the
+# emergency stop, which must always work in one tap.
+PRE_SIGNIN_GET = ("/", "/bench", "/trust", "/proposals")
+PRE_SIGNIN_POST = ("/api/touchid/signin/options", "/api/touchid/signin", "/api/stop")
 DEVICE_COOKIE = "jarvis_device"
 PUBLIC_REMOTE_GET = {"/sw.js", "/manifest.webmanifest", "/static/phone.js", "/static/app.css", "/static/icon-192.png",
                      "/static/icon-512.png", "/static/apple-touch-icon.png"}
@@ -768,6 +774,11 @@ class Dashboard:
 
             if not self._authed(h):
                 raise HttpError(401, "not signed in")
+            if self.mac.enabled() and not self.mac.signed_in(self._cookie(h, TOUCHID_COOKIE)):
+                ok = (url.path in PRE_SIGNIN_GET or url.path.startswith("/static/")) if method == "GET" \
+                    else url.path in PRE_SIGNIN_POST
+                if not ok:
+                    raise HttpError(401, TOUCHID_SIGNIN)
             if method == "GET":
                 return self._get(h, url, device=None)
             if url.path == "/api/voice/transcribe":
@@ -775,7 +786,13 @@ class Dashboard:
             if url.path == "/api/chat/stream":
                 return self._stream_chat(h, self._read_post(h, origin=f"http://{host}"))
             body = self._read_post(h, origin=f"http://{host}")
-            return self._json(h, 200, self._post_local(url.path, body))
+            if url.path == "/api/touchid/signin":
+                return self._touchid_signin(h, body)
+            result = self._post_local(url.path, body)
+            if url.path == "/api/touchid/enroll/finish" and not self.mac.signed_in(self._cookie(h, TOUCHID_COOKIE)):
+                # you just used Touch ID to set it up: that counts as signing in on this browser
+                return self._json(h, 200, result, {"Set-Cookie": self._touchid_cookie(self.mac.new_session())})
+            return self._json(h, 200, result)
         except HttpError as exc:
             self._json(h, exc.status, {"error": str(exc)})
         except (InvalidTransition, ApprovalStateError, KeyError, ValueError, PermissionError) as exc:
@@ -936,8 +953,10 @@ class Dashboard:
 
     def _dispatch_remote(self, h: BaseHTTPRequestHandler, method: str, url) -> None:
         """Requests from the paired iPhone, via Tailscale. A device session is required for everything
-        except the pairing/sign-in ceremonies and static assets; sensitive actions need Face ID."""
+        except the pairing/sign-in ceremonies and static assets. Signing in uses Face ID; after that only the dangerous
+        few (see STEP_UP and high-risk approvals) need it again."""
         from ..remote import LOCAL_ONLY, STEP_UP, DeviceError
+        from ..remote.passkeys import needs_step_up
         from ..remote.webauthn import WebAuthnError
 
         remote = self.remote
@@ -1001,9 +1020,7 @@ class Dashboard:
             if path == "/api/push/subscribe":
                 remote.push.subscribe(device["id"], body.get("subscription") or {})
                 return self._json(h, 200, {"ok": True})
-            needs_face_id = any(re.fullmatch(p, path) for p in STEP_UP)
-            if path == "/api/memory/forget" and body.get("confirm") is not True:
-                needs_face_id = False  # a preview changes nothing
+            needs_face_id = needs_step_up(path, body, STEP_UP, self._approval_tier)
             if needs_face_id:
                 remote.verify_stepup(device, path, body, actor=actor)
                 body = {k: v for k, v in body.items() if k not in ("assertion", "challengeId")}
@@ -1012,13 +1029,33 @@ class Dashboard:
             self.kernel.audit.record("device.denied", path=url.path, reason=str(exc)[:200])
             raise HttpError(403, str(exc)) from None
 
+    def _approval_tier(self, approval_id: str) -> int:
+        return int(self.kernel.approvals.get(approval_id)["tier"])
+
+    @staticmethod
+    def _touchid_cookie(token: str) -> str:
+        return f"{TOUCHID_COOKIE}={token}; HttpOnly; SameSite=Strict; Path=/"  # ends with the browser session
+
+    def _touchid_signin(self, h: BaseHTTPRequestHandler, body: dict[str, Any]) -> None:
+        from ..remote import DeviceError, WebAuthnError
+        try:
+            token = self.mac.signin_finish(body.get("challengeId"), body.get("credential"))
+        except (DeviceError, WebAuthnError) as exc:
+            self.kernel.audit.record("device.denied", path="/api/touchid/signin", reason=str(exc)[:200])
+            raise HttpError(403, str(exc)) from None
+        return self._json(h, 200, {"ok": True}, {"Set-Cookie": self._touchid_cookie(token)})
+
     def _post_local(self, path: str, body: dict[str, Any]) -> Any:
-        """The Mac dashboard. Once Touch ID is set up, sensitive actions need a fresh Touch ID for that request."""
+        """The Mac dashboard. Once Touch ID is set up you sign in with it; then only the dangerous few (MAC_STEP_UP and
+        high-risk approvals) need a fresh Touch ID for that exact request."""
         from ..remote import DeviceError, WebAuthnError
         from ..remote.mac import MAC_STEP_UP
+        from ..remote.passkeys import needs_step_up
 
         actor = "user:dashboard"
         try:
+            if path == "/api/touchid/signin/options":
+                return self.mac.signin_options()
             if path == "/api/stepup/options":
                 target, target_body = body.get("path"), body.get("body")
                 if not isinstance(target, str) or not isinstance(target_body, dict):
@@ -1029,9 +1066,7 @@ class Dashboard:
                 if not isinstance(name, str) or not isinstance(cid, str):
                     raise HttpError(400, "name and challengeId are required")
                 return {"id": self.mac.enroll_finish(cid, name[:60], body.get("credential"), by=actor)}
-            needs_touch_id = any(re.fullmatch(p, path) for p in MAC_STEP_UP)
-            if path == "/api/memory/forget" and body.get("confirm") is not True:
-                needs_touch_id = False  # a preview changes nothing
+            needs_touch_id = needs_step_up(path, body, MAC_STEP_UP, self._approval_tier)
             if needs_touch_id and self.mac.enabled():
                 self.mac.verify_stepup(None, path, body, actor=actor)
                 body = {k: v for k, v in body.items() if k not in ("assertion", "challengeId")}

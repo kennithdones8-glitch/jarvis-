@@ -260,7 +260,14 @@ def test_release_needs_face_id_bound_to_exact_request(remote_dash):
     assert any(e["event"] == "device.step_up" for e in d.kernel.audit.entries())
 
 
-def test_approve_from_phone_with_face_id(remote_dash):
+def _pending(k, tier):
+    """A pending approval at the given risk tier (4 = high-risk)."""
+    from jarvis.core.permissions import Decision, Effect, Tier
+    return k.approvals.request(task_id=None, step_id=None, tool="fs", action="write", digest=__import__("secrets").token_hex(32),
+                               decision=Decision(Effect.CONFIRM, Tier(tier), "test", resource="/x"), summary=f"tier {tier}")
+
+
+def test_signed_in_phone_approves_ordinary_actions_in_one_tap(remote_dash):
     d, script, root, push = remote_dash
     phone, _ = paired(d)
     keys = _browser_subscription()
@@ -272,20 +279,31 @@ def test_approve_from_phone_with_face_id(remote_dash):
          "args": {"path": f"{root}/copy.md", "content": "copy of {{steps.0.content}}"}, "depends_on": [0]}]}
     job = phone.req("/api/plan", {"request": "copy src"})[2]["job_id"]
     wait_for(lambda: next((x for x in phone.req("/api/state")[2]["jobs"] if x["state"] == "ready"), None))
-    assert phone.req(f"/api/plan/{job}/run", {})[0] == 403
-    tid = phone.req(f"/api/plan/{job}/run", phone.face_id(f"/api/plan/{job}/run", {}))[2]["task_id"]
+    tid = phone.req(f"/api/plan/{job}/run", {})[2]["task_id"]  # one tap: Face ID was at sign-in
     appr = wait_for(lambda: phone.req("/api/state")[2]["approvals"])[0]
     # the notification arrives, with generic wording only
     msg = wait_for(lambda: [_decrypt(r, keys) for r in push.sent if b"decision" in _decrypt(r, keys)])[0]
     assert json.loads(msg) == {"title": "JARVIS", "body": "JARVIS needs a decision", "tag": "approval",
                                "url": "/"}
     path = f"/api/approvals/{appr['id']}"
-    assert phone.req(path, {"approve": True})[0] == 403
-    assert phone.req(path, phone.face_id(path, {"approve": True}))[0] == 200
+    assert appr["tier"] < 4 and phone.req(path, {"approve": True})[0] == 200  # an ordinary write: one tap
     wait_for(lambda: d.kernel.tasks.get(tid)["state"] == "completed")
     assert (root / "copy.md").read_text() == "copy of source"
     assert any(e["actor"] == "user:phone:Test iPhone" and e["event"] == "approval.approved"
                for e in d.kernel.audit.entries())
+
+
+def test_high_risk_approvals_still_need_face_id_bound_to_the_request(remote_dash):
+    d, *_ = remote_dash
+    phone, _ = paired(d)
+    high, other = _pending(d.kernel, 4), _pending(d.kernel, 4)
+    path = f"/api/approvals/{high}"
+    assert phone.req(path, {"approve": True})[0] == 403  # signed in isn't enough for high-risk
+    assert phone.req(path, phone.face_id(f"/api/approvals/{other}", {"approve": True}))[0] == 403  # signed for another
+    assert d.kernel.approvals.get(high)["state"] == "pending"
+    assert phone.req(path, phone.face_id(path, {"approve": True}))[0] == 200
+    assert phone.req(f"/api/approvals/{other}", {"approve": False})[0] == 200  # saying no is always one tap
+    assert d.kernel.approvals.get(other)["state"] == "rejected"
 
 
 def test_revoke_from_mac_ends_phone_session(remote_dash):
@@ -504,7 +522,7 @@ def test_unauthenticated_challenges_are_bounded(make_kernel):
         remote._take(first, ("login",))
 
 
-def test_deciding_on_an_idea_from_the_phone_needs_face_id(remote_dash):
+def test_deciding_on_an_idea_from_the_phone_is_one_tap(remote_dash):
     from jarvis.core.util import new_id, now_iso
     d, *_ = remote_dash
     phone, _ = paired(d)
@@ -513,7 +531,5 @@ def test_deciding_on_an_idea_from_the_phone_needs_face_id(remote_dash):
         c.execute("INSERT INTO proposals (id, key, kind, title, body, state, created_at, updated_at) "
                   "VALUES (?, 'k', 'investigate', 't', ?, 'open', ?, ?)", (pid, json.dumps({"size": 1}), now_iso(), now_iso()))
     path = f"/api/proposals/{pid}/approve"
-    assert phone.req(path, {})[0] == 403  # no Face ID
-    assert d.proposals.list()[0]["state"] == "open"
-    assert phone.req(path, phone.face_id(path, {}))[0] == 200
+    assert phone.req(path, {})[0] == 200  # Face ID was at sign-in (owner's choice)
     assert d.proposals.list()[0]["state"] == "approved"

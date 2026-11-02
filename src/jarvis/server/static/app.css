@@ -866,3 +866,6 @@ body[data-view="projects"] .recent-panel, body[data-view="projects"] .summary-pa
 .proj li.step input { margin-top: 3px; accent-color: var(--ok); }
 .proj .row { flex-wrap: wrap; }
 .proj-thinking { color: var(--arc); }
+
+/* ---- Touch ID sign-in: while signed out, only the header (with Emergency stop) and the sign-in box show ---- */
+body.locked .hud, body.locked .sidenav, body.locked .tabbar, body.locked #cinestrip { visibility: hidden; }

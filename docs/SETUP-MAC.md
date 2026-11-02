@@ -107,10 +107,12 @@ uv run jarvis app install
 It goes in `~/Applications` (drag it to the Dock). It runs `jarvis open`, so it stores no link or password and
 changes nothing; if JARVIS isn't running it tells you how to start it. Remove it with `uv run jarvis app uninstall`.
 
-## 7. Touch ID for approvals (optional)
+## 7. Touch ID sign-in (optional)
 
-Dashboard → **Systems → Touch ID → Set up Touch ID**. From then on, approvals in the dashboard ask for your
-fingerprint. If Touch ID ever stops working:
+Dashboard → **Systems → Touch ID → Set up Touch ID**. From then on the dashboard asks for your fingerprint when you
+sign in (once per browser session, at most every 12 hours). After that, ordinary approvals are one tap; releasing the
+emergency stop, changing or forgetting memories, pairing or removing devices and approving a high-risk action still
+ask for Touch ID each time. Emergency stop always works without signing in. If Touch ID ever stops working:
 ```bash
 uv run jarvis touchid reset --yes
 ```
