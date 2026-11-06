@@ -64,14 +64,36 @@ def _form_pattern(form: str) -> re.Pattern:
     return re.compile(r"^\W*" + "".join(out) + r"\W*$")
 
 
+NUMBER = re.compile(r"\d[\d,]*(?:\.\d+)?")
+SUM_RESULT = re.compile(r"[-+*/×÷x]\s*\d[\d,.]*\s*[A-Za-z%]*\s*=\s*(\$?\d[\d,]*(?:\.\d+)?\s*[A-Za-z%]{0,8})\W*$")
+
+
+def ends_with_lone_number(answer: str) -> bool:
+    """The last line is one number, perhaps with a unit or a short label ("100 g", "**100 grams**"), not a sum."""
+    lines = _lines(answer)
+    last = lines[-1] if lines else ""
+    return (len(last) <= 30 and len(NUMBER.findall(last)) == 1 and "=" not in last
+            and len(re.findall(r"[A-Za-z]{3,}", last)) <= 2)
+
+
+def number_on_own_line(question: str, answer: str) -> str | None:
+    """When the question asks for the number on its own line and the answer still ends with a calculation
+    ("750 g - 650 g = 100 g"), the answer with that calculation's own result added as its last line. Never invents
+    a number: only the result already written after the final "=" is repeated. None when nothing applies."""
+    if not ON_ITS_OWN_LINE.search(question or "") or ends_with_lone_number(answer):
+        return None
+    lines = _lines(answer)
+    m = SUM_RESULT.search(lines[-1]) if lines else None
+    return f"{answer.rstrip()}\n\n{m.group(1).strip()}" if m else None
+
+
 def format_problems(question: str, answer: str) -> list[str]:
     """Explicit format requests in the question that the answer doesn't follow."""
     problems, lines = [], _lines(answer)
     if m := ON_ITS_OWN_LINE.search(question or ""):
-        last = lines[-1] if lines else ""
-        if not (len(last) <= 30 and re.search(r"\d", last) and len(re.findall(r"[A-Za-z]{3,}", last)) <= 2):
+        if not ends_with_lone_number(answer):
             problems.append(f"the question asks you to end with {m.group(1)} on its own line: make the last line "
-                            "just that (for example \"100 g\"), with nothing else on it")
+                            "just that (for example \"100 g\"), with nothing else on it, not a calculation")
     if m := FINISH_WITH_LINES.search(question or ""):
         n = NUMBERS.get(m.group(1).lower()) or (int(m.group(1)) if m.group(1).isdigit() else None)
         if n:

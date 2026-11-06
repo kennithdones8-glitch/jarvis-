@@ -41,7 +41,7 @@ from ..core.killswitch import EmergencyStop
 from ..core.tasks import InvalidTransition, TaskState
 from ..core.tools import ApprovalRequired
 from ..codecheck import MAX_CASES, TEST_PROMPT, SandboxUnavailable, code_of, parse_cases, run_cases, wants_code
-from ..orchestrator.answer_checks import chat_problems
+from ..orchestrator.answer_checks import chat_problems, number_on_own_line
 from ..orchestrator.lookup import lenient_json
 from ..orchestrator.grounding import applies, unsupported_times
 from ..models import ChatRequest, Message, Need, NoModelAvailable
@@ -536,7 +536,11 @@ class Dashboard:
                 r = self.kernel.models.complete(replace(need, local_only=True), ChatRequest(tuple(retry), max_tokens=600),
                                                 purpose="dashboard chat (answer check retry)", level=found.level)
                 bad = unsupported_times(r.text, found.context.content, message) if checks_times else []
-            self.kernel.audit.record("chat.answer_check", problems=len(problems), retried=retried,
+            # Still ending with a calculation after the retry: repeat its own result on the last line, as asked.
+            lone = number_on_own_line(message, r.text) if problems else None
+            if lone:
+                r = replace(r, text=lone)
+            self.kernel.audit.record("chat.answer_check", problems=len(problems), retried=retried, number_line=bool(lone),
                                      still=len(chat_problems(message, r.text, looked_up=found.context is not None, puzzle=False)))
             if checks_times:
                 grounded = not bad

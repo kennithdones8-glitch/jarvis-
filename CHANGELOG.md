@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased: number on its own line (branch `format-fix-v1`, owner's choice)
+
+- The answer check no longer mistakes a calculation ("750 g - 650 g = 100 g") for "the number on its own line": the
+  last line must hold one number, not a sum. Such an answer now gets the usual one local retry.
+- If the retry still ends with a calculation, JARVIS repeats that calculation's own result on a last line of its own
+  ("100 g"). It never invents or corrects a number: a wrong sum stays wrong and visible. No extra model call; the
+  audit records `number_line` (a yes/no, never the text).
+- To be proven on the Mac with a 5-run before/after of `reasoning-flour` before merging.
+
 ## 0.18.1 — Fairer benchmarks: pooled before/after, 5-run minimum, re-scoring
 
 - `bench compare` pools several runs per side (`--before A B --after C D`). The merge rule now also needs at least

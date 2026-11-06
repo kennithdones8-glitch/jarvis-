@@ -9,7 +9,7 @@ from test_outcome import chat, chat_env  # noqa: F401  (fixture)
 from jarvis.core.tools import CallContext
 from jarvis.models.router import hard_signals
 from jarvis.orchestrator.answer_checks import (chat_problems, denies_access, format_problems, is_puzzle,
-                                               refuses)
+                                               number_on_own_line, refuses)
 from jarvis.orchestrator.compose import ComposeTool
 
 FLOUR = ("A recipe for 4 people uses 300 g of flour. I'm cooking the same recipe for 10 people and I have 650 g of "
@@ -32,6 +32,24 @@ def test_end_with_the_number_on_its_own_line():
     assert "on its own line" in format_problems(FLOUR, seen)[0]
     assert format_problems(FLOUR, "300 × 2.5 = 750 g; 750 − 650 = 100 g.\n\n100 g") == []
     assert format_problems(FLOUR, "...\n100") == []
+    assert format_problems(FLOUR, "...\n**100 grams**") == []
+
+
+def test_a_calculation_is_not_the_number_on_its_own_line():
+    # real answers from the owner's Mac (0.18.0): right number, but the last line is the working, not the number
+    for seen in ("750 g - 650 g = 100 g", "To scale it: 300 × 10 / 4 = 750 g.\n750 g - 650 g = 100 g",
+                 "3000g - 650g = 2350g"):
+        assert "not a calculation" in format_problems(FLOUR, seen)[0]
+    assert format_problems(FLOUR, "You need 750 g and have 650 g.") != []  # two numbers on the last line
+
+
+def test_the_calculations_own_result_goes_on_its_own_line():
+    assert number_on_own_line(FLOUR, "750 g - 650 g = 100 g") == "750 g - 650 g = 100 g\n\n100 g"
+    assert number_on_own_line(FLOUR, "Work...\n750 - 650 = 100 grams.") .endswith("\n\n100 grams")
+    assert number_on_own_line(FLOUR, "3000g - 650g = 2350g").endswith("\n\n2350g")  # never corrects the maths
+    assert number_on_own_line(FLOUR, "...\n100 g") is None             # already right
+    assert number_on_own_line(FLOUR, "You need about a hundred grams.") is None  # no calculation: nothing to repeat
+    assert number_on_own_line("What is 750 - 650?", "750 - 650 = 100") is None  # no format was asked for
 
 
 def test_finish_with_lines_in_a_form():
@@ -65,6 +83,17 @@ def test_a_format_slip_is_fixed_in_one_retry(chat_env):  # noqa: F811
     assert r["text"].endswith("\n100 g")
     ev = [e["payload"] for e in d.kernel.audit.entries() if e["event"] == "chat.answer_check"][-1]
     assert ev == {**ev, "problems": 1, "retried": True, "still": 0}
+
+
+def test_a_calculation_left_after_the_retry_gets_its_result_on_the_last_line(chat_env):  # noqa: F811
+    d, state, server = chat_env
+    state["answers"] = ["750 g - 650 g = 100 g", "Scaled: 750 g.\n750 g - 650 g = 100 g"]
+    before = len(server.received)
+    r = chat(d, FLOUR)
+    assert r["text"] == "Scaled: 750 g.\n750 g - 650 g = 100 g\n\n100 g"
+    assert len(server.received) - before == 2  # one answer, one retry: the last line costs no extra call
+    ev = [e["payload"] for e in d.kernel.audit.entries() if e["event"] == "chat.answer_check"][-1]
+    assert ev == {**ev, "problems": 1, "retried": True, "number_line": True, "still": 0}
 
 
 def test_denying_access_after_a_lookup_is_retried(chat_env):  # noqa: F811
