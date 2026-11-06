@@ -98,6 +98,11 @@ def tilde(value: Any) -> Any:
     return value.replace(HOME, "~", 1) if isinstance(value, str) and value.startswith(HOME) else value
 
 
+def _milestone_title(mid: Any) -> str:
+    from ..evolution import MILESTONES
+    return next((m.title for m in MILESTONES if m.id == mid), str(mid))
+
+
 def describe_event(event: str, p: dict[str, Any], *, task_id: str | None = None,
                    goals: dict[str, str] | None = None) -> str:
     """One readable line per audit event, for the Activity panel. The full record stays in the log."""
@@ -107,6 +112,9 @@ def describe_event(event: str, p: dict[str, Any], *, task_id: str | None = None,
     lines = {
         "task.created": lambda: "New task" + (f": {goals.get(task_id)}" if goals.get(task_id) else ""),
         "task.deleted": lambda: "Deleted a task and its history",
+        "evolution.milestone": lambda: f"Core evolution: verified “{_milestone_title(p.get('milestone'))}”",
+        "evolution.tier": lambda: f"Core evolution: tier {p.get('frm')} → {p.get('to')} ({p.get('verified')} milestones verified)",
+        "chat.mode_fallback": lambda: f"{str(p.get('mode', '')).capitalize()} mode: answered with {p.get('model')} instead",
         "task.state": lambda: f"Task {p.get('frm', '').replace('_', ' ')} → {p.get('to', '').replace('_', ' ')}"
                               + (f" ({p['reason']})" if p.get("reason") else ""),
         "task.verified": lambda: "Verification " + ("passed" if p.get("ok") else "FAILED"),
@@ -255,6 +263,10 @@ class Dashboard:
         self._runner = threading.Thread(target=self._run_loop, name="jarvis-runner-loop", daemon=True)
         self._maint = threading.Thread(target=self._maintenance_loop, name="jarvis-maintenance", daemon=True)
         self._health: dict[str, Any] = {}
+        self._evolution: dict[str, Any] | None = None
+        self._intel_cache: tuple[float, dict[str, Any]] = (0.0, {})
+        from ..telemetry import Telemetry
+        self.telemetry = Telemetry(kernel.home)
         self.maintenance_s = 60.0
         self._serving = False
         # iPhone companion (only when `jarvis remote enable` has configured a Tailscale hostname)
@@ -417,6 +429,49 @@ class Dashboard:
             self.notifier.briefing_ready()
         return True
 
+    def evolution(self) -> dict[str, Any]:
+        """Which milestones are verified right now (and since when): drives the avatar's evolution tier."""
+        from .. import evolution
+
+        status = self._models_cache[1] or models_status(self.kernel)
+        facts = evolution.facts_from(
+            self.kernel, health=self._health or None, providers=status["providers"],
+            capabilities={"mac_apps": self.kernel.registry.action("calendar", "events") is not None},
+            voice_ready=self.voice.enabled and bool(self.voice.status().get("available")),
+            paired_phones=len([d for d in self.remote.devices.list() if not d.get("revoked_at")])
+            if self.remote else 0,
+            touch_id=self.mac.enabled())
+        return evolution.evaluate(self.kernel, facts)
+
+    def intelligence(self) -> dict[str, Any]:
+        """Recent model calls from the audit log (model, where, latency, tokens): counts and timings only."""
+        now = time.time()
+        if now - self._intel_cache[0] < 2:
+            return self._intel_cache[1]
+        calls = []
+        for e in self.kernel.audit.entries(limit=400):
+            p = e["payload"]
+            if e["event"] == "model.local_call":
+                calls.append({"model": p.get("model"), "location": "local", "purpose": p.get("purpose"),
+                              "latency_s": p.get("latency_s"), "output_tokens": p.get("output_tokens"), "ts": e["ts"]})
+            elif e["event"] == "egress.received":
+                calls.append({"model": f"{p.get('provider')}/{p.get('model')}", "location": "cloud", "purpose": None,
+                              "latency_s": p.get("latency_s"), "output_tokens": p.get("output_tokens"), "ts": e["ts"]})
+        per: dict[str, dict[str, Any]] = {}
+        for c in calls[-50:]:
+            m = per.setdefault(c["model"], {"model": c["model"], "location": c["location"], "calls": 0, "seconds": 0.0,
+                                            "tokens": 0})
+            m["calls"] += 1
+            m["seconds"] += float(c["latency_s"] or 0)
+            m["tokens"] += int(c["output_tokens"] or 0)
+        for m in per.values():
+            m["avg_latency_s"] = round(m["seconds"] / m["calls"], 2) if m["calls"] else None
+            m["tokens_per_s"] = round(m["tokens"] / m["seconds"], 1) if m["seconds"] else None
+        out = {"last": calls[-1] if calls else None, "models": sorted(per.values(), key=lambda m: -m["calls"]),
+               "window": min(len(calls), 50)}
+        self._intel_cache = (now, out)
+        return out
+
     def briefing(self) -> dict[str, Any]:
         from ..proactive import build_briefing
 
@@ -434,6 +489,7 @@ class Dashboard:
                     if self.notifier is not None:
                         self.notifier.health_changed(self._health["ok"])
                 self.maybe_briefing()
+                self._evolution = self.evolution()
             except Exception as exc:
                 if self._stop.is_set():
                     return  # shutting down: the database may already be closed
@@ -749,6 +805,9 @@ class Dashboard:
             "touch_id": {"enabled": self.mac.enabled(), "keys": self.mac.keys()},
             "briefing": {"last_date": _last_briefing(k)},
             "voice": self.voice.status(),
+            "telemetry": self.telemetry.snapshot(),
+            "evolution": self._evolution,
+            "intelligence": self.intelligence(),
         }
 
     # ---- HTTP plumbing -----------------------------------------------------------------
@@ -947,7 +1006,8 @@ class Dashboard:
 
     def _get(self, h: BaseHTTPRequestHandler, url, *, device: dict | None) -> None:
         if url.path in ("/static/app.js", "/static/app.css", "/static/phone.js", "/static/qrcode.js",
-                        "/static/bench.js", "/static/bench.css", "/static/trust.js", "/static/proposals.js"):
+                        "/static/bench.js", "/static/bench.css", "/static/trust.js", "/static/proposals.js",
+                        "/static/avatar.js", "/static/avatar.css"):
             ctype = "text/javascript" if url.path.endswith(".js") else "text/css"
             return self._send(h, 200, (STATIC / url.path.rsplit("/", 1)[1]).read_bytes(), f"{ctype}; charset=utf-8")
         if m := re.fullmatch(r"/static/fonts/(rajdhani-[567]00\.woff2)", url.path):

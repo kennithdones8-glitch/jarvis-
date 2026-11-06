@@ -892,3 +892,59 @@ body.locked .hud, body.locked .sidenav, body.locked .tabbar, body.locked #cinest
   .imode { flex: 1; }
 }
 .cmd-actions .btn[hidden] { display: none; }
+
+/* ---- Phase 2: eight command systems (Home status bar + Command center view) ---- */
+.hud > .center > .sysbar { order: 1; }
+.sysbar { width: 100%; max-width: 720px; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; margin: 12px 0 2px; }
+.sys-chip { display: grid; grid-template-columns: auto auto 1fr; grid-template-rows: auto auto; column-gap: 6px; align-items: center;
+  padding: 6px 10px; border: 1px solid var(--gold-faint); background: rgba(0, 0, 0, .22); color: var(--text); text-decoration: none;
+  min-height: 44px; min-width: 0; }
+.sys-chip:hover, .sys-chip:focus-visible { border-color: var(--gold-line); background: var(--gold-dim); }
+.sc-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--ok); box-shadow: 0 0 6px var(--ok); }
+.warn > .sc-dot, .warn > summary > .sc-dot { background: #ffb347; box-shadow: 0 0 6px #ffb347; }
+.bad > .sc-dot, .bad > summary > .sc-dot { background: var(--red); box-shadow: 0 0 6px var(--red); }
+.off > .sc-dot, .off > summary > .sc-dot { background: var(--faint); box-shadow: none; }
+.sc-icon { color: var(--gold); font-size: 14px; }
+.sc-label { font: 600 12px var(--display); letter-spacing: .14em; text-transform: uppercase; color: var(--muted);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sc-value { grid-column: 1 / -1; font-size: 12.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sys-chip.bad .sc-value { color: var(--red); }
+.sc-short { display: none; }
+body.cinematic .sysbar { display: none; }
+
+body:not([data-view="command"]) .command-panel { display: none; }
+body[data-view="command"] .hud .panel:not(.command-panel) { display: none !important; }
+.cc-lead { color: var(--muted); margin: 0 0 12px; font-size: 14px; }
+.cc-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 420px), 1fr)); gap: 10px; align-items: start; }
+.cc-sys { border: 1px solid var(--gold-faint); background: rgba(0, 0, 0, .25); }
+.cc-sys[open] { border-color: var(--gold-line); }
+.cc-sys.bad { border-left: 2px solid var(--red); } .cc-sys.warn { border-left: 2px solid #ffb347; }
+.cc-sys > summary { display: grid; grid-template-columns: auto auto 1fr auto; gap: 8px; align-items: center; padding: 10px 12px;
+  cursor: pointer; list-style: none; min-height: 44px; }
+.cc-sys > summary::-webkit-details-marker { display: none; }
+.cc-label { font: 600 13px var(--display); letter-spacing: .16em; text-transform: uppercase; color: var(--gold-hi); }
+.cc-value { color: var(--muted); font-size: 13px; text-align: right; overflow-wrap: anywhere; }
+.cc-rows { margin: 0; padding: 0 12px 10px; display: grid; gap: 2px; }
+.cc-row { display: grid; grid-template-columns: minmax(110px, 38%) 1fr; gap: 10px; padding: 5px 0; border-top: 1px solid var(--gold-faint); font-size: 13.5px; }
+.cc-row dt { color: var(--muted); overflow-wrap: anywhere; } .cc-row dd { margin: 0; overflow-wrap: anywhere; }
+.cc-row.ok dd { color: var(--ok); } .cc-row.bad dd { color: var(--red); } .cc-row.muted dd { color: var(--faint); }
+.cc-note { margin: 0 12px 10px; color: var(--faint); font-size: 12.5px; }
+.cc-sys .row.mt { padding: 0 12px 12px; margin-top: 0; }
+
+/* phone: Command lives in More and the Home chips; one compact mode button instead of a second row */
+.cmd .intel-cycle { display: none; }
+@media (max-width: 760px) {
+  .sidenav > a.nav-command { display: none; }
+  .sysbar { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 4px; margin: 8px 0 0; }
+  .sys-chip { grid-template-columns: auto 1fr; padding: 6px; }
+  .sys-chip .sc-icon { display: none; }
+  .sys-chip .sc-label { display: none; }
+  .sys-chip .sc-short { display: block; font: 600 12px var(--display); letter-spacing: .04em; text-transform: uppercase; color: var(--muted);
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .sys-chip .sc-value { display: none; }
+  .cmd .intel-modes, .cmd .intel-modes:not([hidden]) { display: none; }
+  .cmd .intel-cycle:not([hidden]) { display: inline-flex; align-items: center; justify-content: center; grid-column: 2; grid-row: 1; justify-self: end; padding: 4px 12px;
+    font-size: 12px; letter-spacing: .14em; border-color: var(--gold-line); }
+  .cmd:has(.intel-cycle:not([hidden])) .tabs { grid-column: 1; }
+  .cc-row { grid-template-columns: 1fr; gap: 0; }
+}

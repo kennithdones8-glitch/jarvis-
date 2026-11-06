@@ -211,6 +211,31 @@ message could need a lookup; **Balanced** (default) = the configured routing; **
 prefer="quality")` and up to 2000 tokens, falling back to the best available model with a note (`chat.mode_fallback`).
 `local_only` always wins. Answer-check retries are local at any quality, so they never become consent questions.
 
+## Holographic core, adaptive layout and the command center (Phase 2)
+
+- **Avatar** (`static/avatar.js`, `avatar.css`): a humanoid hologram in layered SVG around the existing reactor
+  (`#core`, now its chest core; its states and tests are unchanged). Parts are named layers (aura, orbits, body,
+  circuits, plates, pauldrons, gorget, helmet, fins, face, visor, scan, halo); `JarvisAvatar.registerPart(name, svg)`
+  replaces one (e.g. a new helmet or face) without touching the rest. It never fetches or decides anything.
+- **13 states** (`avatarState()` in `app.js`) come only from `situation()`, the live chat stage and voice events:
+  idle, listening, understanding, planning, researching, reasoning (model working, no words yet), writing, coding
+  (code arriving or being tested), verifying, approval, executing, completed, error.
+- **Evolution** (`src/jarvis/evolution.py`): 12 milestones checked against live state once a minute (models answering,
+  a confirmed memory, a verified mission, Mac apps, voice, a paired phone, Touch ID, a verified backup, a benchmark
+  run, all health checks). Tier = milestones verified *now* (Core 0–3, Development 4–6, Advanced 7–9, Mature 10–12);
+  the first verification of each is stored in `meta` and audited (`evolution.milestone`, `evolution.tier`). The page
+  can only display the server's tier.
+- **Performance**: loaded after the page is usable; CSS animates only transform/opacity/stroke-dashoffset; the
+  particle canvas runs ≤30 fps and only while on screen, the page is visible and Display → Effects is Full; reduced
+  motion or Effects Off makes it still. Chat rendering never waits for it.
+- **Adaptive layout**: `body[data-activity]` = voice / research / mission / conversation / idle from real state; the
+  avatar steps back while you work and leads in voice.
+- **Command center** (`#/command`, Home status chips): eight systems built from `/api/state` only — health
+  (`src/jarvis/telemetry.py`: load average, `vm_stat`/`/proc/meminfo`, disk, a no-packet route check, JARVIS's own
+  peak memory; anything unreadable is reported unavailable), intelligence (recent model timings from the audit log,
+  counts only), missions, security, communications, research, personal operations, diagnostics (incl. the
+  evolution record).
+
 ## Benchmark and release gate (`src/jarvis/bench/`, `src/jarvis/gate.py`, v0.17)
 
 `jarvis bench` runs fixed tasks (`bench/tasks/*.toml`) through the real chat, research and plan→task→approval

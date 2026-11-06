@@ -1,5 +1,20 @@
 # Changelog
 
+## Unreleased — Phase 2: holographic core and command center
+
+- **Holographic core**: an amber humanoid hologram (layered SVG, energy motes) with the reactor as its chest core.
+  13 states, each from a real signal (the live chat stage, missions, decisions, voice, errors). Helmet, visor and face
+  are replaceable parts.
+- **Evolution from evidence**: 12 milestones checked against live state; the core gains circuits, plates, pauldrons,
+  then fins and a halo as more are verified (Core → Development → Advanced → Mature). Each first verification is in
+  the audit log and listed in Command center → Diagnostics. Nothing is awarded for activity.
+- **Command center** (sidebar, More menu, or the eight status chips on Home): System health (CPU load, memory,
+  storage, network route, services), Intelligence (model, local or cloud, latency, tokens/s), Missions, Security,
+  Communications, Research, Personal operations, Diagnostics. Unmeasurable figures say "unavailable".
+- **Adaptive layout**: the core steps back during conversation, research and missions, and leads in voice.
+- **Display → Effects**: Full / Reduced / Off. Reduced motion is respected; animations pause when the page is hidden.
+- iPhone: the Quick/Balanced/Deep choice is one button in the tab row, so the message box keeps its width.
+
 ## Unreleased — Phase 3a: faster chat
 
 - **Claude replies appear as they're written.** Chat used Claude Code's whole-reply JSON output, so nothing showed

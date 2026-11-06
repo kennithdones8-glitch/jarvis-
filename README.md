@@ -32,6 +32,7 @@ the owner's Intel Mac (macOS 14.1.1). Untested-on-Mac items may still have Mac-s
 | Web fetch (pinned to the checked address, ports 80/443, one deadline) | ✅ | not yet |
 | Memory: archive + facts with provenance, recall, review/correct/delete, forget (incl. task history) | ✅ | not yet |
 | Dashboard (holographic HUD), live replies, Help and welcome | ✅ + headless browser | ✅ opens (v0.16.x) · live replies not yet |
+| Holographic core (modular humanoid, 13 real states, evolution from verified milestones), adaptive layout, Command center (8 systems, live CPU/RAM/disk/network), Effects setting | ✅ + headless browser (desktop, laptop, iPhone size, reduced motion) | **not yet** (macOS `vm_stat` parsing tested with a sample only) |
 | Claude replies shown as they're written; Quick / Balanced / Deep; Stop, Copy, Regenerate, Retry, Edit; live stages | ✅ (stand-in CLI) + headless browser | **not yet** (needs the real `claude` CLI) |
 | Background service, health checks, encrypted backups | ✅ (plist content, crypto, restore) | ✅ service installed, backup saved + verified, passphrase in Keychain · restore not yet |
 | iPhone companion: Tailscale (tailnet only), passkey pairing, Face ID sign-in (and for the dangerous few), private notifications, Home Screen app | ✅ + headless browser with a virtual passkey | **not yet** |

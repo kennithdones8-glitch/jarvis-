@@ -115,7 +115,9 @@ SECURITY: dict[str, tuple[str, list[str]]] = {
         "test_projects::polish_sends_only_the_idea_list_and_only_after_you_approve",
         "test_chat_intelligence::nothing_streams_before_consent",
         "test_chat_intelligence::claude_streams_pieces_that_add_up_to_the_final_reply",
-        "test_chat_intelligence::local_only_is_never_overridden_by_a_mode"]),
+        "test_chat_intelligence::local_only_is_never_overridden_by_a_mode",
+        "test_telemetry_evolution::network_check_returns_no_address",
+        "test_telemetry_evolution::dashboard_state_carries_real_telemetry_evolution_and_model_timings"]),
     "Honest reporting": ("Failures and unverified results are reported as such", [
         "test_tasks::failed_verification_is_not_reported_as_complete", "test_tasks::rejection_fails_task_honestly",
         "test_orchestrator::invalid_plan_gets_one_repair_then_fails_honestly",
@@ -127,7 +129,11 @@ SECURITY: dict[str, tuple[str, list[str]]] = {
         "test_outcome::a_made_up_time_is_retried_then_flagged",
         "test_bench::pooled_verdicts_need_five_runs_and_say_when_it_could_be_luck",
         "test_bench::rescore_refuses_what_it_cannot_verify",
-        "test_chat_intelligence::deep_without_claude_answers_locally_and_says_so"]),
+        "test_chat_intelligence::deep_without_claude_answers_locally_and_says_so",
+        "test_telemetry_evolution::unreadable_figures_are_reported_unavailable_not_guessed",
+        "test_telemetry_evolution::activity_alone_earns_nothing",
+        "test_ui_avatar::every_avatar_state_comes_from_a_real_signal",
+        "test_ui_avatar::evolution_comes_from_the_server_only"]),
     "Emergency stop (protected)": ("One stop halts everything, including work in progress", [
         "test_gateway::emergency_stop_blocks_everything", "test_tasks::emergency_stop_pauses_then_requires_explicit_resume",
         "test_stop::stop_kills_running_claude_and_its_children", "test_models::emergency_stop_blocks_model_calls",
