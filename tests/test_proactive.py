@@ -86,7 +86,8 @@ def test_briefing_window_starts_at_previous_briefing(make_kernel):
     mark_briefing_sent(k, at(8))
     assert last_briefing_date(k) == DAY.date().isoformat()
     mark_briefing_sent(k, at(8, day=DAY + timedelta(days=1)))
-    since = datetime.fromisoformat(build_briefing(k)["since"])
+    later = at(9, day=DAY + timedelta(days=1)).timestamp()  # a fixed "now", so the test never goes stale
+    since = datetime.fromisoformat(build_briefing(k, now=later)["since"])
     assert abs(since.timestamp() - at(8).timestamp()) < 1
 
 

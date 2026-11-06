@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased: fairer benchmarks (branch `bench-pooled-v1`, owner's choice)
+## 0.18.1 — Fairer benchmarks: pooled before/after, 5-run minimum, re-scoring
 
 - `bench compare` pools several runs per side (`--before A B --after C D`). The merge rule now also needs at least
   5 runs of every compared task on each side; otherwise the verdict is **INCONCLUSIVE** (exit code 4). Each changed
