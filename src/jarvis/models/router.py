@@ -92,6 +92,20 @@ def hard_signals(text: str) -> bool:
     return bool(HARD_SIGNALS.search(text)) or text.count("?") >= 3 or len(text) > 1200 or is_puzzle(text)
 
 
+WORD_PROBLEM = re.compile(r"\b(how (many|much|long|far|old)|calculate|work out|what is the (total|difference|average))\b",
+                          re.I)
+NUMBER = re.compile(r"\d+(?:[.,]\d+)?")
+
+
+def needs_reasoning(text: str) -> bool:
+    """Work a small local model often gets wrong: anything ``hard_signals`` flags, a word problem with numbers, or a
+    request to write code. Used only to pick the *stronger local* model; it never sends anything to the cloud."""
+    from ..codecheck import wants_code  # plain regexes; no import cycle
+
+    return (hard_signals(text) or wants_code(text)
+            or (len(NUMBER.findall(text)) >= 2 and bool(WORD_PROBLEM.search(text))))
+
+
 class ModelRouter:
     """``local_first``: any capable local model outranks every cloud model.
     ``best``: the most capable available model wins; local models are the fallback.
@@ -180,6 +194,7 @@ class ModelService:
         local model and say so. Background tasks pass False and instead wait for the reset (UsageLimited)."""
         self.killswitch.check()
         need = self._apply_hybrid(need, request, task_id, level)
+        need = self._strong_local_for_reasoning(need, request, task_id)
         try:
             return self._complete(need, request, purpose=purpose, task_id=task_id, step_id=step_id, on_token=on_token)
         except NoModelAvailable as exc:
@@ -204,6 +219,20 @@ class ModelService:
             note = f"Answered locally — {why}."
             self.audit.record("model.fallback", task_id=task_id, model=f"{r.provider}/{r.model}", reason=why)
             return replace(r, note=note)
+
+    def _strong_local_for_reasoning(self, need: Need, request: ChatRequest, task_id: str | None) -> Need:
+        """When a chat answer will come from this Mac anyway (local_first, or kept local), maths, logic and code go to
+        the strongest local model instead of the fastest (owner's choice, 0.18.3): slower, but right more often. Only
+        the choice between local models changes; whether anything may go to the cloud never does."""
+        if need.capability != "chat" or need.prefer == "quality":
+            return need
+        if not (need.local_only or self.router.mode == "local_first"):
+            return need
+        last = next((m.content for m in reversed(request.messages) if m.role == "user"), "")
+        if not needs_reasoning(last[:4000]):
+            return need
+        self.audit.record("model.reasoning_local", task_id=task_id)
+        return replace(need, prefer="quality")
 
     def _apply_hybrid(self, need: Need, request: ChatRequest, task_id: str | None, level: str | None = None) -> Need:
         """``level``: already rated by the caller (e.g. the goal reader), so no second local call."""

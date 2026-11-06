@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased: stronger local model for maths, logic and code (branch `reasoning-model-v1`, owner's choice)
+
+- When a chat answer will come from your Mac anyway (local-first, or kept local), word problems with numbers,
+  puzzles, other hard-looking requests and requests to write code go to the strongest local model (e.g.
+  qwen2.5:7b) instead of the fastest (llama3.2:3b). Everyday chat stays on the fast one.
+- Only the choice between local models changes: whether anything may go to the cloud is never affected, and no
+  extra call is made. Recorded in the audit log as `model.reasoning_local` (no question text).
+- To be proven on the Mac with a 5-run before/after (reasoning and coding tasks) before merging.
+
 ## 0.18.2 — Private data folder (owner-approved)
 
 - On every start JARVIS makes its data folder readable by you only (`drwx------`) and its database files
