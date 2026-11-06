@@ -4,6 +4,7 @@
 
 const $ = (s) => document.querySelector(s);
 const ui = { mode: "ask", data: null, convo: [], chatBusy: false, online: true, open: new Set(), lastFeed: "",
+             intel: "balanced", stage: null, abort: null, editIndex: null, copied: null,
              session: (crypto.randomUUID ? crypto.randomUUID() : String(Math.random()).slice(2)), memQ: "", memKey: "" };
 
 function h(tag, props = {}, ...kids) {
@@ -170,6 +171,7 @@ function situation(d) {
   const job = d.jobs.find((j) => j.state === "planning" || j.state === "waiting_approval");
   if (job) return { core: "planning", cls: "", kicker: "Planning", main: job.request, sub: `Working out the steps · ${job.elapsed}s (about a minute on this Mac)` };
   if (ui.chatBusy && ui.chatEndpoint === "/api/research") return { core: "researching", cls: "", kicker: "Researching", main: "Searching the web", sub: "Every source is checked before it's cited." };
+  if (ui.chatBusy && ui.stage) return { core: "thinking", cls: "", kicker: STAGE_KICKER[ui.stage.stage] || "Thinking", main: stageLabel(ui.stage).replace(/^Writing · /, ""), sub: "" };
   if (ui.chatBusy) return { core: "thinking", cls: "", kicker: "Thinking", main: "Composing a reply", sub: "" };
   const online = d.models ? d.models.providers.reduce((n, p) => n + p.available.length, 0) : 0;
   if (d.models && !online) return { core: "degraded", cls: "attention", kicker: "Systems", main: "No model available", sub: "Is Ollama running? Open the Ollama app, then wait a few seconds." };
@@ -212,11 +214,39 @@ const MODES = {
   do: ["Describe a task — e.g. research X and save a brief to my notes", "Do: JARVIS plans the task and shows you the plan. Nothing happens until you press Run."],
 };
 
+// ---------------------------------------------------------------- intelligence modes (chat only)
+const INTEL = ["quick", "balanced", "deep"];
+const INTEL_LABEL = { quick: "Quick", balanced: "Balanced", deep: "Deep" };
+function setIntel(mode) {
+  ui.intel = INTEL.includes(mode) ? mode : "balanced";
+  document.querySelectorAll("#intelmodes .imode").forEach((b) => b.setAttribute("aria-checked", String(b.dataset.intel === ui.intel)));
+  try { localStorage.setItem("jarvis-intel", ui.intel); } catch (e) { /* this visit only */ }
+}
+
+// The real stages of a chat answer, as the server reports them (never the model's private reasoning).
+const STAGE_KICKER = { understanding: "Understanding", lookup: "Looking up", context: "Gathering context",
+                       generating: "Writing", checking: "Verifying" };
+function stageLabel(e) {
+  if (!e) return "";
+  if (e.stage === "understanding") return "Understanding your message";
+  if (e.stage === "lookup") return `Looked up ${e.checked.join(", ")}`;
+  if (e.stage === "context") return `Context: ${plural(e.memories, "memory").replace("memorys", "memories")}, ${plural(e.turns, "earlier message")}`;
+  if (e.stage === "generating") {
+    const where = e.location === "local" ? "on this Mac" : "in the cloud";
+    return `${e.streams ? "Writing" : "Writing (this model sends its reply in one piece)"} · ${e.model.split("/").pop()} ${where}`;
+  }
+  if (e.stage === "checking") return e.code_test ? "Testing the code" : "Checking the answer";
+  return e.stage;
+}
+
+function stopReply() { if (ui.abort) ui.abort.abort(); }
+
 function setMode(mode) {
   ui.mode = mode;
   for (const m of Object.keys(MODES)) $(`#tab-${m}`).setAttribute("aria-selected", mode === m);
   $("#cmd").placeholder = MODES[mode][0];
   $("#modehint").textContent = MODES[mode][1];
+  $("#intelmodes").hidden = mode !== "ask";
   if (ui.data && $("#context")) renderContext(ui.data);
   $("#cmd").focus();
 }
@@ -233,12 +263,50 @@ async function submitCommand(ev) {
     return;
   }
   if (ui.chatBusy) return;
+  if (ui.editIndex !== null) { ui.convo = ui.convo.slice(0, ui.editIndex); ui.editIndex = null; setMode(ui.mode); }
   ui.convo.push({ role: "user", text });
   $("#cmd").value = "";
   clearDraft();
   if (ui.mode === "research") { await sendChat({ question: text, session: ui.session }, "/api/research"); return; }
-  const history = ui.convo.slice(0, -1).filter((m) => !m.error && !m.consent).map((m) => ({ role: m.role, content: m.text }));
-  await sendChat({ message: text, history, session: ui.session });
+  await sendChat({ message: text, history: historyBefore(ui.convo.length - 1), session: ui.session, mode: ui.intel });
+}
+
+// The conversation before message i, as the server expects it (your messages and JARVIS's answers only).
+function historyBefore(i) {
+  return ui.convo.slice(0, i).filter((m) => (m.role === "user" || m.role === "assistant") && !m.error && !m.consent
+    && !m.help && !m.welcome && !m.briefing && typeof m.text === "string").map((m) => ({ role: m.role, content: m.text }));
+}
+
+// Regenerate / retry: drop this answer and ask again with exactly the same message, history and mode.
+async function regenerate(m) {
+  if (ui.chatBusy || !m.request) return;
+  ui.convo = ui.convo.filter((x) => x !== m);
+  await sendChat(m.request, m.endpoint || "/api/chat");
+}
+
+// Edit and resend: your message goes back in the box; sending replaces it and everything after it.
+function editMessage(i) {
+  if (ui.chatBusy) return;
+  ui.editIndex = i;
+  setMode("ask");
+  $("#cmd").value = ui.convo[i].text;
+  $("#modehint").textContent = "Editing: sending replaces this message and the replies after it. Esc to cancel.";
+  render();
+}
+
+function cancelEdit() {
+  if (ui.editIndex === null) return;
+  ui.editIndex = null;
+  $("#cmd").value = "";
+  setMode(ui.mode);
+  render();
+}
+
+async function copyText(m) {
+  try { await navigator.clipboard.writeText(m.text); ui.copied = m; }
+  catch (e) { ui.copied = null; note("Couldn't copy: this browser didn't allow it."); return; }
+  render();
+  setTimeout(() => { if (ui.copied === m) { ui.copied = null; ui.lastFeed = ""; render(); } }, 1500);
 }
 
 // Sends a chat turn. If the best model is in the cloud and your rule is "ask every time", the server
@@ -247,17 +315,32 @@ async function submitCommand(ev) {
 // streaming isn't available (an older JARVIS, the phone preview).
 async function streamChat(payload) {
   let r;
+  const controller = new AbortController();
+  ui.abort = controller;
+  const started = performance.now();
+  const live = { role: "assistant", text: "", live: true, activity: [] };
   try {
-    r = await fetch("/api/chat/stream", { method: "POST", credentials: "same-origin",
+    r = await fetch("/api/chat/stream", { method: "POST", credentials: "same-origin", signal: controller.signal,
       headers: { "Content-Type": "application/json", "X-Requested-By": "jarvis" }, body: JSON.stringify(payload) });
-  } catch (e) { return api("/api/chat", payload); }
+  } catch (e) {
+    if (e.name === "AbortError") return { stopped: true, partial: "", activity: live.activity };
+    return api("/api/chat", payload);
+  }
   if (!r.ok || !r.body || !(r.headers.get("Content-Type") || "").includes("ndjson")) return api("/api/chat", payload);
-  const live = { role: "assistant", text: "", live: true };
+  ui.convo.push(live);
+  render();
   const reader = r.body.getReader(), dec = new TextDecoder();
   let buf = "", done = null, painting = false;
   const paint = () => { painting = false; ui.liveLen = live.text.length; render(); };
   for (;;) {
-    const { value, done: end } = await reader.read();
+    let chunk;
+    try { chunk = await reader.read(); }
+    catch (e) {
+      ui.convo = ui.convo.filter((m) => m !== live);
+      if (e.name === "AbortError") return { stopped: true, partial: live.text, activity: live.activity };
+      throw e;
+    }
+    const { value, done: end } = chunk;
     if (end) break;
     buf += dec.decode(value, { stream: true });
     let i;
@@ -266,36 +349,52 @@ async function streamChat(payload) {
       if (!text.trim()) continue;
       const msg = JSON.parse(text);
       if (typeof msg.t === "string") {
-        if (!ui.convo.includes(live)) ui.convo.push(live);
+        if (!live.first) live.first = Math.round(performance.now() - started) / 1000;
         live.text += msg.t;
         if (!painting) { painting = true; requestAnimationFrame(paint); }
+      } else if (msg.s) {
+        // A new "generating" means a new attempt (the previous model failed): its words are dropped.
+        if (msg.s.stage === "generating") live.text = "";
+        live.activity.push({ ...msg.s, at: Math.round(performance.now() - started) / 1000 });
+        ui.stage = msg.s;
+        ui.liveLen = -live.activity.length;
+        render();
       } else if (msg.done) done = msg.done;
     }
   }
   ui.convo = ui.convo.filter((m) => m !== live);
   if (!done) throw new Error(live.text ? "the reply was interrupted" : "no reply");
   if (done.error && live.text) done.partial = live.text;
+  done.activity = live.activity;
+  done.first = live.first;
   return done;
 }
 
 async function sendChat(payload, endpoint = "/api/chat") {
   ui.chatBusy = true;
   ui.chatEndpoint = endpoint;
+  ui.stage = null;
   render();
+  const base = { role: "assistant", request: payload, endpoint };
   try {
     const r = endpoint === "/api/chat" ? await streamChat(payload) : await api(endpoint, payload);
-    if (r.needs_approval) ui.convo.push({ role: "assistant", consent: true, payload, endpoint, approval_id: r.approval_id, text: r.summary });
-    else if (r.answer !== undefined) ui.convo.push({ role: "assistant", text: r.answer, sources: r.sources,
+    if (r.stopped) ui.convo.push({ ...base, text: r.partial ? `${r.partial}\n\n— Stopped.` : "Stopped before JARVIS replied.",
+      error: !r.partial, stopped: true, activity: r.activity });
+    else if (r.needs_approval) ui.convo.push({ role: "assistant", consent: true, payload, endpoint, approval_id: r.approval_id, text: r.summary });
+    else if (r.answer !== undefined) ui.convo.push({ ...base, text: r.answer, sources: r.sources,
       meta: [r.model.split("/").pop(), `${r.seconds}s`, `${r.searches.length} searches`, `${r.pages_read.length} pages read`,
              `${r.verified_sources}/${r.sources.length} sources verified`].join(" · ") });
-    else if (r.error) ui.convo.push({ role: "assistant", text: r.partial ? `${r.partial}\n\n— ${r.error}` : r.error, error: true });
-    else ui.convo.push({ role: "assistant", text: r.text, checked: r.checked || [], plan: r.offer_plan ? payload.message : null,
-      meta: [r.model.split("/").pop(), `${r.seconds}s`,
+    else if (r.error) ui.convo.push({ ...base, text: r.partial ? `${r.partial}\n\n— ${r.error}` : r.error, error: true, activity: r.activity });
+    else ui.convo.push({ ...base, text: r.text, checked: r.checked || [], plan: r.offer_plan ? payload.message : null, activity: r.activity,
+      meta: [r.model.split("/").pop(), r.location === "cloud" ? "cloud" : null, r.mode && r.mode !== "balanced" ? INTEL_LABEL[r.mode] : null,
+      r.first ? `first words ${r.first.toFixed(2)}s` : null, `${r.seconds}s`,
       r.memories_used ? `used ${plural(r.memories_used, "memory").replace("memorys", "memories")}` : null, r.note].filter(Boolean).join(" · ") });
   } catch (e) {
-    ui.convo.push({ role: "assistant", text: `Request failed: ${e.message}`, error: true });
+    ui.convo.push({ ...base, text: `Request failed: ${e.message}`, error: true });
   } finally {
     ui.chatBusy = false;
+    ui.abort = null;
+    ui.stage = null;
     render();
   }
   const last = ui.convo[ui.convo.length - 1];
@@ -347,8 +446,14 @@ function jobCard(j) {
 }
 
 function renderFeed(d) {
-  const items = ui.convo.slice(-30).map((m) => m.role === "user"
-    ? h("div", { class: "msg user" }, m.text)
+  $("#stopgen").hidden = !ui.abort;
+  $("#send").hidden = !!ui.abort;
+  $("#intelmodes").hidden = ui.mode !== "ask";
+  const start = Math.max(0, ui.convo.length - 30);
+  const items = ui.convo.slice(start).map((m, j) => m.role === "user"
+    ? h("div", { class: `msg user${ui.editIndex === start + j ? " editing" : ""}` }, m.text,
+        !ui.chatBusy && m.text ? h("div", { class: "msg-actions" },
+          h("button", { class: "btn btn-ghost btn-xs", type: "button", title: "Edit and resend", onclick: () => editMessage(start + j) }, "Edit")) : null)
     : m.consent ? h("div", { class: "job consent" },
         h("div", { class: "kicker" }, "Send to Claude?"),
         h("div", { class: "d-target" }, m.text),
@@ -368,11 +473,20 @@ function renderFeed(d) {
         m.checked && m.checked.length ? h("div", { class: "checked" }, "Checked: ", m.checked.join(" · ")) : null,
         m.plan ? h("div", { class: "row mt" }, h("button", { class: "btn btn-sm", type: "button", onclick: () => makePlan(m) },
           "Make a plan")) : null,
-        m.meta ? h("span", { class: "meta" }, m.meta) : null));
+        m.live && ui.stage ? h("div", { class: "stage-line", role: "status" }, stageLabel(ui.stage)) : null,
+        m.meta ? h("span", { class: "meta" }, m.meta) : null,
+        !m.live && m.activity && m.activity.length ? h("details", { class: "activity-trail" },
+          h("summary", {}, "Activity"),
+          h("ol", {}, m.activity.map((e) => h("li", {}, h("span", { class: "at" }, `${e.at.toFixed(1)}s`), " ", stageLabel(e))))) : null,
+        !m.live && !ui.chatBusy && m.request ? h("div", { class: "msg-actions" },
+          m.text && !(m.error && !m.stopped) ? h("button", { class: "btn btn-ghost btn-xs", type: "button", title: "Copy this answer", onclick: () => copyText(m) },
+            ui.copied === m ? "Copied" : "Copy") : null,
+          h("button", { class: "btn btn-ghost btn-xs", type: "button", title: "Ask again with the same message",
+                        onclick: () => regenerate(m) }, m.error ? "Retry" : "Regenerate")) : null));
   if (ui.chatBusy && !ui.convo.some((m) => m.live)) items.push(h("div", { class: "msg jarvis" }, h("span", { class: "who typing" }, "JARVIS")));
   if (d) items.push(...d.jobs.filter((j) => j.state !== "submitted").reverse().map(jobCard));
   const feed = $("#feed");
-  const key = JSON.stringify([ui.convo.length, ui.convo.map((m) => (m.help ? "h" : m.welcome ? "w" : "")).join(""), ui.liveLen || 0, ui.convo.map((m) => m.approval_id || ""), ui.chatBusy, d && d.jobs.map((j) => [j.id, j.state, j.elapsed, j.kind])]);
+  const key = JSON.stringify([ui.editIndex, ui.copied ? ui.convo.indexOf(ui.copied) : -1, ui.stage && ui.stage.stage, ui.convo.length, ui.convo.map((m) => (m.help ? "h" : m.welcome ? "w" : "")).join(""), ui.liveLen || 0, ui.convo.map((m) => m.approval_id || ""), ui.chatBusy, d && d.jobs.map((j) => [j.id, j.state, j.elapsed, j.kind])]);
   if (key === ui.lastFeed) return;            // avoid re-rendering (and losing scroll/focus) when nothing changed
   ui.lastFeed = key;
   const nearBottom = feed.scrollHeight - feed.scrollTop - feed.clientHeight < 60;
@@ -1499,6 +1613,11 @@ document.addEventListener("DOMContentLoaded", () => {
   $("#tab-do").addEventListener("click", () => setMode("do"));
   $("#tab-research").addEventListener("click", () => setMode("research"));
   $("#cmdform").addEventListener("submit", submitCommand);
+  document.querySelectorAll("#intelmodes .imode").forEach((b) => b.addEventListener("click", () => setIntel(b.dataset.intel)));
+  let intel = "balanced";
+  try { intel = localStorage.getItem("jarvis-intel") || "balanced"; } catch (e) { /* default */ }
+  setIntel(intel);
+  $("#stopgen").addEventListener("click", stopReply);
   $("#cmd").addEventListener("keydown", (e) => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) submitCommand(e); });
   // One tap, no questions: stopping is always safe (releasing it is what asks for confirmation).
   $("#estop").addEventListener("click", () => act("/api/stop", { reason: "stopped from the dashboard" }));
@@ -1506,7 +1625,7 @@ document.addEventListener("DOMContentLoaded", () => {
   $("#helpbtn").addEventListener("click", showHelp);
   $("#mic").addEventListener("click", toggleMic);
   $("#speak").addEventListener("click", toggleSpeak);
-  document.addEventListener("keydown", (e) => { if (e.key === "Escape") stopSpeaking(); });
+  document.addEventListener("keydown", (e) => { if (e.key === "Escape") { stopSpeaking(); stopReply(); cancelEdit(); } });
   window.addEventListener("hashchange", () => maybeAutoBriefing(ui.data));
   $("#release").addEventListener("click", () => {
     ask("Release the emergency stop? Paused tasks stay paused until you resume them.", { ok: "Release" })

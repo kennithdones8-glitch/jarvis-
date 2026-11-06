@@ -191,12 +191,25 @@ through the gateway. Results go to the answering model as a private `file_conten
 tags; if that model is Claude, the privacy gate asks first. Requests to change something get a "Make a plan" offer
 instead (the plan then goes through approvals). The persona's can/can't list changes with the ability.
 
-## Live replies (v0.17.1)
+## Live replies (v0.17.1; Claude and stages since Phase 3a)
 
-`POST /api/chat/stream` returns newline-delimited JSON: `{"t": piece}` as a local model writes, then
-`{"done": result}` with exactly what `/api/chat` returns. Only Ollama streams (`OllamaProvider.chat(on_token=…)`);
-routing, lookups and the privacy gate are unchanged and cloud replies arrive whole. The emergency stop is checked on
-every piece; a closed page aborts generation without being treated as a model failure.
+`POST /api/chat/stream` returns newline-delimited JSON: `{"s": stage}` as each real stage starts, `{"t": piece}` as
+the model writes, then `{"done": result}` with exactly what `/api/chat` returns. Stages: `understanding`, `lookup`
+(what was checked), `context` (memories and earlier messages used), `generating` (which model, local or cloud, and
+whether it streams; sent again before each fallback attempt so the page drops a failed attempt's words), `checking`
+(answer check or coding self-test). They describe what the code is doing, never the model's reasoning.
+
+Both Ollama and Claude stream. Claude Code runs with `--output-format stream-json --verbose
+--include-partial-messages` (all other flags unchanged) through `run_streaming`, which keeps `run_tracked`'s
+protections: own process group, killed on the emergency stop, the deadline, or when the page goes away. While no
+words arrive, the server writes a bare newline about once a second, so a closed page is noticed before the first
+word too. Streaming starts only after the privacy gate, consent and budget checks, exactly as a whole reply would.
+A provider that can't stream says so (`streams: false`) and the page shows that instead of a fake typing effect.
+
+**Intelligence modes** (`mode` in the request): **Quick** = fastest local model, and no goal-reader call unless the
+message could need a lookup; **Balanced** (default) = the configured routing; **Deep** = `Need(min_quality=5,
+prefer="quality")` and up to 2000 tokens, falling back to the best available model with a note (`chat.mode_fallback`).
+`local_only` always wins. Answer-check retries are local at any quality, so they never become consent questions.
 
 ## Benchmark and release gate (`src/jarvis/bench/`, `src/jarvis/gate.py`, v0.17)
 
@@ -223,7 +236,7 @@ Kernel on the same database, approvals are raced from four threads, a checkpoint
 and the database is deleted and restored from an encrypted backup (throwaway passphrase; the Keychain is never
 used). Tests prove each protection drill fails when its protection is disabled.
 
-## Outcome Engine v1 (branch `outcome-engine-v1`, not merged)
+## Outcome Engine v1 (merged in 0.18.0)
 
 - **Goal reader:** the chat lookup call (local model, message local-only) also rates difficulty in hybrid mode,
   replacing the separate triage call; `ModelService.complete(level=…)` uses it.
@@ -244,5 +257,5 @@ each one, prunes to the newest N, and restores with tombstones re-applied.
 
 ## Not built yet
 
-Mac app automation, deeper monitoring (e.g. watched folders), self-improvement proposals. See the
-[roadmap](ROADMAP.md).
+Deeper monitoring (e.g. watched folders), applying self-improvement proposals (today they are propose-only:
+`src/jarvis/proposals.py`), a personal operations model. See the [roadmap](ROADMAP.md).

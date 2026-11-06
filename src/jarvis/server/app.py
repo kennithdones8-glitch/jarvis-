@@ -58,6 +58,20 @@ TOUCHID_SIGNIN = "Touch ID sign-in required"
 # Reachable before Touch ID sign-in (once it is set up): the page shell and its files, signing in, and the
 # emergency stop, which must always work in one tap.
 PRE_SIGNIN_GET = ("/", "/bench", "/trust", "/proposals")
+# Intelligence modes for chat. Same identity, memory, permissions and privacy gate in each; only how hard JARVIS
+# works on the answer changes.
+INTELLIGENCE: dict[str, dict[str, Any]] = {
+    "quick": {"label": "Quick", "max_tokens": 600},
+    "balanced": {"label": "Balanced", "max_tokens": 600},
+    "deep": {"label": "Deep", "max_tokens": 2000},
+}
+
+
+def _mode(body: dict[str, Any]) -> str:
+    mode = body.get("mode")
+    return mode if isinstance(mode, str) and mode in INTELLIGENCE else "balanced"
+
+
 PRE_SIGNIN_POST = ("/api/touchid/signin/options", "/api/touchid/signin", "/api/stop")
 DEVICE_COOKIE = "jarvis_device"
 PUBLIC_REMOTE_GET = {"/sw.js", "/manifest.webmanifest", "/static/phone.js", "/static/app.css", "/static/icon-192.png",
@@ -499,26 +513,64 @@ class Dashboard:
 
     # ---- chat --------------------------------------------------------------------------
     def chat(self, message: str, history: list[dict[str, str]], *, local_only: bool = False,
-             session: str = "dashboard", on_token=None) -> dict[str, Any]:
+             session: str = "dashboard", on_token=None, mode: str = "balanced", on_event=None) -> dict[str, Any]:
+        """``mode`` (see ``INTELLIGENCE``): quick = fastest local model, no pre-call unless a lookup could help;
+        balanced = the routing you configured (hybrid: rated by the goal reader); deep = the strongest approved
+        model and longer answers, falling back to the best local model, and saying so. The privacy gate, consent
+        and budget apply exactly the same in every mode. ``on_event(dict)`` hears the real stages for display."""
         memory = self.kernel.memory
         started = time.time()
+        mode = mode if mode in INTELLIGENCE else "balanced"
+        stage = on_event or (lambda event: None)
+        stage({"stage": "understanding", "mode": mode})
         # Goal reader: one local call picks read-only lookups (calendar, reminders, notes, files) and, in hybrid mode,
-        # rates difficulty so routing needs no second call.
-        found = self.lookup.run(message, rate=self.kernel.models.router.mode == "hybrid")
+        # rates difficulty so routing needs no second call. Quick and Deep don't need a rating, so they only make
+        # the call when the message could need a lookup.
+        found = self.lookup.run(message, rate=mode == "balanced" and self.kernel.models.router.mode == "hybrid")
+        if found.checked:
+            stage({"stage": "lookup", "checked": list(found.checked)})
         msgs = list(priming_messages(chat_abilities(memory.settings.enabled, lookups=bool(self.lookup.available()))))
         recalled = memory.recall(message)
         if context := memory.context_message(recalled):
             msgs.append(context)
+        turns = 0
         for turn in history[-10:]:
             if turn.get("role") in ("user", "assistant") and isinstance(turn.get("content"), str):
                 msgs.append(Message(turn["role"], turn["content"][:4000], Category.CONVERSATION))
+                turns += 1
         if found.context:
             msgs.append(found.context)
         msgs.append(Message("user", message, Category.CONVERSATION))
+        stage({"stage": "context", "memories": len(recalled), "turns": turns})
+        max_tokens = INTELLIGENCE[mode]["max_tokens"]
+        mode_note = None
         try:
-            need = Need("chat", prefer="auto", local_only=local_only)
-            r = self.kernel.models.complete(need, ChatRequest(tuple(msgs), max_tokens=600), purpose="dashboard chat",
-                                            on_token=on_token, level=found.level)
+            if mode == "quick":
+                need = Need("chat", prefer="speed", local_only=True)
+            elif mode == "deep":
+                need = Need("chat", min_quality=5, prefer="quality", local_only=local_only)
+            else:
+                need = Need("chat", prefer="auto", local_only=local_only)
+            request = ChatRequest(tuple(msgs), max_tokens=max_tokens)
+            try:
+                r = self.kernel.models.complete(need, request, purpose="dashboard chat", on_token=on_token,
+                                                level=found.level, on_event=on_event)
+            except NoModelAvailable:
+                # Quick with no local model, or Deep with no stronger model approved: use the best model there is
+                # and say so, rather than fail. Same gate, same consent.
+                if mode == "balanced" or (mode == "quick" and local_only):
+                    raise
+                fallback = Need("chat", prefer="speed" if mode == "quick" else "quality", local_only=local_only)
+                r = self.kernel.models.complete(fallback, request, purpose="dashboard chat", on_token=on_token,
+                                                on_event=on_event)
+                why = ("no local model is available" if mode == "quick"
+                       else "no stronger model is available (is Claude turned on?)")
+                mode_note = f"{INTELLIGENCE[mode]['label']}: {why}; answered with {r.model}."
+                self.kernel.audit.record("chat.mode_fallback", mode=mode, model=f"{r.provider}/{r.model}")
+            if mode_note:
+                r = replace(r, note=((r.note + " ") if r.note else "") + mode_note)
+            # Retries and fixes are local-only at any quality: they must never become a consent question.
+            local_need = replace(need, local_only=True, min_quality=1)
             grounded, retried = None, False
             checks_times = found.context is not None and applies(found.checked)
             bad = unsupported_times(r.text, found.context.content, message) if checks_times else []
@@ -529,11 +581,12 @@ class Dashboard:
             # local answer: retrying a Claude answer would be a new request needing your consent again.
             if problems and r.provider in self.kernel.models.router.local:
                 retried = True
+                stage({"stage": "checking", "problems": len(problems)})
                 retry = msgs + [Message("assistant", r.text, Category.CONVERSATION),
                                 Message("user", "Check before answering again:\n" + "\n".join(f"- {x}" for x in problems)
                                         + "\nReply with the corrected answer only.", Category.CONVERSATION)]
                 # always local: the first answer was, and a retry must never become a consent question
-                r = self.kernel.models.complete(replace(need, local_only=True), ChatRequest(tuple(retry), max_tokens=600),
+                r = self.kernel.models.complete(local_need, ChatRequest(tuple(retry), max_tokens=max_tokens),
                                                 purpose="dashboard chat (answer check retry)", level=found.level)
                 bad = unsupported_times(r.text, found.context.content, message) if checks_times else []
             self.kernel.audit.record("chat.answer_check", problems=len(problems), retried=retried,
@@ -547,7 +600,8 @@ class Dashboard:
             code_test = None
             if (self.kernel.model_config.coding.get("self_test") and r.provider in self.kernel.models.router.local
                     and wants_code(message) and code_of(r.text)):
-                r, code_test = self._self_test(message, msgs, r, need, found.level)
+                stage({"stage": "checking", "code_test": True})
+                r, code_test = self._self_test(message, msgs, r, local_need, found.level)
         except NoModelAvailable as exc:
             return {"error": f"No model available: {exc}", "reasons": exc.reasons}
         except ApprovalRequired as exc:
@@ -557,7 +611,8 @@ class Dashboard:
         return {"code_test": code_test, "text": r.text, "model": f"{r.provider}/{r.model}", "seconds": round(time.time() - started, 1),
                 "tokens": r.usage.output_tokens, "note": r.note, "memories_used": len(recalled),
                 "checked": found.checked, "offer_plan": found.change, "grounded": grounded,
-                "lookup_notes": found.why + found.notes}
+                "lookup_notes": found.why + found.notes, "mode": mode,
+                "location": "local" if r.provider in self.kernel.models.router.local else "cloud"}
 
     def _self_test(self, message: str, msgs: list, r, need, level) -> tuple[Any, dict | None]:
         """Coding self-test (opt-in): local tests from the request alone, run in the sandbox, one fix if any fail.
@@ -590,7 +645,7 @@ class Dashboard:
                                     "my request, keep the code right and say which case. Reply with the complete "
                                     "corrected code in one Python code block.", Category.CONVERSATION)]
             # always local: the first answer was, and a fix must never become a consent question
-            r2 = self.kernel.models.complete(replace(need, local_only=True), ChatRequest(tuple(retry), max_tokens=900),
+            r2 = self.kernel.models.complete(replace(need, local_only=True, min_quality=1), ChatRequest(tuple(retry), max_tokens=900),
                                              purpose="dashboard chat (coding self-test fix)", level=level)
             again = code_of(r2.text, message)
             if again:
@@ -823,10 +878,17 @@ class Dashboard:
         def on_token(piece: str) -> None:
             if self.kernel.killswitch.engaged():
                 raise EmergencyStop("emergency stop")
-            line({"t": piece})
+            if piece:
+                line({"t": piece})
+            else:  # no words yet: a bare newline (ignored by the page) shows whether the page is still there
+                h.wfile.write(b"\n")
+                h.wfile.flush()
+
+        def on_event(event: dict[str, Any]) -> None:
+            line({"s": event})
         try:
             result = self.chat(message.strip(), history, local_only=body.get("local_only") is True,
-                               session=session[:64], on_token=on_token)
+                               session=session[:64], on_token=on_token, mode=_mode(body), on_event=on_event)
         except (BrokenPipeError, ConnectionResetError):
             return  # the page was closed; generation has already stopped
         except EmergencyStop:
@@ -1088,7 +1150,7 @@ class Dashboard:
         if path == "/api/chat":
             history = body.get("history") if isinstance(body.get("history"), list) else []
             session = body.get("session") if isinstance(body.get("session"), str) else "dashboard"
-            return self.chat(text("message"), history, local_only=body.get("local_only") is True,
+            return self.chat(text("message"), history, local_only=body.get("local_only") is True, mode=_mode(body),
                              session=session[:64])
         if path == "/api/research":
             session = body.get("session") if isinstance(body.get("session"), str) else "dashboard"

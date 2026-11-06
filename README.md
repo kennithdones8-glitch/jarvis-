@@ -10,7 +10,7 @@ iPhone over your private Tailscale network with Face ID sign-in, and can require
 Each morning it tells you what's on today, what needs you and what's wrong. You can talk to it (whisper.cpp on your
 Mac). `jarvis bench` measures it on fixed tasks; `jarvis gate` must pass before a release.
 **Much of v0.12–v0.17 is not yet confirmed on the Mac** (see the table). **Not built yet:** watched folders,
-self-improvement proposals, a personal operations model. See [ROADMAP](docs/ROADMAP.md).
+applying self-improvement proposals (JARVIS proposes; it never changes itself), a personal operations model. See [ROADMAP](docs/ROADMAP.md).
 
 ## What works today
 
@@ -32,6 +32,7 @@ the owner's Intel Mac (macOS 14.1.1). Untested-on-Mac items may still have Mac-s
 | Web fetch (pinned to the checked address, ports 80/443, one deadline) | ✅ | not yet |
 | Memory: archive + facts with provenance, recall, review/correct/delete, forget (incl. task history) | ✅ | not yet |
 | Dashboard (holographic HUD), live replies, Help and welcome | ✅ + headless browser | ✅ opens (v0.16.x) · live replies not yet |
+| Claude replies shown as they're written; Quick / Balanced / Deep; Stop, Copy, Regenerate, Retry, Edit; live stages | ✅ (stand-in CLI) + headless browser | **not yet** (needs the real `claude` CLI) |
 | Background service, health checks, encrypted backups | ✅ (plist content, crypto, restore) | ✅ service installed, backup saved + verified, passphrase in Keychain · restore not yet |
 | iPhone companion: Tailscale (tailnet only), passkey pairing, Face ID sign-in (and for the dangerous few), private notifications, Home Screen app | ✅ + headless browser with a virtual passkey | **not yet** |
 | Touch ID sign-in on the Mac, and for the dangerous few (optional; recovery via Terminal) | ✅ + headless browser with a virtual passkey | ✅ set up · approving with it not yet |
@@ -44,7 +45,8 @@ the owner's Intel Mac (macOS 14.1.1). Untested-on-Mac items may still have Mac-s
 | Release gate `jarvis gate` (full suite + linter + 12 security items) | ✅ | n/a (runs from the repo) |
 | Flight Recorder: per-task timeline (`jarvis trace`, dashboard Timeline) | ✅ + headless browser | **not yet** |
 | Recovery drills `jarvis drill` (10 drills, throwaway JARVIS, real process crashes) | ✅ | **not yet** — run it on the Mac |
-| Watched folders, self-improvement proposals, personal operations model | — | ⏳ not started |
+| Self-improvement proposals (propose-only, deterministic, no model) | ✅ | not yet |
+| Watched folders, personal operations model | — | ⏳ not started |
 
 ## Quick start
 

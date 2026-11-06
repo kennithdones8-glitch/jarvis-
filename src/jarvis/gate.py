@@ -94,7 +94,7 @@ SECURITY: dict[str, tuple[str, list[str]]] = {
         "test_gateway::timeout_and_output_limit", "test_tools::overall_deadline_stops_drip_feeding_servers",
         "test_stop::run_tracked_deadline_kills_process_group", "test_remote::unauthenticated_challenges_are_bounded",
         "test_dashboard::bad_content_length_refused_quickly", "test_voice::transcribe_endpoint_defences",
-        "test_bench::code_is_only_run_when_asked",
+        "test_bench::code_is_only_run_when_asked", "test_chat_intelligence::streaming_respects_the_deadline",
         "test_orchestrator::validator_rejects_oversized_and_forward_references"]),
     "Privacy and data disclosure": ("Private data leaves the Mac only with permission; logs hold no content", [
         "test_models::quality_floor_selects_cloud_but_private_data_needs_approval",
@@ -112,7 +112,10 @@ SECURITY: dict[str, tuple[str, list[str]]] = {
         "test_flight::holds_no_private_text", "test_outcome::profile_reaches_the_answering_model_as_private_memory",
         "test_outcome::forgotten_profile_facts_stay_forgotten",
         "test_projects::ideas_come_from_the_local_model_and_must_cite_real_evidence",
-        "test_projects::polish_sends_only_the_idea_list_and_only_after_you_approve"]),
+        "test_projects::polish_sends_only_the_idea_list_and_only_after_you_approve",
+        "test_chat_intelligence::nothing_streams_before_consent",
+        "test_chat_intelligence::claude_streams_pieces_that_add_up_to_the_final_reply",
+        "test_chat_intelligence::local_only_is_never_overridden_by_a_mode"]),
     "Honest reporting": ("Failures and unverified results are reported as such", [
         "test_tasks::failed_verification_is_not_reported_as_complete", "test_tasks::rejection_fails_task_honestly",
         "test_orchestrator::invalid_plan_gets_one_repair_then_fails_honestly",
@@ -123,12 +126,14 @@ SECURITY: dict[str, tuple[str, list[str]]] = {
         "test_remote::push_failures_are_recorded_not_silent", "test_flight::a_rejection_is_shown_as_a_problem",
         "test_outcome::a_made_up_time_is_retried_then_flagged",
         "test_bench::pooled_verdicts_need_five_runs_and_say_when_it_could_be_luck",
-        "test_bench::rescore_refuses_what_it_cannot_verify"]),
+        "test_bench::rescore_refuses_what_it_cannot_verify",
+        "test_chat_intelligence::deep_without_claude_answers_locally_and_says_so"]),
     "Emergency stop (protected)": ("One stop halts everything, including work in progress", [
         "test_gateway::emergency_stop_blocks_everything", "test_tasks::emergency_stop_pauses_then_requires_explicit_resume",
         "test_stop::stop_kills_running_claude_and_its_children", "test_models::emergency_stop_blocks_model_calls",
         "test_streaming::emergency_stop_cuts_a_reply_off_mid_sentence", "test_dashboard::emergency_stop_and_release",
-        "test_gateway::emergency_stop_after_claim_restores_the_approval", "test_ui_stepup_pages::sign_in_screen_keeps_emergency_stop_one_click_away"]),
+        "test_gateway::emergency_stop_after_claim_restores_the_approval", "test_ui_stepup_pages::sign_in_screen_keeps_emergency_stop_one_click_away",
+        "test_chat_intelligence::emergency_stop_kills_a_streaming_reply"]),
     "Budget guard (protected)": ("No spending: paid use is refused under a $0 budget", [
         "test_models::paid_model_excluded_under_zero_budget", "test_models::budget_guard_blocks_and_records",
         "test_bench::settings_for_a_run"]),

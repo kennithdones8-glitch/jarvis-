@@ -175,13 +175,14 @@ class ModelService:
 
     def complete(self, need: Need, request: ChatRequest, *, purpose: str, task_id: str | None = None,
                  step_id: str | None = None, allow_fallback: bool = True, on_token=None,
-                 level: str | None = None) -> ChatResponse:
+                 level: str | None = None, on_event=None) -> ChatResponse:
         """``allow_fallback``: if the chosen tier is unavailable (e.g. Claude's usage limit), answer with a
         local model and say so. Background tasks pass False and instead wait for the reset (UsageLimited)."""
         self.killswitch.check()
         need = self._apply_hybrid(need, request, task_id, level)
         try:
-            return self._complete(need, request, purpose=purpose, task_id=task_id, step_id=step_id, on_token=on_token)
+            return self._complete(need, request, purpose=purpose, task_id=task_id, step_id=step_id, on_token=on_token,
+                                  on_event=on_event)
         except NoModelAvailable as exc:
             limited = self.router.gate.limited_until()
             if need.local_only or not (exc.unavailable or limited):
@@ -193,7 +194,7 @@ class ModelService:
             local_need = Need(need.capability, min_quality=1, prefer="speed", local_only=True)
             try:
                 r = self._complete(local_need, request, purpose=purpose, task_id=task_id, step_id=step_id,
-                                   on_token=on_token)
+                                   on_token=on_token, on_event=on_event)
             except NoModelAvailable:
                 raise exc from None
             until = f" until about {time.strftime('%H:%M', time.localtime(limited))}" if limited else ""
@@ -244,8 +245,10 @@ class ModelService:
         return level
 
     def _complete(self, need: Need, request: ChatRequest, *, purpose: str, task_id: str | None,
-                  step_id: str | None, op: str = "chat", on_token=None) -> ChatResponse:
-        """``on_token``: show a local model's reply as it's written (display only; cloud replies arrive whole)."""
+                  step_id: str | None, op: str = "chat", on_token=None, on_event=None) -> ChatResponse:
+        """``on_token``: show the reply as it's written, for providers that can (display only).
+        ``on_event(dict)``: told which model is about to answer, before each attempt, so a viewer can show it
+        (and discard words from an attempt that failed). Display only; never changes routing."""
         try:
             route = self.router.route(need, request)
         except NoModelAvailable as exc:
@@ -257,6 +260,11 @@ class ModelService:
         failures: dict[str, str] = {}
         for cand in route.candidates[: self.max_attempts]:
             key = f"{cand.provider}/{cand.model}"
+            if on_event is not None:
+                streams = (bool(getattr(self.router.local.get(cand.provider), "streams", False))
+                           if cand.location == "local" else self.router.gate.can_stream(cand.provider))
+                on_event({"stage": "generating", "model": key, "location": cand.location,
+                          "streams": on_token is not None and op != "research" and streams})
             try:
                 if cand.location == "local":
                     self.killswitch.check()
@@ -271,7 +279,8 @@ class ModelService:
                                       latency_s=round(response.latency_s, 3))
                 else:
                     response = self.router.gate.send(cand.provider, cand.model, request, purpose=purpose,
-                                                      task_id=task_id, step_id=step_id, research=op == "research")
+                                                      task_id=task_id, step_id=step_id, research=op == "research",
+                                                      on_token=on_token if op != "research" else None)
                 return response
             except ApprovalRequired:
                 raise

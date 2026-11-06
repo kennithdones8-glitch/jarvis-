@@ -142,7 +142,16 @@
       <textarea id="cmd" rows="2" autocomplete="off"></textarea>
       <div class="cmd-actions">
         <button class="btn btn-ghost" id="mic" type="button" hidden title="Tap to talk, tap again to stop">Talk</button>
+        <button class="btn btn-outline" id="stopgen" type="button" hidden title="Stop this reply (Esc)">Stop</button>
         <button class="btn btn-primary" id="send" type="submit">Send</button>
+      </div>
+      <div class="intel-modes" id="intelmodes" role="radiogroup" aria-label="How hard JARVIS works on the answer">
+        <button type="button" role="radio" class="imode" data-intel="quick" aria-checked="false"
+                title="Quick: the fastest model on this Mac, for simple everyday questions">Quick</button>
+        <button type="button" role="radio" class="imode" data-intel="balanced" aria-checked="true"
+                title="Balanced: your usual routing (hybrid: simple stays local, harder questions are offered to Claude)">Balanced</button>
+        <button type="button" role="radio" class="imode" data-intel="deep" aria-checked="false"
+                title="Deep: the strongest approved model and longer answers (Claude when it's on, after your consent as usual)">Deep</button>
       </div>
     </form>
     <div id="suggest" class="suggest" aria-label="Things you can ask right now"></div>

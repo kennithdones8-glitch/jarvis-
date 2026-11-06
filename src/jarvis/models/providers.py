@@ -37,29 +37,43 @@ class Cancelled(ProviderError):
         super().__init__(message, retryable=False)
 
 
+def _kill_group(proc: subprocess.Popen) -> None:
+    """Stop a child started with ``start_new_session`` and everything it started: TERM, then KILL."""
+    import signal
+
+    for sig in (signal.SIGTERM, signal.SIGKILL):
+        try:
+            os.killpg(proc.pid, sig)
+        except (ProcessLookupError, PermissionError):
+            return
+        try:
+            proc.wait(timeout=2)
+            return
+        except subprocess.TimeoutExpired:
+            continue
+
+
+def _stop_requested(cancel_check) -> bool:
+    if cancel_check is None:
+        return False
+    try:
+        return bool(cancel_check())
+    except Exception:
+        return False
+
+
 def run_tracked(args: list[str], *, input: str, timeout: float, cwd: Path, env: dict[str, str],
                 cancel_check=None, poll_s: float = 0.5) -> subprocess.CompletedProcess:
     """Like subprocess.run, but the child runs in its own process group and is killed (with any
     children it started) if ``cancel_check()`` turns true — e.g. the emergency stop — or the deadline
     passes. The stop is read from the shared database, so a stop pressed in any JARVIS process works."""
-    import signal
-
     proc = subprocess.Popen(args, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                             text=True, cwd=cwd, env=env, start_new_session=True)
     deadline = time.monotonic() + timeout
     data: str | None = input
 
     def kill() -> None:
-        for sig in (signal.SIGTERM, signal.SIGKILL):
-            try:
-                os.killpg(proc.pid, sig)
-            except (ProcessLookupError, PermissionError):
-                return
-            try:
-                proc.wait(timeout=2)
-                return
-            except subprocess.TimeoutExpired:
-                continue
+        _kill_group(proc)
 
     while True:
         try:
@@ -67,17 +81,84 @@ def run_tracked(args: list[str], *, input: str, timeout: float, cwd: Path, env: 
             return subprocess.CompletedProcess(args, proc.returncode, out, err)
         except subprocess.TimeoutExpired:
             data = None  # stdin was already sent
-        if cancel_check is not None:
-            try:
-                stop = cancel_check()
-            except Exception:
-                stop = False
-            if stop:
-                kill()
-                raise Cancelled("stopped by the emergency stop")
+        if _stop_requested(cancel_check):
+            kill()
+            raise Cancelled("stopped by the emergency stop")
         if time.monotonic() > deadline:
             kill()
             raise subprocess.TimeoutExpired(args, timeout)
+
+
+def run_streaming(args: list[str], *, input: str, timeout: float, cwd: Path, env: dict[str, str], on_line,
+                  cancel_check=None, on_idle=None, poll_s: float = 0.25, idle_s: float = 1.0) -> subprocess.CompletedProcess:
+    """``run_tracked`` for a child that writes one event per line: ``on_line(line)`` gets each line as it
+    arrives. Same protections: own process group, killed on the emergency stop or the deadline. If
+    ``on_line`` or ``on_idle`` raises (the viewer left, the stop was pressed), the child is killed and the
+    exception propagates. ``on_idle()`` runs about every ``idle_s`` while no line arrives, so a closed page is
+    noticed even before the first word. The returned ``stdout`` is empty: every line went to ``on_line``."""
+    import queue
+    import threading
+
+    proc = subprocess.Popen(args, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                            text=True, cwd=cwd, env=env, start_new_session=True, bufsize=1)
+    lines: queue.Queue[str | None] = queue.Queue()
+    err: list[str] = []
+
+    def pump_out() -> None:
+        try:
+            for line in proc.stdout:
+                lines.put(line)
+        except (OSError, ValueError):
+            pass
+        lines.put(None)
+
+    def pump_err() -> None:
+        try:
+            err.append(proc.stderr.read())
+        except (OSError, ValueError):
+            pass
+    readers = [threading.Thread(target=pump_out, daemon=True), threading.Thread(target=pump_err, daemon=True)]
+    for t in readers:
+        t.start()
+    deadline = time.monotonic() + timeout
+    last_activity = time.monotonic()
+    try:
+        try:
+            proc.stdin.write(input)
+            proc.stdin.close()
+        except (BrokenPipeError, OSError):
+            pass  # the child exited early; its output (or exit code) says why
+        while True:
+            try:
+                line = lines.get(timeout=poll_s)
+            except queue.Empty:
+                line = ""
+            if line is None:
+                break
+            try:
+                if line:
+                    last_activity = time.monotonic()
+                    on_line(line)
+                elif on_idle is not None and time.monotonic() - last_activity >= idle_s:
+                    last_activity = time.monotonic()
+                    on_idle()
+            except BaseException as exc:  # the caller's own reason (page closed, stop): never "could not start"
+                raise _Aborted(exc) from None
+            if _stop_requested(cancel_check):
+                raise Cancelled("stopped by the emergency stop")
+            if time.monotonic() > deadline:
+                raise subprocess.TimeoutExpired(args, timeout)
+    except BaseException:
+        _kill_group(proc)
+        raise
+    try:
+        proc.wait(timeout=max(1.0, deadline - time.monotonic()))
+    except subprocess.TimeoutExpired:
+        _kill_group(proc)
+        raise
+    for t in readers:
+        t.join(timeout=2)
+    return subprocess.CompletedProcess(args, proc.returncode, "", "".join(err))
 
 
 def is_loopback_url(url: str) -> bool:
@@ -257,6 +338,7 @@ class ClaudeCodeProvider:
     """
 
     location: Literal["local", "cloud"] = "cloud"
+    streams = True  # can show its reply as it's written (stream-json with partial messages)
     _STRIP_ENV = ("ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN", "ANTHROPIC_BASE_URL", "CLAUDE_CODE_USE_BEDROCK",
                   "CLAUDE_CODE_USE_VERTEX")
 
@@ -337,31 +419,79 @@ class ClaudeCodeProvider:
         transcript = "\n\n".join(f"[{'Owner' if m.role == 'user' else 'You'}]: {m.content}" for m in turns)
         return system, f"Conversation so far:\n\n{transcript}\n\nReply to the owner's last message."
 
-    def chat(self, model: str, request: ChatRequest) -> ChatResponse:
-        binary = self._binary()
-        system, prompt = self._split(request)
-        args = [binary, "-p", "--output-format", "json", "--model", model,
+    def _args(self, binary: str, model: str, system: str, *, stream: bool) -> list[str]:
+        out = ["--output-format", "stream-json", "--verbose", "--include-partial-messages"] if stream \
+            else ["--output-format", "json"]
+        return [binary, "-p", *out, "--model", model,
                 "--tools", "", "--strict-mcp-config", "--disable-slash-commands", "--no-session-persistence",
                 *SETTINGS_ISOLATION,
                 "--system-prompt", system or "You are a helpful assistant."]
+
+    def chat(self, model: str, request: ChatRequest, on_token=None) -> ChatResponse:
+        """``on_token(text)`` gets each piece of the reply as Claude writes it (``stream-json`` with partial
+        messages), for live display only: the reply returned is Claude's final result either way. If
+        ``on_token`` raises (emergency stop, the viewer left), the Claude Code process is killed. While no
+        words arrive, ``on_token("")`` is called about once a second so a caller can notice a closed page."""
+        binary = self._binary()
+        system, prompt = self._split(request)
+        stream = on_token is not None
+        args = self._args(binary, model, system, stream=stream)
         env = {k: v for k, v in os.environ.items() if k not in self._STRIP_ENV}
         self.workdir.mkdir(parents=True, exist_ok=True)
         started = time.monotonic()
+        result: list[dict[str, Any]] = []
+        raw: list[str] = []
+
+        def on_line(line: str) -> None:
+            try:
+                event = json.loads(line)
+            except json.JSONDecodeError:
+                raw.append(line)
+                return
+            if not isinstance(event, dict):
+                return
+            if event.get("type") == "result":
+                result.append(event)
+                return
+            if event.get("type") == "stream_event":
+                ev = event.get("event") or {}
+                delta = ev.get("delta") or {}
+                if ev.get("type") == "content_block_delta" and delta.get("type") == "text_delta":
+                    piece = delta.get("text")
+                    if isinstance(piece, str) and piece:
+                        on_token(piece)
         try:
-            proc = run_tracked(args, input=prompt, timeout=self.timeout, cwd=self.workdir, env=env,
-                               cancel_check=self.cancel_check)
+            if stream:
+                proc = run_streaming(args, input=prompt, timeout=self.timeout, cwd=self.workdir, env=env,
+                                     on_line=on_line, cancel_check=self.cancel_check, on_idle=lambda: on_token(""))
+            else:
+                proc = run_tracked(args, input=prompt, timeout=self.timeout, cwd=self.workdir, env=env,
+                                   cancel_check=self.cancel_check)
+        except _Aborted as stop:
+            raise stop.reason from None  # never retried with another model
         except subprocess.TimeoutExpired:
             raise ProviderError(f"Claude Code did not answer within {self.timeout:.0f}s", retryable=True) from None
         except OSError as exc:
             raise ProviderUnavailable(f"could not start Claude Code: {exc}") from None
-        try:
-            data = json.loads(proc.stdout)
-        except json.JSONDecodeError:
-            tail = (proc.stderr or proc.stdout or "").strip()[-300:]
+        if stream:
+            data: Any = result[-1] if result else None
+            undecodable = data is None
+            stdout = "".join(raw)
+        else:
+            stdout = proc.stdout
+            try:
+                data, undecodable = json.loads(proc.stdout), False
+            except json.JSONDecodeError:
+                data, undecodable = None, True
+        if undecodable:
+            tail = (proc.stderr or stdout or "").strip()[-300:]
             if "login" in tail.lower() or "auth" in tail.lower():
                 self._remember_blocked(f"Claude Code is not signed in: {tail[:120]}")
-                raise ProviderUnavailable(f"Claude Code is not logged in — run `claude` once and sign in ({tail})") from None
-            raise ProviderError(f"Claude Code failed (exit {proc.returncode}): {tail}", retryable=False) from None
+                raise ProviderUnavailable(f"Claude Code is not logged in — run `claude` once and sign in ({tail})")
+            raise ProviderError(f"Claude Code failed (exit {proc.returncode}): {tail}", retryable=False)
+        return self._interpret(data, model, started)
+
+    def _interpret(self, data: Any, model: str, started: float) -> ChatResponse:
         text = data.get("result") if isinstance(data, dict) else None
         if not isinstance(data, dict) or data.get("is_error") or not isinstance(text, str):
             message = str((data or {}).get("result") or (data or {}).get("subtype") or "unknown error")[:300]

@@ -1,5 +1,22 @@
 # Changelog
 
+## Unreleased — Phase 3a: faster chat
+
+- **Claude replies appear as they're written.** Chat used Claude Code's whole-reply JSON output, so nothing showed
+  until Claude had finished. It now uses `stream-json` with partial messages; every safety flag is unchanged (tools
+  off, no MCP, no slash commands, settings isolated, API-key variables removed, prompt over stdin). With a stand-in
+  CLI writing 36 words at 50 ms each, first words went from 1.83 s to 0.02 s; real numbers need the Mac.
+- A closed page or the emergency stop kills the Claude process mid-reply (also before its first word), and is never
+  treated as a model failure that would try another model.
+- **Quick / Balanced / Deep** in the Ask box. Quick: the fastest local model and no extra local call before answering
+  (hybrid used to make one for every message). Balanced: unchanged. Deep: the strongest approved model (Claude when on,
+  after your consent as always) and longer answers; without one it answers locally and says so.
+- **Stop, Copy, Regenerate, Retry, Edit and resend** on chat messages; Esc stops a reply.
+- **Live stages** (understanding → looked up → context → writing with which model → checking), in the reply, the
+  status pill and an Activity list on each answer. Real stages only; no model reasoning is shown.
+- Release gate: new streaming tests added to Privacy, Emergency stop, Resource limits and Honest reporting.
+- Docs: Outcome Engine is merged (0.18.0), Mac apps exist, proposals exist (propose-only).
+
 ## 0.18.1 — Fairer benchmarks: pooled before/after, 5-run minimum, re-scoring
 
 - `bench compare` pools several runs per side (`--before A B --after C D`). The merge rule now also needs at least
