@@ -43,8 +43,17 @@ class Kernel:
         from ..models import build_model_service, load_model_config  # models depend on core, not vice versa
 
         self.model_config = load_model_config(self.config_path)
-        self.db = Database(self.home / "jarvis.db")
+        from .fileperms import make_private
+
+        made_private = make_private(self.home)  # before the database opens, so nothing is readable meanwhile
+        db_path = self.home / "jarvis.db"
+        if not db_path.exists():  # a new database starts private (SQLite gives its -wal/-shm files the same mode)
+            os.close(os.open(db_path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600))
+        self.db = Database(db_path)
+        made_private |= make_private(self.home)  # files SQLite has just created
         self.audit = AuditLog(self.db)
+        if made_private:
+            self.audit.record("privacy.files_made_private", changed=made_private)
         self.killswitch = KillSwitch(self.db, self.audit)
 
         # JARVIS's own state and its policy are never writable by its tools.

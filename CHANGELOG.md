@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased: private data folder (branch `private-folder-v1`, owner-approved)
+
+- On every start JARVIS makes its data folder readable by you only (`drwx------`) and its database files
+  `-rw-------`. Before, a folder made with the Mac's default permissions (`drwxr-xr-x`, `jarvis.db -rw-r--r--`)
+  could be read by other accounts on the Mac. A new database is created private from the start.
+- It only ever removes access for others, only on files you own, and never follows a symlink. A change is recorded
+  in the audit log (`privacy.files_made_private`, modes only).
+- `jarvis doctor` has a new "Data folder privacy" check that warns if the folder becomes readable again.
+
 ## 0.18.1 — Fairer benchmarks: pooled before/after, 5-run minimum, re-scoring
 
 - `bench compare` pools several runs per side (`--before A B --after C D`). The merge rule now also needs at least

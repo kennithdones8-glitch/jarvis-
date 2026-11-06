@@ -103,6 +103,8 @@ SECURITY: dict[str, tuple[str, list[str]]] = {
         "test_models::approval_is_bound_to_exact_request", "test_models::secret_content_blocked",
         "test_models::audit_never_contains_message_content",
         "test_codecheck::off_by_default",
+        "test_fileperms::an_open_data_folder_is_made_private_on_start_and_recorded",
+        "test_fileperms::a_new_data_folder_starts_private", "test_fileperms::a_symlink_is_not_followed",
         "test_audit_privacy::forget_removes_text_from_every_table_and_the_raw_files",
         "test_audit_privacy::audit_fingerprints_free_text_but_keeps_paths_and_structure",
         "test_memory::audit_holds_no_memory_text", "test_memory::memory_context_is_private_category",
