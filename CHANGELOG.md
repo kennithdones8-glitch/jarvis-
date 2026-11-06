@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased: private data folder (branch `private-folder-v1`, owner-approved)
+## 0.18.2 — Private data folder (owner-approved)
 
 - On every start JARVIS makes its data folder readable by you only (`drwx------`) and its database files
   `-rw-------`. Before, a folder made with the Mac's default permissions (`drwxr-xr-x`, `jarvis.db -rw-r--r--`)
