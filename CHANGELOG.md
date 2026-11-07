@@ -1,5 +1,16 @@
 # Changelog
 
+## Unreleased — Avatar 2.2: cinematic rendering
+
+- **Bloom**: a small post-processing pipeline written for JARVIS (no extra library): bright edges and cores glow,
+  with a slight lens fringe and fine grain. Falls back to direct drawing if the device can't do it.
+- **Machined armour**: procedural panel seams and fine detail lines on every armour surface, with light running
+  through them; far faces are drawn dimmer, so the figure reads in depth rather than as a flat glow.
+- **Gold-white grading**: darker gold interior, crisp pale-gold and white edges, much less orange.
+- **Sculpted faceless helm**: one forward-sloping faceplate with a recessed sensor band and a thin centre ridge
+  (the brow/cheek frame that read like a face is gone); a V-tapered torso; an inner frame with circuitry seen
+  through the armour; calmer shoulders and platform.
+
 ## Unreleased — Avatar 2.1: livelier projection, more ways to evolve
 
 - **More alive at rest** (owner's choice): glances toward the message box or the side panels every ~6–11 s,

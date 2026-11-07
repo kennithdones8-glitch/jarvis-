@@ -45,33 +45,48 @@ const NUMERIC = ["eyes", "rim", "scan", "flow", "ring", "beam", "reactor", "neur
 
 // ---- shaders ---------------------------------------------------------------------------------------------------
 const VERT = `
-varying vec3 vNormal; varying vec3 vView; varying vec3 vWorld; varying vec2 vUv;
+varying vec3 vNormal; varying vec3 vView; varying vec3 vWorld; varying vec2 vUv; varying vec3 vObj; varying vec3 vObjN;
 void main() {
   vec4 world = modelMatrix * vec4(position, 1.0);
-  vWorld = world.xyz; vUv = uv;
+  vWorld = world.xyz; vUv = uv; vObj = position; vObjN = normal;
   vNormal = normalize(normalMatrix * normal);
   vec4 mv = viewMatrix * world;
   vView = -mv.xyz;
   gl_Position = projectionMatrix * mv;
 }`;
 
-// Holographic glass: bright rim (Fresnel), fine scan lines, a rising light band, optional energy pulses along a
-// path (uv.x), a materialisation edge, a fade into the projector beam, a floor reflection, and a faint projection
-// distortion. Shared uniforms (time, tint, gains) are the same objects in every material.
+// Holographic armour: a bright Fresnel rim over a dark gold interior; machined panel seams and fine detail lines
+// (triplanar, in the part's own space, so they stay put as it moves) with energy running along them; scan lines and
+// a rising light band; faces turned away drawn dimmer for depth; a materialisation edge; a fade into the projector
+// beam; a floor reflection; a faint projection distortion. Shared uniforms are the same objects in every material.
 const FRAG = `
-uniform vec3 uTint; uniform float uTime, uOpacity, uRim, uRimK, uGain, uSelf, uScan, uFlow, uFlowOn, uFlicker, uReveal, uFadeLow, uReflect, uCore;
-varying vec3 vNormal; varying vec3 vView; varying vec3 vWorld; varying vec2 vUv;
+uniform vec3 uTint; uniform float uTime, uOpacity, uRim, uRimK, uGain, uSelf, uScan, uFlow, uFlowOn, uFlicker, uReveal, uFadeLow, uReflect, uCore, uPanel, uPanelScale;
+varying vec3 vNormal; varying vec3 vView; varying vec3 vWorld; varying vec2 vUv; varying vec3 vObj; varying vec3 vObjN;
 float hash(float n) { return fract(sin(n) * 43758.5453); }
+float seam(vec2 p, float w) { vec2 g = abs(fract(p - 0.5) - 0.5) / max(fwidth(p), vec2(1e-4)); return 1.0 - min(min(g.x, g.y) / w, 1.0); }
+float tri(vec3 p, vec3 wt, float w) { return seam(p.yz, w) * wt.x + seam(p.xz, w) * wt.y + seam(p.xy, w) * wt.z; }
 void main() {
   float h = uReflect > 0.5 ? -vWorld.y : vWorld.y;
   if (h > uReveal) discard;
-  float fres = pow(1.0 - abs(dot(normalize(vNormal), normalize(vView))), 2.0);
-  float scan = mix(0.78, 1.0, 0.5 + 0.5 * sin(h * 70.0 - uTime * uScan * 5.0));
+  float facing = abs(dot(normalize(vNormal), normalize(vView)));
+  float fres = pow(1.0 - facing, 2.2);
+  float scan = mix(0.8, 1.0, 0.5 + 0.5 * sin(h * 70.0 - uTime * uScan * 5.0));
   float band = exp(-pow((fract(h * 0.16 - uTime * 0.05 * uScan) - 0.5) * 12.0, 2.0));
   float distort = 0.94 + 0.06 * sin(h * 9.0 + uTime * 2.3) * step(0.985, hash(floor(uTime * 3.0) + floor(h * 6.0)));
-  vec3 deep = uTint * vec3(0.95, 0.72, 0.38);
-  vec3 col = mix(deep * 0.45, mix(uTint, vec3(1.0, 0.97, 0.9), 0.22), pow(fres, 0.8)) + uTint * band * 0.3;
-  float a = (uCore + fres * uRim * uRimK * 0.7) * scan * uOpacity + band * 0.05;
+  vec3 deep = uTint * vec3(0.62, 0.44, 0.18);
+  vec3 edgeCol = mix(uTint, vec3(1.0, 0.98, 0.94), 0.55);
+  vec3 col = mix(deep * 0.5, edgeCol, pow(fres, 0.7)) + uTint * band * 0.3;
+  float a = (uCore + fres * uRim * uRimK * 0.75) * scan * uOpacity + band * 0.05;
+  if (uPanel > 0.0) {
+    vec3 wt = abs(normalize(vObjN)); wt /= (wt.x + wt.y + wt.z + 1e-4);
+    vec3 p = vObj * uPanelScale;
+    float major = tri(p, wt, 1.2);
+    float fine = tri(p * 3.0, wt, 0.8) * 0.35;
+    float run = exp(-pow((fract(vWorld.y * 0.45 - uTime * 0.12 * (0.6 + abs(uFlow))) - 0.5) * 18.0, 2.0));
+    float lines = (major + fine) * uPanel;
+    col += mix(uTint * 0.9, vec3(1.0, 0.97, 0.9), run) * lines * (0.7 + 1.6 * run);
+    a += lines * (0.22 + 0.5 * run) * uOpacity;
+  }
   if (uFlowOn > 0.5) {
     float d = fract(vUv.x * 3.0 - uTime * uFlow * 0.35);
     float pulse = smoothstep(0.0, 0.05, d) * smoothstep(0.22, 0.05, d);
@@ -79,10 +94,33 @@ void main() {
   }
   float edge = smoothstep(uReveal - 0.18, uReveal, h);
   col += vec3(1.0, 0.95, 0.85) * edge * 1.6; a += edge * 0.8;
+  a *= gl_FrontFacing ? 1.0 : 0.38;   // the far side of a shell is dimmer: depth instead of a flat glow
   a *= smoothstep(uFadeLow, uFadeLow + 0.9, h) * uGain * uSelf * distort;
   if (uReflect > 0.5) a *= 0.2 * smoothstep(-2.2, 0.0, vWorld.y);
   a *= 1.0 - uFlicker * step(0.55, hash(floor(uTime * 18.0))) * 0.65;
   gl_FragColor = vec4(col, clamp(a, 0.0, 1.0));
+}`;
+
+// ---- post-processing: bloom (bright edges and cores glow), a slight lens fringe and fine grain ------------------
+const QUAD_VERT = `varying vec2 vUv; void main() { vUv = uv; gl_Position = vec4(position.xy, 0.0, 1.0); }`;
+const BRIGHT_FRAG = `uniform sampler2D tSrc; uniform float uThr; varying vec2 vUv;
+void main() { vec4 c = texture2D(tSrc, vUv); float l = max(c.r, max(c.g, c.b));
+  gl_FragColor = vec4(c.rgb * smoothstep(uThr, uThr + 0.4, l), 1.0); }`;
+const BLUR_FRAG = `uniform sampler2D tSrc; uniform vec2 uDir; varying vec2 vUv;
+void main() { vec3 s = texture2D(tSrc, vUv).rgb * 0.227;
+  s += (texture2D(tSrc, vUv + uDir * 1.385).rgb + texture2D(tSrc, vUv - uDir * 1.385).rgb) * 0.316;
+  s += (texture2D(tSrc, vUv + uDir * 3.231).rgb + texture2D(tSrc, vUv - uDir * 3.231).rgb) * 0.070;
+  gl_FragColor = vec4(s, 1.0); }`;
+const COMPOSITE_FRAG = `uniform sampler2D tScene, tB1, tB2; uniform float uB1, uB2, uCA, uTime; uniform vec2 uRes; varying vec2 vUv;
+float hash(vec2 p) { return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453); }
+void main() {
+  vec2 off = (vUv - 0.5) * uCA;
+  vec4 s = texture2D(tScene, vUv);
+  vec3 col = vec3(texture2D(tScene, vUv + off).r, s.g, texture2D(tScene, vUv - off).b);
+  col += texture2D(tB1, vUv).rgb * uB1 + texture2D(tB2, vUv).rgb * uB2;
+  col += (hash(vUv * uRes + uTime) - 0.5) * 0.02 * col;
+  float a = clamp(max(s.a, max(col.r, max(col.g, col.b))), 0.0, 1.0);
+  gl_FragColor = vec4(min(col, vec3(a)), a);
 }`;
 
 const BEAM_VERT = `
@@ -153,8 +191,8 @@ void main() { vec2 c = gl_PointCoord - 0.5; if (abs(c.y) > 0.1 || abs(c.x) > 0.4
 
 // ---- geometry helpers ------------------------------------------------------------------------------------------
 const V2 = (x, y) => new THREE.Vector2(x, y);
-const TORSO = [V2(1.2, 0.45), V2(1.3, 1.1), V2(1.42, 1.75), V2(1.5, 2.2), V2(1.48, 2.45), V2(1.36, 2.62), V2(1.05, 2.78),
-               V2(0.62, 2.88), V2(0.34, 2.93)];
+const TORSO = [V2(0.92, 0.45), V2(1.0, 1.0), V2(1.2, 1.55), V2(1.42, 2.05), V2(1.5, 2.35), V2(1.42, 2.58), V2(1.12, 2.76),
+               V2(0.64, 2.88), V2(0.34, 2.93)];
 const TORSO_Z = 0.5;
 function torsoRadius(y) {
   for (let i = 1; i < TORSO.length; i++) {
@@ -195,6 +233,48 @@ export function create(wrap, opts = {}) {
   canvas.setAttribute("aria-hidden", "true");
   wrap.prepend(canvas);
 
+  // post-processing targets (half-float where supported, so glow can exceed 1 before the bloom)
+  const post = (() => {
+    try {
+      const hf = renderer.capabilities.isWebGL2 && renderer.extensions.has("EXT_color_buffer_float");
+      const opt = { type: hf ? THREE.HalfFloatType : THREE.UnsignedByteType };
+      const rt = () => new THREE.WebGLRenderTarget(1, 1, opt);
+      const t = { scene: new THREE.WebGLRenderTarget(1, 1, { ...opt, depthBuffer: true }), a1: rt(), b1: rt(), a2: rt(), b2: rt() };
+      const quadScene = new THREE.Scene(), quadCam = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
+      const quad = new THREE.Mesh(new THREE.PlaneGeometry(2, 2)); quadScene.add(quad); quad.frustumCulled = false;
+      const mat = (frag, uniforms) => new THREE.ShaderMaterial({ vertexShader: QUAD_VERT, fragmentShader: frag, uniforms, depthTest: false, depthWrite: false });
+      const bright = mat(BRIGHT_FRAG, { tSrc: { value: null }, uThr: { value: 0.5 } });
+      const blur = mat(BLUR_FRAG, { tSrc: { value: null }, uDir: { value: new THREE.Vector2() } });
+      const copy = mat(BLUR_FRAG, { tSrc: { value: null }, uDir: { value: new THREE.Vector2(0, 0) } });
+      const comp = mat(COMPOSITE_FRAG, { tScene: { value: null }, tB1: { value: null }, tB2: { value: null }, uB1: { value: 1.1 }, uB2: { value: 0.9 },
+                                          uCA: { value: 0.004 }, uTime: { value: 0 }, uRes: { value: new THREE.Vector2(1, 1) } });
+      const pass = (m, target) => { quad.material = m; renderer.setRenderTarget(target); renderer.render(quadScene, quadCam); };
+      const blurInto = (src, tmp, w, h) => {
+        blur.uniforms.tSrc.value = src.texture; blur.uniforms.uDir.value.set(1 / w, 0); pass(blur, tmp);
+        blur.uniforms.tSrc.value = tmp.texture; blur.uniforms.uDir.value.set(0, 1 / h); pass(blur, src);
+      };
+      return {
+        size(w, h) {
+          t.scene.setSize(w, h);
+          const w1 = Math.max(1, w >> 1), h1 = Math.max(1, h >> 1), w2 = Math.max(1, w >> 2), h2 = Math.max(1, h >> 2);
+          t.a1.setSize(w1, h1); t.b1.setSize(w1, h1); t.a2.setSize(w2, h2); t.b2.setSize(w2, h2);
+          this.dims = [w1, h1, w2, h2]; comp.uniforms.uRes.value.set(w, h);
+        },
+        begin() { renderer.setRenderTarget(t.scene); renderer.clear(); },
+        end(time, gain) {
+          const [w1, h1, w2, h2] = this.dims;
+          bright.uniforms.tSrc.value = t.scene.texture; pass(bright, t.a1);
+          blurInto(t.a1, t.b1, w1, h1);
+          copy.uniforms.tSrc.value = t.a1.texture; pass(copy, t.a2);
+          blurInto(t.a2, t.b2, w2, h2); blurInto(t.a2, t.b2, w2, h2);
+          comp.uniforms.tScene.value = t.scene.texture; comp.uniforms.tB1.value = t.a1.texture; comp.uniforms.tB2.value = t.a2.texture;
+          comp.uniforms.uB1.value = 0.75 * gain; comp.uniforms.uB2.value = 0.6 * gain; comp.uniforms.uTime.value = time;
+          renderer.setRenderTarget(null); renderer.clear(); pass(comp, null);
+        },
+      };
+    } catch (e) { return null; }   // no post-processing: draw directly (still correct, just without the glow)
+  })();
+
   const scene = new THREE.Scene();
   const camera = new THREE.PerspectiveCamera(28, 20 / 27, 0.1, 60);
   camera.position.set(0, 2.85, 11.5);
@@ -214,7 +294,11 @@ export function create(wrap, opts = {}) {
       blending: THREE.AdditiveBlending,
       uniforms: { ...U, uOpacity: { value: o.opacity ?? 0.9 }, uRim: { value: o.rim ?? 1 }, uFlowOn: { value: o.flow ? 1 : 0 },
                   uCore: { value: o.core ?? 0.035 }, uFadeLow: { value: o.fadeLow ?? -10 }, uSelf: o.self || { value: 1 },
-                  uReveal: building ? building.reveal : { value: 10 } },
+                  uReveal: building ? building.reveal : { value: 10 },
+                  // armour surfaces (low inner glow, no energy flow) get machined panel seams unless told otherwise
+                  uPanel: { value: o.panel ?? ((o.core ?? 0.035) < 0.2 && !o.flow && !o.self ? 0.85 : 0) },
+                  uPanelScale: { value: o.panelScale ?? 6 } },
+      extensions: { derivatives: true },
     });
     return m;
   }
@@ -258,7 +342,7 @@ export function create(wrap, opts = {}) {
   // ---- projection platform -----------------------------------------------------------------------------------------
   const spinners = [];
   part("pad", 1, (add) => {
-    const disc = add(new THREE.Mesh(new THREE.CylinderGeometry(1.25, 1.35, 0.06, 64, 1, false), holo({ opacity: 0.8, rim: 1.2, core: 0.12 })), scene);
+    const disc = add(new THREE.Mesh(new THREE.CylinderGeometry(1.25, 1.35, 0.06, 64, 1, false), holo({ opacity: 0.45, rim: 1.0, core: 0.05, panel: 0.5, panelScale: 3 })), scene);
     disc.position.y = BASE_Y + 0.03 * SCALE; disc.scale.setScalar(SCALE);
     for (const [r, o, dir] of [[1.45, 0.7, 1], [1.05, 0.5, 1], [1.7, 0.35, -1], [1.95, 0.22, 1]]) {
       const ring = add(new THREE.Mesh(new THREE.TorusGeometry(r, 0.012, 6, 128), holo({ opacity: o, rim: 1.4, flow: true, core: 0.4 })), scene);
@@ -271,6 +355,13 @@ export function create(wrap, opts = {}) {
   });
 
   // ---- body -------------------------------------------------------------------------------------------------------
+  part("internals", 1, (add) => {   // an inner frame with circuitry, seen through the outer armour
+    const inner = new THREE.LatheGeometry(TORSO.map((v) => V2(v.x * 0.72, v.y)), 32);
+    const m = add(new THREE.Mesh(inner, holo({ opacity: 0.45, rim: 0.6, core: 0.02, panel: 1.3, panelScale: 11, fadeLow: 0.6 })));
+    m.scale.z = TORSO_Z * 0.8;
+    const spine = new THREE.CatmullRomCurve3([[0, 0.8], [0, 1.4], [0, 2.0], [0, 2.6], [0, 2.95]].map(([x, y]) => new THREE.Vector3(x, y, -0.15)));
+    add(new THREE.Mesh(new THREE.TubeGeometry(spine, 30, 0.03, 6, false), holo({ opacity: 0.5, rim: 0.8, flow: true, core: 0.12, fadeLow: 0.6 })));
+  });
   part("torso", 1, (add) => {
     const geo = new THREE.LatheGeometry(TORSO, 56);
     const m = add(new THREE.Mesh(geo, holo({ opacity: 0.85, fadeLow: 0.5 })));
@@ -330,8 +421,8 @@ export function create(wrap, opts = {}) {
     for (const s of [-1, 1]) for (let i = 0; i < 3; i++) {   // layered shoulder lames
       const r = 0.66 - i * 0.08;
       const g = facet(new THREE.SphereGeometry(r, 14, 6, 0, Math.PI * 2, 0, Math.PI / 2));
-      const m = add(new THREE.Mesh(g, holo({ opacity: 1 - i * 0.1, rim: 1.6, core: 0.07 })));
-      m.position.set((1.3 + i * 0.07) * s, 2.56 - i * 0.16, 0); m.scale.set(1, 0.5, 0.85); m.rotation.z = -0.52 * s;
+      const m = add(new THREE.Mesh(g, holo({ opacity: 0.8 - i * 0.12, rim: 1.25, core: 0.04 })));
+      m.position.set((1.28 + i * 0.07) * s, 2.56 - i * 0.16, 0); m.scale.set(0.92, 0.46, 0.8); m.rotation.z = -0.52 * s;
       edged(add, g, m, 0.3 - i * 0.05);
     }
   });
@@ -346,7 +437,7 @@ export function create(wrap, opts = {}) {
       br.position.set(1.6 * s, 1.85, -0.03); br.rotation.z = 0.12 * s;
       edged(add, g, br, 0.28, inner);
       const couter = add(new THREE.Mesh(facet(new THREE.SphereGeometry(0.2, 10, 6)), holo({ opacity: 0.9, rim: 1.5, fadeLow: 0.55 })), inner);
-      couter.position.set(1.66 * s, 1.08, 0.12); couter.scale.set(1, 0.8, 0.6);
+      couter.position.set(1.66 * s, 1.1, 0.1); couter.scale.set(0.7, 0.55, 0.45);
       // internal energy pathway down the arm, and a shoulder actuator
       const path = new THREE.CatmullRomCurve3([[1.42, 2.5], [1.58, 2.1], [1.68, 1.6], [1.7, 1.15]].map(([x, y]) => new THREE.Vector3(x * s, y, 0.3)));
       add(new THREE.Mesh(new THREE.TubeGeometry(path, 30, 0.01, 4, false), holo({ opacity: 0.9, rim: 1, flow: true, core: 0.3, fadeLow: 0.6 })), inner);
@@ -369,16 +460,6 @@ export function create(wrap, opts = {}) {
     const crestGeo = new THREE.TorusGeometry(0.86, 0.055, 4, 64, 2.75).rotateZ(0.22);   // knight crest blade, taller
     const crest = add(new THREE.Mesh(crestGeo, holo({ opacity: 1, rim: 1.8, core: 0.25 })), head);
     crest.rotation.y = Math.PI / 2; crest.position.y = 3.96; crest.scale.set(1, 1, 0.4);
-    const fore = plate(shapeOf([[-0.3, 0], [0.3, 0], [0.22, 0.26], [0, 0.34], [-0.22, 0.26]]), 0.04);   // forehead plate
-    const fp = add(new THREE.Mesh(fore, holo({ opacity: 1, rim: 1.6, core: 0.08 })), head);
-    fp.position.set(0, 4.12, 0.58); fp.rotation.x = -0.45;
-    edged(add, fore, fp, 0.38, head);
-    for (const sd of [-1, 1]) {   // temple plates
-      const tg = plate(shapeOf([[0, 0.18], [0.24, 0.12], [0.22, -0.16], [0, -0.1]]), 0.035);
-      const tp = add(new THREE.Mesh(tg, holo({ opacity: 1, rim: 1.6, core: 0.08 })), head);
-      tp.position.set(0.5 * sd, 4.05, 0.42); tp.scale.x = sd; tp.rotation.set(0, 0.95 * sd, 0.1 * sd);
-      edged(add, tg, tp, 0.36, head);
-    }
     for (const s of [-1, 1]) {   // swept side guards with sensor discs
       const g = plate(shapeOf([[-0.22, 0.12], [0.1, 0.16], [0.16, -0.08], [0.02, -0.34], [-0.2, -0.26]]), 0.035);
       const m = add(new THREE.Mesh(g, holo({ opacity: 1, rim: 1.5, core: 0.08 })), head);
@@ -389,29 +470,33 @@ export function create(wrap, opts = {}) {
     }
   });
   part("faceplate", 1, (add) => {
-    // layered, faceless: a smooth visor shell over a darker inner plate, a V-brow, and plated cheeks and chin
-    const visor = new THREE.SphereGeometry(0.735, 40, 16, Math.PI / 2 - 0.9, 1.8, 1.32, 0.5);
-    add(new THREE.Mesh(visor, holo({ opacity: 0.9, rim: 1.6, core: 0.06 })), head).position.set(0, 3.9, 0.02);
-    const browGeo = plate(shapeOf([[-0.52, 0.1], [0, 0.0], [0.52, 0.1], [0.5, 0.16], [0, 0.07], [-0.5, 0.16]]), 0.06);
-    const brow = add(new THREE.Mesh(browGeo, holo({ opacity: 1, rim: 1.8, core: 0.14 })), head);
-    brow.position.set(0, 4.03, 0.6); brow.rotation.x = -0.2;
-    edged(add, browGeo, brow, 0.45, head);
-    for (const s of [-1, 1]) {
-      const cg = plate(shapeOf([[0.05, 0.0], [0.42, 0.04], [0.4, -0.2], [0.2, -0.46], [0.04, -0.44]]), 0.04);
-      const c = add(new THREE.Mesh(cg, holo({ opacity: 1, rim: 1.5, core: 0.07 })), head);
-      c.position.set(0, 3.78, 0.56); c.scale.x = s; c.rotation.set(-0.08, 0.55 * s, 0);
-      edged(add, cg, c, 0.34, head);
+    // one sculpted, forward-sloping faceplate (no face): a smooth upper visor, a recessed sensor band, a lower
+    // shield that narrows to the chin, and a thin centre ridge
+    const upper = new THREE.SphereGeometry(0.75, 48, 16, Math.PI / 2 - 1.0, 2.0, 0.9, 0.72);
+    const u = add(new THREE.Mesh(upper, holo({ opacity: 0.95, rim: 1.7, core: 0.05, panel: 0.6, panelScale: 9 })), head);
+    u.position.set(0, 3.9, 0.02); u.scale.set(1, 1.05, 1.04);
+    const lowerProfile = [V2(0.7, 3.86), V2(0.68, 3.7), V2(0.6, 3.52), V2(0.44, 3.36), V2(0.22, 3.26), V2(0.02, 3.22)];
+    const lower = new THREE.LatheGeometry(lowerProfile, 40, -0.95, 1.9);   // lathe: phi = 0 faces forward (+z)
+    const l = add(new THREE.Mesh(lower, holo({ opacity: 0.95, rim: 1.7, core: 0.05, panel: 0.7, panelScale: 9 })), head);
+    l.position.z = 0.03; l.scale.z = 1.06;
+    edged(add, lower, l, 0.22, head);
+    const band = new THREE.CylinderGeometry(0.735, 0.735, 0.13, 48, 1, true, -0.85, 1.7);   // recessed sensor band
+    const b = add(new THREE.Mesh(band, holo({ opacity: 1.1, rim: 1.2, core: 0.16, panel: 0 })), head);
+    b.position.set(0, 3.92, 0.0);
+    for (const y of [3.995, 3.845]) {   // the band's lit edges
+      const e = add(new THREE.Mesh(new THREE.TorusGeometry(0.745, 0.006, 4, 64, 1.7).rotateZ(Math.PI / 2 - 0.85),
+        holo({ opacity: 1.2, rim: 1, core: 0.9, self: EYE })), head);
+      e.rotation.x = Math.PI / 2; e.position.y = y;
     }
-    const chinGeo = plate(shapeOf([[-0.22, 0.02], [0.22, 0.02], [0.16, -0.16], [0, -0.22], [-0.16, -0.16]]), 0.05);   // solid chin plate, no mouth
-    const chin = add(new THREE.Mesh(chinGeo, holo({ opacity: 1, rim: 1.5, core: 0.1 })), head);
-    chin.position.set(0, 3.38, 0.6); chin.rotation.x = 0.28;
-    edged(add, chinGeo, chin, 0.4, head);
+    const ridge = new THREE.TorusGeometry(0.77, 0.012, 4, 40, 1.2).rotateZ(-0.35);   // thin centre ridge, brow to chin
+    const r = add(new THREE.Mesh(ridge, holo({ opacity: 1, rim: 1.6, core: 0.5 })), head);
+    r.rotation.y = -Math.PI / 2; r.position.set(0, 3.8, 0);   // turns the arc's +x side to face forward
   });
   // optical sensors: lens rings with a glowing iris (no human eyes, no mouth); brighter when attending or speaking
   const eyeGlows = [], irises = [], sparks = [];
   part("sensors", 1, (add) => {
     for (const s of [-1, 1]) {
-      const at = new THREE.Vector3(0.24 * s, 3.92, 0.73);
+      const at = new THREE.Vector3(0.22 * s, 3.92, 0.715);
       const hex = add(lines(new THREE.CylinderGeometry(0.12, 0.12, 0.01, 6).rotateX(Math.PI / 2), 0.55, 1), head);   // sensor housing
       hex.position.copy(at); hex.rotation.y = 0.32 * s; hex.scale.y = 0.62;
       const spark = add(new THREE.Mesh(new THREE.SphereGeometry(0.012, 6, 4), holo({ opacity: 2, core: 2, self: EYE })), head);
@@ -429,7 +514,8 @@ export function create(wrap, opts = {}) {
   });
   // internal mechanics visible through the glass: slowly turning gear rings inside the helm
   part("mechanics", 1, (add) => {
-    for (const [r, y, z, sp] of [[0.26, 4.25, 0.05, 0.3], [0.18, 4.25, 0.05, -0.5], [0.2, 3.6, 0.1, 0.4]]) {
+    // gears sit high in the crown only: anything lower shows through the glass as a face feature
+    for (const [r, y, z, sp] of [[0.26, 4.28, 0.0, 0.3], [0.18, 4.28, 0.0, -0.5]]) {
       const g = add(new THREE.Mesh(new THREE.TorusGeometry(r, 0.01, 4, 6 + Math.round(r * 40)), holo({ opacity: 0.6, rim: 1.2, core: 0.25 })), head);
       g.position.set(0, y, z);
       spinners.push({ obj: g, speed: sp, axis: "z" });
@@ -803,7 +889,7 @@ export function create(wrap, opts = {}) {
     }
     // draw: the figure and environment, then the floor reflection as a second pass of the same figure
     renderer.info.reset();
-    renderer.clear();
+    if (post) post.begin(); else renderer.clear();
     renderer.render(scene, camera);
     // the head reflects ~4 units below the floor, where the reflection has faded to nothing: skip it
     const hidden = [beam, dust, data, sweep, net.g, orbits, reactor, grid, baseGlow, headPivot, ...shafts, ...pulses.map((p) => p.m), ...eyeGlows, ...parts.pad.objs];
@@ -815,6 +901,7 @@ export function create(wrap, opts = {}) {
     figure.scale.y = SCALE; U.uReflect.value = 0;
     hidden.forEach((o, i) => { o.visible = was[i]; });
     for (const m of lineMats) m.visible = true;
+    if (post) post.end(t, intensity);
     settling -= dt;
     if (moving || revealing || settling > 0 && mode === "full") raf = requestAnimationFrame(frame);
   }
@@ -835,6 +922,7 @@ export function create(wrap, opts = {}) {
     const r = wrap.getBoundingClientRect();
     if (!r.width || !r.height) return;
     renderer.setSize(r.width, r.height, false);
+    if (post) { const v = renderer.getDrawingBufferSize(new THREE.Vector2()); post.size(v.x, v.y); }
     camera.aspect = r.width / r.height; camera.updateProjectionMatrix();
     kick();
   }

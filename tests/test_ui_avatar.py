@@ -291,3 +291,15 @@ def test_idle_liveliness_is_limited_to_rest_and_never_fakes_activity():
     pats = set(re.findall(r'rpat: "(\w+)"', AV3))
     assert pats <= {"calm", "spin", "scan", "beat", "surge", "stutter", "still"}
     assert len(re.findall(r'rpat: "\w+"', AV3)) == len(json.loads(re.search(r"const STATES = (\[.*?\]);", AV, re.S).group(1)))
+
+
+def test_bloom_and_surface_detail_are_local_and_fail_safe():
+    # post-processing is our own small pipeline (no extra library) and the projection still draws without it
+    assert "} catch (e) { return null; }   // no post-processing: draw directly" in AV3
+    assert "if (post) post.begin(); else renderer.clear();" in AV3 and "if (post) post.end(t, intensity);" in AV3
+    assert AV3.count('from "/static/vendor/three.module.min.js"') == 1 and "import(" not in AV3
+    # surfaces turned away are dimmer (depth), and armour gets panel seams; glowing parts stay smooth
+    assert "a *= gl_FrontFacing ? 1.0 : 0.38;" in AV3
+    assert "uPanel: { value: o.panel ?? ((o.core ?? 0.035) < 0.2 && !o.flow && !o.self ? 0.85 : 0) }" in AV3
+    # composite output stays valid for a transparent canvas (colour never exceeds alpha)
+    assert "gl_FragColor = vec4(min(col, vec3(a)), a);" in AV3
