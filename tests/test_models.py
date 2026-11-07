@@ -369,3 +369,27 @@ def test_quick_mode_keeps_the_fast_model_even_for_maths(model_kernel):
     assert not [e for e in k.audit.entries(limit=50) if e["event"] == "model.reasoning_local"]
     kept_local = Need("chat", prefer="speed", local_only=True)  # kept local by routing, not by the owner: upgraded
     assert k.models.complete(kept_local, req(SYSTEM, Message("user", FLOUR)), purpose="chat").model == "mid:7b"
+
+
+# ---- warm-up at start (owner's choice, 0.19.1) ----------------------------------------------------------------------
+def test_local_models_are_loaded_at_start_fastest_first_and_nothing_is_generated(model_kernel):
+    k, ollama, openai = model_kernel(local_installed=("small:3b", "mid:7b"), extra_local=(
+        f"[[providers.ollama.models]]\n{model_block('mid:7b', 3, 2)}"))
+    done = k.models.warm_local()
+    assert list(done) == ["ollama/small:3b", "ollama/mid:7b"]  # the fast everyday model is ready first
+    bodies = [r["body"] for r in ollama.received if r["path"] == "/api/chat"]
+    assert [b["model"] for b in bodies] == ["small:3b", "mid:7b"]
+    assert all(b["messages"] == [] and b["keep_alive"] for b in bodies)  # load only: no question, no answer
+    assert openai.received == []  # cloud models are never warmed
+    [ev] = [e["payload"] for e in k.audit.entries(limit=50) if e["event"] == "models.warmed"]
+    assert set(ev["models"]) == set(done)
+
+
+def test_warm_up_respects_the_emergency_stop_and_survives_ollama_being_down(model_kernel):
+    k, ollama, _ = model_kernel()
+    k.killswitch.engage(reason="test", by="user:test")
+    assert k.models.warm_local() == {} and not [r for r in ollama.received if r["path"] == "/api/chat"]
+    k.killswitch.release(by="user:test", confirm=True)
+    ollama.stop()
+    out = k.models.warm_local()  # Ollama not running: noted, never raised
+    assert all(str(v).startswith(("unavailable", "failed")) for v in out.values())

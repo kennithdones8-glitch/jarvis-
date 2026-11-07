@@ -221,3 +221,39 @@ def test_reminders_say_how_far_off_they_are():
     text = render(("reminders", "list"), {"reminders": [{"title": "Pay rent", "due": (now - timedelta(days=1)).isoformat(),
                                                           "list": "Home"}, {"title": "Milk", "due": None, "list": "Home"}]})
     assert "Pay rent (due " in text and "OVERDUE by 1 day)" in text and "- Milk [Home]" in text
+
+
+# ---- "tomorrow" is worked out by JARVIS, not the small model (owner's Mac, 0.18.3 benchmark) ----------------------
+def test_named_days_come_from_the_clock():
+    from datetime import date
+    from jarvis.orchestrator.lookup import named_days
+    fri = date(2026, 11, 6)  # a Friday
+    assert named_days("Am I free tomorrow between 2pm and 3:30pm?", fri) == [date(2026, 11, 7)]
+    assert named_days("what's on today and tonight", fri) == [fri]
+    assert named_days("the day after tomorrow", fri) == [date(2026, 11, 8)]
+    assert named_days("Am I free on Monday?", fri) == [date(2026, 11, 9)]
+    assert named_days("Anything on Friday?", fri) == [fri] and named_days("next Friday", fri) == [date(2026, 11, 13)]
+    assert named_days("Explain how rainbows form", fri) == []
+
+
+def test_a_lookup_of_the_wrong_day_is_corrected_to_the_day_asked_about(env):
+    """Real failure: asked late on Fri 6 Nov about tomorrow, the small model looked up Friday, found nothing, and
+    made up a "Meeting with John". Now JARVIS widens the lookup to tomorrow itself, and says so."""
+    d, script, seen, fake, _ = env
+    now = datetime.now().astimezone()
+    today = {"from": now.replace(hour=20, minute=0).isoformat(), "to": now.replace(hour=23, minute=0).isoformat()}
+    script["lookups"] = [{"tool": "calendar", "action": "events", "args": today}]
+    r = chat(d, "Am I free tomorrow between 2pm and 3:30pm? And what's my first commitment tomorrow?")
+    asked = fake.calls[0][1]
+    tomorrow = (now + timedelta(days=1)).date()
+    assert datetime.fromisoformat(asked["from"]).date() <= tomorrow < datetime.fromisoformat(asked["to"]).date()
+    assert "Dentist" in seen["answer_prompts"][-1]  # tomorrow's event reaches the answering model
+    assert any("corrected to cover" in n for n in r["lookup_notes"])  # and the correction is shown, not hidden
+    assert r["checked"][0].endswith(f"{(now + timedelta(days=1)):%a %d %b}")
+
+
+def test_a_right_lookup_is_left_alone(env):
+    d, script, seen, fake, _ = env
+    script["lookups"] = [{"tool": "calendar", "action": "events", "args": week()}]
+    r = chat(d, "Am I free tomorrow afternoon?")
+    assert not any("corrected" in n for n in r["lookup_notes"])

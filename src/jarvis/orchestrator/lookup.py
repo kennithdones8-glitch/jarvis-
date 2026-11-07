@@ -16,7 +16,7 @@ import json
 import re
 import time
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from typing import Any
 
 from ..core.killswitch import EmergencyStop
@@ -116,7 +116,8 @@ class LookupService:
             if plan.get("difficulty") in ("simple", "medium", "hard"):
                 result.level = plan["difficulty"]
             if actions:
-                result.context, result.checked, result.notes = self._execute(plan.get("lookups"), actions, result.why)
+                result.context, result.checked, result.notes = self._execute(plan.get("lookups"), actions, result.why,
+                                                                             message=message)
         self._cache = {k: v for k, v in self._cache.items() if time.monotonic() - v[0] < CACHE_S}
         self._cache[key] = (time.monotonic(), result)
         return result
@@ -142,8 +143,8 @@ class LookupService:
         return data
 
     # ---- execute (read-only, through the gateway) -------------------------------------------------------------
-    def _execute(self, lookups: Any, actions: list[tuple[str, str]],
-                 why: list[str] | None = None) -> tuple[Message | None, list[str], list[str]]:
+    def _execute(self, lookups: Any, actions: list[tuple[str, str]], why: list[str] | None = None,
+                 message: str = "") -> tuple[Message | None, list[str], list[str]]:
         why = why if why is not None else []
         if not isinstance(lookups, list):
             why.append("the model chose no lookups" if lookups in (None, []) else "lookups were not a list")
@@ -166,6 +167,11 @@ class LookupService:
                 continue
             if key == ("calendar", "events"):
                 args = whole_days(args)  # "free 2–3:30, and what's first?" needs the whole day, not just 2–3:30
+                fixed = cover_named_days(args, message)  # "tomorrow" is worked out here, never by the small model
+                if fixed is not args:
+                    why.append(f"calendar dates corrected to cover {describe(key, fixed).split(', ', 1)[1]}, "
+                               "the day(s) your message names")
+                    args = fixed
             label = describe(key, args)
             spec = self.kernel.registry.action(*key)
             resource = args.get(spec.resource_arg) if spec.resource_arg else None
@@ -235,6 +241,57 @@ def whole_days(args: dict) -> dict:
     return {**args, "from": day0.isoformat(), "to": day1.isoformat()}
 
 
+WEEKDAYS = ("monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday")
+DAY_WORDS = re.compile(r"\b(day after tomorrow|tomorrow|tonight|today|this (?:morning|afternoon|evening)|"
+                       r"(?:next |this |on )?(?:monday|tuesday|wednesday|thursday|friday|saturday|sunday))\b", re.I)
+
+
+def named_days(message: str, today: date | None = None) -> list[date]:
+    """The days a message names ("tomorrow", "tonight", "on Friday"…), worked out from the Mac's clock. Small models
+    get "tomorrow" wrong, especially late in the evening, so JARVIS never leaves it to them."""
+    today = today or datetime.now().astimezone().date()
+    days = []
+    for m in DAY_WORDS.finditer(message or ""):
+        word = m.group(1).lower()
+        if word == "day after tomorrow":
+            d = today + timedelta(days=2)
+        elif word == "tomorrow":
+            d = today + timedelta(days=1)
+        elif word in ("today", "tonight") or word.startswith("this ") and word.split()[1] not in WEEKDAYS:
+            d = today
+        else:
+            name = word.split()[-1]
+            ahead = (WEEKDAYS.index(name) - today.weekday()) % 7
+            if word.startswith("next ") and ahead == 0:
+                ahead = 7
+            d = today + timedelta(days=ahead)
+        if d not in days:
+            days.append(d)
+    if "day after tomorrow" in (message or "").lower():  # "tomorrow" inside it isn't a day of its own
+        days = [d for d in days if d != today + timedelta(days=1)] or days
+    return days
+
+
+def cover_named_days(args: dict, message: str, today: date | None = None) -> dict:
+    """A calendar lookup that also covers every day the message names (whole local days). Returns ``args`` itself
+    when they already do, so a caller can tell nothing changed."""
+    days = named_days(message, today)
+    if not days:
+        return args
+    try:
+        start = datetime.fromisoformat(args["from"].replace("Z", "+00:00")).astimezone()
+        end = datetime.fromisoformat(args["to"].replace("Z", "+00:00")).astimezone()
+    except (KeyError, AttributeError, ValueError):
+        start = end = None
+
+    def midnight(d: date) -> datetime:
+        return datetime(d.year, d.month, d.day).astimezone()
+    lo, hi = midnight(min(days)), midnight(max(days) + timedelta(days=1))
+    if start is not None and start <= lo and end >= hi:
+        return args
+    return {**args, "from": lo.isoformat(), "to": hi.isoformat()}
+
+
 def _key(item: dict) -> tuple[str, str]:
     """The (tool, action) a lookup names, also accepting the "calendar.events" spelling small models often use."""
     tool, action = item.get("tool"), item.get("action")
@@ -250,6 +307,16 @@ def _local(iso: str | None, fmt: str = "%a %d %b %H:%M") -> str:
         return ""
     try:
         return datetime.fromisoformat(iso.replace("Z", "+00:00")).astimezone().strftime(fmt)
+    except ValueError:
+        return iso
+
+
+def _before(iso: str | None) -> str | None:
+    """The moment just before ``iso``: a lookup up to midnight covers the day before it, not the day it starts."""
+    if not iso:
+        return iso
+    try:
+        return (datetime.fromisoformat(iso.replace("Z", "+00:00")) - timedelta(seconds=1)).isoformat()
     except ValueError:
         return iso
 
@@ -270,7 +337,8 @@ def _when(iso: str) -> str:
 def describe(key: tuple[str, str], args: dict) -> str:
     tool, action = key
     if key == ("calendar", "events"):
-        return f"Calendar, {_local(args.get('from'), '%a %d %b')}–{_local(args.get('to'), '%a %d %b')}"
+        first, last = _local(args.get("from"), "%a %d %b"), _local(_before(args.get("to")), "%a %d %b")
+        return f"Calendar, {first}" + (f"–{last}" if last and last != first else "")
     if tool == "reminders":
         return f"Reminders{': ' + args['list'] if args.get('list') else ''}"
     if key == ("notes", "search"):

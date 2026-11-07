@@ -14,7 +14,7 @@ from __future__ import annotations
 import re
 import time
 from dataclasses import dataclass, field, replace
-from typing import Iterable, Literal
+from typing import Any, Iterable, Literal
 
 from ..core.audit import AuditLog
 from ..core.killswitch import KillSwitch
@@ -222,6 +222,32 @@ class ModelService:
             note = f"Answered locally — {why}."
             self.audit.record("model.fallback", task_id=task_id, model=f"{r.provider}/{r.model}", reason=why)
             return replace(r, note=note)
+
+    def warm_local(self) -> dict[str, Any]:
+        """Load every installed local model into memory, fastest first (owner's choice, 0.19.1): the first question
+        after JARVIS starts no longer waits 10-30 s for a model to load. Nothing is generated or sent anywhere; an
+        engaged emergency stop skips it. Recorded in the audit log (model names and seconds only)."""
+        if self.killswitch.engaged():
+            return {}
+        done: dict[str, Any] = {}
+        for provider in self.router.local.values():
+            warm = getattr(provider, "warm", None)
+            if warm is None:
+                continue
+            try:
+                installed = provider.available_models()
+            except ProviderError as exc:
+                done[provider.name] = f"unavailable: {str(exc)[:120]}"
+                continue
+            for mid in sorted(installed, key=lambda m: -provider.models[m].speed):
+                if self.killswitch.engaged():
+                    break
+                try:
+                    done[f"{provider.name}/{mid}"] = round(warm(mid), 1)
+                except ProviderError as exc:
+                    done[f"{provider.name}/{mid}"] = f"failed: {str(exc)[:120]}"
+        self.audit.record("models.warmed", models=done)
+        return done
 
     def _strong_local_for_reasoning(self, need: Need, request: ChatRequest, task_id: str | None) -> Need:
         """When a chat answer will come from this Mac anyway (local_first, or kept local), maths, logic and code go to

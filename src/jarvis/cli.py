@@ -140,6 +140,8 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--rescored", action="store_true", help="compare: use runs' re-scored results where they exist")
     p = sub.add_parser("mac", help="Mac apps (Calendar, Reminders, Notes): check — read-only test that also lets macOS ask for permission")
     p.add_argument("op", choices=["check"])
+    p = sub.add_parser("checkup", help="look-only health check of this Mac (updates, disk, CPU, battery…) with advice")
+    p.add_argument("--updates", action="store_true", help="also ask Software Update which macOS updates exist")
     p = sub.add_parser("doctor", help="check the whole installation and say what to fix")
     p.add_argument("--port", type=int, default=8765)
     p.add_argument("--json", action="store_true")
@@ -257,6 +259,13 @@ def main(argv: list[str] | None = None) -> int:
             return _bench(kernel, args)
         elif args.cmd == "mac":
             return _mac_check()
+        elif args.cmd == "checkup":
+            from .checkup import WARN, Checkup, report
+
+            findings = Checkup().all(updates=args.updates)
+            kernel.audit.record("checkup.run", checks=len(findings), warnings=sum(f.status == WARN for f in findings),
+                                updates=args.updates)  # counts only: no process names, sizes or versions
+            print(report(findings))
         elif args.cmd == "doctor":
             from .doctor import FAIL, Doctor, as_json, report
 

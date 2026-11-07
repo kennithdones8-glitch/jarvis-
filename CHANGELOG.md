@@ -1,5 +1,22 @@
 # Changelog
 
+## Unreleased: right day, warm start, Mac checkup (branch `checkup-v1`, owner's choice)
+
+- **"Tomorrow" is worked out by JARVIS, not the small model.** Asked late on Fri 6 Nov about tomorrow, the local
+  model looked up Friday, found nothing and made up a meeting (benchmark `planning-free`, 0/5). JARVIS now reads
+  "today", "tonight", "tomorrow", "the day after tomorrow" and weekday names from the Mac's clock and makes the
+  calendar lookup cover those days, and says so in the lookup notes. The label now names the days covered
+  ("Calendar, Sat 07 Nov", not "Fri 06 Nov–Sat 07 Nov" for a single day).
+- **Warm start:** when the background service starts, the local models are loaded in the background, fastest first,
+  so the first question after login doesn't wait 10–30 s. Nothing is generated or sent; the emergency stop skips
+  it; recorded in the audit log (model names and seconds).
+- **`jarvis checkup`:** a look-only health check of the Mac: macOS version, disk space, clutter (Downloads, Trash,
+  caches), CPU load and the busiest apps, memory and swap, battery condition, days since the last restart, startup
+  helpers and Time Machine, each with plain advice. `--updates` also lists waiting macOS updates (the only check
+  that uses the network, via Software Update). Fixed system commands only; nothing is installed, deleted or
+  changed; the audit log gets counts only.
+- To be proven on the Mac: planning tasks ×5 before/after.
+
 ## 0.19.0 — Holographic dashboard, Quick/Balanced/Deep, live Claude replies (owner-approved after a test on the Mac)
 
 - Merged the holographic dashboard work (branch `claude/funny-allen-ygy8kk`, reviewed) with 0.18.1–0.18.3. Sections

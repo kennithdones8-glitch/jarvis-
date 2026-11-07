@@ -310,10 +310,20 @@ class Dashboard:
         self._runner.start()
         self._maint.start()
         self._serving = True
+        # Load the local models in the background, so the first question after login doesn't wait for them.
+        threading.Thread(target=self._warm_models, name="jarvis-warm-models", daemon=True).start()
         try:
             self.httpd.serve_forever(poll_interval=0.25)
         finally:
             self.shutdown()
+
+    def _warm_models(self) -> None:
+        if self._stop.wait(2.0):
+            return
+        try:
+            self.kernel.models.warm_local()
+        except Exception:  # never let a warm-up problem affect the dashboard; the next question loads the model
+            pass
 
     def shutdown(self) -> None:
         self._stop.set()
