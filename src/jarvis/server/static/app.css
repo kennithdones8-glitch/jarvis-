@@ -1240,3 +1240,19 @@ body[data-view="workspace"] .sysbar { display: none; }
 @keyframes panel-in { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
 :root[data-fx="off"] .hud .panel, :root[data-fx="off"] .hud > .center > .core-wrap { animation: none; }
 @media (prefers-reduced-motion: reduce) { .hud .panel, .hud > .center > .core-wrap { animation: none; } }
+
+/* ---- data-wall ribbons and network graphs behind the dashboard (from the owner's reference): faint, drifting ---- */
+.env-ribbons { position: absolute; inset: 0; width: 100%; height: 100%; opacity: .55; }
+.env-ribbons path { fill: none; stroke-width: 1.1; }
+.env-ribbons .rb-o { stroke: rgba(255, 138, 58, .22); }
+.env-ribbons .rb-o.dim { stroke: rgba(255, 138, 58, .1); }
+.env-ribbons .rb-t { stroke: rgba(61, 255, 184, .16); }
+.env-ribbons line { stroke-width: .8; } .env-ribbons line.nd-o { stroke: rgba(255, 138, 58, .18); } .env-ribbons line.nd-t { stroke: rgba(61, 255, 184, .15); }
+.env-ribbons .dot.nd-o { fill: rgba(255, 170, 100, .5); } .env-ribbons .dot.nd-t { fill: rgba(61, 255, 184, .45); }
+.rb-flow { animation: rb-drift 26s ease-in-out infinite alternate; }
+.rb-net { animation: env-breathe 9s ease-in-out infinite; }
+@keyframes rb-drift { from { transform: translate3d(-24px, 6px, 0); } to { transform: translate3d(24px, -8px, 0); } }
+:root[data-fx="reduced"] .env-ribbons *, :root[data-fx="off"] .env-ribbons * { animation: none !important; }
+:root[data-projection="subtle"] .env-ribbons { opacity: .3; }
+@media (prefers-reduced-motion: reduce) { .env-ribbons * { animation: none !important; } }
+@media (max-width: 760px) { .env-ribbons { opacity: .3; } }

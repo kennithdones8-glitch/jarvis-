@@ -1,5 +1,17 @@
 # Changelog
 
+## Unreleased — Avatar 3.1: light-body figure (from the owner's reference)
+
+- **Sleek figure made of light** replaces the armoured robot (owner feedback: "looks like a toy robot", "too much
+  gold/orange"): one smooth humanoid sculpted as a distance field in code and meshed once at load, glowing orange
+  with teal-green hands, fine surface panelling, flow lines along the body and sparkles drifting off the surface.
+- The metal armour, studio reflections and scene lights are gone (lighter startup on the Intel Mac); the reactor now
+  sits in the chest of the figure; halo, crown, thought constellation, aura, satellites, surge and startup assembly
+  are kept and re-placed around the new body.
+- **Floor light strips** (orange and teal arcs) on the platform, and a faint **data wall** behind the dashboard:
+  flowing orange/teal ribbons and network graphs (still in Low performance, Reduced motion and Subtle projection).
+- State colours re-tuned to the orange family; red stays reserved for genuine errors.
+
 ## Unreleased — Avatar 3.0: real armour, startup assembly, live data aura
 
 - **Lit metal armour over the hologram** (owner's choice: sleek cinematic armour, metal + hologram): polished gold

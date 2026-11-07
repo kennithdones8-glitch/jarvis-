@@ -234,7 +234,9 @@ HTML = (STATIC / "index.html").read_text()
 def test_the_helm_is_faceless():
     for human in ("mouth", "jaw", "grille", "lips", "nose"):
         assert human not in AV3.lower().replace("no mouth", ""), human
-    assert 'part("sensors", 1,' in AV3 and 'part("faceplate", 1,' in AV3 and 'part("mechanics", 1,' in AV3
+    assert 'part("figure", 1,' in AV3 and "export function sdHuman(" in AV3 and "export function meshFigure(" in AV3
+    for gone in ("sensors", "faceplate", "mechanics"):   # the toy-robot parts are gone
+        assert f'part("{gone}"' not in AV3
 
 
 def test_every_state_has_a_3d_look_with_the_engine_parameters():
@@ -243,8 +245,8 @@ def test_every_state_has_a_3d_look_with_the_engine_parameters():
     for name, body in looks.items():
         for key in ("eyes", "reactor", "neural", "data", "sweep", "discharge", "beat", "head", "flicker"):
             assert f"{key}:" in body, (name, key)
-    assert '"#ff5a52"' in looks["error"] and looks["error"].count("#ff5a52") == 1
-    assert not any("#ff5a52" in b for n, b in looks.items() if n != "error")  # red is for genuine critical alerts only
+    assert '"#ff4b4b"' in looks["error"] and looks["error"].count("#ff4b4b") == 1
+    assert not any("#ff4b4b" in b for n, b in looks.items() if n != "error")  # red is for genuine critical alerts only
     assert "1 - Math.exp(-dt * 2.2)" in AV3  # states blend over ~0.6–1 s, never switch abruptly
 
 
@@ -333,7 +335,10 @@ def test_thought_constellation_counts_real_stages_and_surge_needs_a_real_complet
     assert "@media (prefers-reduced-motion: reduce) { .surge { display: none; }" in (STATIC / "avatar.css").read_text()
 
 
-def test_armour_is_lit_metal_over_the_hologram_and_stays_out_of_the_reflection():
-    assert "new THREE.MeshStandardMaterial({ color: 0xe8cf98, metalness: 1" in AV3
-    assert "scene.environment = pmrem.fromScene(env, 0.03).texture;" in AV3   # reflections generated in code, no assets
-    assert "...metals.map((m) => m.mesh)," in AV3                            # hidden during the floor-reflection pass
+def test_figure_is_a_light_body_with_teal_hands_and_sparkles_kept_out_of_the_reflection():
+    assert "const metals = [];" in AV3                                        # no metal armour: the owner asked for light, not a robot
+    assert 'uAccent: { value: new THREE.Color("#3dffb8") }' in AV3            # teal-green accent, marked per vertex (hands)
+    assert "vec3 uTint = mix(uTint0, uAccent, vAccent);" in AV3
+    assert "shed.visible = moving;" in AV3                                    # sparkles only while motion is allowed
+    hidden = AV3.split("const hidden = [")[1].split("]")[0]
+    assert "shed" in hidden and "thought" in hidden                           # hidden during the floor-reflection pass

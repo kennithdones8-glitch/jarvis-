@@ -144,7 +144,7 @@ body[data-activity="voice"] .hud > .center > :is(.matters, .suggest, .hint, .sys
 /* ---- 3D core (avatar3d.js): the 2D layers step aside; the reactor (#core) stays as the chest core ---- */
 .core-wrap.has-avatar .avatar3d { position: absolute; inset: 0; width: 100%; height: 100%; z-index: 0; pointer-events: none; }
 .core-wrap.has-3d .avatar, .core-wrap.has-3d .avatar-fx, .core-wrap.has-3d .avatar-lines { display: none; }
-.core-wrap.has-3d #core { filter: drop-shadow(0 0 10px rgba(255, 246, 224, .55)); }
+.core-wrap.has-3d #core { opacity: 0; }   /* the 3D figure has its own reactor at the sternum; #core keeps the state */
 
 /* ---- Avatar 2.0: interaction, task hologram, projection focus ---- */
 .core-wrap.has-avatar { cursor: pointer; }
