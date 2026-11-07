@@ -1,13 +1,15 @@
 # Changelog
 
-## Unreleased: stronger local model for maths, logic and code (branch `reasoning-model-v1`, owner's choice)
+## 0.18.3 — Stronger local model for maths, logic and code (owner's choice)
 
 - When a chat answer will come from your Mac anyway (local-first, or kept local), word problems with numbers,
   puzzles, other hard-looking requests and requests to write code go to the strongest local model (e.g.
   qwen2.5:7b) instead of the fastest (llama3.2:3b). Everyday chat stays on the fast one.
 - Only the choice between local models changes: whether anything may go to the cloud is never affected, and no
   extra call is made. Recorded in the audit log as `model.reasoning_local` (no question text).
-- To be proven on the Mac with a 5-run before/after (reasoning and coding tasks) before merging.
+- Proven on the owner's Mac (5 runs each side, pooled): tasks passing 2 → 4 of 6, no new failures, 0 Claude calls.
+  reasoning-flour 1/5 → 5/5 (clear change, p=0.048); coding-dedupe 2/5 → 5/5 (could be luck, p=0.17);
+  coding-roman 5/5 → 3/5 (could be luck, p=0.44). Those answers take about 2–3× longer.
 
 ## 0.18.2 — Private data folder (owner-approved)
 
