@@ -3,19 +3,24 @@
 export const VERT = `
 uniform mat3 uHead, uArmR, uArmL, uForeR, uForeL; uniform float uHeadOn, uInflate; attribute float aAccent;
 varying vec3 vNormal; varying vec3 vView; varying vec3 vWorld; varying vec2 vUv; varying vec3 vObj; varying vec3 vObjN; varying float vAccent;
+/*DECL*/
 void main() {
   vec3 pos = position, nrm = normal;
-  if (uHeadOn > 0.5) {   // the head turns on a soft neck: vertices blend from body to head between y 4.22 and 4.42
+  /*PRE*/
+  if (uHeadOn > 0.5) {
+    // local changes (plates venting, fingers flexing) are made above; the joints below carry them along
+    vec3 p0 = pos, n0 = nrm;
+    // the head turns on a soft neck: vertices blend from body to head between y 4.22 and 4.42
     float w = smoothstep(4.22, 4.42, position.y); vec3 c = vec3(0.0, 4.3, 0.0);
-    pos = mix(position, uHead * (position - c) + c, w); nrm = normalize(mix(normal, uHead * normal, w));
+    pos = mix(p0, uHead * (p0 - c) + c, w); nrm = normalize(mix(n0, uHead * n0, w));
     // arms bend at the shoulder and the elbow (gestures): weights from the rest position, so seams stay attached
     float side = sign(position.x), ax = abs(position.x);
     float wU = smoothstep(0.52, 0.66, ax) * smoothstep(4.15, 3.95, position.y), wF = wU * smoothstep(3.12, 2.96, position.y);
     if (wU > 0.0) {
       mat3 Ru = side > 0.0 ? uArmR : uArmL, Rf = side > 0.0 ? uForeR : uForeL;
       vec3 S = vec3(0.66 * side, 3.92, 0.0), E = vec3(0.8 * side, 3.04, -0.03), E2 = S + Ru * (E - S);
-      pos = mix(pos, S + Ru * (position - S), wU); nrm = mix(nrm, Ru * normal, wU);
-      pos = mix(pos, E2 + Rf * (position - E), wF); nrm = normalize(mix(nrm, Rf * normal, wF));
+      pos = mix(pos, S + Ru * (p0 - S), wU); nrm = mix(nrm, Ru * n0, wU);
+      pos = mix(pos, E2 + Rf * (p0 - E), wF); nrm = normalize(mix(nrm, Rf * n0, wF));
     }
   }
   pos += nrm * uInflate;   // the aura shell: the same body, slightly larger
@@ -32,7 +37,7 @@ void main() {
 // a rising light band; faces turned away drawn dimmer for depth; a materialisation edge; a fade into the projector
 // beam; a floor reflection; a faint projection distortion. Shared uniforms are the same objects in every material.
 export const FRAG = `
-uniform vec3 uTint0, uAccent; uniform float uTime, uOpacity, uRim, uRimK, uGain, uSelf, uScan, uFlow, uFlowOn, uFlicker, uReveal, uFadeLow, uReflect, uCore, uPanel, uPanelScale, uContour, uDetail, uCoreE, uEye, uEyeOpen, uEyeLook, uEyeScan, uSpeech, uEyeHot;
+uniform vec3 uTint0, uAccent; uniform float uTime, uOpacity, uRim, uRimK, uGain, uSelf, uScan, uFlow, uFlowOn, uFlicker, uReveal, uFadeLow, uReflect, uCore, uPanel, uPanelScale, uContour, uDetail, uCoreE, uEye, uEyeOpen, uEyeLook, uEyeScan, uSpeech, uEyeHot, uThink;
 varying vec3 vNormal; varying vec3 vView; varying vec3 vWorld; varying vec2 vUv; varying vec3 vObj; varying vec3 vObjN; varying float vAccent;
 float hash(float n) { return fract(sin(n) * 43758.5453); }
 float seam(vec2 p, float w) { vec2 g = abs(fract(p - 0.5) - 0.5) / max(fwidth(p), vec2(1e-4)); return 1.0 - min(min(g.x, g.y) / w, 1.0); }
@@ -84,7 +89,7 @@ float circuit(vec2 q, float t, out float pulse) {
   return c;
 }
 void main() {
-  vec3 uTint = mix(uTint0, uAccent, vAccent);   // teal-green accents where marked (the hands)
+  vec3 uTint = mix(uTint0, uAccent, vAccent);   // gold-white highlight where marked (the hands)
   float h = uReflect > 0.5 ? -vWorld.y : vWorld.y;
   if (h > uReveal) discard;
   float facing = abs(dot(normalize(vNormal), normalize(vView)));
@@ -134,24 +139,29 @@ void main() {
     float ve = veins * (0.35 + 0.65 * min(uCoreE, 1.5)) * uDetail;
     col += mix(uTint, vec3(1.0, 0.98, 0.94), vp) * ve * (0.6 + 1.8 * vp);
     a += ve * (0.15 + 0.5 * vp) * uOpacity;
-    // the face: glowing eyes (open/blink, glance, scan light while researching) and a light pulse on each spoken word
+    // the helmet's optical system (faceless): a sensor array in the visor band, an internal scanner sweeping behind
+    // it, and the whole visor glowing faintly. Levels come from the real state (uEye), the shutter from blinks
+    // and narrowing (uEyeOpen), the scanner from researching / verifying (uEyeScan), the pattern from thinking.
     float facem = smoothstep(4.4, 4.45, p.y) * smoothstep(4.95, 4.85, p.y) * smoothstep(0.12, 0.22, p.z);
-    float ex = ax - 0.075 - uEyeLook * sign(p.x);
-    float ey = (p.y - 4.737 - ex * 0.16) / max(1.0 - pow(ex / 0.042, 2.0) * 0.75, 0.15);   // almond shape, outer corners lifted
-    vec2 eo = vec2(ex / 0.04, ey / (0.0105 * max(uEyeOpen, 0.08)));
-    float eye = exp(-dot(eo, eo) * 1.4) * smoothstep(0.2, 0.25, p.z) * min(uEye, 2.0) * step(0.02, uEyeOpen);
-    float scanx = sin(uTime * 2.4) * 0.11;
-    float escan = exp(-pow((p.x - scanx) / 0.014, 2.0)) * exp(-pow((p.y - 4.735) / 0.03, 2.0)) * smoothstep(0.2, 0.25, p.z) * uEyeScan;
-    escan += exp(-pow((p.y - 4.735) / 0.006, 2.0)) * step(abs(p.x), 0.12) * smoothstep(0.2, 0.25, p.z) * uEyeScan * 0.35;   // the scan line it travels on
-    float headm = smoothstep(4.36, 4.46, p.y);   // soft key light from upper left on the head: the face reads as a form
+    float vis = smoothstep(0.03, 0.022, abs(p.y - 4.735)) * smoothstep(0.08, 0.16, p.z);   // the visor band
+    float headm = smoothstep(4.36, 4.46, p.y);   // soft key light from upper left on the head: the shell reads as a form
     float key = dot(normalize(vObjN), normalize(vec3(-0.3, 0.35, 0.88))) * 0.5 + 0.5;   // wrap light: soft, no black pockets
     col *= mix(1.0, 0.7 + 0.5 * key, headm * 0.8);
-    float mx = p.x / 0.036, mouth = (1.0 - smoothstep(0.0012, 0.0012 + 1.5 * fwidth(p.y), abs(p.y - 4.545 + 0.006 * mx * mx)))
-      * smoothstep(1.0, 0.6, abs(mx)) * smoothstep(0.2, 0.24, p.z);   // a fine, slightly smiling mouth line
-    col *= 1.0 - 0.55 * mouth;
-    col += mix(uTint, vec3(1.0, 0.95, 0.88), 0.3) * faceZone * (0.32 + 0.5 * pow(key, 3.0)); a += faceZone * (0.24 + 0.25 * pow(key, 3.0)) * uOpacity;   // even fill: no dark pockets where the face meets the view head-on
-    col += mix(uTint, vec3(1.0, 0.98, 0.95), (0.25 + 0.35 * exp(-dot(eo, eo) * 4.0)) * uEyeHot) * eye * 2.2 + mix(uTint, vec3(1.0), 0.5) * escan * 2.6 + uTint * facem * uSpeech * 0.45;
-    a += (eye * 0.7 + escan * 0.5 + facem * uSpeech * 0.15) * uOpacity;
+    col += mix(uTint, vec3(1.0, 0.95, 0.88), 0.3) * faceZone * (0.32 + 0.5 * pow(key, 3.0)); a += faceZone * (0.24 + 0.25 * pow(key, 3.0)) * uOpacity;   // even fill: no dark pockets where the shell meets the view head-on
+    float lvl = min(uEye, 2.0) * max(uEyeOpen, 0.08);
+    float sens = 0.0;
+    for (int i = -4; i <= 4; i++) {
+      float sx = float(i) * 0.034 + uEyeLook, ph = sin(uTime * 4.0 + float(i) * 1.7);
+      float on = (abs(float(i)) <= 2.0 ? 1.0 : 0.55) * (0.65 + 0.35 * ph * clamp(uThink, 0.0, 1.0));   // thinking: the array works
+      vec2 q2 = vec2((p.x - sx) / 0.0075, (p.y - 4.735) / 0.0065);
+      sens += exp(-dot(q2, q2)) * on;
+    }
+    sens *= vis * lvl * step(0.02, uEyeOpen);
+    float scanx = sin(uTime * 2.4) * 0.14 + uEyeLook;
+    float escan = exp(-pow((p.x - scanx) / 0.016, 2.0)) * vis * uEyeScan;   // the internal scanner behind the visor
+    vec3 hot = mix(uTint, vec3(1.0, 0.98, 0.95), 0.55 * uEyeHot);
+    col += hot * (sens * 2.4 + escan * 2.0) + uTint * vis * lvl * 0.25 + uTint * facem * uSpeech * 0.45;
+    a += (sens * 0.75 + escan * 0.55 + vis * lvl * 0.12 + facem * uSpeech * 0.15) * uOpacity;
     // glowing soles
     float sole = smoothstep(0.16, 0.03, p.y);
     col += mix(uTint, vec3(1.0, 0.96, 0.9), 0.5) * sole * 1.2; a += sole * 0.35 * uOpacity;
@@ -174,11 +184,31 @@ void main() {
 // pushed out along its own direction by uOpen when it vents light. Graphite with a soft sheen and an orange rim
 // reflection; the plate borders are glowing seams (aEdge = distance inside the plate), brighter with uSeam.
 export const PLATE_VERT = VERT
-  .replace("uniform float uHeadOn, uInflate;", "uniform float uHeadOn, uInflate, uOpen; attribute float aEdge; attribute vec3 aOpenDir; varying float vEdge;")
-  .replace("vec3 pos = position, nrm = normal;", "vec3 pos = position + aOpenDir * uOpen, nrm = normal; vEdge = aEdge;");
+  .replace("/*DECL*/", "uniform float uOpen; attribute float aEdge; attribute vec3 aOpenDir; varying float vEdge;")
+  .replace("/*PRE*/", "pos += aOpenDir * uOpen; vEdge = aEdge;");
+// Hands: fingers flex around their knuckles (aFing: finger 0-3, thumb 4, -1 palm; aSeg: 0 at the knuckle -> 1 at
+// the tip). The fingers curl toward the palm (the inner side, toward the body).
+export const HAND_DECL = "uniform float uCurl, uFlex, uTime; attribute float aFing; attribute float aSeg; attribute vec3 aKnuck;";
+export const HAND_PRE = `if (aFing >= 0.0) {
+    float s = sign(position.x), th = (uCurl + sin(uTime * 0.7 + aFing * 1.3) * uFlex) * aSeg * (aFing > 3.5 ? 0.5 : 1.0);
+    float c = cos(-th * s), sn = sin(-th * s); vec2 r = pos.xy - aKnuck.xy;
+    pos.xy = aKnuck.xy + vec2(c * r.x - sn * r.y, sn * r.x + c * r.y);
+    nrm.xy = vec2(c * nrm.x - sn * nrm.y, sn * nrm.x + c * nrm.y);
+  }
+  {   // a relaxed hand turns about 55 degrees at the wrist: the back of the hand and the fingers face forward
+    float s = sign(position.x), a = -0.95 * s, ca = cos(a), sa = sin(a);
+    vec2 w = vec2(0.884 * s, 0.05), r = pos.xz - w;
+    pos.xz = w + vec2(ca * r.x + sa * r.y, -sa * r.x + ca * r.y);
+    nrm.xz = vec2(ca * nrm.x + sa * nrm.z, -sa * nrm.x + ca * nrm.z);
+  }`;
+export const HAND_VERT = VERT.replace("/*DECL*/", HAND_DECL).replace("/*PRE*/", HAND_PRE);
+// plates on the hands: they flex with the fingers and vent like the others
+export const HAND_PLATE_VERT = VERT
+  .replace("/*DECL*/", "uniform float uOpen; attribute float aEdge; attribute vec3 aOpenDir; varying float vEdge; " + HAND_DECL)
+  .replace("/*PRE*/", HAND_PRE + " pos += aOpenDir * uOpen; vEdge = aEdge;");
 export const PLATE_FRAG = `
 uniform vec3 uTint; uniform float uTime, uGain, uReveal, uReflect, uSeam, uOpacity;
-varying vec3 vNormal; varying vec3 vView; varying vec3 vWorld; varying vec3 vObj; varying float vEdge;
+varying vec3 vNormal; varying vec3 vView; varying vec3 vWorld; varying vec3 vObj; varying vec3 vObjN; varying float vEdge;
 void main() {
   float h = uReflect > 0.5 ? -vWorld.y : vWorld.y;
   if (h > uReveal || vEdge < 0.0) discard;   // a smooth plate border
@@ -188,6 +218,11 @@ void main() {
   vec3 col = vec3(0.055, 0.05, 0.047) * (0.45 + 0.9 * diff) + vec3(1.0, 0.86, 0.7) * spec * 0.4 + uTint * fres * 0.35;
   float edge = 1.0 - smoothstep(0.004, 0.02, vEdge), inner = 1.0 - smoothstep(0.0, 0.0045, abs(vEdge - 0.05));
   float run = exp(-pow((fract(vObj.y * 0.4 - uTime * 0.25) - 0.5) * 8.0, 2.0));
+  vec3 an = abs(normalize(vObjN)); vec2 mq = (an.z > max(an.x, an.y) ? vObj.xy : (an.x > an.y ? vObj.zy : vObj.xz)) * 22.0;
+  vec2 mg = abs(fract(mq) - 0.5) / max(fwidth(mq), vec2(1e-4));
+  float micro = (1.0 - min(min(mg.x, mg.y), 1.0)) * smoothstep(0.06, 0.1, vEdge) * 0.22;           // engraved micro-panels
+  float pin = (1.0 - smoothstep(0.08, 0.14, length(fract(mq * 0.5) - 0.5))) * step(0.82, fract(sin(dot(floor(mq * 0.5), vec2(12.9, 78.2))) * 43758.5)) * smoothstep(0.07, 0.12, vEdge);
+  col += uTint * (micro * (0.4 + uSeam) + pin * (0.8 + 1.2 * uSeam));
   col += mix(uTint, vec3(1.0, 0.96, 0.9), 0.4) * (edge * (1.6 + 2.6 * uSeam) + inner * 0.5 * (0.4 + uSeam)) * (1.0 + run * uSeam);
   float a = mix(0.9, 1.0, edge) * uOpacity * min(uGain, 1.0);
   if (uReveal < 9.0) col += vec3(1.0, 0.95, 0.85) * smoothstep(uReveal - 0.18, uReveal, h) * 1.4;

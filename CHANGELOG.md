@@ -1,5 +1,22 @@
 # Changelog
 
+## Unreleased — Avatar 3D, step 2: helmet, hands, layered armour, gold identity
+
+- **Gold identity restored** (owner's brief): warm gold, gold-white and amber for every state; red only for a genuine
+  error; teal removed from the projection, the dashboard and the background walls (dashboard tokens back to gold).
+- **Faceless adaptive helmet** replaces the sculpted face: a smooth faceplate with a centre keel, a recessed visor
+  band with raised rims, framed by the dark alloy shell. The visor holds a sensor array (nine sensors) and an
+  internal scanner: dim when idle, brighter when listening and speaking, a working pattern driven by the real
+  thinking level, the scanner while researching or verifying, a shutter for blinks and narrowing, warning and
+  error colours only from those states.
+- **Articulated hands**: their own fine mesh with four three-segment fingers and a thumb, joint knuckles, a heel
+  and wrist pistons; per-finger plating with gaps at every joint; fingers curl by the real pose (resting, working,
+  open on success) and flex slightly in Normal mode only; the hands turn naturally at the wrist.
+- **Layered armour**: pauldrons over the shoulder plates, upper-arm, hip, thigh and knee plates added to chest,
+  abdomen, forearm and shin; engraved micro-panels and small sensor points inside every plate; elbow and knee
+  hubs and wrist rings; a fine holographic wireframe over the body from stage 2 (not on phones).
+- Fixed: the joints now carry local changes, so plates really vent and fingers really curl on bent arms.
+
 ## Unreleased — Avatar 3D, step 1: module split and the central state machine
 
 - **Central state machine** (`static/avatar-state.js`): every state the projection shows now passes through one

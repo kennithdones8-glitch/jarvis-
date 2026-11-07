@@ -233,20 +233,21 @@ APPCSS = (STATIC / "app.css").read_text()
 HTML = (STATIC / "index.html").read_text()
 
 
-def test_the_face_is_sculpted_light_with_eyes_driven_by_real_signals():
-    # owner's choice (Avatar 3.4): a subtle sculpted face, like a statue of light; no moving mouth
-    assert "function face(d, x, ax, y, z) {" in AV3 and "if (y > 4.38 && z > 0.0) d = face(d, x, ax, y, z);" in AV3
-    for feature in ("eye sockets", "brow ridge", "nose bridge", "nose tip", "cheekbones", "chin", "jaw line"):
-        assert f"// {feature}" in AV3, feature
-    assert "a fine, slightly smiling mouth line" in AV3                                    # drawn, not sculpted (cleaner at this resolution)
-    assert "fres *= 1.0 - 0.7 * faceZone;" in AV3                                          # no cartoon rings around the features
-    assert "(1.0 - faceZone);   // no panel grid across the face" in AV3
-    assert "mesh.renderOrder = -1;" in AV3                                                 # plates never darken a face in front of them
+def test_the_head_is_a_faceless_helmet_with_sensors_driven_by_real_signals():
+    # owner's brief (Avatar 3D): an adaptive faceless helmet, not a human face
+    assert "function helmet(d, x, ax, y, z) {" in AV3 and "function face(" not in AV3
+    for layer in ("centre keel (above the visor only)", "visor recess", "upper visor rim", "lower visor rim"):
+        assert f"// {layer}" in AV3, layer
+    for human in ("nose", "lip", "mouth", "cheekbone", "jaw line", "eye socket"):
+        assert human not in AV3.split("function helmet(")[1].split("export function sdHuman")[0].lower(), human
+    assert "for (int i = -4; i <= 4; i++) {" in AV3                                          # the sensor array in the visor
+    assert "(0.65 + 0.35 * ph * clamp(uThink, 0.0, 1.0))" in AV3 and "FACE.uThink.value = cur.neural;" in AV3   # thinking: real level
+    assert "fres *= 1.0 - 0.7 * faceZone;" in AV3 and "(1.0 - faceZone);   // no panel grid across the face" in AV3
+    assert "mesh.renderOrder = -1;" in AV3                                                 # plates never darken the light in front of them
     assert "meshFigure(phone ? 0.018 : 0.013, [-0.34, 4.3, -0.44]" in AV3                  # the head is meshed finer
-    assert "FACE.uEyeOpen.value = shut * narrow;" in AV3                                    # blinks and narrowing come from the state
-    assert 'FACE.uEyeScan.value += ((state === "researching" || state === "verifying" ? 1 : 0)' in AV3
+    assert "FACE.uEyeOpen.value = shut * narrow;" in AV3                                    # shutter (blinks, narrowing) from the state
+    assert 'FACE.uEyeScan.value += ((state === "researching" || state === "verifying" ? 1 : 0)' in AV3   # internal scanner
     assert "FACE.uSpeech.value = Math.min(1, speech);" in AV3                               # light pulse from real word boundaries only
-    assert 'part("sensors"' not in AV3 and 'part("faceplate"' not in AV3 and 'part("mechanics"' not in AV3
 
 
 def test_every_state_has_a_3d_look_with_the_engine_parameters():
@@ -347,9 +348,10 @@ def test_thought_constellation_counts_real_stages_and_surge_needs_a_real_complet
     assert "@media (prefers-reduced-motion: reduce) { .surge { display: none; }" in (STATIC / "avatar.css").read_text()
 
 
-def test_figure_is_a_light_body_with_teal_hands_and_sparkles_kept_out_of_the_reflection():
+def test_figure_is_gold_light_with_sparkles_kept_out_of_the_reflection():
     assert "const metals = [];" in AV3 and "MeshStandardMaterial" not in AV3   # no bulky lit-metal robot plates (owner's feedback)
-    assert 'uAccent: { value: new THREE.Color("#3dffb8") }' in AV3            # teal-green accent, marked per vertex (hands)
+    assert 'uAccent: { value: new THREE.Color("#fff1cf") }' in AV3            # gold-white highlight (brief: gold, gold-white, amber)
+    assert "3dffb8" not in AV3 and "33e6ad" not in AV3                       # no teal left in the projection
     assert "vec3 uTint = mix(uTint0, uAccent, vAccent);" in AV3
     assert "shed.visible = moving;" in AV3                                    # sparkles only while motion is allowed
     hidden = AV3.split("const hidden = [")[1].split("]")[0]
@@ -388,11 +390,10 @@ def test_focus_view_screen_wall_is_decoration_that_respects_motion_settings():
     assert "@media (prefers-reduced-motion: reduce) { .vw-tile::after { animation: none; display: none; } }" in css
 
 
-def test_character_detail_grows_with_the_stage_and_keeps_the_face_smooth():
+def test_character_detail_grows_with_the_stage_and_keeps_the_helmet_clean():
     assert "figureMat.uniforms.uDetail.value = [0.75, 0.85, 1.0, 1.15][tier - 1]" in AV3   # rich now, maximum at stage 4
     assert "uDetail > 0.95 ? circuit(" in AV3                                              # finer circuits only from stage 3
     assert "float body = 1.0 - smoothstep(4.4, 4.5, p.y);   // the head stays smooth" in AV3
-    assert "visor" not in AV3.split("// ---- the figure:")[1].split("export function meshFigure")[0].lower()
     assert 'innerMat = holo({ opacity: 0.35, rim: 0.8, flow: true, core: 0.55, head: true });' in AV3   # bends with the arms
     assert "innerMat.uniforms.uOpacity.value = 0.12 + cur.neural * 0.5" in AV3             # brighter only while really thinking
     assert "shed.visible = moving; wisps.visible = moving;" in AV3                         # no particles in Low performance / Reduced motion
@@ -402,8 +403,10 @@ def test_character_detail_grows_with_the_stage_and_keeps_the_face_smooth():
 def test_alloy_armour_hugs_the_body_and_reacts_only_to_real_work_and_alerts():
     assert 'part("armour", 1,' in AV3 and "const PLATES = [" in AV3
     names = re.findall(r'name: "(\w+)"', AV3.split("const PLATES = [")[1].split("];")[0])
-    assert set(names) == {"chest", "abdomen", "shoulder", "forearm", "shin", "helmet"}       # key plates, not a full suit
-    assert "const P = figureGeo.attributes.position.array" in AV3                           # cut from the figure's own surface
+    assert set(names) == {"chest", "abdomen", "shoulder", "pauldron", "upperarm", "forearm", "hip", "thigh", "knee", "shin",
+                          "helmet", "hand"}                                                 # the brief's armour list, layered
+    assert 'const src = pl.src === "hands" ? handGeo : figureGeo;' in AV3                   # cut from the figure's own surface
+    assert "(0.0072 - Math.abs(z - kz)) * 60); } },   // one plate per finger segment" in AV3
     assert "if (h > uReveal || vEdge < 0.0) discard;   // a smooth plate border" in AV3
     assert "const PLATE_VERT = VERT" in AV3                                                 # bends with the arms and head
     assert "metals.push({ mesh, order: pl.order, dir: d });" in AV3                         # assembles during startup, hidden in the reflection
@@ -422,3 +425,20 @@ def test_eye_behaviours_are_visible_and_only_follow_real_signals():
     eyes = {k: float(re.search(r"eyes: ([\d.]+)", v).group(1)) for k, v in looks.items()}
     assert eyes["idle"] < eyes["listening"] < eyes["speaking"]                           # dim idle, brighter listening and speaking
     assert "get eyes() { return av.three ? av.three.eyes : null; }" in AV                 # read-only readout for checks
+
+
+
+def test_hands_have_articulated_fingers_that_only_flex_slightly():
+    assert "export function sdHand(x, y, z) {" in AV3 and "export function meshHands(" in AV3
+    assert "// joint knuckles" in AV3 and "// wrist pistons" in AV3 and "// thumb" in AV3
+    assert "attribute float aFing; attribute float aSeg; attribute vec3 aKnuck;" in AV3      # each vertex knows its finger
+    assert 'handUni.uFlex.value = moving ? 0.05 : 0;' in AV3                                 # flexing only in Normal mode
+    curl = AV3.split("const CURL = ")[1].split(";")[0]
+    assert "work: 0.42" in curl and "open: 0.0" in curl                                     # poses come from real states only
+    assert "// a relaxed hand turns about 55 degrees at the wrist" in AV3
+
+
+def test_joints_and_wireframe_are_baked_into_rest_coordinates():
+    assert 'part("joints", 1,' in AV3 and "// baked into rest coordinates (the joints bend them)" in AV3
+    assert 'part("wire", 2,' in AV3 and "wire: true" in AV3                                  # stage 2: fine holographic wireframe
+    assert "vec3 p0 = pos, n0 = nrm;" in AV3                                                 # joints carry local changes (venting, fingers)

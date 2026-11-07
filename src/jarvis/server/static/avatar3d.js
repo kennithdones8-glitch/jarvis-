@@ -14,7 +14,8 @@
 // update per frame drives every material.
 import * as THREE from "/static/vendor/three.module.min.js";
 import { VERT, FRAG, PLATE_VERT, PLATE_FRAG, SHIELD_FRAG, QUAD_VERT, BRIGHT_FRAG, BLUR_FRAG, COMPOSITE_FRAG, BEAM_VERT, BEAM_FRAG, DUST_VERT, DOT_FRAG, NET_VERT, NET_FRAG, NODE_VERT, DATA_VERT, DASH_FRAG } from "/static/avatar3d-shaders.js";
-import { sdHuman, meshFigure, mergeGeos, rng, glowTexture } from "/static/avatar3d-geometry.js";
+import { HAND_VERT, HAND_PLATE_VERT } from "/static/avatar3d-shaders.js";
+import { sdHuman, meshFigure, meshHands, mergeGeos, rng, glowTexture } from "/static/avatar3d-geometry.js";
 export { sdHuman, meshFigure };
 
 const CHAMPAGNE = new THREE.Color("#f3e3bd"), WHITE = new THREE.Color("#fff8ec"), AMBER = new THREE.Color("#f2a33a");
@@ -25,24 +26,24 @@ const RED = new THREE.Color("#ff5a52"), DIM = new THREE.Color("#9d8e76");
 // streams · sweep: vertical scan ring · discharge: reactor arcs · beat: seconds between energy pulses (0 = none) ·
 // head: how the head moves · flicker: diagnostic flicker. Only real signals select a state (see app.js).
 const LOOKS = {
-  unknown:       { tint: "#b89a7c", rpat: "calm", eyes: 0.35, rim: 0.8, scan: 0.6, flow: 0.1, ring: 0.05, beam: 0.4, reactor: 0.35, neural: 0.05, data: 0, sweep: 0, discharge: 0, beat: 0, head: "still", flicker: 0 },
-  idle:          { tint: "#ff9a48", rpat: "calm", eyes: 0.75, rim: 1.0, scan: 1.0, flow: 0.3, ring: 0.12, beam: 0.65, reactor: 0.55, neural: 0.12, data: 0, sweep: 0, discharge: 0, beat: 0, head: "aware", flicker: 0 },
-  listening:     { tint: "#ffb27a", rpat: "calm", eyes: 1.3, rim: 1.25, scan: 1.2, flow: 0.5, ring: 0.3, beam: 0.85, reactor: 0.75, neural: 0.25, data: 0, sweep: 0, discharge: 0, beat: 0, head: "attend", flicker: 0 },
-  understanding: { tint: "#ffa35c", rpat: "spin", eyes: 1.0, rim: 1.2, scan: 2.6, flow: -0.8, ring: 0.45, beam: 0.85, reactor: 0.8, neural: 0.7, data: 0, sweep: 0.6, discharge: 0, beat: 0, head: "think", flicker: 0 },
-  reasoning:     { tint: "#ff9d52", rpat: "spin", eyes: 1.1, rim: 1.3, scan: 1.6, flow: -1.3, ring: 0.7, beam: 0.9, reactor: 1.0, neural: 1.0, data: 0, sweep: 0.5, discharge: 0.25, beat: 0, head: "think", flicker: 0 },
-  planning:      { tint: "#ff9a48", rpat: "spin", eyes: 1.0, rim: 1.25, scan: 1.8, flow: -1.0, ring: 0.9, beam: 0.9, reactor: 0.95, neural: 0.9, data: 0, sweep: 0.4, discharge: 0.2, beat: 0, head: "think", flicker: 0 },
-  researching:   { tint: "#ffaf6a", rpat: "scan", eyes: 1.05, rim: 1.25, scan: 2.4, flow: 0.8, ring: 0.8, beam: 0.95, reactor: 0.9, neural: 0.6, data: 1.0, sweep: 0.9, discharge: 0, beat: 0, head: "scan", flicker: 0 },
-  writing:       { tint: "#ffb27a", rpat: "beat", eyes: 1.45, rim: 1.3, scan: 1.4, flow: 1.4, ring: 0.55, beam: 1.0, reactor: 1.0, neural: 0.5, data: 0, sweep: 0, discharge: 0, beat: 0, head: "aware", flicker: 0 },
-  speaking:      { tint: "#ffbe86", rpat: "beat", eyes: 1.5, rim: 1.3, scan: 1.2, flow: 1.0, ring: 0.4, beam: 0.95, reactor: 0.9, neural: 0.35, data: 0, sweep: 0, discharge: 0, beat: 0, head: "speak", flicker: 0 },
-  coding:        { tint: "#ff8a38", rpat: "surge", eyes: 1.35, rim: 1.35, scan: 1.8, flow: 2.4, ring: 0.7, beam: 1.0, reactor: 1.1, neural: 0.7, data: 0, sweep: 0.3, discharge: 0.2, beat: 0, head: "think", flicker: 0 },
-  verifying:     { tint: "#ffc497", rpat: "scan", eyes: 1.1, rim: 1.2, scan: 3.6, flow: 0.9, ring: 0.5, beam: 0.95, reactor: 0.9, neural: 0.5, data: 0, sweep: 1.0, discharge: 0, beat: 0, head: "scan", flicker: 0 },
-  executing:     { tint: "#ff8f40", rpat: "surge", eyes: 1.2, rim: 1.35, scan: 1.8, flow: 1.8, ring: 1.2, beam: 1.05, reactor: 1.35, neural: 0.6, data: 0, sweep: 0.3, discharge: 0.55, beat: 1.8, head: "aware", flicker: 0 },
-  approval:      { tint: "#ffb347", rpat: "beat", eyes: 1.05, rim: 1.3, scan: 1.0, flow: 0.4, ring: 0.2, beam: 0.85, reactor: 0.85, neural: 0.2, data: 0, sweep: 0, discharge: 0, beat: 2.8, head: "attend", flicker: 0 },
-  warning:       { tint: "#ffbf6a", rpat: "scan", eyes: 0.9, rim: 1.15, scan: 1.8, flow: 0.3, ring: 0.15, beam: 0.75, reactor: 0.7, neural: 0.15, data: 0, sweep: 0.55, discharge: 0, beat: 0, head: "aware", flicker: 0 },
-  completed:     { tint: "#ffd6a0", rpat: "surge", eyes: 1.8, rim: 1.7, scan: 1.0, flow: 1.0, ring: 0.6, beam: 1.2, reactor: 1.6, neural: 0.6, data: 0, sweep: 0, discharge: 0, beat: 0, head: "aware", flicker: 0 },
+  unknown:       { tint: "#b9a27a", rpat: "calm", eyes: 0.35, rim: 0.8, scan: 0.6, flow: 0.1, ring: 0.05, beam: 0.4, reactor: 0.35, neural: 0.05, data: 0, sweep: 0, discharge: 0, beat: 0, head: "still", flicker: 0 },
+  idle:          { tint: "#f2c46d", rpat: "calm", eyes: 0.75, rim: 1.0, scan: 1.0, flow: 0.3, ring: 0.12, beam: 0.65, reactor: 0.55, neural: 0.12, data: 0, sweep: 0, discharge: 0, beat: 0, head: "aware", flicker: 0 },
+  listening:     { tint: "#ffd98f", rpat: "calm", eyes: 1.3, rim: 1.25, scan: 1.2, flow: 0.5, ring: 0.3, beam: 0.85, reactor: 0.75, neural: 0.25, data: 0, sweep: 0, discharge: 0, beat: 0, head: "attend", flicker: 0 },
+  understanding: { tint: "#f5c867", rpat: "spin", eyes: 1.0, rim: 1.2, scan: 2.6, flow: -0.8, ring: 0.45, beam: 0.85, reactor: 0.8, neural: 0.7, data: 0, sweep: 0.6, discharge: 0, beat: 0, head: "think", flicker: 0 },
+  reasoning:     { tint: "#f0bd5a", rpat: "spin", eyes: 1.1, rim: 1.3, scan: 1.6, flow: -1.3, ring: 0.7, beam: 0.9, reactor: 1.0, neural: 1.0, data: 0, sweep: 0.5, discharge: 0.25, beat: 0, head: "think", flicker: 0 },
+  planning:      { tint: "#efc062", rpat: "spin", eyes: 1.0, rim: 1.25, scan: 1.8, flow: -1.0, ring: 0.9, beam: 0.9, reactor: 0.95, neural: 0.9, data: 0, sweep: 0.4, discharge: 0.2, beat: 0, head: "think", flicker: 0 },
+  researching:   { tint: "#f7d07c", rpat: "scan", eyes: 1.05, rim: 1.25, scan: 2.4, flow: 0.8, ring: 0.8, beam: 0.95, reactor: 0.9, neural: 0.6, data: 1.0, sweep: 0.9, discharge: 0, beat: 0, head: "scan", flicker: 0 },
+  writing:       { tint: "#fbd88e", rpat: "beat", eyes: 1.45, rim: 1.3, scan: 1.4, flow: 1.4, ring: 0.55, beam: 1.0, reactor: 1.0, neural: 0.5, data: 0, sweep: 0, discharge: 0, beat: 0, head: "aware", flicker: 0 },
+  speaking:      { tint: "#ffe0a0", rpat: "beat", eyes: 1.5, rim: 1.3, scan: 1.2, flow: 1.0, ring: 0.4, beam: 0.95, reactor: 0.9, neural: 0.35, data: 0, sweep: 0, discharge: 0, beat: 0, head: "speak", flicker: 0 },
+  coding:        { tint: "#eab350", rpat: "surge", eyes: 1.35, rim: 1.35, scan: 1.8, flow: 2.4, ring: 0.7, beam: 1.0, reactor: 1.1, neural: 0.7, data: 0, sweep: 0.3, discharge: 0.2, beat: 0, head: "think", flicker: 0 },
+  verifying:     { tint: "#fde2a8", rpat: "scan", eyes: 1.1, rim: 1.2, scan: 3.6, flow: 0.9, ring: 0.5, beam: 0.95, reactor: 0.9, neural: 0.5, data: 0, sweep: 1.0, discharge: 0, beat: 0, head: "scan", flicker: 0 },
+  executing:     { tint: "#f2a33a", rpat: "surge", eyes: 1.2, rim: 1.35, scan: 1.8, flow: 1.8, ring: 1.2, beam: 1.05, reactor: 1.35, neural: 0.6, data: 0, sweep: 0.3, discharge: 0.55, beat: 1.8, head: "aware", flicker: 0 },
+  approval:      { tint: "#ffc25a", rpat: "beat", eyes: 1.05, rim: 1.3, scan: 1.0, flow: 0.4, ring: 0.2, beam: 0.85, reactor: 0.85, neural: 0.2, data: 0, sweep: 0, discharge: 0, beat: 2.8, head: "attend", flicker: 0 },
+  warning:       { tint: "#ffb347", rpat: "scan", eyes: 0.9, rim: 1.15, scan: 1.8, flow: 0.3, ring: 0.15, beam: 0.75, reactor: 0.7, neural: 0.15, data: 0, sweep: 0.55, discharge: 0, beat: 0, head: "aware", flicker: 0 },
+  completed:     { tint: "#fff0c8", rpat: "surge", eyes: 1.8, rim: 1.7, scan: 1.0, flow: 1.0, ring: 0.6, beam: 1.2, reactor: 1.6, neural: 0.6, data: 0, sweep: 0, discharge: 0, beat: 0, head: "aware", flicker: 0 },
   error:         { tint: "#ff4b4b", rpat: "stutter", eyes: 1.1, rim: 1.1, scan: 0.8, flow: 0.0, ring: 0.0, beam: 0.45, reactor: 0.5, neural: 0.05, data: 0, sweep: 0.7, discharge: 0, beat: 0, head: "still", flicker: 0.45 },
-  recovery:      { tint: "#ffb27a", rpat: "calm", eyes: 0.8, rim: 1.0, scan: 1.5, flow: 0.5, ring: 0.25, beam: 0.7, reactor: 0.6, neural: 0.3, data: 0, sweep: 0.5, discharge: 0, beat: 0, head: "aware", flicker: 0.08 },
-  halted:        { tint: "#a8927a", rpat: "still", eyes: 0.4, rim: 0.85, scan: 0.4, flow: 0.0, ring: 0.0, beam: 0.35, reactor: 0.3, neural: 0.0, data: 0, sweep: 0, discharge: 0, beat: 0, head: "still", flicker: 0 },
+  recovery:      { tint: "#f7d48c", rpat: "calm", eyes: 0.8, rim: 1.0, scan: 1.5, flow: 0.5, ring: 0.25, beam: 0.7, reactor: 0.6, neural: 0.3, data: 0, sweep: 0.5, discharge: 0, beat: 0, head: "aware", flicker: 0.08 },
+  halted:        { tint: "#a8977a", rpat: "still", eyes: 0.4, rim: 0.85, scan: 0.4, flow: 0.0, ring: 0.0, beam: 0.35, reactor: 0.3, neural: 0.0, data: 0, sweep: 0, discharge: 0, beat: 0, head: "still", flicker: 0 },
 };
 const NUMERIC = ["eyes", "rim", "scan", "flow", "ring", "beam", "reactor", "neural", "data", "sweep", "discharge", "flicker"];
 
@@ -112,18 +113,18 @@ export function create(wrap, opts = {}) {
 
   // ---- shared uniforms: one update per frame drives every hologram material ------------------------------------
   const U = { uHead: { value: new THREE.Matrix3() }, uArmR: { value: new THREE.Matrix3() }, uArmL: { value: new THREE.Matrix3() },
-              uForeR: { value: new THREE.Matrix3() }, uForeL: { value: new THREE.Matrix3() }, uAccent: { value: new THREE.Color("#3dffb8") },
+              uForeR: { value: new THREE.Matrix3() }, uForeL: { value: new THREE.Matrix3() }, uAccent: { value: new THREE.Color("#fff1cf") },
               uTime: { value: 0 }, uTint: { value: CHAMPAGNE.clone() }, uRimK: { value: 1 }, uGain: { value: 1 },
               uScan: { value: 1 }, uFlow: { value: 0.3 }, uFlicker: { value: 0 }, uReflect: { value: 0 } };
   const EYE = { value: 1 }, REACTOR = { value: 1 };
-  const FACE = { uEyeOpen: { value: 1 }, uEyeLook: { value: 0 }, uEyeScan: { value: 0 }, uSpeech: { value: 0 }, uEyeHot: { value: 1 } };   // eyes and speech light
+  const FACE = { uEyeOpen: { value: 1 }, uEyeLook: { value: 0 }, uEyeScan: { value: 0 }, uSpeech: { value: 0 }, uEyeHot: { value: 1 }, uThink: { value: 0 } };   // eyes and speech light
   const lineMats = [];
   const parts = {};
   let building = null;   // the part whose meshes are being built (for its reveal uniform and visibility)
 
   function holo(o = {}) {
     const m = new THREE.ShaderMaterial({
-      vertexShader: VERT, fragmentShader: FRAG, transparent: true, depthWrite: false, side: THREE.DoubleSide,
+      vertexShader: o.vert || VERT, fragmentShader: FRAG, transparent: true, depthWrite: false, side: THREE.DoubleSide, wireframe: !!o.wire,
       blending: THREE.AdditiveBlending,
       uniforms: { ...U, uTint0: U.uTint, uHeadOn: { value: o.head ? 1 : 0 }, uOpacity: { value: o.opacity ?? 0.9 }, uRim: { value: o.rim ?? 1 }, uFlowOn: { value: o.flow ? 1 : 0 },
                   uCore: { value: o.core ?? 0.035 }, uFadeLow: { value: o.fadeLow ?? -10 }, uSelf: o.self || { value: 1 },
@@ -131,7 +132,7 @@ export function create(wrap, opts = {}) {
                   // armour surfaces (low inner glow, no energy flow) get machined panel seams unless told otherwise
                   uPanel: { value: o.panel ?? ((o.core ?? 0.035) < 0.2 && !o.flow && !o.self ? 0.85 : 0) },
                   uPanelScale: { value: o.panelScale ?? 6 }, uContour: { value: o.contour ?? 0 }, uDetail: { value: o.detail ?? 0 }, uCoreE: REACTOR, uEye: EYE, ...FACE,
-                  uInflate: { value: o.inflate ?? 0 } },
+                  uInflate: { value: o.inflate ?? 0 }, ...(o.extra || {}) },
       extensions: { derivatives: true },
     });
     return m;
@@ -183,7 +184,7 @@ export function create(wrap, opts = {}) {
       ring.rotation.x = Math.PI / 2; ring.position.y = BASE_Y + 0.065 * SCALE; ring.scale.setScalar(SCALE);
       spinners.push({ obj: ring, speed: 0.2 * dir, axis: "z" });
     }
-    for (const [r, arc, start, c, o] of [[2.35, 2.4, 3.6, "#ff8a3a", 0.85], [2.55, 1.9, 4.9, "#33e6ad", 0.7], [2.2, 1.2, 0.5, "#33e6ad", 0.45]]) {
+    for (const [r, arc, start, c, o] of [[2.35, 2.4, 3.6, "#f2a33a", 0.85], [2.55, 1.9, 4.9, "#fff1cf", 0.55], [2.2, 1.2, 0.5, "#c98a3c", 0.45]]) {
       const strip = add(new THREE.Mesh(new THREE.TorusGeometry(r, 0.018, 6, 160, arc).rotateZ(start), new THREE.MeshBasicMaterial({
         color: new THREE.Color(c).multiplyScalar(1.6), transparent: true, opacity: o, blending: THREE.AdditiveBlending, depthWrite: false })), scene);
       strip.rotation.x = Math.PI / 2; strip.position.y = BASE_Y + 0.03; strip.scale.setScalar(SCALE);   // curved floor light strips
@@ -213,7 +214,7 @@ export function create(wrap, opts = {}) {
     const r = rng(23);
     for (let i = 0; i < N; i++) { const q = Math.floor(r() * (src.length / 3));
       P.set([src[q * 3], src[q * 3 + 1], src[q * 3 + 2]], i * 3); Nn.set([nsrc[q * 3], nsrc[q * 3 + 1], nsrc[q * 3 + 2]], i * 3);
-      seed[i] = r(); ac[i] = Math.max(acc[q], r() < 0.14 ? 1 : 0); }
+      seed[i] = r(); ac[i] = acc[q]; }
     const g = new THREE.BufferGeometry();
     g.setAttribute("position", new THREE.BufferAttribute(P, 3)); g.setAttribute("aN", new THREE.BufferAttribute(Nn, 3));
     g.setAttribute("aSeed", new THREE.BufferAttribute(seed, 1)); g.setAttribute("aAccent", new THREE.BufferAttribute(ac, 1));
@@ -335,6 +336,9 @@ export function create(wrap, opts = {}) {
   // Alloy armour: key plates cut from the figure's own surface (so they hug the sleek body), lifted slightly off it.
   // m(p) > 0 inside a plate; its value near the border feeds the glowing seam.
   const metals = [];
+  // m(x, y, z) > 0 inside a plate (about a distance in body units near the border); lift = how far it stands off
+  // the surface (layered plates stand further out). Hand plates use the surface normal and the finger segments.
+  const out = (x) => Math.sign(x);
   const PLATES = [
     { name: "chest", order: 0, dir: [0, 0.1, 1], m: (x, y, z) => { const ax = Math.abs(x);
       return Math.min(y - (3.4 + 0.9 * (ax - 0.22) ** 2), (3.83 + 0.4 * ax) - y, 0.47 - 0.6 * (y - 3.68) ** 2 - ax, z - 0.04,
@@ -343,27 +347,48 @@ export function create(wrap, opts = {}) {
       return Math.min(y - 2.82, 3.3 - 0.4 * ax - y, 0.2 - 0.25 * (3.06 - y) ** 2 - ax, z - 0.08, Math.abs(y - 3.06) > 0.012 ? 1 : -1); } },
     ...[1, -1].map((sg) => ({ name: "shoulder", order: 0.25, dir: [sg, 0.7, 0], m: (x, y, z) => sg * x <= 0 ? -1
         : Math.min(0.27 - Math.hypot(Math.abs(x) - 0.66, (y - 3.93) * 0.9, z), y - (3.7 + 0.25 * Math.abs(z)), Math.abs(x) - 0.5) })),
+    ...[1, -1].map((sg) => ({ name: "pauldron", order: 0.3, lift: 0.055, dir: [sg, 1, 0], m: (x, y, z) => sg * x <= 0 ? -1   // second layer
+        : Math.min(0.17 - Math.hypot(Math.abs(x) - 0.69, (y - 3.99) * 0.9, z), y - 3.86) })),
+    ...[1, -1].map((sg) => ({ name: "upperarm", order: 0.35, dir: [sg, 0, 0], m: (x, y, z) => sg * x <= 0 ? -1
+        : Math.min(y - 3.28, 3.72 - y, Math.abs(x) - 0.765) })),
     ...[1, -1].map((sg) => ({ name: "forearm", order: 0.45, dir: [sg, 0, 0.3], m: (x, y, z) => sg * x <= 0 ? -1
         : Math.min(y - 2.42, 2.94 - y - 0.8 * Math.abs(z), Math.abs(x) - (0.79 + 0.08 * (3.04 - y)) + 0.05) })),
+    ...[1, -1].map((sg) => ({ name: "hip", order: 0.5, dir: [sg, -0.3, 0], m: (x, y, z) => sg * x <= 0 ? -1
+        : Math.min(y - 2.38, 2.7 - y, Math.abs(x) - 0.3, 0.19 - Math.abs(z)) })),
+    ...[1, -1].map((sg) => ({ name: "thigh", order: 0.55, dir: [0, 0, 1], m: (x, y, z) => sg * x <= 0 ? -1
+        : Math.min(y - 1.6, 2.22 - y - 0.4 * Math.abs(Math.abs(x) - 0.25), z - 0.08, 0.1 - Math.abs(Math.abs(x) - 0.25)) })),
+    ...[1, -1].map((sg) => ({ name: "knee", order: 0.6, lift: 0.045, dir: [0, 0, 1], m: (x, y, z) => sg * x <= 0 ? -1
+        : Math.min(0.085 - Math.hypot(Math.abs(x) - 0.26, y - 1.34), z - 0.06) })),
     ...[1, -1].map((sg) => ({ name: "shin", order: 0.65, dir: [0, 0, 1], m: (x, y, z) => { const ax = Math.abs(x);
       return sg * x <= 0 ? -1 : Math.min(y - 0.52, 1.26 - y - 1.3 * Math.abs(ax - 0.255), z - 0.0, (0.1 - 0.04 * (1.2 - y)) - Math.abs(ax - 0.255)); } })),
-    { name: "helmet", order: 0.85, dir: [0, 0.4, -1], m: (x, y, z) => Math.min(y - 4.47, -z - 0.03 + 0.25 * Math.max(0, y - 4.95)) },   // swept back behind the face
+    { name: "helmet", order: 0.85, lift: 0.022, dir: [0, 0.4, -1], m: (x, y, z) => Math.min(y - 4.45, Math.max(0.075 - z, y - 4.93)) },   // shell: crown, sides, back; the faceplate stays light
+    { name: "hand", order: 0.5, lift: 0.004, src: "hands", dir: [1, 0, 0], m: (x, y, z, nx, f, sgm, kz) => {   // back of the hand and finger tops
+        const o = nx * out(x);
+        if (f < 0) return 0.04 * Math.min(o - 0.35, (2.245 - y) * 25, (y - 2.095) * 25);
+        if (f > 3.5) return -1;
+        return 0.04 * Math.min(o - 0.3, Math.abs(sgm - 0.454) * 3 - 0.09, Math.abs(sgm - 0.76) * 3 - 0.09, 0.96 - sgm,
+          (0.0072 - Math.abs(z - kz)) * 60); } },   // one plate per finger segment, a glowing gap between fingers
   ];
   const plateUni = { uOpen: { value: 0 }, uSeam: { value: 0.25 } };
+  const handUni = { uCurl: { value: 0.2 }, uFlex: { value: 0 } };
+  const handGeo = meshHands(phone ? 0.009 : 0.0065);
   part("armour", 1, (add, reveal) => {
-    const P = figureGeo.attributes.position.array, N = figureGeo.attributes.normal.array, I = figureGeo.index.array;
     for (const pl of PLATES) {
+      const src = pl.src === "hands" ? handGeo : figureGeo;
+      const P = src.attributes.position.array, N = src.attributes.normal.array, I = src.index.array;
+      const F = src.attributes.aFing?.array, S = src.attributes.aSeg?.array, K = src.attributes.aKnuck?.array;
       const nv = P.length / 3, mv = new Float32Array(nv);
-      for (let q = 0; q < nv; q++) mv[q] = pl.m(P[q * 3], P[q * 3 + 1], P[q * 3 + 2]);
-      const remap = new Int32Array(nv).fill(-1), pos = [], nrm = [], edge = [], idx = [];
-      const lift = pl.name === "helmet" ? 0.022 : 0.03;
+      for (let q = 0; q < nv; q++) mv[q] = pl.m(P[q * 3], P[q * 3 + 1], P[q * 3 + 2], N[q * 3], F ? F[q] : -1, S ? S[q] : 0, K ? K[q * 3 + 2] : 0);
+      const remap = new Int32Array(nv).fill(-1), pos = [], nrm = [], edge = [], idx = [], fing = [], segs = [], knk = [];
+      const lift = pl.lift ?? 0.03;
       for (let t = 0; t < I.length; t += 3) {
         const a = I[t], b = I[t + 1], c = I[t + 2];
         if (mv[a] <= 0 && mv[b] <= 0 && mv[c] <= 0) continue;   // border triangles are kept and trimmed smoothly in the shader
         for (const v of [a, b, c]) {
           if (remap[v] < 0) { remap[v] = pos.length / 3;
             pos.push(P[v * 3] + N[v * 3] * lift, P[v * 3 + 1] + N[v * 3 + 1] * lift, P[v * 3 + 2] + N[v * 3 + 2] * lift);
-            nrm.push(N[v * 3], N[v * 3 + 1], N[v * 3 + 2]); edge.push(Math.max(mv[v], -0.04)); }
+            nrm.push(N[v * 3], N[v * 3 + 1], N[v * 3 + 2]); edge.push(Math.max(mv[v], -0.04));
+            if (F) { fing.push(F[v]); segs.push(S[v]); knk.push(K[v * 3], K[v * 3 + 1], K[v * 3 + 2]); } }
           idx.push(remap[v]);
         }
       }
@@ -374,13 +399,35 @@ export function create(wrap, opts = {}) {
       g.setAttribute("aEdge", new THREE.Float32BufferAttribute(edge, 1));
       g.setAttribute("aOpenDir", new THREE.Float32BufferAttribute(Array.from({ length: n }, () => [d.x, d.y, d.z]).flat(), 3));
       g.setAttribute("uv", new THREE.BufferAttribute(new Float32Array(n * 2), 2));
+      if (F) { g.setAttribute("aFing", new THREE.Float32BufferAttribute(fing, 1)); g.setAttribute("aSeg", new THREE.Float32BufferAttribute(segs, 1));
+        g.setAttribute("aKnuck", new THREE.Float32BufferAttribute(knk, 3)); }
       g.setIndex(idx);
-      const mat = new THREE.ShaderMaterial({ vertexShader: PLATE_VERT, fragmentShader: PLATE_FRAG, transparent: true, depthWrite: true,
-        uniforms: { ...U, uHeadOn: { value: 1 }, uInflate: { value: 0 }, uReveal: reveal, uOpacity: { value: 1 }, ...plateUni },
+      const mat = new THREE.ShaderMaterial({ vertexShader: F ? HAND_PLATE_VERT : PLATE_VERT, fragmentShader: PLATE_FRAG, transparent: true, depthWrite: true,
+        uniforms: { ...U, uHeadOn: { value: 1 }, uInflate: { value: 0 }, uReveal: reveal, uOpacity: { value: 1 }, ...plateUni, ...(F ? handUni : {}) },
         extensions: { derivatives: true } });
       const mesh = add(new THREE.Mesh(g, mat)); mesh.renderOrder = -1;   // drawn first: the plates hide the glow behind them, never glow in front
       metals.push({ mesh, order: pl.order, dir: d });
     }
+  });
+  // the hands themselves (light body), and the mechanical joints: elbow and knee hubs, wrist rings
+  part("hands", 1, (add) => {
+    add(new THREE.Mesh(handGeo, holo({ vert: HAND_VERT, opacity: 1, rim: 1.6, core: 0.1, panel: 0, head: true, extra: handUni })));
+  });
+  part("joints", 1, (add) => {
+    const ring = (r, tube, at, rot) => { const g = new THREE.TorusGeometry(r, tube, 6, 48);
+      g.rotateX(rot[0]); g.rotateY(rot[1]); g.translate(...at); return g; };   // baked into rest coordinates (the joints bend them)
+    const geos = [];
+    for (const sg of [1, -1]) {
+      geos.push(ring(0.048, 0.005, [sg * 0.872, 3.04, -0.03], [0, Math.PI / 2]), ring(0.028, 0.004, [sg * 0.876, 3.04, -0.03], [0, Math.PI / 2]));   // elbow hub
+      geos.push(ring(0.05, 0.005, [sg * 0.375, 1.34, 0.03], [0, Math.PI / 2]), ring(0.03, 0.004, [sg * 0.38, 1.34, 0.03], [0, Math.PI / 2]));      // knee hub
+      geos.push(ring(0.053, 0.004, [sg * 0.884, 2.29, 0.05], [Math.PI / 2, 0]));                                                                  // wrist ring
+    }
+    add(new THREE.Mesh(mergeGeos(geos), holo({ opacity: 1, rim: 1.4, flow: true, core: 0.6, head: true })));
+  });
+  part("wire", 2, (add) => {   // stage 2: a fine holographic wireframe over the body
+    if (phone) return;
+    const wg = meshFigure(0.075, [-1.12, -0.05, -0.48], [1.12, 4.38, 0.48]);
+    add(new THREE.Mesh(wg, holo({ wire: true, opacity: 0.1, rim: 0.4, core: 0.22, panel: 0, head: true })));
   });
   let shieldMat = null, shieldMesh = null, shieldFlare = 0;
   if (!phone) part("shield", 1, (add) => {
@@ -716,6 +763,10 @@ export function create(wrap, opts = {}) {
     if (moving) t += dt;
     const k = moving ? 1 - Math.exp(-dt * 2.2) : 1;   // ~0.6–1 s blend between states
     armPose(k);
+    const CURL = { present: 0.08, work: 0.42, raise: 0.02, open: 0.0, rest: 0.2 };
+    handUni.uCurl.value += ((state === "halted" ? 0.32 : CURL[POSE_OF[state] || "rest"]) - handUni.uCurl.value) * k;
+    handUni.uFlex.value = moving ? 0.05 : 0;   // the fingers flex slightly (Normal mode only)
+    FACE.uThink.value = cur.neural;
     // armour: seams brighten and plates vent (part slightly) only while really working; the shield after an alert
     const busyState = ["reasoning", "planning", "coding", "executing", "researching", "verifying", "writing", "understanding"].includes(state);
     const heavy = ["coding", "executing", "reasoning"].includes(state);
