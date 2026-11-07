@@ -118,6 +118,7 @@ void main() {
   vec4 s = texture2D(tScene, vUv);
   vec3 col = vec3(texture2D(tScene, vUv + off).r, s.g, texture2D(tScene, vUv - off).b);
   col += texture2D(tB1, vUv).rgb * uB1 + texture2D(tB2, vUv).rgb * uB2;
+  col = col / (1.0 + max(col - 0.8, 0.0) * 0.9);   // soft roll-off: bright highlights stay golden instead of clipping
   col += (hash(vUv * uRes + uTime) - 0.5) * 0.02 * col;
   float a = clamp(max(s.a, max(col.r, max(col.g, col.b))), 0.0, 1.0);
   gl_FragColor = vec4(min(col, vec3(a)), a);
@@ -243,7 +244,7 @@ export function create(wrap, opts = {}) {
       const quadScene = new THREE.Scene(), quadCam = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
       const quad = new THREE.Mesh(new THREE.PlaneGeometry(2, 2)); quadScene.add(quad); quad.frustumCulled = false;
       const mat = (frag, uniforms) => new THREE.ShaderMaterial({ vertexShader: QUAD_VERT, fragmentShader: frag, uniforms, depthTest: false, depthWrite: false });
-      const bright = mat(BRIGHT_FRAG, { tSrc: { value: null }, uThr: { value: 0.5 } });
+      const bright = mat(BRIGHT_FRAG, { tSrc: { value: null }, uThr: { value: 0.6 } });
       const blur = mat(BLUR_FRAG, { tSrc: { value: null }, uDir: { value: new THREE.Vector2() } });
       const copy = mat(BLUR_FRAG, { tSrc: { value: null }, uDir: { value: new THREE.Vector2(0, 0) } });
       const comp = mat(COMPOSITE_FRAG, { tScene: { value: null }, tB1: { value: null }, tB2: { value: null }, uB1: { value: 1.1 }, uB2: { value: 0.9 },
@@ -276,6 +277,24 @@ export function create(wrap, opts = {}) {
   })();
 
   const scene = new THREE.Scene();
+  // A small studio generated in code (warm light strips) gives the metal something to reflect; plus a key light,
+  // two rim lights from behind, and the reactor's own light (brighter with activity).
+  try {
+    const pmrem = new THREE.PMREMGenerator(renderer), env = new THREE.Scene();
+    env.background = new THREE.Color(0x060504);
+    for (const [w, h, c, k, pos] of [[12, 1.4, "#fff1d6", 3.2, [0, 7, 3]], [1.2, 9, "#ffcf7a", 2.4, [-7, 1, 1]], [1.2, 9, "#ffcf7a", 2.4, [7, 1, 1]],
+                                     [9, 1, "#ffffff", 1.6, [0, -1.5, 7]], [5, 5, "#c99a3c", 1.0, [0, 2, -8]],
+                                     [8, 4, "#ffe6b8", 0.9, [0, 4, 9]]]) {   // a broad soft panel in front: sheen on front plates
+      const m = new THREE.Mesh(new THREE.PlaneGeometry(w, h), new THREE.MeshBasicMaterial({ color: new THREE.Color(c).multiplyScalar(k), side: THREE.DoubleSide }));
+      m.position.set(...pos); m.lookAt(0, 0, 0); env.add(m);
+    }
+    scene.environment = pmrem.fromScene(env, 0.03).texture;
+    pmrem.dispose();
+  } catch (e) { /* no reflections: the metal is still lit */ }
+  const keyLight = new THREE.DirectionalLight(0xffe9c4, 2.4); keyLight.position.set(-3, 6, 8);
+  const rimL = new THREE.DirectionalLight(0xffd28a, 3.0); rimL.position.set(-6, 3.5, -5);
+  const rimR = new THREE.DirectionalLight(0xffd28a, 3.0); rimR.position.set(6, 3.5, -5);
+  scene.add(keyLight, rimL, rimR);
   const camera = new THREE.PerspectiveCamera(28, 20 / 27, 0.1, 60);
   camera.position.set(0, 2.85, 11.5);
   camera.lookAt(0, 2.68, 0);
@@ -376,35 +395,6 @@ export function create(wrap, opts = {}) {
       ring.rotation.x = Math.PI / 2; ring.position.y = 2.84 + i * 0.09; ring.scale.z = 0.8;
     }
   });
-  part("gorget", 1, (add) => {
-    for (const [prof, o] of [[[V2(0.33, 3.05), V2(0.42, 2.96), V2(0.6, 2.86), V2(0.82, 2.76)], 1], [[V2(0.3, 3.16), V2(0.36, 3.08), V2(0.47, 3.0)], 0.9]]) {
-      const g = facet(new THREE.LatheGeometry(prof, 16));
-      const m = add(new THREE.Mesh(g, holo({ opacity: o, rim: 1.6, core: 0.1 })));
-      m.scale.z = 0.62; edged(add, g, m, 0.3);
-    }
-  });
-  part("cuirass", 1, (add) => {
-    const shell = facet(new THREE.SphereGeometry(1, 16, 10, Math.PI / 2 - 1.25, 2.5, 0.28 * Math.PI, 0.36 * Math.PI));
-    const c = add(new THREE.Mesh(shell, holo({ opacity: 0.85, rim: 1.4, core: 0.05, fadeLow: 0.5 })));
-    c.position.set(0, 2.08, 0); c.scale.set(1.32, 0.95, 0.88);
-    edged(add, shell, c, 0.22);
-    for (const s of [-1, 1]) {   // pectoral plates, with a gap for the reactor
-      const g = plate(shapeOf([[0.05, 0], [0.6, 0.06], [0.68, -0.22], [0.56, -0.5], [0.16, -0.56], [0.1, -0.3]]), 0.045, 0.015);
-      const m = add(new THREE.Mesh(g, holo({ opacity: 0.95, rim: 1.5, core: 0.08, fadeLow: 0.5 })));
-      m.position.copy(onChest(0.3 * s, 2.58, 0.1)); m.scale.set(0.82 * s, 0.82, 1); m.rotation.set(-0.12, 0.32 * s, 0.1 * s);
-      edged(add, g, m, 0.36);
-    }
-    for (let r = 0; r < 3; r++) for (const s of [-1, 1]) {   // abdominal plates
-      const g = facet(new THREE.BoxGeometry(0.3, 0.16, 0.05));
-      const m = add(new THREE.Mesh(g, holo({ opacity: 0.9, rim: 1.4, core: 0.08, fadeLow: 0.5 })));
-      m.position.copy(onChest(0.18 * s, 1.45 - r * 0.21, 0.06)); m.rotation.y = 0.12 * s;
-      edged(add, g, m, 0.3);
-    }
-    for (const s of [-1, 1]) for (let i = 0; i < 4; i++) {   // small illuminated components along the ribs
-      const led = add(new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.018, 0.02), holo({ opacity: 1, rim: 1, core: 0.9, self: REACTOR })));
-      led.position.copy(onChest(0.78 * s, 2.15 - i * 0.12, 0.05)); led.rotation.y = 0.5 * s;
-    }
-  });
   const joints = [];
   part("mechanics_body", 1, (add) => {
     for (const s of [-1, 1]) {
@@ -417,27 +407,12 @@ export function create(wrap, opts = {}) {
       add(new THREE.Mesh(new THREE.TubeGeometry(cable, 16, 0.014, 5, false), holo({ opacity: 1, rim: 1.4, flow: true, core: 0.3 })));
     }
   });
-  part("pauldrons", 1, (add) => {
-    for (const s of [-1, 1]) for (let i = 0; i < 3; i++) {   // layered shoulder lames
-      const r = 0.66 - i * 0.08;
-      const g = facet(new THREE.SphereGeometry(r, 14, 6, 0, Math.PI * 2, 0, Math.PI / 2));
-      const m = add(new THREE.Mesh(g, holo({ opacity: 0.8 - i * 0.12, rim: 1.25, core: 0.04 })));
-      m.position.set((1.28 + i * 0.07) * s, 2.56 - i * 0.16, 0); m.scale.set(0.92, 0.46, 0.8); m.rotation.z = -0.52 * s;
-      edged(add, g, m, 0.3 - i * 0.05);
-    }
-  });
   part("arms", 1, (add) => {
     for (const { s, inner } of arms) {
       const armGeo = new THREE.LatheGeometry([V2(0.001, 0.0), V2(0.2, 0.05), V2(0.24, 0.5), V2(0.29, 1.0), V2(0.34, 1.3), V2(0.33, 1.5),
                                                V2(0.24, 1.66), V2(0.001, 1.7)], 28);
       const arm = add(new THREE.Mesh(armGeo, holo({ opacity: 0.75, fadeLow: 0.55 })), inner);
       arm.position.set(1.6 * s, 0.95, -0.05); arm.rotation.z = 0.12 * s; arm.scale.z = 0.85;
-      const g = facet(new THREE.CylinderGeometry(0.33, 0.3, 0.66, 12, 1, true, -1.6, 3.2));
-      const br = add(new THREE.Mesh(g, holo({ opacity: 0.95, rim: 1.5, core: 0.07, fadeLow: 0.55 })), inner);
-      br.position.set(1.6 * s, 1.85, -0.03); br.rotation.z = 0.12 * s;
-      edged(add, g, br, 0.28, inner);
-      const couter = add(new THREE.Mesh(facet(new THREE.SphereGeometry(0.2, 10, 6)), holo({ opacity: 0.9, rim: 1.5, fadeLow: 0.55 })), inner);
-      couter.position.set(1.66 * s, 1.1, 0.1); couter.scale.set(0.7, 0.55, 0.45);
       // internal energy pathway down the arm, and a shoulder actuator
       const path = new THREE.CatmullRomCurve3([[1.42, 2.5], [1.58, 2.1], [1.68, 1.6], [1.7, 1.15]].map(([x, y]) => new THREE.Vector3(x * s, y, 0.3)));
       add(new THREE.Mesh(new THREE.TubeGeometry(path, 30, 0.01, 4, false), holo({ opacity: 0.9, rim: 1, flow: true, core: 0.3, fadeLow: 0.6 })), inner);
@@ -451,35 +426,15 @@ export function create(wrap, opts = {}) {
   });
 
   // ---- head: faceless helm with optical sensors (original design: sentinel shell, knight crest) -----------------
-  part("helmet", 1, (add) => {
-    const prof = [V2(0.001, 3.22), V2(0.42, 3.26), V2(0.6, 3.42), V2(0.7, 3.7), V2(0.72, 3.98), V2(0.69, 4.28), V2(0.58, 4.56), V2(0.38, 4.78), V2(0.001, 4.88)];
-    const geo = facet(new THREE.LatheGeometry(prof, 14));
-    const shell = add(new THREE.Mesh(geo, holo({ opacity: 0.8, rim: 1.2 })), head);
-    shell.scale.set(0.92, 1, 0.98);
-    edged(add, geo, shell, 0.16, head);
-    const crestGeo = new THREE.TorusGeometry(0.86, 0.055, 4, 64, 2.75).rotateZ(0.22);   // knight crest blade, taller
-    const crest = add(new THREE.Mesh(crestGeo, holo({ opacity: 1, rim: 1.8, core: 0.25 })), head);
-    crest.rotation.y = Math.PI / 2; crest.position.y = 3.96; crest.scale.set(1, 1, 0.4);
-    for (const s of [-1, 1]) {   // swept side guards with sensor discs
-      const g = plate(shapeOf([[-0.22, 0.12], [0.1, 0.16], [0.16, -0.08], [0.02, -0.34], [-0.2, -0.26]]), 0.035);
-      const m = add(new THREE.Mesh(g, holo({ opacity: 1, rim: 1.5, core: 0.08 })), head);
-      m.position.set(0.64 * s, 3.66, -0.08); m.rotation.set(0, (Math.PI / 2 + 0.35) * s, 0.15 * s);
-      edged(add, g, m, 0.34, head);
+  part("helmet", 1, (add) => {   // side sensor discs (the shell, crest and guards are metal: see armour_helm)
+    for (const s of [-1, 1]) {
       const disc = add(new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.07, 0.05, 20), holo({ opacity: 1, rim: 1.8, core: 0.5, self: EYE })), head);
-      disc.rotation.z = Math.PI / 2; disc.position.set(0.69 * s, 3.9, -0.12);
+      disc.rotation.z = Math.PI / 2; disc.position.set(0.71 * s, 3.88, -0.12);
     }
   });
   part("faceplate", 1, (add) => {
     // one sculpted, forward-sloping faceplate (no face): a smooth upper visor, a recessed sensor band, a lower
     // shield that narrows to the chin, and a thin centre ridge
-    const upper = new THREE.SphereGeometry(0.75, 48, 16, Math.PI / 2 - 1.0, 2.0, 0.9, 0.72);
-    const u = add(new THREE.Mesh(upper, holo({ opacity: 0.95, rim: 1.7, core: 0.05, panel: 0.6, panelScale: 9 })), head);
-    u.position.set(0, 3.9, 0.02); u.scale.set(1, 1.05, 1.04);
-    const lowerProfile = [V2(0.7, 3.86), V2(0.68, 3.7), V2(0.6, 3.52), V2(0.44, 3.36), V2(0.22, 3.26), V2(0.02, 3.22)];
-    const lower = new THREE.LatheGeometry(lowerProfile, 40, -0.95, 1.9);   // lathe: phi = 0 faces forward (+z)
-    const l = add(new THREE.Mesh(lower, holo({ opacity: 0.95, rim: 1.7, core: 0.05, panel: 0.7, panelScale: 9 })), head);
-    l.position.z = 0.03; l.scale.z = 1.06;
-    edged(add, lower, l, 0.22, head);
     const band = new THREE.CylinderGeometry(0.735, 0.735, 0.13, 48, 1, true, -0.85, 1.7);   // recessed sensor band
     const b = add(new THREE.Mesh(band, holo({ opacity: 1.1, rim: 1.2, core: 0.16, panel: 0 })), head);
     b.position.set(0, 3.92, 0.0);
@@ -529,6 +484,7 @@ export function create(wrap, opts = {}) {
   const reactorAt = onChest(0, 2.0, 0.17);
   const reactor = new THREE.Group(); reactor.position.copy(reactorAt); body.add(reactor);
   const reactorRings = [];
+  const reactorLight = new THREE.PointLight(0xffe2a8, 3, 3.5, 2); reactorLight.position.z = 0.3; reactor.add(reactorLight);
   part("reactor", 1, (add) => {
     // three rings turning independently; the middle one carries moving segment pulses (one draw call)
     for (const [r, arc, tube, sp, flow] of [[0.6, Math.PI * 1.7, 0.016, 0.6, false], [0.7, Math.PI * 2, 0.022, -0.35, true], [0.8, Math.PI * 1.2, 0.02, 0.25, false]]) {
@@ -563,6 +519,75 @@ export function create(wrap, opts = {}) {
   const reactorGlow = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTexture(), color: WHITE, transparent: true, opacity: 0.4,
     blending: THREE.AdditiveBlending, depthWrite: false }));
   reactorGlow.scale.set(1.6, 1.6, 1); reactor.add(reactorGlow);
+
+  // ---- metal armour over the hologram: lit gold and graphite plates; their borders glow (the seams) --------------
+  const GOLD_M = new THREE.MeshStandardMaterial({ color: 0xe8cf98, metalness: 1, roughness: 0.34, envMapIntensity: 0.85, side: THREE.DoubleSide });
+  const DARK_M = new THREE.MeshStandardMaterial({ color: 0x4a443c, metalness: 0.85, roughness: 0.4, envMapIntensity: 0.8, side: THREE.DoubleSide });
+  const metals = [];   // { mesh, home transform, delay } for the assembly sequence and the reflection pass
+  const metal = (add, geo, mat, to, { order = 0, seam = 0.55 } = {}) => {
+    const m = add(new THREE.Mesh(geo, mat), to);
+    if (seam) m.add(lines(geo, seam, 35));
+    metals.push({ mesh: m, order });
+    return m;
+  };
+  const band = (y0, y1, phi0, phiLen, k = 1.05, segs = 40) => {   // a curved plate following the torso surface
+    const pts = []; for (let i = 0; i <= 10; i++) { const y = y0 + (y1 - y0) * i / 10; pts.push(V2(torsoRadius(y) * k, y)); }
+    return new THREE.LatheGeometry(pts, segs, phi0, phiLen);
+  };
+  part("armour_chest", 1, (add) => {
+    for (const sd of [-1, 1]) {
+      const pec = metal(add, band(2.42, 2.76, sd > 0 ? 0.07 : -1.07, 1.0), GOLD_M, body, { order: 0.1 }); pec.scale.z = TORSO_Z;
+      const rib = metal(add, band(1.55, 2.38, sd > 0 ? 1.12 : -1.9, 0.78, 1.04), DARK_M, body, { order: 0.05 }); rib.scale.z = TORSO_Z;
+    }
+    const collar = metal(add, band(2.77, 2.88, -1.15, 2.3, 1.07), DARK_M, body, { order: 0.2 }); collar.scale.z = TORSO_Z;
+    for (let i = 0; i < 3; i++) for (const sd of [-1, 1]) {   // abdominal plates
+      const y0 = 1.0 + i * 0.18;
+      const ab = metal(add, band(y0, y0 + 0.14, sd > 0 ? 0.05 : -0.9, 0.85), i % 2 ? DARK_M : GOLD_M, body, { order: i * 0.03 });
+      ab.scale.z = TORSO_Z;
+    }
+    const surround = metal(add, new THREE.TorusGeometry(0.66, 0.05, 12, 64), GOLD_M, body, { order: 0.15, seam: 0 });   // frames the reactor
+    surround.position.copy(onChest(0, 2.0, 0.12));
+  });
+  part("armour_collar", 1, (add) => {
+    const g = new THREE.LatheGeometry([V2(0.33, 3.08), V2(0.42, 2.98), V2(0.62, 2.88), V2(0.86, 2.79)], 48);
+    const m = metal(add, g, DARK_M, body, { order: 0.3 }); m.scale.z = 0.62;
+    const rim = metal(add, new THREE.TorusGeometry(0.62, 0.025, 8, 64), GOLD_M, body, { order: 0.32, seam: 0 });
+    rim.rotation.x = Math.PI / 2; rim.position.y = 2.88; rim.scale.y = 0.62;
+  });
+  part("armour_shoulders", 1, (add) => {
+    for (const sd of [-1, 1]) for (let i = 0; i < 2; i++) {
+      const g = new THREE.SphereGeometry(0.66 - i * 0.1, 48, 16, 0, Math.PI * 2, 0, Math.PI / 2);
+      const m = metal(add, g, i ? DARK_M : GOLD_M, body, { order: 0.4 + i * 0.05 });
+      m.position.set((1.3 + i * 0.1) * sd, 2.58 - i * 0.2, 0); m.scale.set(0.95, 0.5, 0.85); m.rotation.z = -0.5 * sd;
+    }
+  });
+  part("armour_arms", 1, (add) => {
+    for (const { s: sd, inner } of arms) {
+      const sleeve = new THREE.LatheGeometry([V2(0.27, 1.1), V2(0.31, 1.3), V2(0.34, 1.45), V2(0.33, 1.55)].map((v) => V2(v.x * 1.06, v.y)), 40);
+      const sl = metal(add, sleeve, DARK_M, inner, { order: 0.5 }); sl.position.set(1.6 * sd, 0.95, -0.05); sl.rotation.z = 0.12 * sd; sl.scale.z = 0.85;
+      const br = metal(add, new THREE.CylinderGeometry(0.34, 0.31, 0.66, 40, 1, true, -1.6, 3.2), GOLD_M, inner, { order: 0.55 });
+      br.position.set(1.6 * sd, 1.85, -0.03); br.rotation.z = 0.12 * sd;
+      const co = metal(add, new THREE.SphereGeometry(0.2, 32, 16), GOLD_M, inner, { order: 0.6, seam: 0 });
+      co.position.set(1.66 * sd, 1.12, 0.08); co.scale.set(0.7, 0.55, 0.45);
+    }
+  });
+  part("armour_helm", 1, (add) => {
+    const cap = metal(add, new THREE.SphereGeometry(0.75, 48, 24, 0, Math.PI * 2, 0, 1.36), GOLD_M, head, { order: 0.8 });
+    cap.position.set(0, 3.95, 0); cap.scale.set(0.93, 1.08, 1.0);
+    const shell = new THREE.LatheGeometry([V2(0.6, 3.3), V2(0.68, 3.5), V2(0.72, 3.75), V2(0.74, 4.0), V2(0.735, 4.15)], 48, 0.9, Math.PI * 2 - 1.8);
+    metal(add, shell, DARK_M, head, { order: 0.75 }).scale.x = 0.93;
+    const lowerProfile = [V2(0.7, 3.84), V2(0.68, 3.7), V2(0.6, 3.52), V2(0.44, 3.36), V2(0.22, 3.26), V2(0.02, 3.23)].map((v) => V2(v.x * 1.03, v.y));
+    for (const sd of [-1, 1]) {   // the lower faceplate in two halves: the centre seam glows
+      const half = new THREE.LatheGeometry(lowerProfile, 40, sd > 0 ? 0.035 : -0.87, 0.835);
+      const h = metal(add, half, GOLD_M, head, { order: 0.85 }); h.position.z = 0.03; h.scale.z = 1.06;
+      const guard = new THREE.ExtrudeGeometry(shapeOf([[-0.22, 0.12], [0.1, 0.16], [0.16, -0.08], [0.02, -0.34], [-0.2, -0.26]]),
+        { depth: 0.035, bevelEnabled: true, bevelThickness: 0.012, bevelSize: 0.012, bevelSegments: 2 });
+      const gm = metal(add, guard, DARK_M, head, { order: 0.82 });
+      gm.position.set(0.66 * sd, 3.66, -0.1); gm.rotation.set(0, (Math.PI / 2 + 0.35) * sd, 0.15 * sd);
+    }
+    const crest = metal(add, new THREE.TorusGeometry(0.86, 0.05, 8, 64, 2.75).rotateZ(0.22), GOLD_M, head, { order: 0.9 });
+    crest.rotation.y = Math.PI / 2; crest.position.y = 3.96; crest.scale.set(1, 1, 0.38);
+  });
 
   // ---- evolution: light and energy only ---------------------------------------------------------------------------
   part("circuits", 2, (add) => {
@@ -599,7 +624,7 @@ export function create(wrap, opts = {}) {
   // orbit rings (more layers at stage 2) carrying the eight system satellites (status from the dashboard's snapshot)
   const orbits = new THREE.Group(); figure.add(orbits);
   const orbitRings = [];
-  for (const [r, y, tilt, o, tier] of [[2.05, 2.0, 0.18, 0.75, 1], [1.78, 2.0, -0.1, 0.5, 1], [1.12, 3.95, 0.12, 0.6, 1], [2.3, 2.3, 0.3, 0.3, 2]]) {
+  for (const [r, y, tilt, o, tier] of [[2.05, 2.0, 0.18, 0.75, 1], [1.78, 2.0, -0.1, 0.5, 1], [2.3, 2.3, 0.3, 0.3, 2]]) {
     building = parts["orbit" + orbitRings.length] = { tier, reveal: { value: 10 }, objs: [] };
     const ring = new THREE.Mesh(new THREE.TorusGeometry(r, 0.008, 6, 160), holo({ opacity: o, rim: 1.5, flow: true, core: 0.55 }));
     building.objs.push(ring); building = null;
@@ -677,6 +702,35 @@ export function create(wrap, opts = {}) {
     blending: THREE.AdditiveBlending, depthWrite: false }));
   baseGlow.position.set(0, BASE_Y + 0.15, 0.2); baseGlow.scale.set(5, 1.1, 1); scene.add(baseGlow);
 
+  // live data aura: four bands around the lower body, each filled by a real value (hidden when unavailable)
+  const AURA_VERT = `varying vec2 vUv; void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`;
+  const AURA_FRAG = `uniform vec3 uColor; uniform float uFill, uGain, uTime; varying vec2 vUv;
+    void main() { float on = step(vUv.x, uFill); float head = exp(-pow((vUv.x - uFill) * 70.0, 2.0));
+      float a = (0.06 + on * (0.45 + 0.2 * sin(vUv.x * 90.0 - uTime * 2.0)) + head * 1.2) * uGain;
+      gl_FragColor = vec4(uColor * (1.0 + head * 0.6), a); }`;
+  const aura = {};
+  [["cpu", "#f3e3bd", 1.9, 0.95, 0.16], ["memory", "#fff8ec", 1.96, 1.15, -0.1], ["missions", "#d9b45f", 2.02, 1.35, 0.12],
+   ["decisions", "#f2a33a", 2.08, 1.55, -0.14]].forEach(([key, c, r, y, tilt], i) => {
+    const mat = new THREE.ShaderMaterial({ vertexShader: AURA_VERT, fragmentShader: AURA_FRAG, transparent: true, depthWrite: false,
+      blending: THREE.AdditiveBlending, uniforms: { uColor: { value: new THREE.Color(c) }, uFill: { value: 0 }, uGain: U.uGain, uTime: U.uTime } });
+    const ring = new THREE.Mesh(new THREE.TorusGeometry(r, 0.007, 4, 180), mat);
+    ring.rotation.set(Math.PI / 2 - tilt, 0, i * 0.8); ring.position.y = y; ring.visible = false; figure.add(ring);
+    aura[key] = { ring, target: 0, value: 0 };
+  });
+
+  // thought constellation: one node per real stage of the current answer, linked in order, above the head
+  const thought = new THREE.Group(); thought.position.y = 5.2; figure.add(thought);
+  const thoughtNodes = [0, 1, 2, 3, 4, 5].map((i) => {
+    const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTexture(), color: WHITE, transparent: true, opacity: 0,
+      blending: THREE.AdditiveBlending, depthWrite: false }));
+    sp.position.set(-1.0 + i * 0.4, Math.sin((i / 5) * Math.PI) * 0.22, 0); sp.scale.set(0.22, 0.22, 1); thought.add(sp);
+    return sp;
+  });
+  const thoughtLine = new THREE.Line(new THREE.BufferGeometry().setFromPoints(thoughtNodes.map((n) => n.position)),
+    new THREE.LineBasicMaterial({ color: CHAMPAGNE, transparent: true, opacity: 0, blending: THREE.AdditiveBlending, depthWrite: false }));
+  thought.add(thoughtLine);
+  let thoughtCount = 0, thoughtActive = false, thoughtAlpha = 0, thoughtBorn = [];
+
   // projector beam, rising dust, research data streams, vertical scan ring, energy pulses
   const beamMat = new THREE.ShaderMaterial({ vertexShader: BEAM_VERT, fragmentShader: BEAM_FRAG, transparent: true, depthWrite: false,
     side: THREE.DoubleSide, blending: THREE.AdditiveBlending, uniforms: { uTint: U.uTint, uTime: U.uTime, uBeam: { value: 0.7 } } });
@@ -753,6 +807,23 @@ export function create(wrap, opts = {}) {
   function setIntensity(x) { intensity = Math.max(0.5, Math.min(1.5, Number(x) || 1)); settling = 1; kick(); }
   // A real speech event (a word boundary from the browser's speech engine) gives the reactor a brief pulse.
   function pulse(strength = 1) { speech = Math.min(1.5, speech + 0.6 * strength); kick(); }
+  function setAura(values) {
+    let changed = false;
+    for (const [key, a] of Object.entries(aura)) {
+      const v = values ? values[key] : null;
+      const show = typeof v === "number" && isFinite(v);
+      const target = show ? Math.max(0.01, Math.min(1, v)) : 0;
+      if (show !== a.ring.visible || Math.abs(target - a.target) > 0.005) changed = true;
+      a.ring.visible = show; a.target = target;
+    }
+    if (changed) kick();   // redraw only when a value really changed (Low performance draws on change only)
+  }
+  function setThought(count, active) {
+    const n = Math.max(0, Math.min(6, count | 0));
+    for (let i = thoughtCount; i < n; i++) thoughtBorn[i] = t;
+    thoughtCount = n; thoughtActive = !!active; if (active) thoughtAlpha = Math.max(thoughtAlpha, 0.01);
+    kick();
+  }
   function setSystems(list) {
     systems = Array.isArray(list) ? list.slice(0, 8) : [];
     satellites.forEach((sat, i) => {
@@ -764,6 +835,39 @@ export function create(wrap, opts = {}) {
   }
 
   for (const p of Object.values(parts)) { p.reveal.value = mode === "full" ? -1.2 : 10; for (const o of p.objs) o.visible = tier >= p.tier; }
+  // remember where every plate belongs (for the assembly sequence)
+  for (const m of metals) {
+    m.home = { p: m.mesh.position.clone(), q: m.mesh.quaternion.clone(), s: m.mesh.scale.clone() };
+    const dir = m.home.p.clone().sub(new THREE.Vector3(0, 2.2, 0)); if (dir.lengthSq() < 0.01) dir.set(0, 0, 1);
+    dir.normalize();
+    m.from = { p: m.home.p.clone().add(dir.multiplyScalar(2.6)).add(new THREE.Vector3(0, 0.8, 1.2)),
+               q: m.home.q.clone().multiply(new THREE.Quaternion().setFromEuler(new THREE.Euler((Math.random() - 0.5) * 1.6, (Math.random() - 0.5) * 1.6, (Math.random() - 0.5) * 1.6))) };
+  }
+  // Startup assembly (once per session, Normal mode only): platform → hologram body → plates lock on → reactor ignites.
+  let boot = opts.boot && mode === "full" ? { t: 0, fired: false } : null;
+  const BOOT_END = 4.3;
+  const ease = (x) => 1 - Math.pow(1 - Math.min(1, Math.max(0, x)), 3);
+  function bootStep(dt) {
+    boot.t += dt;
+    const bt = boot.t;
+    for (const p of Object.values(parts)) if (p.reveal.value < 10) p.reveal.value = Math.min(p.reveal.value, -1.2 + Math.max(0, bt - 0.5) * 2.8);
+    for (const m of metals) {
+      const k = ease((bt - 1.3 - m.order * 1.6) / 0.85);
+      m.mesh.visible = k > 0 && (m.mesh.parent.visible !== false);
+      m.mesh.position.lerpVectors(m.from.p, m.home.p, k);
+      m.mesh.quaternion.slerpQuaternions(m.from.q, m.home.q, k);
+      m.mesh.scale.copy(m.home.s).multiplyScalar(0.55 + 0.45 * k);
+    }
+    if (bt > 3.4 && !boot.fired) { boot.fired = true; flash = 0.8; firePulse(1.6); }
+    if (bt >= BOOT_END) finishBoot();
+  }
+  function finishBoot() {
+    if (!boot) return;
+    for (const m of metals) { m.mesh.position.copy(m.home.p); m.mesh.quaternion.copy(m.home.q); m.mesh.scale.copy(m.home.s); m.mesh.visible = true; }
+    boot = null;
+    if (opts.onBootEnd) opts.onBootEnd();
+    kick();
+  }
 
   function headMotion() {
     const h = target.head;
@@ -828,6 +932,29 @@ export function create(wrap, opts = {}) {
     data.visible = cur.data > 0.02 && moving;
     dust.material.uniforms.uSpeed.value = 1 + flash * 4 + Math.abs(cur.flow) * 0.3;
     dust.visible = moving;
+    if (boot) bootStep(dt);
+    const bootDim = boot ? Math.min(1, Math.max(0, (boot.t - 3.2) / 0.5)) : 1;   // the reactor ignites last
+    REACTOR.value *= boot ? 0.08 + 0.92 * bootDim : 1;
+    beamMat.uniforms.uBeam.value *= boot ? Math.min(1, boot.t / 0.8) : 1;
+    reactorLight.intensity = 2.2 * REACTOR.value * intensity;
+    for (const a of Object.values(aura)) {
+      a.value += (a.target - a.value) * (moving ? 1 - Math.exp(-dt * 2) : 1);
+      a.ring.material.uniforms.uFill.value = a.value;
+      if (moving) a.ring.rotation.z += dt * 0.05;
+    }
+    thoughtAlpha = thoughtActive ? Math.min(1, thoughtAlpha + dt * 3) : Math.max(0, thoughtAlpha - dt * 0.5);
+    thought.visible = thoughtAlpha > 0.01 && thoughtCount > 0;
+    if (thought.visible) {
+      thoughtNodes.forEach((n, i) => {
+        const on = i < thoughtCount; const age = on ? t - (thoughtBorn[i] ?? t) : 9;
+        n.material.opacity = on ? thoughtAlpha * (0.6 + 0.4 * Math.exp(-age * 2)) : 0;
+        const sc = 0.18 + (on ? Math.exp(-age * 3) * 0.25 : 0); n.scale.set(sc, sc, 1);
+        n.material.color.copy(cur.tint).lerp(WHITE, 0.6);
+      });
+      thoughtLine.geometry.setDrawRange(0, Math.max(0, thoughtCount));
+      thoughtLine.material.opacity = 0.5 * thoughtAlpha; thoughtLine.material.color.copy(cur.tint);
+      if (moving) thought.rotation.y = Math.sin(t * 0.3) * 0.15;
+    }
     // vertical scan ring
     sweep.visible = moving && cur.sweep > 0.02;
     if (sweep.visible) { const y = (t * 1.1) % 5.2; sweep.position.y = y; sweep.material.opacity = cur.sweep * 0.6 * Math.sin((y / 5.2) * Math.PI); }
@@ -892,7 +1019,8 @@ export function create(wrap, opts = {}) {
     if (post) post.begin(); else renderer.clear();
     renderer.render(scene, camera);
     // the head reflects ~4 units below the floor, where the reflection has faded to nothing: skip it
-    const hidden = [beam, dust, data, sweep, net.g, orbits, reactor, grid, baseGlow, headPivot, ...shafts, ...pulses.map((p) => p.m), ...eyeGlows, ...parts.pad.objs];
+    const hidden = [beam, dust, data, sweep, net.g, orbits, reactor, grid, baseGlow, headPivot, thought, ...metals.map((m) => m.mesh),
+      ...Object.values(aura).map((a) => a.ring), ...shafts, ...pulses.map((p) => p.m), ...eyeGlows, ...parts.pad.objs];
     const was = hidden.map((o) => o.visible);
     hidden.forEach((o) => { o.visible = false; });
     for (const m of lineMats) m.visible = false;
@@ -903,7 +1031,7 @@ export function create(wrap, opts = {}) {
     for (const m of lineMats) m.visible = true;
     if (post) post.end(t, intensity);
     settling -= dt;
-    if (moving || revealing || settling > 0 && mode === "full") raf = requestAnimationFrame(frame);
+    if (moving || revealing || boot || settling > 0 && mode === "full") raf = requestAnimationFrame(frame);
   }
   function kick() { if (!raf && visible && !document.hidden) raf = requestAnimationFrame(frame); }
 
@@ -938,7 +1066,8 @@ export function create(wrap, opts = {}) {
   resize();
 
   const api = {
-    setState, setTier, setMode, setIntensity, setSystems, pulse, pick, onLost: null,
+    setState, setTier, setMode, setIntensity, setSystems, setAura, setThought, pulse, pick, onLost: null,
+    skipBoot() { if (boot) { boot.t = BOOT_END; kick(); } }, get booting() { return !!boot; },
     get animating() { return raf !== 0; }, get lost() { return lost; }, get state() { return state; },
     get stats() { return { calls: renderer.info.render.calls, triangles: renderer.info.render.triangles }; },
     dispose() { cancelAnimationFrame(raf); ro.disconnect(); io.disconnect(); document.removeEventListener("visibilitychange", onVis);

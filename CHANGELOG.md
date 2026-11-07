@@ -1,5 +1,21 @@
 # Changelog
 
+## Unreleased — Avatar 3.0: real armour, startup assembly, live data aura
+
+- **Lit metal armour over the hologram** (owner's choice: sleek cinematic armour, metal + hologram): polished gold
+  and graphite plates (chest, abdomen, ribs, collar, layered shoulders, arm guards, helm with crest and guards) with
+  glowing seams; reflections from a small studio generated in code (no downloaded assets); key and rim lights and a
+  reactor light that follows activity; a gold surround framing the reactor.
+- **Startup assembly**: platform powers on, the hologram body forms, plates fly in and lock, the reactor ignites last,
+  the HUD powers up. Once per browser session, Normal mode only; any key or click skips it.
+- **Live data aura**: four bands filled by real CPU load, memory use, active missions and decisions waiting (hidden
+  when unavailable); explained in the focus view.
+- **Thought constellation**: one node per real stage of the current answer, linked in order, fading after the reply.
+- **Reactor surge**: a gold shockwave across the dashboard when a mission really completes (not in Low performance or
+  Reduced motion).
+- Free models were researched: no permissively licensed sleek full-body armour exists; the closest full-body pack
+  forbids redistribution, so the armour is sculpted in code.
+
 ## Unreleased — Avatar 2.2: cinematic rendering
 
 - **Bloom**: a small post-processing pipeline written for JARVIS (no extra library): bright edges and cores glow,

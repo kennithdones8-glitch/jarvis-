@@ -192,3 +192,17 @@ body.projection .core-wrap .av-task { display: none; }
 :root[data-projection="standard"] .env { opacity: .85; }
 :root[data-projection="vivid"] .env { opacity: 1; }
 @media (prefers-reduced-motion: reduce) { .av-task { animation: none; } }
+
+/* ---- startup assembly: the HUD powers up around the projection (the top bar and Emergency stop stay put) ---- */
+body.booting .hud .panel, body.booting .hud > .center > :not(.core-wrap) { animation: boot-in .7s ease-out 3.2s both; }
+body.booting .rail-right .panel { animation-delay: 3.45s; }
+@keyframes boot-in { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
+
+/* ---- reactor surge: a gold shockwave from the reactor across the dashboard, only on a real completed mission ---- */
+.surge { position: fixed; left: var(--x); top: var(--y); width: 40px; height: 40px; margin: -20px 0 0 -20px; border-radius: 50%;
+  pointer-events: none; z-index: 80; border: 2px solid rgba(255, 236, 190, .9);
+  box-shadow: 0 0 30px rgba(255, 214, 140, .8), inset 0 0 24px rgba(255, 214, 140, .5);
+  animation: surge 1.5s cubic-bezier(.15, .7, .25, 1) forwards; }
+@keyframes surge { from { transform: scale(.3); opacity: 1; } 70% { opacity: .35; } to { transform: scale(55); opacity: 0; } }
+.pp-aura { margin: 10px 0 0; font-size: 12.5px; }
+@media (prefers-reduced-motion: reduce) { .surge { display: none; } body.booting .hud .panel, body.booting .hud > .center > * { animation: none; } }

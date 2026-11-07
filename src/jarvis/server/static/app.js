@@ -245,6 +245,7 @@ function renderHead(d) {
     if (d && d.evolution) JarvisAvatar.setTier(displayStage(d.evolution));
   }
   renderAvTask(d);
+  if (window.JarvisAvatar && d && d.telemetry) JarvisAvatar.setAura(auraValues(d));
   const wrap = $(".core-wrap");
   if (d && d.evolution && wrap) wrap.title = `Core evolution: ${d.evolution.name} · ${d.evolution.verified} of ${d.evolution.total} milestones verified (details in Command center → Diagnostics)`;
   $(".headline").className = `headline ${s.cls}`;
@@ -427,6 +428,7 @@ async function streamChat(payload) {
         if (msg.s.stage === "generating") live.text = "";
         live.activity.push({ ...msg.s, at: Math.round(performance.now() - started) / 1000 });
         ui.stage = msg.s;
+        if (window.JarvisAvatar) JarvisAvatar.setThought(new Set(live.activity.map((a) => a.stage)).size, true);
         ui.liveLen = -live.activity.length;
         render();
       } else if (msg.done) done = msg.done;
@@ -465,6 +467,7 @@ async function sendChat(payload, endpoint = "/api/chat") {
     ui.chatBusy = false;
     ui.abort = null;
     ui.stage = null;
+    if (window.JarvisAvatar) JarvisAvatar.setThought(0, false);
     render();
   }
   const last = ui.convo[ui.convo.length - 1];
@@ -1984,6 +1987,17 @@ function liveWork(d) {
   return null;
 }
 
+// The data aura shows real values only; anything unavailable is left out (its band disappears).
+function auraValues(d) {
+  const t = d.telemetry || {};
+  return {
+    cpu: t.cpu && t.cpu.available ? Math.min(1, t.cpu.load_per_core / 1.5) : null,
+    memory: t.memory && t.memory.available ? t.memory.used_pct / 100 : null,
+    missions: Math.min(1, d.tasks.filter((x) => ACTIVE.includes(x.state)).length / 5),
+    decisions: Math.min(1, d.approvals.length / 5),
+  };
+}
+
 function renderAvTask(d) {
   const el = $("#avtask");
   if (!el) return;
@@ -2018,6 +2032,9 @@ function renderProjection(d) {
   $("#projsystems").replaceChildren(...list.map((x) => h("button", { class: `ps-sys ${x.status}`, type: "button", title: `Open ${x.label} in the Command center`,
     onclick: () => { closeProjection(); ui.ccOpen = new Set([x.id]); ui.ccKey = ""; location.hash = "#/command"; } },
     h("span", { class: "sc-dot", "aria-hidden": "true" }), h("span", {}, x.label), h("small", {}, x.value))));
+  const av = d ? auraValues(d) : {};
+  const pct = (v) => (typeof v === "number" ? `${Math.round(v * 100)}%` : "unavailable");
+  $("#projaura").textContent = d ? `Aura (inner to outer): CPU load ${pct(av.cpu)} · memory ${pct(av.memory)} · missions ${d.tasks.filter((x) => ACTIVE.includes(x.state)).length} · decisions ${d.approvals.length}` : "";
   $("#projevo").textContent = evo ? `Stage ${displayStage(evo)} · ${evo.stages ? evo.stages[displayStage(evo) - 1] : evo.name} — evolution record` : "Evolution record";
 }
 

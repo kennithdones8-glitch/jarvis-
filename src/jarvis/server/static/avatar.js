@@ -163,10 +163,21 @@
     av.trying = true;
     try {
       const mod = await import("/static/avatar3d.js");
-      const three = mod.create(av.wrap, { state: av.state, tier: av.tier, mode: fxLevel(), intensity: intensity() });
+      // the startup assembly plays once per browser session, in Normal mode only; any key or click skips it
+      let boot = false;
+      try { boot = fxLevel() === "full" && !sessionStorage.getItem("jarvis-booted"); } catch (e) { boot = false; }
+      const endBoot = () => {
+        document.body.classList.remove("booting");
+        try { sessionStorage.setItem("jarvis-booted", "1"); } catch (e) { /* plays again next time */ }
+        document.removeEventListener("keydown", skip, true); document.removeEventListener("pointerdown", skip, true);
+      };
+      const skip = () => { if (av.three) av.three.skipBoot(); };
+      const three = mod.create(av.wrap, { state: av.state, tier: av.tier, mode: fxLevel(), intensity: intensity(), boot, onBootEnd: endBoot });
       if (!three) return;
       av.three = three;
       if (av.systems) three.setSystems(av.systems);
+      if (av.aura) three.setAura(av.aura);
+      if (boot) { document.body.classList.add("booting"); document.addEventListener("keydown", skip, true); document.addEventListener("pointerdown", skip, true); }
       three.onLost = () => { av.wrap.classList.remove("has-3d"); try { three.dispose(); } catch (e) { /* gone */ } av.three = null; loop(); };
       av.wrap.classList.add("has-3d");
       loop();
@@ -211,6 +222,19 @@
   // Which system satellite (if any) is under a screen point: used by hover/click, and by tests.
   function systemAt(x, y) { return av.three ? av.three.pick(x, y) : null; }
   function setSystems(list) { av.systems = list; if (av.three) av.three.setSystems(list); }
+  // live data aura (real values 0..1, or null when unavailable) and the thought constellation (real chat stages)
+  function setAura(values) { av.aura = values; if (av.three) av.three.setAura(values); }
+  function setThought(count, active) { if (av.three) av.three.setThought(count, active); }
+  // a gold shockwave across the dashboard when a mission really completes (Normal mode, no reduced motion)
+  function surge() {
+    if (fxLevel() !== "full" || !av.wrap) return;
+    const r = av.wrap.getBoundingClientRect();
+    const el = document.createElement("div");
+    el.className = "surge"; el.setAttribute("aria-hidden", "true");
+    el.style.setProperty("--x", `${r.left + r.width / 2}px`); el.style.setProperty("--y", `${r.top + r.height * 0.61}px`);
+    document.body.append(el);
+    setTimeout(() => el.remove(), 1800);
+  }
   function pulse(strength) { if (av.three) av.three.pulse(strength); }
 
   function applyTier(tier, animate) {
@@ -244,7 +268,7 @@
     av.svg.dataset.avatar = state;
     if (av.three) av.three.setState(state);
     av.color = getComputedStyle(av.svg).getPropertyValue("--av-rgb").trim() || av.color;
-    if (state === "completed") burst();
+    if (state === "completed") { burst(); surge(); }
     loop();
   }
 
@@ -316,7 +340,7 @@
     else { if (av.raf) cancelAnimationFrame(av.raf); av.raf = 0; clear(); }
   }
 
-  const api = { mount, setState, setTier, setSystems, systemAt, pulse, registerPart, refresh: loop, STATES, onFocus: null, onSystem: null,
+  const api = { mount, setState, setTier, setSystems, setAura, setThought, systemAt, pulse, registerPart, refresh: loop, STATES, onFocus: null, onSystem: null,
                           get state() { return av.state; }, get tier() { return av.tier; },
                           get animating() { return av.raf !== 0 || !!(av.three && av.three.animating); },
                           get renderer() { return av.three ? "3d" : "2d"; },

@@ -303,3 +303,37 @@ def test_bloom_and_surface_detail_are_local_and_fail_safe():
     assert "uPanel: { value: o.panel ?? ((o.core ?? 0.035) < 0.2 && !o.flow && !o.self ? 0.85 : 0) }" in AV3
     # composite output stays valid for a transparent canvas (colour never exceeds alpha)
     assert "gl_FragColor = vec4(min(col, vec3(a)), a);" in AV3
+
+
+def test_assembly_runs_once_per_session_is_skippable_and_never_with_reduced_motion():
+    assert 'boot = fxLevel() === "full" && !sessionStorage.getItem("jarvis-booted");' in AV   # Normal mode only
+    assert 'sessionStorage.setItem("jarvis-booted", "1")' in AV
+    assert 'document.addEventListener("keydown", skip, true); document.addEventListener("pointerdown", skip, true);' in AV
+    assert 'let boot = opts.boot && mode === "full" ?' in AV3 and "skipBoot()" in AV3
+    css = (STATIC / "avatar.css").read_text()
+    assert "body.booting .hud .panel, body.booting .hud > .center > * { animation: none; }" in css   # reduced motion
+    assert "body.booting .top" not in css and "#estop" not in css   # the top bar and Emergency stop never wait
+
+
+def test_data_aura_shows_only_real_values():
+    aura = fn(JS, "auraValues")
+    assert "t.cpu && t.cpu.available ? Math.min(1, t.cpu.load_per_core / 1.5) : null" in aura
+    assert "t.memory && t.memory.available ? t.memory.used_pct / 100 : null" in aura
+    assert "d.approvals.length" in aura and "ACTIVE.includes(x.state)" in aura
+    assert 'const show = typeof v === "number" && isFinite(v);' in AV3 and "a.ring.visible = show;" in AV3   # unavailable → hidden
+    assert "if (changed) kick();" in AV3   # unchanged values cause no redraw (Low performance stays idle)
+
+
+def test_thought_constellation_counts_real_stages_and_surge_needs_a_real_completion():
+    assert "JarvisAvatar.setThought(new Set(live.activity.map((a) => a.stage)).size, true);" in JS
+    assert "JarvisAvatar.setThought(0, false);" in JS
+    assert 'if (state === "completed") { burst(); surge(); }' in AV            # completed comes only from a finished task
+    surge = AV.split("  function surge() {")[1].split("\n  }\n")[0]
+    assert 'if (fxLevel() !== "full" || !av.wrap) return;' in surge   # never in Low performance / Reduced motion
+    assert "@media (prefers-reduced-motion: reduce) { .surge { display: none; }" in (STATIC / "avatar.css").read_text()
+
+
+def test_armour_is_lit_metal_over_the_hologram_and_stays_out_of_the_reflection():
+    assert "new THREE.MeshStandardMaterial({ color: 0xe8cf98, metalness: 1" in AV3
+    assert "scene.environment = pmrem.fromScene(env, 0.03).texture;" in AV3   # reflections generated in code, no assets
+    assert "...metals.map((m) => m.mesh)," in AV3                            # hidden during the floor-reflection pass
