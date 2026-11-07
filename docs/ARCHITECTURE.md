@@ -253,6 +253,30 @@ prefer="quality")` and up to 2000 tokens, falling back to the best available mod
 - Palette: deep black, metallic gold `--gold`, champagne `--champagne`, warm white `--warm-white`; amber only for
   activity and warnings; cyan only for listening/speaking.
 
+## Avatar 2.0 — living intelligence projection
+
+- **Renderer** `static/avatar3d.js` (Three.js, unchanged dependency): body that breathes, head on a neck pivot,
+  arms on shoulder pivots; faceless helm (visor shell, optical sensors, internal gear rings, visor scan line);
+  reactor assembly around the SVG core (independent rings, rotor, discharge arcs, brightness from activity);
+  environment: neural lattice, research data streams, vertical scan ring, platform energy pulses, rotating
+  platform geometry, and eight **system satellites** on the main orbit coloured by the Command center's live status.
+  Shared uniforms drive every material; the floor reflection is a second pass of the same figure.
+- **States** (18) come only from real signals in `avatarState(s, d)` (`app.js`): microphone or typing in the
+  message box → listening; chat stream stages → understanding / reasoning / writing / coding / verifying;
+  research → researching; task running → executing; task recovering or the connection coming back → recovery;
+  speech engine speaking → speaking (reactor pulses on reported word boundaries); task completed → completed;
+  decision/blocked → approval; failing health check or no model → warning (amber); a failed task, lost
+  connection, or failing database/audit log → error (red, the only red); emergency stop → halted; no data → unknown.
+  States blend over ~0.6–1 s.
+- **Interaction**: click or Enter on the projection opens the focus view (live state, current work, the eight
+  systems, evolution); hovering a satellite shows that system's live status and clicking opens it; Esc or Exit
+  closes; the top bar (Emergency stop) stays above. A small task hologram beside the projection shows the real
+  current step, research, or replying model. Display → Projection intensity (Subtle / Standard / Vivid).
+- **Evolution v2** (`evolution.py`): stages Initial Projection → Advanced Projection → Intelligence Projection →
+  Evolved Intelligence; a milestone counts while it verifies and for 7 days after it last verified; first/last
+  verification, stage changes and definitions version (`DEFINITION_VERSION`) are stored and audited. A device may
+  show a lower stage (Evolution record), never a higher one.
+
 ## Benchmark and release gate (`src/jarvis/bench/`, `src/jarvis/gate.py`, v0.17)
 
 `jarvis bench` runs fixed tasks (`bench/tasks/*.toml`) through the real chat, research and plan→task→approval

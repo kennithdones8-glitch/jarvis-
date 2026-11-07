@@ -9,7 +9,10 @@
 (() => {
   const NS = "http://www.w3.org/2000/svg";
   const STATES = ["idle", "listening", "understanding", "planning", "researching", "reasoning", "writing", "coding",
-                  "verifying", "approval", "executing", "completed", "error"];
+                  "verifying", "approval", "executing", "completed", "error",
+                  "speaking", "warning", "recovery", "halted", "unknown"];
+  // The 2D fallback has no separate look for the newer states; each borrows the closest existing one.
+  const LOOK_2D = { speaking: "writing", warning: "approval", recovery: "verifying", halted: "idle", unknown: "idle" };
   const ACTIVE = new Set(["understanding", "planning", "researching", "reasoning", "writing", "coding", "verifying", "executing"]);
 
   // A path drawn on both sides of the centre line (x = 200).
@@ -135,6 +138,7 @@
     wrap.prepend(canvas);
     wrap.prepend(svg);
     wrap.classList.add("has-avatar");
+    bindInteraction(wrap);
     av.svg = svg; av.wrap = wrap; av.canvas = canvas;
     applyTier(1, false);
     setTimeout(() => svg.classList.remove("materialize"), 2400);
@@ -159,9 +163,10 @@
     av.trying = true;
     try {
       const mod = await import("/static/avatar3d.js");
-      const three = mod.create(av.wrap, { state: av.state, tier: av.tier, mode: fxLevel() });
+      const three = mod.create(av.wrap, { state: av.state, tier: av.tier, mode: fxLevel(), intensity: intensity() });
       if (!three) return;
       av.three = three;
+      if (av.systems) three.setSystems(av.systems);
       three.onLost = () => { av.wrap.classList.remove("has-3d"); try { three.dispose(); } catch (e) { /* gone */ } av.three = null; loop(); };
       av.wrap.classList.add("has-3d");
       loop();
@@ -169,6 +174,44 @@
       /* stay with the 2D core */
     } finally { av.trying = false; }
   }
+
+  // ---- interaction: hover a system satellite for its live status; click it to open that system; click anywhere
+  // else on the projection (or press Enter) to open the projection focus view. The page decides what those do.
+  const INTENSITY = { subtle: 0.75, standard: 1, vivid: 1.3 };
+  function intensity() { return INTENSITY[document.documentElement.dataset.projection] || 1; }
+  function bindInteraction(wrap) {
+    wrap.setAttribute("role", "button");
+    wrap.setAttribute("tabindex", "0");
+    wrap.setAttribute("aria-label", "JARVIS projection: open the focus view");
+    const label = document.createElement("div");
+    label.className = "av-label"; label.hidden = true; label.setAttribute("role", "status");
+    wrap.append(label);
+    let lastMove = 0;
+    wrap.addEventListener("pointermove", (e) => {
+      if (!av.three || e.timeStamp - lastMove < 60) return;
+      lastMove = e.timeStamp;
+      const sys = av.three.pick(e.clientX, e.clientY);
+      wrap.classList.toggle("on-system", !!sys);
+      label.hidden = !sys;
+      if (sys) {
+        label.textContent = `${sys.label}: ${sys.value}`;
+        const r = wrap.getBoundingClientRect();
+        label.style.setProperty("--x", `${e.clientX - r.left}px`); label.style.setProperty("--y", `${e.clientY - r.top}px`);
+      }
+    });
+    wrap.addEventListener("pointerleave", () => { label.hidden = true; wrap.classList.remove("on-system"); });
+    wrap.addEventListener("click", (e) => {
+      const sys = av.three && av.three.pick(e.clientX, e.clientY);
+      if (sys && api.onSystem) api.onSystem(sys.id); else if (api.onFocus) api.onFocus();
+    });
+    wrap.addEventListener("keydown", (e) => {
+      if ((e.key === "Enter" || e.key === " ") && api.onFocus) { e.preventDefault(); api.onFocus(); }
+    });
+  }
+  // Which system satellite (if any) is under a screen point: used by hover/click, and by tests.
+  function systemAt(x, y) { return av.three ? av.three.pick(x, y) : null; }
+  function setSystems(list) { av.systems = list; if (av.three) av.three.setSystems(list); }
+  function pulse(strength) { if (av.three) av.three.pulse(strength); }
 
   function applyTier(tier, animate) {
     for (const g of Object.values(av.layers)) {
@@ -197,7 +240,8 @@
     if (!STATES.includes(state)) state = "idle";
     if (!av.svg || state === av.state) return;
     av.state = state;
-    av.svg.dataset.state = state;
+    av.svg.dataset.state = LOOK_2D[state] || state;
+    av.svg.dataset.avatar = state;
     if (av.three) av.three.setState(state);
     av.color = getComputedStyle(av.svg).getPropertyValue("--av-rgb").trim() || av.color;
     if (state === "completed") burst();
@@ -267,12 +311,15 @@
 
   function loop() {
     if (av.three && av.lastMode !== fxLevel()) { av.lastMode = fxLevel(); av.three.setMode(av.lastMode); }
+    if (av.three && av.lastIntensity !== intensity()) { av.lastIntensity = intensity(); av.three.setIntensity(av.lastIntensity); }
     if (running()) { if (!av.raf) av.raf = requestAnimationFrame(frame); }
     else { if (av.raf) cancelAnimationFrame(av.raf); av.raf = 0; clear(); }
   }
 
-  window.JarvisAvatar = { mount, setState, setTier, registerPart, refresh: loop, STATES,
+  const api = { mount, setState, setTier, setSystems, systemAt, pulse, registerPart, refresh: loop, STATES, onFocus: null, onSystem: null,
                           get state() { return av.state; }, get tier() { return av.tier; },
                           get animating() { return av.raf !== 0 || !!(av.three && av.three.animating); },
-                          get renderer() { return av.three ? "3d" : "2d"; } };
+                          get renderer() { return av.three ? "3d" : "2d"; },
+                          get stats() { return av.three ? av.three.stats : null; } };
+  window.JarvisAvatar = api;
 })();

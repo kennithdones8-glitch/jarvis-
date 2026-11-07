@@ -95,10 +95,11 @@ LOCAL = [{"location": "local", "available": ["m"]}]
 def test_tiers_follow_verified_milestones_only(make_kernel):
     k = make_kernel()
     r = evolution.evaluate(k, facts())
-    assert (r["tier"], r["name"], r["verified"]) == (1, "Core", 1)  # only "Core online"
-    assert r["next"] == {"tier": 2, "name": "Development", "needs": 3}
+    assert (r["tier"], r["name"], r["verified"]) == (1, "Initial Projection", 1)  # only "Core online"
+    assert r["next"] == {"tier": 2, "name": "Advanced Projection", "needs": 3}
     r = evolution.evaluate(k, facts(providers=LOCAL, confirmed_memories=1, completed_tasks=1))
-    assert (r["tier"], r["name"], r["verified"]) == (2, "Development", 4)
+    assert (r["tier"], r["name"], r["verified"]) == (2, "Advanced Projection", 4)
+    assert r["version"] == evolution.DEFINITION_VERSION and r["stages"][3] == "Evolved Intelligence"
     assert {m["id"] for m in r["milestones"] if m["verified"]} == {"core_online", "local_mind", "memory", "first_mission"}
 
 
@@ -111,13 +112,46 @@ def test_first_verification_is_recorded_once_with_no_content(make_kernel):
     assert all(set(e["payload"]) == {"milestone"} for e in events)
 
 
-def test_a_capability_that_stops_working_stops_counting_but_keeps_its_record(make_kernel):
+def test_a_lost_capability_holds_for_seven_days_then_stops_counting(make_kernel):
+    from datetime import datetime, timedelta, timezone
     k = make_kernel()
-    first = evolution.evaluate(k, facts(providers=LOCAL))
-    later = evolution.evaluate(k, facts(providers=[{"location": "local", "available": []}]))
-    lm = {m["id"]: m for m in later["milestones"]}["local_mind"]
-    assert lm["verified"] is False and lm["first_verified"] == {m["id"]: m for m in first["milestones"]}["local_mind"]["first_verified"]
-    assert later["verified"] == first["verified"] - 1
+    t0 = datetime(2026, 11, 1, 12, tzinfo=timezone.utc)
+    gone = [{"location": "local", "available": []}]
+    first = evolution.evaluate(k, facts(providers=LOCAL), now=t0)
+    day3 = evolution.evaluate(k, facts(providers=gone), now=t0 + timedelta(days=3))
+    lm = {m["id"]: m for m in day3["milestones"]}["local_mind"]
+    assert lm["verified"] is False and lm["held"] is True and lm["counts"] is True
+    assert lm["held_until"].startswith("2026-11-08") and day3["verified"] == first["verified"]  # stage holds
+    day8 = evolution.evaluate(k, facts(providers=gone), now=t0 + timedelta(days=8))
+    lm = {m["id"]: m for m in day8["milestones"]}["local_mind"]
+    assert lm["held"] is False and lm["counts"] is False and day8["verified"] == first["verified"] - 1   # reversible
+    assert lm["first_verified"] == {m["id"]: m for m in first["milestones"]}["local_mind"]["first_verified"]  # record kept
+
+
+def test_stage_changes_and_definition_versions_are_audited(make_kernel):
+    from datetime import datetime, timedelta, timezone
+    k = make_kernel()
+    t0 = datetime(2026, 11, 1, tzinfo=timezone.utc)
+    evolution.evaluate(k, facts(), now=t0)
+    evolution.evaluate(k, facts(providers=LOCAL, confirmed_memories=1, completed_tasks=1), now=t0 + timedelta(minutes=1))
+    tiers = [e["payload"] for e in k.audit.entries(limit=100) if e["event"] == "evolution.tier"]
+    assert tiers == [{"frm": 1, "to": 2, "verified": 4}]
+    with k.db.tx() as c:
+        c.execute("UPDATE meta SET value = '1' WHERE key = ?", (evolution.VERSION_KEY,))
+    evolution.evaluate(k, facts(), now=t0 + timedelta(minutes=2))
+    assert [e["payload"] for e in k.audit.entries(limit=100) if e["event"] == "evolution.definitions"] == [{"frm": "1", "to": "2"}]
+
+
+def test_last_verified_is_not_rewritten_every_minute(make_kernel):
+    from datetime import datetime, timedelta, timezone
+    k = make_kernel()
+    t0 = datetime(2026, 11, 1, tzinfo=timezone.utc)
+    evolution.evaluate(k, facts(providers=LOCAL), now=t0)
+    before = k.db.one("SELECT value FROM meta WHERE key = ?", (evolution.META_KEY,))[0]
+    evolution.evaluate(k, facts(providers=LOCAL), now=t0 + timedelta(minutes=5))
+    assert k.db.one("SELECT value FROM meta WHERE key = ?", (evolution.META_KEY,))[0] == before
+    evolution.evaluate(k, facts(providers=LOCAL), now=t0 + timedelta(hours=2))
+    assert k.db.one("SELECT value FROM meta WHERE key = ?", (evolution.META_KEY,))[0] != before
 
 
 def test_activity_alone_earns_nothing(make_kernel):

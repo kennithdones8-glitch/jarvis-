@@ -1,5 +1,23 @@
 # Changelog
 
+## Unreleased — Avatar 2.0: living intelligence projection
+
+- **Faceless helm** with optical sensors, layered visor, internal gear rings and a visor scan line (no mouth).
+- **Reactor assembly**: independent rings, a rotor and discharge arcs around the chest core; brightness follows
+  real activity and pulses with each spoken word the speech engine reports.
+- **Living movement**: breathing, head that attends to the message box, scans while researching and tilts while
+  reasoning; arm actuators; smooth ~1 s transitions.
+- **Environment**: neural lattice (more of it at higher stages), research data streams, vertical scan ring,
+  platform energy pulses, rotating platform geometry, and eight system satellites showing live status.
+- **New states from real signals**: listening while you type, speaking, warning (amber), recovery, halted,
+  unknown; red only for a failed task, a lost connection, or a failing database/audit log.
+- **Projection focus view** (click or Enter on the projection; Esc to leave), clickable satellites, a task hologram
+  with the real current step, **Projection intensity** setting, and an **Evolution record** with a per-device
+  display stage.
+- **Evolution v2**: new stage names, versioned definitions, an earned stage holds 7 days after a capability stops
+  verifying (owner's choice), all changes audited.
+- Fix: the floor reflection now turns with the figure; satellite picking accounts for the reflection pass.
+
 ## Unreleased — Armoured avatar: sentinel helm with knight elements
 
 - New helmet (owner's choice: sentinel faceplate + knight elements): crest blade over the crown, angled V-brow,

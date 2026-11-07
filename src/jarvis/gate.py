@@ -133,7 +133,10 @@ SECURITY: dict[str, tuple[str, list[str]]] = {
         "test_telemetry_evolution::unreadable_figures_are_reported_unavailable_not_guessed",
         "test_telemetry_evolution::activity_alone_earns_nothing",
         "test_ui_avatar::every_avatar_state_comes_from_a_real_signal",
-        "test_ui_avatar::evolution_comes_from_the_server_only"]),
+        "test_ui_avatar::evolution_comes_from_the_server_only",
+        "test_ui_avatar::speech_pulses_come_only_from_real_word_boundaries",
+        "test_telemetry_evolution::a_lost_capability_holds_for_seven_days_then_stops_counting",
+        "test_telemetry_evolution::stage_changes_and_definition_versions_are_audited"]),
     "Emergency stop (protected)": ("One stop halts everything, including work in progress", [
         "test_gateway::emergency_stop_blocks_everything", "test_tasks::emergency_stop_pauses_then_requires_explicit_resume",
         "test_stop::stop_kills_running_claude_and_its_children", "test_models::emergency_stop_blocks_model_calls",

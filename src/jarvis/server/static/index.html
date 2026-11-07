@@ -102,6 +102,7 @@
 
   <section class="center" aria-label="JARVIS">
     <div class="core-wrap">
+      <div id="avtask" class="av-task" role="status" aria-live="polite" hidden></div>
       <svg id="core" class="core" viewBox="0 0 240 240" data-state="online" aria-hidden="true">
         <defs>
           <radialGradient id="arcglow">
@@ -210,5 +211,15 @@
   <header class="ph"><h2 id="log-h">Activity log</h2><button id="logclose" class="btn btn-ghost btn-sm" type="button">Close</button></header>
   <ol id="activity" class="activity"></ol>
 </dialog>
+<div id="projback" class="proj-backdrop" hidden></div>
+<aside id="projpanel" class="proj-panel panel" aria-label="Projection focus" hidden>
+  <header class="ph"><h2>Projection</h2><button id="projexit" class="btn btn-ghost btn-sm" type="button" title="Back to the dashboard (Esc)">Exit</button></header>
+  <div class="kicker" id="projstate"></div>
+  <div class="pp-main" id="projmain"></div>
+  <div class="hl-sub" id="projsub"></div>
+  <section class="pp-work" id="projwork" aria-label="Current work"></section>
+  <div class="pp-systems" id="projsystems" aria-label="Systems"></div>
+  <button id="projevo" class="btn btn-sm pp-evo" type="button">Evolution record</button>
+</aside>
 </body>
 </html>

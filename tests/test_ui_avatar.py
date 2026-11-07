@@ -42,7 +42,8 @@ def test_avatar_is_decoration_only():
 def test_all_thirteen_states_and_replaceable_parts():
     states = json.loads(re.search(r"const STATES = (\[.*?\]);", AV, re.S).group(1).replace("\n", " "))
     assert states == ["idle", "listening", "understanding", "planning", "researching", "reasoning", "writing", "coding",
-                      "verifying", "approval", "executing", "completed", "error"]
+                      "verifying", "approval", "executing", "completed", "error",
+                      "speaking", "warning", "recovery", "halted", "unknown"]
     for part in ("helmet", "visor", "face"):
         assert f'["{part}", 1,' in AV, part
     assert "registerPart" in AV and "function registerPart(name, markup)" in AV
@@ -53,8 +54,11 @@ const ui = { convo: [], stage: null };
 const core = { dataset: {} };
 const $ = () => core;
 %s
+%s
 const out = {};
-const run = (name, s, setup = () => {}) => { setup(); out[name] = avatarState(s); core.dataset = {}; ui.stage = null; ui.convo = []; };
+const ok = { health: { ok: true, items: [{ name: "Database", ok: true }] }, audit_chain: { ok: true } };
+const run = (name, s, setup = () => {}, d = ok) => { setup(); out[name] = avatarState(s, d); core.dataset = {}; ui.stage = null; ui.convo = [];
+  ui.typingAt = 0; ui.reconnectedAt = 0; ui.chatBusy = false; };
 run("idle", { core: "online" });
 run("connecting", { core: "connecting" });
 run("decision", { core: "attention" });
@@ -76,11 +80,22 @@ run("words arriving", { core: "thinking" }, () => { ui.stage = { stage: "generat
 run("code arriving", { core: "thinking" }, () => { ui.stage = { stage: "generating" }; ui.convo = [{ live: true, text: "```python" }]; });
 run("answer check", { core: "thinking" }, () => { ui.stage = { stage: "checking" }; });
 run("code test", { core: "thinking" }, () => { ui.stage = { stage: "checking", code_test: true }; });
-run("listening", { core: "online" }, () => { core.dataset.listening = "1"; });
+run("microphone", { core: "online" }, () => { core.dataset.listening = "1"; });
+run("typing", { core: "online" }, () => { ui.typingAt = Date.now(); });
+run("typed a while ago", { core: "online" }, () => { ui.typingAt = Date.now() - 10000; });
+run("typing while a reply streams", { core: "online" }, () => { ui.typingAt = Date.now(); ui.chatBusy = true; });
 run("speaking", { core: "online" }, () => { core.dataset.speaking = "1"; });
 run("finished", { core: "online" }, () => { core.dataset.flash = "done"; });
 run("failed", { core: "online" }, () => { core.dataset.flash = "failed"; });
+run("reconnected", { core: "online" }, () => { ui.reconnectedAt = Date.now(); });
+run("health problem", { core: "online", warn: true }, () => {}, { health: { ok: false, items: [{ name: "Backups", ok: false }] }, audit_chain: { ok: true } });
+run("database failing", { core: "online", warn: true }, () => {}, { health: { ok: false, items: [{ name: "Database", ok: false }] }, audit_chain: { ok: true } });
+run("audit chain broken", { core: "online" }, () => {}, { health: { ok: true, items: [] }, audit_chain: { ok: false } });
+run("no data", { core: "online" }, () => {}, null);
 run("decision beats speaking", { core: "attention" }, () => { core.dataset.speaking = "1"; });
+run("mission beats typing", { core: "executing", kicker: "Executing" }, () => { ui.typingAt = Date.now(); });
+run("typing beats a standing warning", { core: "online", warn: true }, () => { ui.typingAt = Date.now(); }, { health: { ok: false, items: [{ name: "Backups", ok: false }] }, audit_chain: { ok: true } });
+run("a critical problem beats typing", { core: "online", warn: true }, () => { ui.typingAt = Date.now(); }, { health: { ok: false, items: [{ name: "Database", ok: false }] }, audit_chain: { ok: true } });
 console.log(JSON.stringify(out));
 """
 
@@ -89,23 +104,32 @@ def test_every_avatar_state_comes_from_a_real_signal(tmp_path):
     node = shutil.which("node")
     if not node:
         pytest.skip("node is not installed")
-    (tmp_path / "a.js").write_text(AVATAR_HARNESS % fn(JS, "avatarState"))
+    (tmp_path / "a.js").write_text(AVATAR_HARNESS % (fn(JS, "avatarState"), fn(JS, "criticalProblem")))
     got = json.loads(subprocess.run([node, str(tmp_path / "a.js")], capture_output=True, text=True, check=True).stdout)
     assert got == {
-        "idle": "idle", "connecting": "idle", "decision": "approval", "blocked": "approval", "stopped": "error",
-        "offline": "error", "no models": "error", "executing": "executing", "task verifying": "verifying",
-        "recovering": "verifying", "planning": "planning", "queued": "planning", "researching": "researching",
+        "idle": "idle", "connecting": "unknown", "decision": "approval", "blocked": "approval", "stopped": "halted",
+        "offline": "error", "no models": "warning", "executing": "executing", "task verifying": "verifying",
+        "recovering": "recovery", "planning": "planning", "queued": "planning", "researching": "researching",
         "understanding": "understanding", "context": "understanding", "lookup": "researching",
         "waiting for words": "reasoning", "words arriving": "writing", "code arriving": "coding",
-        "answer check": "verifying", "code test": "coding", "listening": "listening", "speaking": "writing",
-        "finished": "completed", "failed": "error", "decision beats speaking": "approval",
+        "answer check": "verifying", "code test": "coding", "microphone": "listening", "typing": "listening",
+        "typed a while ago": "idle", "typing while a reply streams": "idle", "speaking": "speaking",
+        "finished": "completed", "failed": "error", "reconnected": "recovery",
+        "health problem": "warning", "database failing": "error", "audit chain broken": "error", "no data": "idle",
+        "decision beats speaking": "approval", "mission beats typing": "executing",
+        "typing beats a standing warning": "listening", "a critical problem beats typing": "error",
     }
+    # red ("error") only from real critical events: a failed task, a lost connection, a failing database/audit log
+    assert {k for k, v in got.items() if v == "error"} == {"offline", "failed", "database failing", "audit chain broken",
+                                                           "a critical problem beats typing"}
 
 
 def test_evolution_comes_from_the_server_only():
     head = fn(JS, "renderHead")
-    assert "JarvisAvatar.setTier(d.evolution.tier)" in head
-    assert JS.count("setTier(") == 1  # nothing else in the page can award a tier
+    assert "JarvisAvatar.setTier(displayStage(d.evolution))" in head
+    assert JS.count("setTier(") == 1  # nothing else in the page can award a stage
+    # a device may only show a LOWER stage than the server's
+    assert "return cap ? Math.min(cap, evo.tier) : evo.tier;" in fn(JS, "displayStage")
 
 
 def test_comfort_and_performance_switches():
@@ -200,3 +224,59 @@ def test_background_motion_stops_when_asked():
     env = css.split("Theme v3")[1]
     for kf in re.findall(r"@keyframes env-[\w-]+ \{(.*?)\} \}", env, re.S):
         assert set(re.findall(r"([a-z-]+):", kf)) <= {"transform", "opacity"}
+
+
+# ---- Avatar 2.0 ----------------------------------------------------------------------------------------------------
+APPCSS = (STATIC / "app.css").read_text()
+HTML = (STATIC / "index.html").read_text()
+
+
+def test_the_helm_is_faceless():
+    for human in ("mouth", "jaw", "grille", "lips", "nose"):
+        assert human not in AV3.lower().replace("no mouth", ""), human
+    assert 'part("sensors", 1,' in AV3 and 'part("faceplate", 1,' in AV3 and 'part("mechanics", 1,' in AV3
+
+
+def test_every_state_has_a_3d_look_with_the_engine_parameters():
+    looks = dict(re.findall(r"^\s+(\w+):\s+(\{ tint:.*\}),$", AV3, re.M))
+    assert set(looks) == set(json.loads(re.search(r"const STATES = (\[.*?\]);", AV, re.S).group(1)))
+    for name, body in looks.items():
+        for key in ("eyes", "reactor", "neural", "data", "sweep", "discharge", "beat", "head", "flicker"):
+            assert f"{key}:" in body, (name, key)
+    assert '"#ff5a52"' in looks["error"] and looks["error"].count("#ff5a52") == 1
+    assert not any("#ff5a52" in b for n, b in looks.items() if n != "error")  # red is for genuine critical alerts only
+    assert "1 - Math.exp(-dt * 2.2)" in AV3  # states blend over ~0.6–1 s, never switch abruptly
+
+
+def test_speech_pulses_come_only_from_real_word_boundaries():
+    assert 'u.onboundary = (e) => { if (e.name === "word" && window.JarvisAvatar) JarvisAvatar.pulse(1); };' in JS
+    assert JS.count("JarvisAvatar.pulse(") == 1
+
+
+def test_typing_counts_as_listening_only_while_you_type():
+    assert '$("#cmd").addEventListener("input", () => { ui.typingAt = Date.now(); renderHead(ui.data); });' in JS
+    assert "Date.now() - ui.typingAt < 2500 && !ui.chatBusy" in fn(JS, "avatarState")
+
+
+def test_projection_focus_keeps_the_emergency_stop_and_closes_with_escape():
+    assert 'id="projpanel"' in HTML and 'id="projexit"' in HTML and 'id="projback"' in HTML and 'id="avtask"' in HTML
+    assert "body.projection .top { position: relative; z-index: 70; }" in (STATIC / "avatar.css").read_text()
+    assert "closeProjection();" in JS.split('e.key === "Escape"')[1].split("\n")[0]
+    assert '$("#projback").addEventListener("click", closeProjection);' in JS
+    assert "style=" not in HTML
+
+
+def test_every_interactive_avatar_element_does_something_real():
+    assert "JarvisAvatar.onFocus = openProjection;" in JS
+    assert 'JarvisAvatar.onSystem = (id) => { closeProjection(); ui.ccOpen = new Set([id]); ui.ccKey = ""; location.hash = "#/command"; };' in JS
+    assert 'wrap.setAttribute("role", "button");' in AV and 'wrap.setAttribute("tabindex", "0");' in AV  # keyboard reachable
+    assert "JarvisAvatar.setSystems(list.map(" in fn(JS, "renderSysbar")  # satellites carry the real system status
+    work = fn(JS, "liveWork")
+    assert "api(" not in work and "fetch(" not in work and "d.tasks.find" in work  # holograms show real work only
+
+
+def test_projection_intensity_and_displayed_stage_are_per_device_settings():
+    assert 'projection: [["subtle", "Subtle"], ["standard", "Standard"], ["vivid", "Vivid"]]' in JS
+    assert "root.dataset.projection = d.projection;" in JS
+    assert 'const INTENSITY = { subtle: 0.75, standard: 1, vivid: 1.3 };' in AV
+    assert 'localStorage.setItem(EVO_CAP_KEY, String(v))' in JS and "[1, 2, 3, 4].filter((n) => n <= evo.tier)" in JS

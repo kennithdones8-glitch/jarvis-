@@ -184,19 +184,22 @@ function situation(d) {
 // ---------------------------------------------------------------- holographic core (avatar.js) and adaptive layout
 // The avatar shows the same truth as the reactor, in more detail: each of its states comes from situation(), the
 // live chat stage or a voice event; nothing is staged for effect.
-function avatarState(s) {
+function avatarState(s, d) {
   const core = $("#core");
-  if (core.dataset.flash === "done") return "completed";
-  if (core.dataset.flash === "failed") return "error";
-  if (core.dataset.listening) return "listening";
+  if (core.dataset.flash === "done") return "completed";              // a task just completed
+  if (core.dataset.flash === "failed") return "error";                // a task just failed
+  if (core.dataset.listening) return "listening";                     // the microphone is recording
   switch (s.core) {
-    case "offline": case "stopped": case "degraded": return "error";
-    case "attention": case "blocked": return "approval";
+    case "connecting": return "unknown";                              // no data yet: neutral
+    case "offline": return "error";                                   // the dashboard lost JARVIS
+    case "stopped": return "halted";                                  // you pressed the emergency stop
+    case "degraded": return "warning";                                // no model available
+    case "attention": case "blocked": return "approval";              // a decision or input is needed
     case "executing": return s.kicker === "Verifying" ? "verifying" : "executing";
-    case "recovering": return "verifying";
+    case "recovering": return "recovery";                             // a task is being recovered after a restart
     case "planning": case "queued": return "planning";
     case "researching": return "researching";
-    case "thinking": {
+    case "thinking": {                                                // the live chat stream's real stages
       const st = ui.stage && ui.stage.stage;
       const live = ui.convo.find((m) => m.live);
       if (st === "lookup") return "researching";
@@ -206,8 +209,19 @@ function avatarState(s) {
     }
     default: break;
   }
-  if (core.dataset.speaking) return "writing";
+  if (core.dataset.speaking) return "speaking";                       // the speech engine is speaking
+  if (ui.reconnectedAt && Date.now() - ui.reconnectedAt < 4000) return "recovery";
+  if (criticalProblem(d)) return "error";                             // database or audit log failing
+  if (ui.typingAt && Date.now() - ui.typingAt < 2500 && !ui.chatBusy) return "listening";   // you are typing to JARVIS
+  if (s.warn) return "warning";                                       // a health check is failing (standing condition)
   return "idle";
+}
+
+// Only these count as critical (red): JARVIS's own records can't be trusted.
+function criticalProblem(d) {
+  if (!d) return false;
+  if (d.audit_chain && d.audit_chain.ok === false) return true;
+  return !!(d.health && d.health.items && d.health.items.some((i) => !i.ok && (i.name === "Database" || i.name === "Audit log")));
 }
 
 // What the page is mostly about right now; CSS gives that work the space (avatar.css: data-activity).
@@ -227,9 +241,10 @@ function renderHead(d) {
   $("#core").dataset.state = s.core;
   document.body.dataset.activity = activityOf(d);
   if (window.JarvisAvatar) {
-    JarvisAvatar.setState(avatarState(s));
-    if (d && d.evolution) JarvisAvatar.setTier(d.evolution.tier);
+    JarvisAvatar.setState(avatarState(s, d));
+    if (d && d.evolution) JarvisAvatar.setTier(displayStage(d.evolution));
   }
+  renderAvTask(d);
   const wrap = $(".core-wrap");
   if (d && d.evolution && wrap) wrap.title = `Core evolution: ${d.evolution.name} · ${d.evolution.verified} of ${d.evolution.total} milestones verified (details in Command center → Diagnostics)`;
   $(".headline").className = `headline ${s.cls}`;
@@ -596,6 +611,9 @@ async function say(text) {
   const core = $("#core");
   u.onstart = () => { core.dataset.speaking = "1"; };
   u.onend = u.onerror = () => { delete core.dataset.speaking; };
+  // The reactor pulses on each word the speech engine reports (no lip sync on a faceless helm). Browsers that
+  // don't report word boundaries simply show the steady speaking look.
+  u.onboundary = (e) => { if (e.name === "word" && window.JarvisAvatar) JarvisAvatar.pulse(1); };
   stopSpeaking();
   speechSynthesis.speak(u);
 }
@@ -1392,24 +1410,27 @@ const isPhone = () => window.matchMedia("(max-width: 760px), (pointer: coarse)")
 const DISPLAY_KEY = "jarvis-display";
 const DISPLAY = { text: [["normal", "Normal"], ["large", "Large"], ["larger", "Larger"]],
                   density: [["comfortable", "Comfortable"], ["compact", "Compact"]],
-                  fx: [["full", "Normal"], ["reduced", "Low performance"], ["off", "Reduced motion"]] };
+                  fx: [["full", "Normal"], ["reduced", "Low performance"], ["off", "Reduced motion"]],
+                  projection: [["subtle", "Subtle"], ["standard", "Standard"], ["vivid", "Vivid"]] };
 function loadDisplay() {
   let d = {};
   try { d = JSON.parse(localStorage.getItem(DISPLAY_KEY) || "{}") || {}; } catch (e) { d = {}; }
   return { text: DISPLAY.text.some(([k]) => k === d.text) ? d.text : "normal",
            density: DISPLAY.density.some(([k]) => k === d.density) ? d.density : "comfortable",
-           fx: DISPLAY.fx.some(([k]) => k === d.fx) ? d.fx : "full" };
+           fx: DISPLAY.fx.some(([k]) => k === d.fx) ? d.fx : "full",
+           projection: DISPLAY.projection.some(([k]) => k === d.projection) ? d.projection : "standard" };
 }
 function applyDisplay(d) {
   const root = document.documentElement;
   root.dataset.text = d.text;
   root.dataset.density = d.density;
   root.dataset.fx = d.fx;
+  root.dataset.projection = d.projection;
   if (window.JarvisAvatar) JarvisAvatar.refresh();
 }
 function showDisplaySettings() {
   const cur = loadDisplay();
-  const choose = (key) => h("div", { class: "row", role: "group", "aria-label": { text: "Text size", density: "Density", fx: "Effects" }[key] },
+  const choose = (key) => h("div", { class: "row", role: "group", "aria-label": { text: "Text size", density: "Density", fx: "Effects", projection: "Projection intensity" }[key] },
     DISPLAY[key].map(([value, label]) => h("button", { class: `chip${cur[key] === value ? " on" : ""}`, type: "button", "aria-pressed": String(cur[key] === value),
       onclick: (e) => {
         cur[key] = value;
@@ -1425,6 +1446,9 @@ function showDisplaySettings() {
     h("h3", { class: "sys-part" }, "Effects"),
     h("p", { class: "hl-sub" }, "Normal: the full 3D hologram and a gently moving environment. Low performance: the hologram is redrawn only when JARVIS's state changes, and the background is still. Reduced motion: nothing moves (also follows your system setting). Chat is never slowed by any of them."),
     choose("fx"),
+    h("h3", { class: "sys-part" }, "Projection intensity"),
+    h("p", { class: "hl-sub" }, "How bright the holographic projection and its surroundings are. Separate from Effects: it changes light, not motion."),
+    choose("projection"),
     h("div", { class: "row mt" }, h("button", { class: "btn", type: "button", onclick: () => { dlg.close(); dlg.remove(); } }, "Done")));
   dlg.addEventListener("close", () => dlg.remove());
   document.body.append(dlg);
@@ -1670,7 +1694,8 @@ function showSignIn() {
 }
 
 async function refresh() {
-  try { ui.data = await api("/api/state"); ui.online = true; }
+  const wasOffline = ui.online === false;
+  try { ui.data = await api("/api/state"); ui.online = true; if (wasOffline) ui.reconnectedAt = Date.now(); }
   catch (e) {
     ui.online = false;
     if (/Touch ID sign-in required/.test(e.message)) { showSignIn(); return; }
@@ -1695,7 +1720,16 @@ document.addEventListener("DOMContentLoaded", () => {
   $("#stopgen").addEventListener("click", stopReply);
   $("#intelcycle").addEventListener("click", () => setIntel(INTEL[(INTEL.indexOf(ui.intel) + 1) % INTEL.length]));
   // The holographic core loads after the page is usable, so it never delays the first paint or the chat.
-  (window.requestIdleCallback || ((f) => setTimeout(f, 200)))(() => { if (window.JarvisAvatar) { JarvisAvatar.mount($(".core-wrap")); render(); } });
+  (window.requestIdleCallback || ((f) => setTimeout(f, 200)))(() => {
+    if (!window.JarvisAvatar) return;
+    JarvisAvatar.onFocus = openProjection;
+    JarvisAvatar.onSystem = (id) => { closeProjection(); ui.ccOpen = new Set([id]); ui.ccKey = ""; location.hash = "#/command"; };
+    JarvisAvatar.mount($(".core-wrap"));
+    ui.sysbarKey = ""; render();
+  });
+  $("#projexit").addEventListener("click", closeProjection);
+  $("#projback").addEventListener("click", closeProjection);
+  $("#projevo").addEventListener("click", () => showEvolution());
   $("#cmd").addEventListener("keydown", (e) => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) submitCommand(e); });
   // One tap, no questions: stopping is always safe (releasing it is what asks for confirmation).
   $("#estop").addEventListener("click", () => act("/api/stop", { reason: "stopped from the dashboard" }));
@@ -1703,7 +1737,7 @@ document.addEventListener("DOMContentLoaded", () => {
   $("#helpbtn").addEventListener("click", showHelp);
   $("#mic").addEventListener("click", toggleMic);
   $("#speak").addEventListener("click", toggleSpeak);
-  document.addEventListener("keydown", (e) => { if (e.key === "Escape") { stopSpeaking(); stopReply(); cancelEdit(); } });
+  document.addEventListener("keydown", (e) => { if (e.key === "Escape") { stopSpeaking(); stopReply(); cancelEdit(); closeProjection(); } });
   window.addEventListener("hashchange", () => maybeAutoBriefing(ui.data));
   $("#release").addEventListener("click", () => {
     ask("Release the emergency stop? Paused tasks stay paused until you resume them.", { ok: "Release" })
@@ -1743,6 +1777,7 @@ document.addEventListener("DOMContentLoaded", () => {
   $("#navcollapse").addEventListener("click", () => setNavCollapsed(!document.body.classList.contains("nav-collapsed")));
   restoreDraft();
   $("#cmd").addEventListener("input", saveDraft);
+  $("#cmd").addEventListener("input", () => { ui.typingAt = Date.now(); renderHead(ui.data); });
   if ("serviceWorker" in navigator && location.protocol === "https:") navigator.serviceWorker.register("/sw.js").catch(() => {});
   refresh();
   setInterval(refresh, 1500);
@@ -1883,7 +1918,8 @@ function systems(d) {
         d.evolution ? row("Core evolution", `${d.evolution.name} (tier ${d.evolution.tier}) · ${d.evolution.verified} of ${d.evolution.total} milestones verified${d.evolution.next ? ` · ${d.evolution.next.name} needs ${d.evolution.next.needs} more` : ""}`) : row("Core evolution", "first check runs within a minute", "muted"),
         ...(d.evolution ? d.evolution.milestones.map((m) => row(`${m.verified ? "✓" : "·"} ${m.title}`, m.verified ? `${m.evidence} · first verified ${m.first_verified.slice(0, 10)}` : m.first_verified ? `not verified right now (first verified ${m.first_verified.slice(0, 10)})` : `not yet: ${m.evidence}`, m.verified ? "ok" : "muted")) : []),
         row("Self-tests", "run `jarvis doctor`, `jarvis gate` or `jarvis drill` in Terminal", "muted"),
-      ] },
+      ],
+      action: ["Evolution record", () => showEvolution()] },
   ];
 }
 
@@ -1897,6 +1933,7 @@ function renderSysbar(d) {
   const key = JSON.stringify(list.map((x) => [x.id, x.status, x.value]));
   if (key === ui.sysbarKey) return;
   ui.sysbarKey = key;
+  if (window.JarvisAvatar) JarvisAvatar.setSystems(list.map((x) => ({ id: x.id, label: x.label, status: x.status, value: x.value })));
   $("#sysbar").replaceChildren(...list.map((x) => h("a", { class: `sys-chip ${x.status}`, href: `#/command`, title: `${x.label}: ${x.value}`,
     onclick: () => { ui.ccOpen = new Set([x.id]); ui.ccKey = ""; } },
     h("span", { class: "sc-dot", "aria-hidden": "true" }), h("span", { class: "sc-icon", "aria-hidden": "true" }, x.icon),
@@ -1924,4 +1961,95 @@ function renderCommand(d) {
     det.addEventListener("toggle", () => { if (det.open) ui.ccOpen.add(x.id); else ui.ccOpen.delete(x.id); });
     return det;
   }));
+}
+
+// ---------------------------------------------------------------- projection focus, task hologram, evolution
+// Everything shown here is read from the same live snapshot as the rest of the page.
+const AVATAR_WORDS = { unknown: "Connecting", idle: "Aware", listening: "Listening", understanding: "Understanding",
+  reasoning: "Reasoning", planning: "Planning", researching: "Researching", writing: "Responding", speaking: "Speaking",
+  coding: "Writing code", verifying: "Verifying", executing: "Executing", approval: "Waiting for you", warning: "Diagnostic warning",
+  completed: "Completed", error: "Error", recovery: "Recovering", halted: "Halted (emergency stop)" };
+
+function liveWork(d) {
+  if (!d) return null;
+  const run = d.tasks.find((t) => ACTIVE.includes(t.state) && t.state !== "queued");
+  if (run) {
+    const i = run.steps.findIndex((st) => st.state === "started" || st.state === "pending");
+    return { kind: "Mission", text: run.goal, sub: i >= 0 ? `Step ${i + 1} of ${run.steps.length} · ${run.steps[i].description}` : "Checking the result" };
+  }
+  if (ui.chatBusy && ui.chatEndpoint === "/api/research") return { kind: "Research", text: "Searching the web and reading pages", sub: "Sources are checked before they're cited" };
+  if (ui.chatBusy && ui.stage && ui.stage.stage === "generating") return { kind: "Reply", text: `${ui.stage.model.split("/").pop()} ${ui.stage.location === "local" ? "on this Mac" : "in the cloud"}`, sub: stageLabel(ui.stage) };
+  const job = d.jobs.find((j) => j.state === "planning");
+  if (job) return { kind: "Planning", text: job.request, sub: `${job.elapsed}s` };
+  return null;
+}
+
+function renderAvTask(d) {
+  const el = $("#avtask");
+  if (!el) return;
+  const w = liveWork(d);
+  el.hidden = !w;
+  if (w) el.replaceChildren(h("b", {}, w.kind), h("span", {}, w.text));
+  if (document.body.classList.contains("projection")) renderProjection(d);
+}
+
+function openProjection() {
+  if (document.body.dataset.view !== "home" && document.body.dataset.view !== "workspace") return;
+  document.body.classList.add("projection");
+  $("#projpanel").hidden = false; $("#projback").hidden = false;
+  renderProjection(ui.data);
+  $("#projexit").focus();
+}
+function closeProjection() {
+  if (!document.body.classList.contains("projection")) return;
+  document.body.classList.remove("projection");
+  $("#projpanel").hidden = true; $("#projback").hidden = true;
+}
+
+function renderProjection(d) {
+  const st = window.JarvisAvatar ? JarvisAvatar.state : "unknown";
+  const s = situation(d), w = liveWork(d), evo = d && d.evolution;
+  const list = d ? systems(d) : [];
+  $("#projstate").textContent = AVATAR_WORDS[st] || st;
+  $("#projmain").textContent = s.main || "";
+  $("#projsub").textContent = s.sub || "";
+  $("#projwork").replaceChildren(...(w ? [h("div", { class: "kicker" }, w.kind), h("div", { class: "pw-text" }, w.text), h("div", { class: "pw-sub" }, w.sub)]
+    : [h("div", { class: "pw-sub" }, "No task, research or reply in progress.")]));
+  $("#projsystems").replaceChildren(...list.map((x) => h("button", { class: `ps-sys ${x.status}`, type: "button", title: `Open ${x.label} in the Command center`,
+    onclick: () => { closeProjection(); ui.ccOpen = new Set([x.id]); ui.ccKey = ""; location.hash = "#/command"; } },
+    h("span", { class: "sc-dot", "aria-hidden": "true" }), h("span", {}, x.label), h("small", {}, x.value))));
+  $("#projevo").textContent = evo ? `Stage ${displayStage(evo)} · ${evo.stages ? evo.stages[displayStage(evo) - 1] : evo.name} — evolution record` : "Evolution record";
+}
+
+// Evolution: the stage comes from the server (verified milestones). This device may choose to show a lower stage.
+const EVO_CAP_KEY = "jarvis-evo-cap";
+function evoCap() { try { const v = Number(localStorage.getItem(EVO_CAP_KEY)); return v >= 1 && v <= 4 ? v : 0; } catch (e) { return 0; } }
+function displayStage(evo) { const cap = evoCap(); return cap ? Math.min(cap, evo.tier) : evo.tier; }
+
+function showEvolution() {
+  const evo = ui.data && ui.data.evolution;
+  const names = (evo && evo.stages) || ["Initial Projection", "Advanced Projection", "Intelligence Projection", "Evolved Intelligence"];
+  const body = !evo ? [h("p", { class: "hl-sub" }, "The first check runs within a minute of starting JARVIS.")] : [
+    h("p", { class: "hl-sub" }, `Earned: stage ${evo.tier} — ${names[evo.tier - 1]} (${evo.verified} of ${evo.total} milestones count). `
+      + (evo.next ? `${names[evo.next.tier - 1]} needs ${evo.next.needs} more.` : "Highest stage.")
+      + ` Milestone definitions v${evo.version}. A milestone keeps counting for ${evo.grace_days} days after it stops verifying, then drops.`),
+    h("ul", { class: "evo-list" }, evo.milestones.map((m) => h("li", { class: m.verified ? "ok" : m.held ? "held" : "no" },
+      h("b", {}, `${m.verified ? "✓" : m.held ? "◐" : "·"} ${m.title}`),
+      h("span", {}, m.verified ? `${m.evidence} · first verified ${m.first_verified.slice(0, 10)}`
+        : m.held ? `not verifying now; still counts until ${m.held_until.slice(0, 10)}`
+        : m.first_verified ? `lost (last verified ${(m.last_verified || m.first_verified).slice(0, 10)})` : `not yet: ${m.evidence}`)))),
+    h("h3", { class: "sys-part" }, "Show on this device"),
+    h("div", { class: "row", role: "group", "aria-label": "Displayed stage" },
+      [[0, "Earned stage"], ...[1, 2, 3, 4].filter((n) => n <= evo.tier).map((n) => [n, `Stage ${n}`])].map(([v, label]) =>
+        h("button", { class: `chip${evoCap() === v || (!evoCap() && v === 0) ? " on" : ""}`, type: "button", "aria-pressed": String(evoCap() === v),
+          onclick: () => { try { if (v) localStorage.setItem(EVO_CAP_KEY, String(v)); else localStorage.removeItem(EVO_CAP_KEY); } catch (e) { /* this visit only */ }
+            dlg.close(); renderHead(ui.data); showEvolution(); } }, label))),
+    h("p", { class: "hl-sub" }, "Showing a lower stage only changes the look on this device; it never changes what JARVIS can do or the record above."),
+  ];
+  const dlg = h("dialog", { class: "pairdlg askdlg evodlg", "aria-labelledby": "evo-h" },
+    h("h2", { id: "evo-h" }, "Projection evolution"), ...body,
+    h("div", { class: "row mt" }, h("button", { class: "btn", type: "button", onclick: () => dlg.close() }, "Done")));
+  dlg.addEventListener("close", () => dlg.remove());
+  document.body.append(dlg);
+  dlg.showModal();
 }

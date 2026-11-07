@@ -1,26 +1,40 @@
-"""The evolving AI core: JARVIS's look advances only with capabilities verified on this installation.
+"""The evolving projection: JARVIS's look advances only with capabilities verified on this installation.
 
-Each milestone is a check against live state (models answering, a verified mission, a paired phone…). The tier is
-the number of milestones verified right now, so it can also go down if something stops working. The first time a
-milestone is verified is recorded (meta table + audit log), which is the record of why a visual upgrade unlocked.
-Nothing is awarded for activity, time spent, or anything that wasn't checked.
+Each milestone is a check against live state (models answering, a verified mission, a paired phone…).
+
+- **Evidence-based:** a milestone counts while it verifies, and for ``GRACE_DAYS`` after it last verified (owner's
+  choice: an earned stage holds for 7 days, so a brief outage doesn't undo it). After that it stops counting.
+- **Persistent:** the first and last verification of each milestone are stored (meta table); every first
+  verification, stage change and definitions change is in the audit log.
+- **Versionable:** ``DEFINITION_VERSION`` is stored with the record; a change of definitions is audited.
+- **Reversible / configurable:** the stage drops when capabilities are lost; a device may also choose to *show* a
+  lower stage (the dashboard's Evolution record), which never changes the record.
+
+Nothing is awarded for activity, time spent, or anything that wasn't checked, and a stage is a description of what
+was verified, not a claim of intelligence.
 """
 
 from __future__ import annotations
 
 import json
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Callable
 
-META_KEY = "evolution.first_verified"
-TIERS = (  # (minimum verified milestones, tier number, name)
-    (0, 1, "Core"),
-    (4, 2, "Development"),
-    (7, 3, "Advanced"),
-    (10, 4, "Mature"),
+META_KEY = "evolution.first_verified"   # per milestone: first / last verification (name kept for existing data)
+VERSION_KEY = "evolution.version"
+STAGE_KEY = "evolution.stage"
+DEFINITION_VERSION = 2
+GRACE_DAYS = 7
+LAST_REFRESH = timedelta(hours=1)        # how often "last verified" is rewritten while a milestone keeps verifying
+TIERS = (  # (minimum counting milestones, stage number, name)
+    (0, 1, "Initial Projection"),
+    (4, 2, "Advanced Projection"),
+    (7, 3, "Intelligence Projection"),
+    (10, 4, "Evolved Intelligence"),
 )
+STAGE_NAMES = [t[2] for t in TIERS]
 
 
 @dataclass(frozen=True)
@@ -93,38 +107,70 @@ def facts_from(kernel: Any, *, health: dict[str, Any] | None, providers: list[di
 
 
 def evaluate(kernel: Any, facts: dict[str, Any], *, now: datetime | None = None) -> dict[str, Any]:
-    """Check every milestone, record first verifications, and return the tier with its evidence."""
+    """Check every milestone, keep the record, and return the stage with its evidence."""
     now = now or datetime.now(timezone.utc)
-    first = _load(kernel)
-    previous_tier, _ = tier_for(sum(1 for m in MILESTONES if m.id in first and first[m.id].get("current")))
-    items = []
+    stamp = now.isoformat(timespec="seconds")
+    grace = timedelta(days=GRACE_DAYS)
+    record = _load(kernel)
     changed = False
+    old_version = _meta(kernel, VERSION_KEY)
+    if old_version != str(DEFINITION_VERSION):
+        if old_version is not None or record:
+            kernel.audit.record("evolution.definitions", frm=old_version or "1", to=str(DEFINITION_VERSION))
+        _set_meta(kernel, VERSION_KEY, str(DEFINITION_VERSION))
+    items = []
     for m in MILESTONES:
         try:
             ok = bool(m.check(facts))
         except Exception:
             ok = False
-        rec = first.get(m.id)
+        rec = record.get(m.id)
         if ok and rec is None:
-            rec = first[m.id] = {"first": now.isoformat(timespec="seconds"), "current": True}
+            rec = record[m.id] = {"first": stamp, "last": stamp, "current": True}
             kernel.audit.record("evolution.milestone", milestone=m.id)
             changed = True
-        elif rec is not None and rec.get("current") != ok:
-            rec["current"] = ok
-            changed = True
-        items.append({"id": m.id, "title": m.title, "evidence": m.evidence, "verified": ok,
-                      "first_verified": rec["first"] if rec else None})
-    count = sum(1 for i in items if i["verified"])
+        elif rec is not None:
+            if ok and (not rec.get("last") or now - _parse(rec["last"]) >= LAST_REFRESH):
+                rec["last"] = stamp
+                changed = True
+            if rec.get("current") != ok:
+                rec["current"] = ok
+                changed = True
+        last = _parse(rec["last"]) if rec and rec.get("last") else None
+        held = bool(not ok and last and now - last <= grace)
+        items.append({"id": m.id, "title": m.title, "evidence": m.evidence, "verified": ok, "held": held,
+                      "counts": ok or held, "first_verified": rec["first"] if rec else None,
+                      "last_verified": rec.get("last") if rec else None,
+                      "held_until": (last + grace).isoformat(timespec="seconds") if held else None})
+    count = sum(1 for i in items if i["counts"])
     tier, name = tier_for(count)
-    if tier != previous_tier and first:
-        kernel.audit.record("evolution.tier", frm=previous_tier, to=tier, verified=count)
+    previous = _meta(kernel, STAGE_KEY)
+    if previous is not None and previous != str(tier):
+        kernel.audit.record("evolution.tier", frm=int(previous), to=tier, verified=count)
+    if previous != str(tier):
+        _set_meta(kernel, STAGE_KEY, str(tier))
     if changed:
-        with kernel.db.tx() as c:
-            c.execute("INSERT OR REPLACE INTO meta (key, value) VALUES (?, ?)", (META_KEY, json.dumps(first)))
+        _set_meta(kernel, META_KEY, json.dumps(record))
     nxt = next((t for t in TIERS if t[0] > count), None)
-    return {"tier": tier, "name": name, "verified": count, "total": len(MILESTONES),
+    return {"tier": tier, "name": name, "stages": STAGE_NAMES, "version": DEFINITION_VERSION, "grace_days": GRACE_DAYS,
+            "verified": count, "verified_now": sum(1 for i in items if i["verified"]), "total": len(MILESTONES),
             "next": {"tier": nxt[1], "name": nxt[2], "needs": nxt[0] - count} if nxt else None,
             "milestones": items}
+
+
+def _parse(stamp: str) -> datetime:
+    d = datetime.fromisoformat(stamp)
+    return d if d.tzinfo else d.replace(tzinfo=timezone.utc)
+
+
+def _meta(kernel: Any, key: str) -> str | None:
+    row = kernel.db.one("SELECT value FROM meta WHERE key = ?", (key,))
+    return row[0] if row else None
+
+
+def _set_meta(kernel: Any, key: str, value: str) -> None:
+    with kernel.db.tx() as c:
+        c.execute("INSERT OR REPLACE INTO meta (key, value) VALUES (?, ?)", (key, value))
 
 
 def _load(kernel: Any) -> dict[str, dict[str, Any]]:
