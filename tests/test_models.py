@@ -358,3 +358,14 @@ def test_the_cloud_decision_is_never_changed(model_kernel):
     stronger = svc._strong_local_for_reasoning(kept_local, asks, None)
     assert stronger.local_only and stronger.prefer == "quality"  # still local-only: only which local model
     assert svc._strong_local_for_reasoning(Need("plan", prefer="speed", local_only=True), asks, None).prefer == "speed"
+
+
+def test_quick_mode_keeps_the_fast_model_even_for_maths(model_kernel):
+    k, ollama, openai = model_kernel(local_installed=("small:3b", "mid:7b"), extra_local=(
+        f"[[providers.ollama.models]]\n{model_block('mid:7b', 3, 2)}"))
+    quick = Need("chat", prefer="speed", local_only=True, keep_speed=True)  # what the dashboard's Quick mode asks
+    r = k.models.complete(quick, req(SYSTEM, Message("user", FLOUR)), purpose="chat")
+    assert r.model == "small:3b" and openai.received == []
+    assert not [e for e in k.audit.entries(limit=50) if e["event"] == "model.reasoning_local"]
+    kept_local = Need("chat", prefer="speed", local_only=True)  # kept local by routing, not by the owner: upgraded
+    assert k.models.complete(kept_local, req(SYSTEM, Message("user", FLOUR)), purpose="chat").model == "mid:7b"

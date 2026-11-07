@@ -1,5 +1,71 @@
 # Changelog
 
+## Unreleased — merging the holographic dashboard with 0.18.3 (branch `holo-merge-v1`, owner-approved review)
+
+- Merged the holographic dashboard work (branch `claude/funny-allen-ygy8kk`) with 0.18.1–0.18.3.
+- **Quick stays quick:** Quick mode asks for the fastest local model, and the 0.18.3 "stronger local model for maths,
+  logic and code" upgrade now respects that (it applies to Balanced, and to answers kept local by routing). Deep
+  already asks for the strongest model.
+- To be tried on the Mac in the test copy (WebGL in Safari, the look, speed) before release as 0.19.0.
+
+## Unreleased — Cinematic core: 3D hologram, gold-white environment
+
+- **3D holographic core** (Three.js r160, served from the Mac, pinned by hash): translucent gold-white figure with
+  rim light, scan lines, energy pulses along its circuits, a beam and rising dust from the projector, a floor
+  reflection, orbit rings, and a materialisation from the pad upward. Every part is replaceable; armour, circuits,
+  pauldrons, fins and halo appear only as verified milestones unlock (same rules as before). Falls back to the 2D
+  core without WebGL.
+- **Gold-white palette**: deep black, metallic gold, champagne and warm white; amber for activity and warnings.
+  Metallic-edged glass panels; sections materialise when shown.
+- **Living environment** (owner-approved): a gliding perspective grid floor, breathing light and drifting dust.
+- **Display → Effects** is now Normal / Low performance / Reduced motion.
+
+## Unreleased — Dashboard theme v2: holographic command deck
+
+- The hologram stands on a projector pad in a beam of light, its torso dissolving into the beam; orbit rings pass in
+  front of and behind it; soft glow, scan-line texture, and a flicker as it powers up.
+- Wide screens: the eight systems sit around the hologram as HUD callouts with leader lines (chips on smaller screens,
+  a swipeable strip on the iPhone).
+- Glass panels with a lit top edge, one colour rule (amber = JARVIS, cyan only for listening/speaking, orange/red for
+  problems), "What matters now" as a slim alert strip, the message box docked at the bottom, Recent activity as a
+  colour-coded timeline with plain wording for more events.
+- Fix: the status pill said "All systems nominal" while a health check was failing; it now says how many systems to
+  check. iPhone header is more compact.
+- Presentation only: no change to what JARVIS does. Still no background animation; Effects Off and reduced motion
+  still make everything still.
+
+## Unreleased — Phase 2: holographic core and command center
+
+- **Holographic core**: an amber humanoid hologram (layered SVG, energy motes) with the reactor as its chest core.
+  13 states, each from a real signal (the live chat stage, missions, decisions, voice, errors). Helmet, visor and face
+  are replaceable parts.
+- **Evolution from evidence**: 12 milestones checked against live state; the core gains circuits, plates, pauldrons,
+  then fins and a halo as more are verified (Core → Development → Advanced → Mature). Each first verification is in
+  the audit log and listed in Command center → Diagnostics. Nothing is awarded for activity.
+- **Command center** (sidebar, More menu, or the eight status chips on Home): System health (CPU load, memory,
+  storage, network route, services), Intelligence (model, local or cloud, latency, tokens/s), Missions, Security,
+  Communications, Research, Personal operations, Diagnostics. Unmeasurable figures say "unavailable".
+- **Adaptive layout**: the core steps back during conversation, research and missions, and leads in voice.
+- **Display → Effects**: Full / Reduced / Off. Reduced motion is respected; animations pause when the page is hidden.
+- iPhone: the Quick/Balanced/Deep choice is one button in the tab row, so the message box keeps its width.
+
+## Unreleased — Phase 3a: faster chat
+
+- **Claude replies appear as they're written.** Chat used Claude Code's whole-reply JSON output, so nothing showed
+  until Claude had finished. It now uses `stream-json` with partial messages; every safety flag is unchanged (tools
+  off, no MCP, no slash commands, settings isolated, API-key variables removed, prompt over stdin). With a stand-in
+  CLI writing 36 words at 50 ms each, first words went from 1.83 s to 0.02 s; real numbers need the Mac.
+- A closed page or the emergency stop kills the Claude process mid-reply (also before its first word), and is never
+  treated as a model failure that would try another model.
+- **Quick / Balanced / Deep** in the Ask box. Quick: the fastest local model and no extra local call before answering
+  (hybrid used to make one for every message). Balanced: unchanged. Deep: the strongest approved model (Claude when on,
+  after your consent as always) and longer answers; without one it answers locally and says so.
+- **Stop, Copy, Regenerate, Retry, Edit and resend** on chat messages; Esc stops a reply.
+- **Live stages** (understanding → looked up → context → writing with which model → checking), in the reply, the
+  status pill and an Activity list on each answer. Real stages only; no model reasoning is shown.
+- Release gate: new streaming tests added to Privacy, Emergency stop, Resource limits and Honest reporting.
+- Docs: Outcome Engine is merged (0.18.0), Mac apps exist, proposals exist (propose-only).
+
 ## 0.18.3 — Stronger local model for maths, logic and code (owner's choice)
 
 - When a chat answer will come from your Mac anyway (local-first, or kept local), word problems with numbers,

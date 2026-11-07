@@ -196,12 +196,19 @@ class EgressGate:
         known = [u["limited_until"] for u in self.usage_summary() if u["limited_until"]]
         return max(known) if known else None
 
+    def can_stream(self, provider: str) -> bool:
+        """Whether this provider can show its reply as it's written (display only)."""
+        return bool(getattr(self._providers.get(provider), "streams", False))
+
     def available_models(self, provider: str) -> set[str]:
         return self._providers[provider].available_models()
 
     def send(self, provider: str, model: str, request: ChatRequest, *, purpose: str,
-             task_id: str | None = None, step_id: str | None = None, research: bool = False) -> ChatResponse:
-        """``research=True``: the provider may also search and read public web pages to answer."""
+             task_id: str | None = None, step_id: str | None = None, research: bool = False,
+             on_token=None) -> ChatResponse:
+        """``research=True``: the provider may also search and read public web pages to answer.
+        ``on_token``: show the reply as it's written, if the provider can (display only). Every check above the
+        call is the same either way: nothing is streamed before consent, the budget and the stop allow it."""
         self.killswitch.check()
         p = self._providers.get(provider)
         info = p.models.get(model) if p else None
@@ -258,7 +265,12 @@ class EgressGate:
                           categories=sorted({c.value for c, _ in levels}), chars=request.chars(),
                           request_sha256=digest, estimated_cost_usd=estimate, approval_id=approval_id)
         try:
-            response = p.research(model, request) if research else p.chat(model, request)
+            if research:
+                response = p.research(model, request)
+            elif on_token is not None and getattr(p, "streams", False):
+                response = p.chat(model, request, on_token=on_token)
+            else:
+                response = p.chat(model, request)
         except ProviderError as exc:
             self.audit.record("egress.error", task_id=task_id, provider=provider, model=model, error=str(exc),
                               retryable=exc.retryable)

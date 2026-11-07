@@ -191,12 +191,67 @@ through the gateway. Results go to the answering model as a private `file_conten
 tags; if that model is Claude, the privacy gate asks first. Requests to change something get a "Make a plan" offer
 instead (the plan then goes through approvals). The persona's can/can't list changes with the ability.
 
-## Live replies (v0.17.1)
+## Live replies (v0.17.1; Claude and stages since Phase 3a)
 
-`POST /api/chat/stream` returns newline-delimited JSON: `{"t": piece}` as a local model writes, then
-`{"done": result}` with exactly what `/api/chat` returns. Only Ollama streams (`OllamaProvider.chat(on_token=…)`);
-routing, lookups and the privacy gate are unchanged and cloud replies arrive whole. The emergency stop is checked on
-every piece; a closed page aborts generation without being treated as a model failure.
+`POST /api/chat/stream` returns newline-delimited JSON: `{"s": stage}` as each real stage starts, `{"t": piece}` as
+the model writes, then `{"done": result}` with exactly what `/api/chat` returns. Stages: `understanding`, `lookup`
+(what was checked), `context` (memories and earlier messages used), `generating` (which model, local or cloud, and
+whether it streams; sent again before each fallback attempt so the page drops a failed attempt's words), `checking`
+(answer check or coding self-test). They describe what the code is doing, never the model's reasoning.
+
+Both Ollama and Claude stream. Claude Code runs with `--output-format stream-json --verbose
+--include-partial-messages` (all other flags unchanged) through `run_streaming`, which keeps `run_tracked`'s
+protections: own process group, killed on the emergency stop, the deadline, or when the page goes away. While no
+words arrive, the server writes a bare newline about once a second, so a closed page is noticed before the first
+word too. Streaming starts only after the privacy gate, consent and budget checks, exactly as a whole reply would.
+A provider that can't stream says so (`streams: false`) and the page shows that instead of a fake typing effect.
+
+**Intelligence modes** (`mode` in the request): **Quick** = fastest local model, and no goal-reader call unless the
+message could need a lookup; **Balanced** (default) = the configured routing; **Deep** = `Need(min_quality=5,
+prefer="quality")` and up to 2000 tokens, falling back to the best available model with a note (`chat.mode_fallback`).
+`local_only` always wins. Answer-check retries are local at any quality, so they never become consent questions.
+
+## Holographic core, adaptive layout and the command center (Phase 2)
+
+- **Avatar** (`static/avatar.js`, `avatar.css`): a humanoid hologram in layered SVG around the existing reactor
+  (`#core`, now its chest core; its states and tests are unchanged). Parts are named layers (aura, orbits, body,
+  circuits, plates, pauldrons, gorget, helmet, fins, face, visor, scan, halo); `JarvisAvatar.registerPart(name, svg)`
+  replaces one (e.g. a new helmet or face) without touching the rest. It never fetches or decides anything.
+- **13 states** (`avatarState()` in `app.js`) come only from `situation()`, the live chat stage and voice events:
+  idle, listening, understanding, planning, researching, reasoning (model working, no words yet), writing, coding
+  (code arriving or being tested), verifying, approval, executing, completed, error.
+- **Evolution** (`src/jarvis/evolution.py`): 12 milestones checked against live state once a minute (models answering,
+  a confirmed memory, a verified mission, Mac apps, voice, a paired phone, Touch ID, a verified backup, a benchmark
+  run, all health checks). Tier = milestones verified *now* (Core 0–3, Development 4–6, Advanced 7–9, Mature 10–12);
+  the first verification of each is stored in `meta` and audited (`evolution.milestone`, `evolution.tier`). The page
+  can only display the server's tier.
+- **Performance**: loaded after the page is usable; CSS animates only transform/opacity/stroke-dashoffset; the
+  particle canvas runs ≤30 fps and only while on screen, the page is visible and Display → Effects is Full; reduced
+  motion or Effects Off makes it still. Chat rendering never waits for it.
+- **Adaptive layout**: `body[data-activity]` = voice / research / mission / conversation / idle from real state; the
+  avatar steps back while you work and leads in voice.
+- **Command center** (`#/command`, Home status chips): eight systems built from `/api/state` only — health
+  (`src/jarvis/telemetry.py`: load average, `vm_stat`/`/proc/meminfo`, disk, a no-packet route check, JARVIS's own
+  peak memory; anything unreadable is reported unavailable), intelligence (recent model timings from the audit log,
+  counts only), missions, security, communications, research, personal operations, diagnostics (incl. the
+  evolution record).
+
+## 3D holographic core and cinematic environment (theme v3)
+
+- `static/avatar3d.js` (ES module) draws the core with Three.js r160 (vendored, SHA-256 pinned by a test): shapes
+  built in code (no downloaded model), each a named, replaceable part (pad, torso, helmet, face, visor, ears,
+  circuits, plates, pauldrons, gorget, fins, halo) with a hologram shader (rim light, scan lines, rising light band,
+  energy pulses, materialisation edge, fade into the projector beam, floor reflection). The reactor (`#core`) stays
+  as the chest core, so its states and tests are unchanged.
+- `avatar.js` loads it only when WebGL works and falls back to the 2D core on any failure or a lost GPU context.
+  States and the evolution tier go to whichever renderer is active; evolution still comes only from the server.
+- Display → Effects: **Normal** (≤30 fps, 24 on phones, only while on screen and visible), **Low performance**
+  (redrawn only when the state changes; background still), **Reduced motion** (nothing moves; also forced by the
+  system setting). Pixel ratio is capped at 1.5.
+- Environment (`.env` in `index.html`): perspective grid floor, light pools and drifting dust — transform and
+  opacity animations only, stopped in Low performance and Reduced motion.
+- Palette: deep black, metallic gold `--gold`, champagne `--champagne`, warm white `--warm-white`; amber only for
+  activity and warnings; cyan only for listening/speaking.
 
 ## Benchmark and release gate (`src/jarvis/bench/`, `src/jarvis/gate.py`, v0.17)
 
@@ -223,7 +278,7 @@ Kernel on the same database, approvals are raced from four threads, a checkpoint
 and the database is deleted and restored from an encrypted backup (throwaway passphrase; the Keychain is never
 used). Tests prove each protection drill fails when its protection is disabled.
 
-## Outcome Engine v1 (branch `outcome-engine-v1`, not merged)
+## Outcome Engine v1 (merged in 0.18.0)
 
 - **Goal reader:** the chat lookup call (local model, message local-only) also rates difficulty in hybrid mode,
   replacing the separate triage call; `ModelService.complete(level=…)` uses it.
@@ -244,5 +299,5 @@ each one, prunes to the newest N, and restores with tombstones re-applied.
 
 ## Not built yet
 
-Mac app automation, deeper monitoring (e.g. watched folders), self-improvement proposals. See the
-[roadmap](ROADMAP.md).
+Deeper monitoring (e.g. watched folders), applying self-improvement proposals (today they are propose-only:
+`src/jarvis/proposals.py`), a personal operations model. See the [roadmap](ROADMAP.md).
