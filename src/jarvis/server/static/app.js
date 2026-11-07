@@ -897,9 +897,19 @@ function stepText(t) {
   return `Step ${Math.min(done + 1, n)} of ${n}`;
 }
 
+// a small ring: done of total (real steps); no ring when there are no steps
+function stepRing(t) {
+  const n = t.steps.length, done = t.steps.filter((x) => x.state === "done" || x.state === "skipped").length;
+  if (!n) return null;
+  const C = 2 * Math.PI * 15;
+  return sv("svg", { viewBox: "0 0 40 40", class: `step-ring ${t.state}`, role: "img", "aria-label": `${done} of ${n} steps done` },
+    sv("circle", { cx: 20, cy: 20, r: 15, class: "sr-track" }),
+    sv("circle", { cx: 20, cy: 20, r: 15, class: "sr-val", "stroke-dasharray": `${(C * done) / n} ${C}`, transform: "rotate(-90 20 20)" }),
+    sv("text", { x: 20, y: 24, "text-anchor": "middle", class: "sr-num" }, `${done}/${n}`));
+}
 function missionRow(t) {
   // Home: one line per mission; Open shows its full card in Missions.
-  return h("li", { class: `mrow ${NEEDS.includes(t.state) ? "needs" : t.state === "failed" ? "bad" : ""}` },
+  return h("li", { class: `mrow ${NEEDS.includes(t.state) ? "needs" : t.state === "failed" ? "bad" : ""}` }, stepRing(t),
     h("div", { class: "mrow-text" }, h("small", {}, STATE_WORDS[t.state] || t.state), h("b", {}, t.goal), h("span", {}, stepText(t))),
     h("button", { class: "btn btn-ghost btn-sm", type: "button", onclick: () => openMission(t.id) }, "Open"));
 }
@@ -1027,7 +1037,8 @@ function renderDecisions(list) {
       ? h("details", { class: "d-preview" }, h("summary", {}, "Show exactly what will be written"), h("pre", { class: "out" }, a.preview))
       : h("pre", { class: "out", "aria-label": "Exactly what will be written" }, a.preview);
     return h("article", { class: `decision risk-${risk.level}` },
-      h("div", { class: "d-kind" }, decisionKind(a), h("span", { class: "d-risk" }, `${risk.icon} ${risk.label}`)),
+      h("div", { class: "d-kind" }, h("i", { class: "d-ring", "aria-hidden": "true" }), decisionKind(a), h("span", { class: "d-risk" }, `${risk.icon} ${risk.label}`),
+        a.created_at ? h("span", { class: "d-wait" }, `waiting ${since(a.created_at)}`) : null),
       h("div", { class: "d-title" }, head),
       target,
       a.tool === "egress" && more ? egressLines(more) : more && risk.level !== "routine" ? h("div", { class: "d-why" }, more) : null,
@@ -1189,10 +1200,24 @@ function eventKind(event) {
   if (/^model|^egress|^chat/.test(event)) return "model";
   return "other";
 }
+const KIND_ICON = { bad: "⚠", decision: "◆", evolution: "✦", memory: "❖", mission: "▤", model: "◈", other: "•" };
+// the activity pulse: real audit events per 5 minutes over the last hour (the newest bar on the right)
+function activityPulse(entries) {
+  const now = Date.now(), bins = new Array(12).fill(0);
+  for (const e of entries) { const age = (now - Date.parse(e.ts)) / 300000; if (age >= 0 && age < 12) bins[11 - Math.floor(age)]++; }
+  const max = Math.max(1, ...bins);
+  return sv("svg", { viewBox: "0 0 60 14", class: "pulse-svg", "aria-hidden": "true" },
+    ...bins.map((n, i) => sv("rect", { x: i * 5 + 0.5, y: 14 - Math.max(1, (n / max) * 13), width: 4, height: Math.max(1, (n / max) * 13), class: n ? "on" : "" })));
+}
 function renderActivity(entries) {
   entries = entries.map(wordEvent);
+  const hour = entries.filter((e) => Date.now() - Date.parse(e.ts) < 3600000).length;
+  $("#recentpulse").replaceChildren(activityPulse(entries), h("span", {}, `${hour} in the last hour`));
+  const newest = entries.length ? entries[0].seq : 0, seen = ui.recentSeq || 0;
+  ui.recentSeq = Math.max(seen, newest);
   $("#ticker").replaceChildren(...entries.slice(0, 6).map((e) => h("li", {}, h("time", {}, clock(e.ts)), e.detail)));
-  $("#recent").replaceChildren(...(entries.length ? entries.slice(0, 6).map((e) => h("li", { class: `ev-${eventKind(e.event)}`, title: e.detail }, h("time", {}, clock(e.ts)), h("span", {}, shortEvent(e))))
+  $("#recent").replaceChildren(...(entries.length ? entries.slice(0, 6).map((e) => h("li", { class: `ev-${eventKind(e.event)}${seen && e.seq > seen ? " new" : ""}`, title: e.detail },
+      h("i", { class: "ev-icon", "aria-hidden": "true" }, KIND_ICON[eventKind(e.event)]), h("time", {}, clock(e.ts)), h("span", {}, shortEvent(e))))
     : [h("li", { class: "empty" }, "Nothing yet.")]));
   $("#activity").replaceChildren(...entries.map((e) => h("li", {}, h("time", {}, clock(e.ts)), h("span", {}, e.detail))));
 }

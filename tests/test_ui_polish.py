@@ -74,3 +74,15 @@ def test_hud_module_gauges_are_real_and_depth_never_breaks_the_focus_view():
     assert 'document.documentElement.dataset.fx !== "full" || matchMedia("(prefers-reduced-motion: reduce)").matches' in js   # parallax: Normal only
     times = js.split("function responseTimes(d) {")[1].split("\n}\n")[0]
     assert 'e.event === "egress.received"' in times and 'e.event === "model.local_call"' in times   # real calls from the audit log
+
+
+def test_hud_activity_missions_and_decisions_show_only_real_values():
+    from pathlib import Path
+    static = Path(__file__).resolve().parents[1] / "src" / "jarvis" / "server" / "static"
+    js, css = (static / "app.js").read_text(), (static / "app.css").read_text()
+    pulse = js.split("function activityPulse(entries) {")[1].split("\n}\n")[0]
+    assert "Date.parse(e.ts)" in pulse and "bins[11 - Math.floor(age)]++" in pulse          # real events per 5 minutes
+    ring = js.split("function stepRing(t) {")[1].split("\n}\n")[0]
+    assert 'x.state === "done" || x.state === "skipped"' in ring and "if (!n) return null;" in ring   # real steps, no fake progress
+    assert 'a.created_at ? h("span", { class: "d-wait" }, `waiting ${since(a.created_at)}`) : null' in js   # no invented deadline
+    assert ':root[data-fx="off"] :is(#recent li.new, .sys-chip .sc-dot::after, .sys-chip::before, .decision .d-ring)' in css

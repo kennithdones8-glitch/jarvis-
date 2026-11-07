@@ -1443,3 +1443,65 @@ body[data-view="workspace"] .sysbar { display: none; }
 :root[data-fx="reduced"] :is(.g-spin, .g-spin-rev), :root[data-fx="off"] :is(.g-spin, .g-spin-rev) { animation: none; }
 :root[data-fx="off"] .g-value { transition: none; }
 @media (prefers-reduced-motion: reduce) { :is(.g-spin, .g-spin-rev) { animation: none; } .g-value { transition: none; } .rail-left, .rail-right { transition: none; } }
+
+
+/* ---- HUD: Recent activity -------------------------------------------------------------------------------------- */
+.recent-pulse { display: inline-flex; align-items: center; gap: 8px; margin-left: auto; margin-right: 10px; font: 500 12px var(--display); letter-spacing: .08em; color: var(--silver); }
+.pulse-svg { width: 60px; height: 14px; } .pulse-svg rect { fill: rgba(217, 180, 95, .2); } .pulse-svg rect.on { fill: #ffd98f; }
+#recent li { position: relative; grid-template-columns: 26px auto 1fr; }
+#recent li::before { display: none; }
+#recent .ev-icon { display: grid; place-items: center; width: 20px; height: 20px; border-radius: 50%; font-style: normal; font-size: 12px; line-height: 1;
+  border: 1px solid rgba(255, 217, 143, .45); color: #ffd98f; background: rgba(20, 15, 10, .9); box-shadow: 0 0 8px -2px rgba(255, 210, 120, .6); z-index: 1; }
+#recent li.ev-bad .ev-icon { border-color: rgba(255, 90, 80, .6); color: #ff6b5e; box-shadow: 0 0 8px -2px rgba(255, 90, 80, .7); }
+#recent li.ev-model .ev-icon { border-color: rgba(214, 218, 226, .45); color: var(--silver); box-shadow: none; }
+#recent li.new { animation: ev-in .7s ease-out; }
+@keyframes ev-in { from { opacity: 0; transform: translateX(-12px); } to { opacity: 1; transform: none; } }
+
+/* ---- HUD: the system readouts around the projection (desktop home) --------------------------------------------- */
+@media (min-width: 1025px) {
+  body[data-view="home"]:not(.cinematic) .sysbar > .sys-chip { padding: 6px 10px; border-radius: 6px;
+    background: linear-gradient(rgba(255, 217, 143, .7), rgba(255, 217, 143, .7)) top left / 8px 1px no-repeat,
+                linear-gradient(rgba(255, 217, 143, .7), rgba(255, 217, 143, .7)) top left / 1px 8px no-repeat,
+                linear-gradient(rgba(255, 217, 143, .7), rgba(255, 217, 143, .7)) bottom right / 8px 1px no-repeat,
+                linear-gradient(rgba(255, 217, 143, .7), rgba(255, 217, 143, .7)) bottom right / 1px 8px no-repeat,
+                rgba(12, 9, 6, .45); }
+  body[data-view="home"]:not(.cinematic) .sysbar > .sys-chip .sc-dot { width: 9px; height: 9px; position: relative; }
+  body[data-view="home"]:not(.cinematic) .sysbar > .sys-chip .sc-dot::after { content: ""; position: absolute; inset: -4px; border-radius: 50%;
+    border: 1px dashed currentColor; opacity: .6; animation: g-spin 6s linear infinite; }
+  /* the connector toward the figure: a line with a node, and a light travelling along it */
+  body[data-view="home"]:not(.cinematic) .sysbar > .sys-chip::after { width: 46px; height: 1px; bottom: 50%;
+    background: linear-gradient(90deg, rgba(255, 217, 143, .7), rgba(255, 217, 143, .1)); box-shadow: 0 0 6px rgba(255, 210, 120, .5); }
+  body[data-view="home"]:not(.cinematic) .sysbar > .sys-chip:nth-child(-n+4)::after { right: -46px; }
+  body[data-view="home"]:not(.cinematic) .sysbar > .sys-chip:nth-child(n+5)::after { left: -46px; }
+  body[data-view="home"]:not(.cinematic) .sysbar > .sys-chip::before { content: ""; position: absolute; top: calc(50% - 2px); width: 4px; height: 4px; border-radius: 50%;
+    background: #ffe7b8; box-shadow: 0 0 8px #ffd98f; pointer-events: none; animation: sc-travel 3.2s ease-in-out infinite; }
+  body[data-view="home"]:not(.cinematic) .sysbar > .sys-chip:nth-child(-n+4)::before { right: -46px; }
+  body[data-view="home"]:not(.cinematic) .sysbar > .sys-chip:nth-child(n+5)::before { left: -46px; animation-name: sc-travel-l; }
+}
+@keyframes sc-travel { 0% { transform: translateX(-40px); opacity: 0; } 30% { opacity: 1; } 100% { transform: translateX(0); opacity: 0; } }
+@keyframes sc-travel-l { 0% { transform: translateX(40px); opacity: 0; } 30% { opacity: 1; } 100% { transform: translateX(0); opacity: 0; } }
+
+/* ---- HUD: Missions (progress rings) and Decisions (risk ring, real waiting time) -------------------------------- */
+.mrow { display: grid; grid-template-columns: auto 1fr auto; gap: 10px; align-items: center; }
+.step-ring { width: 40px; height: 40px; flex: none; }
+.step-ring .sr-track { fill: none; stroke: rgba(217, 180, 95, .16); stroke-width: 3; }
+.step-ring .sr-val { fill: none; stroke: #ffd98f; stroke-width: 3; filter: drop-shadow(0 0 3px rgba(255, 210, 120, .7)); transition: stroke-dasharray .8s ease; }
+.step-ring.failed .sr-val { stroke: #ff6b5e; } .step-ring.completed .sr-val { stroke: #8fe3ad; }
+.step-ring .sr-num { fill: var(--text); font: 600 12px var(--display); }
+.decision .d-kind { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.decision .d-ring { width: 12px; height: 12px; border-radius: 50%; border: 2px solid #ffd98f; box-shadow: 0 0 10px rgba(255, 210, 120, .7); animation: d-pulse 1.8s ease-in-out infinite; }
+.decision.risk-high .d-ring, .decision.risk-sensitive .d-ring { border-color: #ff6b5e; box-shadow: 0 0 10px rgba(255, 90, 80, .7); }
+.decision .d-wait { margin-left: auto; font: 500 12px var(--display); letter-spacing: .08em; color: var(--silver); }
+@keyframes d-pulse { 50% { transform: scale(1.25); opacity: .6; } }
+
+/* motion settings: everything above holds still */
+:root[data-fx="reduced"] :is(#recent li.new, .sys-chip .sc-dot::after, .sys-chip::before, .decision .d-ring),
+:root[data-fx="off"] :is(#recent li.new, .sys-chip .sc-dot::after, .sys-chip::before, .decision .d-ring) { animation: none; }
+:root[data-fx="reduced"] .sysbar > .sys-chip::before, :root[data-fx="off"] .sysbar > .sys-chip::before { display: none; }
+@media (prefers-reduced-motion: reduce) {
+  :is(#recent li.new, .sys-chip .sc-dot::after, .sys-chip::before, .decision .d-ring) { animation: none; }
+  .sysbar > .sys-chip::before { display: none; }
+}
+.recent-panel .ph { flex-wrap: wrap; }
+.recent-panel .recent-pulse { order: 3; flex-basis: 100%; margin: 8px 0 0; justify-content: space-between; }
+.recent-panel .pulse-svg { width: 150px; height: 16px; }

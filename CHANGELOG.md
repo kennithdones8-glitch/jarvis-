@@ -1,5 +1,16 @@
 # Changelog
 
+## Unreleased — HUD: activity, system readouts, missions and decisions
+
+- **Recent activity**: an icon ring per kind of event (problems in red, model events in silver), an **activity pulse**
+  (real audit events per 5 minutes over the last hour, with the count), and new entries slide in.
+- **System readouts around the projection** (desktop): bracketed HUD readouts with a turning status ring and a lit
+  connector toward the figure, with a light travelling along it.
+- **Missions**: a progress ring per mission on Home (real steps done of total; none when there are no steps).
+- **Decisions**: a pulsing risk ring (red for high-risk) and how long it has really been waiting. No countdown:
+  approvals have no deadline, so none is shown.
+- All of it holds still in Low performance and Reduced motion.
+
 ## Unreleased — HUD module: Systems panel, 3D depth (Iron Man direction)
 
 - Chosen with the owner: Iron Man HUD direction, live visuals, 3D depth, HUD detail; constant motion in Normal
