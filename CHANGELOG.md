@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased — Avatar 3.5.1: the eyes, made visible
+
+- Glances now move the eye glow with the head (the shift was too small to see); a horizontal scan line with a moving
+  light crosses the eyes while researching or verifying.
+- On a genuine error the eyes turn deep red and narrow (the white-hot centre is dropped); the hexagon alert shield no
+  longer covers the face, so the eyes stay visible during warnings and errors.
+- `JarvisAvatar.eyes` (read-only) reports what the eyes show: glow level, openness (blinks, narrowing), glance offset,
+  scan and speech pulse, used by the browser checks.
+
 ## Unreleased — Avatar 3.5: sculpted face
 
 - **A face, sculpted subtly in the light body** (owner's choice, replacing the smooth head): brow ridge, eye

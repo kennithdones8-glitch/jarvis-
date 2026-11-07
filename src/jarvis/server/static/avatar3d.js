@@ -37,7 +37,7 @@ const LOOKS = {
   approval:      { tint: "#ffb347", rpat: "beat", eyes: 1.05, rim: 1.3, scan: 1.0, flow: 0.4, ring: 0.2, beam: 0.85, reactor: 0.85, neural: 0.2, data: 0, sweep: 0, discharge: 0, beat: 2.8, head: "attend", flicker: 0 },
   warning:       { tint: "#ffbf6a", rpat: "scan", eyes: 0.9, rim: 1.15, scan: 1.8, flow: 0.3, ring: 0.15, beam: 0.75, reactor: 0.7, neural: 0.15, data: 0, sweep: 0.55, discharge: 0, beat: 0, head: "aware", flicker: 0 },
   completed:     { tint: "#ffd6a0", rpat: "surge", eyes: 1.8, rim: 1.7, scan: 1.0, flow: 1.0, ring: 0.6, beam: 1.2, reactor: 1.6, neural: 0.6, data: 0, sweep: 0, discharge: 0, beat: 0, head: "aware", flicker: 0 },
-  error:         { tint: "#ff4b4b", rpat: "stutter", eyes: 0.55, rim: 1.1, scan: 0.8, flow: 0.0, ring: 0.0, beam: 0.45, reactor: 0.5, neural: 0.05, data: 0, sweep: 0.7, discharge: 0, beat: 0, head: "still", flicker: 0.45 },
+  error:         { tint: "#ff4b4b", rpat: "stutter", eyes: 1.1, rim: 1.1, scan: 0.8, flow: 0.0, ring: 0.0, beam: 0.45, reactor: 0.5, neural: 0.05, data: 0, sweep: 0.7, discharge: 0, beat: 0, head: "still", flicker: 0.45 },
   recovery:      { tint: "#ffb27a", rpat: "calm", eyes: 0.8, rim: 1.0, scan: 1.5, flow: 0.5, ring: 0.25, beam: 0.7, reactor: 0.6, neural: 0.3, data: 0, sweep: 0.5, discharge: 0, beat: 0, head: "aware", flicker: 0.08 },
   halted:        { tint: "#a8927a", rpat: "still", eyes: 0.4, rim: 0.85, scan: 0.4, flow: 0.0, ring: 0.0, beam: 0.35, reactor: 0.3, neural: 0.0, data: 0, sweep: 0, discharge: 0, beat: 0, head: "still", flicker: 0 },
 };
@@ -76,7 +76,7 @@ void main() {
 // a rising light band; faces turned away drawn dimmer for depth; a materialisation edge; a fade into the projector
 // beam; a floor reflection; a faint projection distortion. Shared uniforms are the same objects in every material.
 const FRAG = `
-uniform vec3 uTint0, uAccent; uniform float uTime, uOpacity, uRim, uRimK, uGain, uSelf, uScan, uFlow, uFlowOn, uFlicker, uReveal, uFadeLow, uReflect, uCore, uPanel, uPanelScale, uContour, uDetail, uCoreE, uEye, uEyeOpen, uEyeLook, uEyeScan, uSpeech;
+uniform vec3 uTint0, uAccent; uniform float uTime, uOpacity, uRim, uRimK, uGain, uSelf, uScan, uFlow, uFlowOn, uFlicker, uReveal, uFadeLow, uReflect, uCore, uPanel, uPanelScale, uContour, uDetail, uCoreE, uEye, uEyeOpen, uEyeLook, uEyeScan, uSpeech, uEyeHot;
 varying vec3 vNormal; varying vec3 vView; varying vec3 vWorld; varying vec2 vUv; varying vec3 vObj; varying vec3 vObjN; varying float vAccent;
 float hash(float n) { return fract(sin(n) * 43758.5453); }
 float seam(vec2 p, float w) { vec2 g = abs(fract(p - 0.5) - 0.5) / max(fwidth(p), vec2(1e-4)); return 1.0 - min(min(g.x, g.y) / w, 1.0); }
@@ -180,8 +180,9 @@ void main() {
     vec2 eo = vec2((ax - 0.072 - uEyeLook * sign(p.x)) / 0.03, (p.y - 4.735) / (0.014 * max(uEyeOpen, 0.08)));
     float eye = exp(-dot(eo, eo) * 1.4) * smoothstep(0.2, 0.25, p.z) * min(uEye, 2.0) * step(0.02, uEyeOpen);
     float scanx = sin(uTime * 2.4) * 0.11;
-    float escan = exp(-pow((p.x - scanx) / 0.012, 2.0)) * exp(-pow((p.y - 4.735) / 0.02, 2.0)) * smoothstep(0.2, 0.25, p.z) * uEyeScan;
-    col += mix(uTint, vec3(1.0, 0.98, 0.95), 0.55) * (eye * 2.2 + escan * 1.6) + uTint * facem * uSpeech * 0.45;
+    float escan = exp(-pow((p.x - scanx) / 0.014, 2.0)) * exp(-pow((p.y - 4.735) / 0.03, 2.0)) * smoothstep(0.2, 0.25, p.z) * uEyeScan;
+    escan += exp(-pow((p.y - 4.735) / 0.006, 2.0)) * step(abs(p.x), 0.12) * smoothstep(0.2, 0.25, p.z) * uEyeScan * 0.35;   // the scan line it travels on
+    col += mix(uTint, vec3(1.0, 0.98, 0.95), (0.25 + 0.35 * exp(-dot(eo, eo) * 4.0)) * uEyeHot) * eye * 2.2 + mix(uTint, vec3(1.0), 0.5) * escan * 2.6 + uTint * facem * uSpeech * 0.45;
     a += (eye * 0.7 + escan * 0.5 + facem * uSpeech * 0.15) * uOpacity;
     // glowing soles
     float sole = smoothstep(0.16, 0.03, p.y);
@@ -237,8 +238,9 @@ void main() {
   float e = hexd(g), line = 1.0 - smoothstep(0.42, 0.42 + 1.5 * fwidth(e), e);
   float fres = pow(1.0 - abs(dot(normalize(vNormal), normalize(vView))), 2.0);
   float sweep = exp(-pow((fract(vObj.y * 0.25 - uTime * 0.5) - 0.5) * 6.0, 2.0));
-  float aa = ((1.0 - line) * (0.5 + sweep) + fres * 0.4) * uShield * uGain;
-  gl_FragColor = vec4(mix(uTint, vec3(1.0, 0.95, 0.9), 0.4), clamp(aa, 0.0, 1.0) * 0.6);
+  float face = smoothstep(4.36, 4.46, vObj.y) * smoothstep(0.02, 0.14, vObj.z);   // the shield never covers the face
+  float aa = ((1.0 - line) * (0.5 + sweep) + fres * 0.4) * uShield * uGain * (1.0 - face);
+  gl_FragColor = vec4(mix(uTint, vec3(1.0, 0.95, 0.9), 0.4), clamp(aa, 0.0, 1.0) * 0.4);
 }`;
 
 // ---- post-processing: bloom (bright edges and cores glow), a slight lens fringe and fine grain ------------------
@@ -559,7 +561,7 @@ export function create(wrap, opts = {}) {
               uTime: { value: 0 }, uTint: { value: CHAMPAGNE.clone() }, uRimK: { value: 1 }, uGain: { value: 1 },
               uScan: { value: 1 }, uFlow: { value: 0.3 }, uFlicker: { value: 0 }, uReflect: { value: 0 } };
   const EYE = { value: 1 }, REACTOR = { value: 1 };
-  const FACE = { uEyeOpen: { value: 1 }, uEyeLook: { value: 0 }, uEyeScan: { value: 0 }, uSpeech: { value: 0 } };   // eyes and speech light
+  const FACE = { uEyeOpen: { value: 1 }, uEyeLook: { value: 0 }, uEyeScan: { value: 0 }, uSpeech: { value: 0 }, uEyeHot: { value: 1 } };   // eyes and speech light
   const lineMats = [];
   const parts = {};
   let building = null;   // the part whose meshes are being built (for its reveal uniform and visibility)
@@ -1187,6 +1189,7 @@ export function create(wrap, opts = {}) {
     U.uGain.value = intensity * (1 + flash * 0.4);
     const eyeLevel = cur.eyes * (1 + flash * 0.6 + speech * 0.4);
     EYE.value = eyeLevel; FACE.uSpeech.value = Math.min(1, speech);
+    FACE.uEyeHot.value += ((state === "error" ? 0 : 1) - FACE.uEyeHot.value) * k;   // deep red eyes only on a genuine error
     if (!moving) { FACE.uEyeOpen.value = 1; FACE.uEyeLook.value = 0; FACE.uEyeScan.value = 0; }
     const breathe = moving ? 0.92 + 0.08 * Math.sin(t * 1.3) : 1;
     REACTOR.value = cur.reactor * breathe * (1 + speech * 0.8 + flash);
@@ -1258,7 +1261,8 @@ export function create(wrap, opts = {}) {
       const shut = target.head === "still" ? 1 : 1 - Math.sin(blink * Math.PI) * 0.85;
       const narrow = state === "warning" || state === "error" ? 0.6 : 1;
       const look = state === "researching" || state === "verifying" ? Math.sin(t * 2.2) * 0.022 : glance ? glance[1] * 0.05 : 0;
-      FACE.uEyeOpen.value = shut * narrow; FACE.uEyeLook.value = look * 0.4;
+      FACE.uEyeOpen.value = shut * narrow;
+      FACE.uEyeLook.value = glance && state !== "researching" && state !== "verifying" ? glance[1] * 0.07 : look * 0.7;   // the eyes follow the glance
       FACE.uEyeScan.value += ((state === "researching" || state === "verifying" ? 1 : 0) - FACE.uEyeScan.value) * k;
       irises.forEach((ir, i) => { ir.scale.y = 0.55 * shut * narrow; ir.position.x = ir.userData.at.x + look;
         const pulse = state === "reasoning" || state === "understanding" ? 0.85 + 0.15 * Math.sin(t * 3 + i) : 1; ir.scale.x = pulse; });
@@ -1345,7 +1349,8 @@ export function create(wrap, opts = {}) {
   const api = {
     setState, setTier, setMode, setIntensity, setSystems, setAura, setThought, pulse, pick, onLost: null,
     skipBoot() { if (boot) { boot.t = BOOT_END; kick(); } }, get booting() { return !!boot; },
-    get animating() { return raf !== 0; }, get lost() { return lost; }, get state() { return state; },
+    get animating() { return raf !== 0; },
+    get eyes() { return { hot: FACE.uEyeHot.value, level: EYE.value, open: FACE.uEyeOpen.value, look: FACE.uEyeLook.value, scan: FACE.uEyeScan.value, speech: FACE.uSpeech.value }; }, get lost() { return lost; }, get state() { return state; },
     get stats() { return { calls: renderer.info.render.calls, triangles: renderer.info.render.triangles }; },
     dispose() { cancelAnimationFrame(raf); ro.disconnect(); io.disconnect(); document.removeEventListener("visibilitychange", onVis);
       renderer.dispose(); canvas.remove(); },

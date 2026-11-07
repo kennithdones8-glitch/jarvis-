@@ -344,6 +344,7 @@
                           get state() { return av.state; }, get tier() { return av.tier; },
                           get animating() { return av.raf !== 0 || !!(av.three && av.three.animating); },
                           get renderer() { return av.three ? "3d" : "2d"; },
-                          get stats() { return av.three ? av.three.stats : null; } };
+                          get stats() { return av.three ? av.three.stats : null; },
+                          get eyes() { return av.three ? av.three.eyes : null; } };   // read-only: what the eyes are showing
   window.JarvisAvatar = api;
 })();

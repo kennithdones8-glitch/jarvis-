@@ -404,3 +404,13 @@ def test_alloy_armour_hugs_the_body_and_reacts_only_to_real_work_and_alerts():
     assert 'const heavy = ["coding", "executing", "reasoning"].includes(state);' in AV3
     assert 'if (s === "error" || s === "warning") shieldFlare = 2.5;' in AV3                # the shield flares only on a real alert
     assert "if (!phone) part(\"shield\", 1," in AV3
+
+
+def test_eye_behaviours_are_visible_and_only_follow_real_signals():
+    assert "FACE.uEyeLook.value = glance && state !== \"researching\"" in AV3                 # the eyes follow the glance
+    assert 'FACE.uEyeHot.value += ((state === "error" ? 0 : 1)' in AV3                     # deep red eyes only on an error
+    assert "float face = smoothstep(4.36, 4.46, vObj.y) * smoothstep(0.02, 0.14, vObj.z);   // the shield never covers the face" in AV3
+    looks = dict(re.findall(r"^\s+(\w+):\s+(\{ tint:.*\}),$", AV3, re.M))
+    eyes = {k: float(re.search(r"eyes: ([\d.]+)", v).group(1)) for k, v in looks.items()}
+    assert eyes["idle"] < eyes["listening"] < eyes["speaking"]                           # dim idle, brighter listening and speaking
+    assert "get eyes() { return av.three ? av.three.eyes : null; }" in AV                 # read-only readout for checks
