@@ -1,5 +1,17 @@
 # Changelog
 
+## Unreleased — automatic Ask / Research / Do
+
+- **No more mode buttons** (owner's choice): JARVIS works out what a message is (`jarvis/intent.py`). Instant rules on
+  this Mac handle the obvious cases ("remind me…", "latest news on…", "how do…"); only when they are unsure does one
+  tiny call go to a model **on this Mac** (`local_only`, never the cloud, free). Anything unclear or any failure is
+  answered as a question, which takes no action and sends nothing to the web.
+- **One tap before anything outward**: research ("Looks like it needs the web…") and tasks ("Looks like a task: JARVIS
+  drafts a plan, and nothing runs until you approve it") show *Research it / Plan it · Just answer · ✕* above the bar;
+  Esc closes it. Questions are answered straight away. Tasks still only become a plan that waits for approval, and
+  research keeps its existing consent rules.
+- New endpoint `POST /api/route` (same authentication and request checks as every other API call).
+
 ## Unreleased — UI 5: frosted glass, short activity, docked command bar (owner's spec)
 
 - Chosen with the owner (Vision Pro calm + Marvel JARVIS fine lines + HUD structure, subtle glow, balanced layout,

@@ -280,7 +280,8 @@ function renderHead(d) {
 
 // ---------------------------------------------------------------- feed: conversation + plans
 const MODES = {
-  ask: ["Ask JARVIS anything…", "Ask: conversation only. JARVIS answers and takes no actions.   ⌘↩ to send"],
+  ask: ["Ask JARVIS anything: a question, something to look up, or a task…",
+        "JARVIS works out what you mean: questions are answered; looking things up or doing a task asks you first.   ⌘↩ to send"],
   research: ["What should JARVIS look up?", "Research: Claude searches the web and reads pages, then answers with sources. Asks before sending."],
   do: ["Describe a task — e.g. research X and save a brief to my notes", "Do: JARVIS plans the task and shows you the plan. Nothing happens until you press Run."],
 };
@@ -325,15 +326,42 @@ function setMode(mode) {
   $("#cmd").focus();
 }
 
+// The owner removed the Ask / Research / Do buttons: JARVIS works out the kind of message (rules, then a model on
+// this Mac; never the cloud) and asks with one tap before looking things up or planning a task.
+async function routeMessage(text) {
+  try { return await api("/api/route", { text }); } catch (e) { return { mode: "ask" }; }
+}
+function showRouteConfirm(r) {
+  const box = $("#routeconfirm");
+  const task = r.mode === "do";
+  const go = (mode) => () => { box.hidden = true; if (mode === "ask") ui.skipRoute = true; else setMode(mode); submitCommand({ preventDefault() {} }); };
+  box.replaceChildren(
+    h("span", { class: "rc-text" }, task ? "Looks like a task: JARVIS drafts a plan, and nothing runs until you approve it."
+                                         : "Looks like it needs the web: JARVIS searches and answers with sources."),
+    h("button", { class: "chip on", type: "button", onclick: go(r.mode) }, task ? "Plan it" : "Research it"),
+    h("button", { class: "chip", type: "button", onclick: go("ask") }, "Just answer"),
+    h("button", { class: "chip", type: "button", "aria-label": "Cancel", onclick: () => { box.hidden = true; $("#cmd").focus(); } }, "✕"));
+  box.hidden = false;
+  box.querySelector("button").focus();
+}
+
 async function submitCommand(ev) {
   ev.preventDefault();
   const text = $("#cmd").value.trim();
   if (!text) return;
+  $("#routeconfirm").hidden = true;
+  if (ui.mode === "ask" && !ui.skipRoute && !ui.chatBusy && ui.editIndex === null) {
+    $("#send").disabled = true;
+    const r = await routeMessage(text);
+    $("#send").disabled = false;
+    if (r.mode === "research" || r.mode === "do") { showRouteConfirm(r); return; }
+  }
+  ui.skipRoute = false;
   if (ui.mode === "do") {
     $("#send").disabled = true;
     try { await api("/api/plan", { request: text }); $("#cmd").value = ""; clearDraft(); await refresh(); }
     catch (e) { note(`Could not start planning: ${e.message}`); }
-    finally { $("#send").disabled = false; }
+    finally { $("#send").disabled = false; setMode("ask"); }
     return;
   }
   if (ui.chatBusy) return;
@@ -341,7 +369,7 @@ async function submitCommand(ev) {
   ui.convo.push({ role: "user", text });
   $("#cmd").value = "";
   clearDraft();
-  if (ui.mode === "research") { await sendChat({ question: text, session: ui.session }, "/api/research"); return; }
+  if (ui.mode === "research") { setMode("ask"); await sendChat({ question: text, session: ui.session }, "/api/research"); return; }
   await sendChat({ message: text, history: historyBefore(ui.convo.length - 1), session: ui.session, mode: ui.intel });
 }
 
@@ -1772,7 +1800,7 @@ document.addEventListener("DOMContentLoaded", () => {
   $("#helpbtn").addEventListener("click", showHelp);
   $("#mic").addEventListener("click", toggleMic);
   $("#speak").addEventListener("click", toggleSpeak);
-  document.addEventListener("keydown", (e) => { if (e.key === "Escape") { stopSpeaking(); stopReply(); cancelEdit(); closeProjection(); } });
+  document.addEventListener("keydown", (e) => { if (e.key === "Escape") { $("#routeconfirm").hidden = true; stopSpeaking(); stopReply(); cancelEdit(); closeProjection(); } });
   window.addEventListener("hashchange", () => maybeAutoBriefing(ui.data));
   $("#release").addEventListener("click", () => {
     ask("Release the emergency stop? Paused tasks stay paused until you resume them.", { ok: "Release" })

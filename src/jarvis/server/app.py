@@ -529,6 +529,19 @@ class Dashboard:
         self._pool.submit(self._plan_job, job)
         return job_id
 
+    def route_message(self, message: str) -> dict[str, str]:
+        """Ask, research or do? A suggestion for the dashboard, which confirms research and tasks with one tap.
+        Rules first; when they are unsure, one tiny call to a local model (``local_only``: never leaves the Mac)."""
+        from .. import intent
+
+        def complete(prompt: str) -> str:
+            r = self.kernel.models.complete(Need("chat", prefer="speed", local_only=True),
+                                            ChatRequest((Message("user", prompt, Category.CONVERSATION),), max_tokens=6),
+                                            purpose="message type (local)")
+            return r.text
+
+        return intent.classify(message, complete)
+
     def _plan_job(self, job: dict[str, Any]) -> None:
         try:
             plan = self._plan_with_consent(job)
@@ -1244,6 +1257,8 @@ class Dashboard:
             return {"ok": True}
         if path == "/api/memory/forget":
             return self.kernel.forget(text("query", 200), by=actor, dry_run=body.get("confirm") is not True)
+        if path == "/api/route":   # which kind of message: rules, then a model on this Mac (never the cloud)
+            return self.route_message(text("text", 2000))
         if path == "/api/plan":
             return {"job_id": self.start_plan(text("request"))}
         if m := re.fullmatch(r"/api/plan/(\w+)/(run|discard)", path):
