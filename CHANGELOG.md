@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased: benchmarks say how busy the Mac was (branch `bench-load-v1`, owner's choice)
+
+- Each run records the Mac's 1-minute load average at the start, the busiest point and the end (with the number of
+  cores). The report shows it, with a warning when more than half the cores were busy with other work: answers
+  were slower than usual, but pass/fail still counts. `bench compare` notes any busy run. Runs from before this
+  have no figures and still work. No change to JARVIS's behaviour.
+
 ## 0.19.0 — Holographic dashboard, Quick/Balanced/Deep, live Claude replies (owner-approved after a test on the Mac)
 
 - Merged the holographic dashboard work (branch `claude/funny-allen-ygy8kk`, reviewed) with 0.18.1–0.18.3. Sections
