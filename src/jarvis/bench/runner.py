@@ -15,6 +15,7 @@ JARVIS keeps asking every time. The $0 budget is required: a run refuses to star
 from __future__ import annotations
 
 import json
+import os
 import platform
 import re
 import shutil
@@ -278,6 +279,19 @@ def git_commit() -> str | None:
         return None
 
 
+def mac_load() -> dict | None:
+    """How busy the Mac is: the 1-minute load average and the number of cores (None where it can't be read)."""
+    try:
+        return {"load": round(os.getloadavg()[0], 2), "cores": os.cpu_count() or 1}
+    except (OSError, AttributeError):
+        return None
+
+
+def busy(load: dict | None) -> bool:
+    """More than half the cores already in use by something: answers will be slower than usual."""
+    return bool(load) and load["load"] / load["cores"] > 0.5
+
+
 def run_suite(tasks: list[Task], *, real_config: Path, out_dir: Path, models: str = "local", repeat: int = 1,
               run_code: bool = False, mac_factory=FixtureMac, progress: Callable[[str], None] = lambda s: None,
               coding_self_test: bool = False) -> Path:
@@ -290,8 +304,9 @@ def run_suite(tasks: list[Task], *, real_config: Path, out_dir: Path, models: st
     meta = {"run_id": run_id, "started": datetime.now().astimezone().isoformat(), "jarvis_version": __version__,
             "git_commit": git_commit(), "models": models, "repeat": repeat, "run_code": run_code,
             "platform": f"{platform.system()} {platform.release()} {platform.machine()}", "tasks": {},
-            "coding_self_test": coding_self_test}
+            "coding_self_test": coding_self_test, "load_start": mac_load()}
     results = []
+    peak = meta["load_start"]
     for task in tasks:
         meta["tasks"][task.id] = task.sha256
         for n in range(repeat):
@@ -307,13 +322,29 @@ def run_suite(tasks: list[Task], *, real_config: Path, out_dir: Path, models: st
             r.update(run=n + 1, **graded)
             results.append(r)
             progress(f"  {graded['status'].upper()} · {r['seconds']}s")
+            now = mac_load()
+            if now and (not peak or now["load"] > peak["load"]):
+                peak = now
     meta["finished"] = datetime.now().astimezone().isoformat()
+    meta["load_peak"], meta["load_end"] = peak, mac_load()
     (run_dir / "results.json").write_text(json.dumps({"meta": meta, "results": results}, indent=2, default=str))
     (run_dir / "report.md").write_text(report(meta, results))
     return run_dir
 
 
 EVERY_RUN = "# Every run"
+
+
+def load_line(meta: dict) -> str:
+    """How busy the Mac was during the run, so a slow run explains itself (times only; pass/fail still count)."""
+    start, peak, end = meta.get("load_start"), meta.get("load_peak"), meta.get("load_end")
+    if not start:
+        return ""
+    line = (f"Mac load (1-min average, {start['cores']} cores): start {start['load']:.1f}"
+            + (f" · busiest {peak['load']:.1f}" if peak else "") + (f" · end {end['load']:.1f}" if end else ""))
+    if any(busy(x) for x in (start, peak, end)):
+        line += " · ⚠ the Mac was busy with other work: answers were slower than usual (pass/fail still counts)"
+    return line
 
 
 def failures_at_a_glance(results: list[dict]) -> list[str]:
@@ -375,7 +406,8 @@ def report(meta: dict, results: list[dict]) -> str:
     local = sum(r.get("usage", {}).get("local_calls", 0) for r in results)
     cost = sum(r.get("usage", {}).get("cost_usd", 0) for r in results)
     secs = sum(r.get("seconds", 0) for r in results)
-    lines += ["", f"Claude calls: {claude} · local model calls: {local} · cost: ${cost:.2f} · total time: {secs / 60:.1f} min", ""]
+    lines += ["", f"Claude calls: {claude} · local model calls: {local} · cost: ${cost:.2f} · total time: {secs / 60:.1f} min"]
+    lines += [load_line(meta), ""] if load_line(meta) else [""]
     lines += failures_at_a_glance(results)
     lines += [EVERY_RUN, ""]
     for r in results:

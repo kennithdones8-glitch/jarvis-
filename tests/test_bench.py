@@ -451,3 +451,35 @@ def test_rescore_refuses_what_it_cannot_verify(tmp_path):
     assert "isn't in git history" in rescore(run, other)["refused"]["t1"]
     (tasks / "t1.toml").write_text(base)  # unchanged: nothing to do
     assert rescore(run, tasks) == {"changed": {}, "refused": {}, "path": str(run / "results.rescored.json")}
+
+
+# ---- how busy the Mac was (owner's choice, 0.19.1: a slow overnight run should explain itself) --------------------
+def test_each_run_records_how_busy_the_mac_was(config, tmp_path, monkeypatch):
+    import jarvis.bench.runner as runner
+    loads = iter([(3.4, 3.1, 3.0), (6.0, 4.0, 3.0)] + [(2.0, 2.0, 2.0)] * 50)
+    monkeypatch.setattr(runner.os, "getloadavg", lambda: next(loads))
+    monkeypatch.setattr(runner.os, "cpu_count", lambda: 4)
+    run_dir = run_suite(load_tasks()[:1], real_config=config(oracle), out_dir=tmp_path / "out")
+    meta = json.loads((run_dir / "results.json").read_text())["meta"]
+    assert meta["load_start"] == {"load": 3.4, "cores": 4} and meta["load_peak"]["load"] == 6.0
+    report = (run_dir / "report.md").read_text()
+    assert "Mac load (1-min average, 4 cores): start 3.4 · busiest 6.0" in report and "the Mac was busy" in report
+
+
+def test_a_quiet_mac_gets_no_warning_and_old_runs_still_work():
+    from jarvis.bench.runner import busy, load_line
+    quiet = {"load_start": {"load": 0.8, "cores": 4}, "load_peak": {"load": 1.5, "cores": 4},
+             "load_end": {"load": 0.9, "cores": 4}}
+    assert "busy" not in load_line(quiet) and not busy(quiet["load_peak"])
+    assert load_line({}) == ""  # runs recorded before 0.19.1 have no load figures
+
+
+def test_compare_notes_a_busy_run(tmp_path):
+    from jarvis.bench.compare import as_text, compare, load
+    a = _run(tmp_path, "1-a", {"x": "ppppp"}, repeat=5)
+    b = _run(tmp_path, "2-b", {"x": "ppppp"}, repeat=5)
+    data = json.loads((b / "results.json").read_text())
+    data["meta"]["load_start"] = {"load": 3.4, "cores": 4}
+    (b / "results.json").write_text(json.dumps(data))
+    text = as_text(compare(load(a), load(b)))
+    assert "the Mac was busy during 2-b" in text and "1-a" not in text.split("Note:")[1]

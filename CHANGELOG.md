@@ -1,6 +1,9 @@
 # Changelog
 
-## Unreleased: right day, warm start, Mac checkup, smarter answers (branches `checkup-v1`, `smarter-v1`)
+## 0.19.1 — Smarter answers: a model for maths and code, exact calendar facts, warm start, Mac checkup (owner-approved after a test on the Mac)
+
+- Proven on the owner's Mac (full benchmark ×5, local models only, $0): **103/110 passed vs 88/110** for 0.18.3; verdict MERGE (net +2 tasks, no new failures). Coding 13→20/20, reasoning 5→9/10, planning 12→16/20; everyday tasks faster (planning ~20 s vs ~50 s). Merged branches `checkup-v1`, `smarter-v1` and `bench-load-v1`.
+- Still failing: `planning-free` 1/5 (the facts reach the answer, but the model hedges instead of saying "you're free"), `tooluse-decisions` 3/5 (the planner sometimes writes one file per meeting).
 
 - **"Tomorrow" is worked out by JARVIS, not the small model.** Asked late on Fri 6 Nov about tomorrow, the local
   model looked up Friday, found nothing and made up a meeting (benchmark `planning-free`, 0/5). JARVIS now reads
@@ -33,7 +36,10 @@
   dropped from a combined decisions list.
 - **Time Machine date:** when `tmutil` gives no date, the checkup reads it from Time Machine's own settings
   (`defaults read`, read-only), and otherwise shows what tmutil said.
-- To be proven on the Mac: planning tasks ×5 and the 6 maths/code tasks ×5 before/after; tooluse-decisions ×5.
+- **Benchmarks say how busy the Mac was:** Each run records the Mac's 1-minute load average at the start, the busiest point and the end (with the number of
+  cores). The report shows it, with a warning when more than half the cores were busy with other work: answers
+  were slower than usual, but pass/fail still counts. `bench compare` notes any busy run. Runs from before this
+  have no figures and still work. No change to JARVIS's behaviour.
 
 ## 0.19.0 — Holographic dashboard, Quick/Balanced/Deep, live Claude replies (owner-approved after a test on the Mac)
 
