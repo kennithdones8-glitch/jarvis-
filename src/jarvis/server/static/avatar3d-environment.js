@@ -16,7 +16,7 @@ void main() { vec2 g = abs(fract(vUv * vec2(24.0, 24.0)) - 0.5) / fwidth(vUv * 2
 const BOUND_FRAG = `uniform vec3 uTint; uniform float uGain, uAlpha, uTime; varying vec2 vUv;
 void main() { float l = 1.0 - smoothstep(0.0, 0.04, abs(fract(vUv.x * 48.0) - 0.5) - 0.46);
   float rise = exp(-pow((fract(vUv.y - uTime * 0.08) - 0.5) * 6.0, 2.0));
-  gl_FragColor = vec4(uTint, (l * 0.5 + rise * 0.25) * smoothstep(1.0, 0.2, vUv.y) * uAlpha * uGain); }`;
+  gl_FragColor = vec4(uTint, l * (0.5 + rise * 0.5) * pow(1.0 - vUv.y, 2.0) * uAlpha * uGain); }`;   // fine lines only, fading upward
 const UV_VERT = `varying vec2 vUv; void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`;
 
 // ctx: { holo, part, U, REACTOR, glowTexture, phone }; places: { scene, figure, SCALE, BASE_Y }
@@ -64,24 +64,24 @@ export function buildEnvironment(ctx, places) {
   part("chamber", 3, (add) => {   // stage 3: a depth grid behind the figure and the projection boundary
     const gm = new THREE.ShaderMaterial({ vertexShader: UV_VERT, fragmentShader: GRID_FRAG, transparent: true, depthWrite: false,
       blending: THREE.AdditiveBlending, uniforms: { uTint: U.uTint, uGain: U.uGain, uAlpha: { value: 0.12 } }, extensions: { derivatives: true } });
-    for (const [z, x, ry] of [[-2.4, 0, 0], [-1.6, -2.6, 0.9], [-1.6, 2.6, -0.9]]) {
-      const g = add(new THREE.Mesh(new THREE.PlaneGeometry(5, 6), gm), envGroup); g.position.set(x, 2.9, z); g.rotation.y = ry;
+    for (const [z, x, ry] of [[-2.2, 0, 0], [-1.5, -1.75, 0.8], [-1.5, 1.75, -0.8]]) {   // sized to fade out inside the view (no visible canvas edge)
+      const g = add(new THREE.Mesh(new THREE.PlaneGeometry(2.6, 4.6), gm), envGroup); g.position.set(x, 2.9, z); g.rotation.y = ry;
     }
     const bm = new THREE.ShaderMaterial({ vertexShader: UV_VERT, fragmentShader: BOUND_FRAG, transparent: true, depthWrite: false, side: THREE.DoubleSide,
       blending: THREE.AdditiveBlending, uniforms: { uTint: U.uTint, uGain: U.uGain, uTime: U.uTime, uAlpha: { value: 0.18 } } });
-    const b = add(new THREE.Mesh(new THREE.CylinderGeometry(2.6, 2.6, 5.6, 64, 1, true), bm), envGroup); b.position.y = floor + 2.8;
+    const b = add(new THREE.Mesh(new THREE.CylinderGeometry(1.9, 1.9, 1.3, 64, 1, true), bm), envGroup); b.position.y = floor + 0.65;   // a low boundary at the platform's edge
   });
   part("ground", 1, (add) => {   // ground light (follows the reactor) and a soft contact shadow under the feet
     const shadow = add(new THREE.Mesh(new THREE.PlaneGeometry(1.4, 0.9), new THREE.MeshBasicMaterial({ map: glowTexture(), color: 0x000000,
       transparent: true, opacity: 0.55, depthWrite: false })), scene);
     shadow.rotation.x = -Math.PI / 2; shadow.position.set(0, floor + 0.002, 0.04); shadow.renderOrder = -2;
-    groundGlow = add(new THREE.Mesh(new THREE.PlaneGeometry(4.2, 3.0), new THREE.MeshBasicMaterial({ map: glowTexture(), color: new THREE.Color("#ffcf7a"),
+    groundGlow = add(new THREE.Mesh(new THREE.PlaneGeometry(3.0, 2.0), new THREE.MeshBasicMaterial({ map: glowTexture(), color: new THREE.Color("#ffcf7a"),
       transparent: true, opacity: 0.35, blending: THREE.AdditiveBlending, depthWrite: false })), scene);
     groundGlow.rotation.x = -Math.PI / 2; groundGlow.position.set(0, floor + 0.004, 0);
     if (!phone) {   // a faint haze behind the chest
       const haze = add(new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTexture(), color: new THREE.Color("#ffd98f"), transparent: true,
         opacity: 0.08, blending: THREE.AdditiveBlending, depthWrite: false })), envGroup);
-      haze.position.set(0, 3.2, -1.2); haze.scale.set(5.5, 6.5, 1);
+      haze.position.set(0, 3.2, -1.2); haze.scale.set(3.4, 4.6, 1);
     }
   });
 
