@@ -456,9 +456,9 @@ def calendar_facts(events: list[dict], args: dict, message: str, today: date | N
 
 
 def reminder_window(message: str) -> tuple[str, int | None] | None:
-    """("overdue", None), ("within", days) or None, from words like "overdue" or "in the next 7 days"."""
-    if OVERDUE.search(message or ""):
-        return "overdue", None
+    """("overdue", None), ("within", days) or None, from words like "overdue" or "in the next 7 days".
+    A window wins over "overdue" because "within" lists the overdue ones too: "overdue or due today" must not leave
+    out what's due today."""
     m = SPAN_DAYS.search(message or "")
     if m:
         n = m.group(1)
@@ -469,6 +469,8 @@ def reminder_window(message: str) -> tuple[str, int | None] | None:
             return "within", 1
         if "today" in low or "tonight" in low:
             return "within", 0
+    if OVERDUE.search(message or ""):
+        return "overdue", None
     return None
 
 

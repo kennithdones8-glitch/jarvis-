@@ -1,5 +1,20 @@
 # Changelog
 
+## Unreleased: overdue + due today, a small memory seen whole (branch `smarter-v2`, owner's choice: fix 1 and 2A)
+
+Built on `harder-bench-v1`. Fixes the two gaps the hard set found, where even a perfect model failed.
+- **"Overdue or due today" lists both.** Any time window in the question ("today", "tomorrow", "next 3 days") now
+  wins over "overdue", and the window's list already includes what's overdue. "Overdue" on its own is unchanged.
+- **A small memory is seen whole.** With 150 memories or fewer, a chat answered on this Mac also gets every
+  memory the keyword search missed, oldest first, so "take the cat to my mum's" can use "my flight to Lisbon is on
+  14 August". Bigger stores use keyword recall as before.
+- **Privacy unchanged.** The extra memories are marked local-only: the egress gate can't send them to Claude, and
+  they're only added when the answer is sure to stay on the Mac (Quick, local routing, no Claude configured, or
+  hybrid rated "simple"). Answers that go to Claude get only the matching memories, still with consent. New
+  Privacy gate test: `the_whole_memory_never_goes_to_claude`.
+- To be proven on the Mac: the hard set ×5 (before = harder-bench-v1 baseline), and core + extended ×5 for no new
+  failures.
+
 ## Unreleased: a harder benchmark set (branch `harder-bench-v1`, owner's choice)
 
 - **17 held-out hard tasks** (`--set hard`): reasoning ×4, coding ×3 (one is fixing a bug), memory ×3, planning ×3,

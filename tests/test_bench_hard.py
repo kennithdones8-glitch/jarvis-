@@ -172,30 +172,23 @@ def test_hard_set_is_separate_and_complete():
     assert not {t.id for t in hard} & {t.id for t in load_tasks(which="all")}  # "all" still means the earlier 24
 
 
-# Found by writing these tasks: even a perfect model fails them, because JARVIS never puts the facts in front of it.
-# Kept on purpose (like memory-preferences once was), so a fix can be measured. Not fixed in this branch: the hard set
-# is held out, and fixes come as their own approved change.
-KNOWN_GAPS = {
-    # "overdue OR due today": the word "overdue" makes the reminder facts list overdue items only, and the reminder
-    # due today is then left out of the list the model sees.
+# Found by writing these tasks: a perfect model failed these two, because JARVIS never put the facts in front of it.
+# Fixed in smarter-v2: "overdue or due today" now lists both, and a small memory store is shown whole to answers that
+# stay on this Mac. The right answers still pass their checks:
+WERE_GAPS = {
     "hard-planning-today": "Overdue: Pay council tax, Book MOT. Due today: Call plumber.",
-    # keyword recall: "take the cat to my mum's" doesn't bring up "My flight to Lisbon is on 14 August".
     "hard-memory-combine": "Your flight is on 14 August, so the cat goes the day before.\n13 August",
 }
 
 
-def test_a_perfect_model_passes_every_hard_task_except_the_known_gaps(config, tmp_path):  # noqa: F811 (pytest fixture)
+def test_a_perfect_model_passes_every_hard_task(config, tmp_path):  # noqa: F811 (pytest fixture)
     run_dir = run_suite(load_tasks(which="hard"), real_config=config(perfect), out_dir=tmp_path / "out", run_code=True)
-    res = results_of(run_dir)
-    assert set(_failed(res)) == set(KNOWN_GAPS)
-    for tid in KNOWN_GAPS:  # it failed because the facts never reached the model, not because of the checks
-        assert res[tid]["answer"] in ("I don't know.", "I can't see your reminders."), tid
+    assert _failed(results_of(run_dir)) == {}
 
 
-def test_the_known_gaps_have_sound_checks():
-    """The right answer passes their checks, so they'll pass once JARVIS gets the facts to the model."""
+def test_the_former_gaps_have_sound_checks():
     tasks = {t.id: t for t in load_tasks(which="hard")}
-    for tid, answer in KNOWN_GAPS.items():
+    for tid, answer in WERE_GAPS.items():
         assert score({"answer": answer}, tasks[tid].checks)["status"] == "pass", tid
 
 

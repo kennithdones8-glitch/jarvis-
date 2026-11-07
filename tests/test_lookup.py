@@ -326,6 +326,24 @@ def test_reminders_outside_the_asked_window_are_counted_not_listed():
     assert "Book dentist" not in shown and "Call the plumber" in shown
 
 
+def test_overdue_and_a_window_together_list_both():
+    """Real gap (hard set): "overdue or due today" listed only the overdue ones, so the reminder due today was lost."""
+    from jarvis.orchestrator.lookup import reminder_facts, reminder_window
+    now = datetime(2026, 11, 6, 12, 0).astimezone()
+    at = lambda days, hm="09:00": (datetime(2026, 11, 6, *map(int, hm.split(":"))).astimezone()  # noqa: E731
+                                   + timedelta(days=days)).isoformat()
+    rem = [{"title": "Pay council tax", "due": at(-2), "list": "Home"},
+           {"title": "Call plumber", "due": at(0, "18:00"), "list": "Home"},
+           {"title": "Water plants", "due": at(1, "08:00"), "list": "Home"},
+           {"title": "Renew passport", "due": at(20), "list": "Admin"}]
+    for q, want in (("What's overdue or due today?", ["Pay council tax", "Call plumber"]),
+                    ("Anything late or due tomorrow?", ["Pay council tax", "Call plumber", "Water plants"]),
+                    ("Which reminders are overdue or due in the next 3 days?", ["Pay council tax", "Call plumber", "Water plants"])):
+        assert reminder_window(q)[0] == "within", q
+        assert [r["title"] for r in reminder_facts(rem, q, now)[1]] == want, q
+    assert reminder_window("Which of my reminders are overdue?") == ("overdue", None)  # overdue alone: unchanged
+
+
 def test_facts_reach_the_answering_model(env):
     d, script, seen, fake, _ = env
     script["lookups"] = [{"tool": "calendar", "action": "events", "args": week()}]
