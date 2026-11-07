@@ -1,5 +1,19 @@
 # Changelog
 
+## Unreleased — Avatar 3.3: gestures, live data wall, screen wall
+
+- **Gestures from real states only**: speaking opens the right hand toward you, coding and executing raise both hands
+  to work (a small alternating motion in Normal), waiting for approval raises the right hand, a completed mission
+  opens both hands; every other state rests. Arms bend at shoulder and elbow in the vertex shader; the suit seams and
+  panels stay attached. The unposed wireframe overlay and the arm energy tubes are removed.
+- **Live data wall**: the background streams now follow real signals: the orange stream is CPU load, the teal stream
+  memory use, the upper stream lights and pulses only while a model is answering, the left network brightens with
+  active missions. Unavailable values stay at a resting glow (never invented).
+- **Screen wall in the focus view**: seven glowing panels curving around the figure, like a command-centre video wall
+  (decoration only; its scan light stops in Low performance and Reduced motion; hidden on phones). The backdrop is
+  more opaque so the dashboard no longer shows through.
+- The focus view's evolution button no longer clips its label.
+
 ## Unreleased — Avatar 3.2: athletic light body, suit contours, warmer dashboard
 
 - **Sculpt refined**: V-taper (lats, trapezius, deltoids), chest, abdominal wall, biceps and forearms, quadriceps,

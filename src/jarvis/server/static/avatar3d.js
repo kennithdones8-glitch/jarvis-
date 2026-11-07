@@ -45,16 +45,25 @@ const NUMERIC = ["eyes", "rim", "scan", "flow", "ring", "beam", "reactor", "neur
 
 // ---- shaders ---------------------------------------------------------------------------------------------------
 const VERT = `
-uniform mat3 uHead; uniform float uHeadOn; attribute float aAccent;
+uniform mat3 uHead, uArmR, uArmL, uForeR, uForeL; uniform float uHeadOn; attribute float aAccent;
 varying vec3 vNormal; varying vec3 vView; varying vec3 vWorld; varying vec2 vUv; varying vec3 vObj; varying vec3 vObjN; varying float vAccent;
 void main() {
   vec3 pos = position, nrm = normal;
   if (uHeadOn > 0.5) {   // the head turns on a soft neck: vertices blend from body to head between y 4.22 and 4.42
     float w = smoothstep(4.22, 4.42, position.y); vec3 c = vec3(0.0, 4.3, 0.0);
     pos = mix(position, uHead * (position - c) + c, w); nrm = normalize(mix(normal, uHead * normal, w));
+    // arms bend at the shoulder and the elbow (gestures): weights from the rest position, so seams stay attached
+    float side = sign(position.x), ax = abs(position.x);
+    float wU = smoothstep(0.52, 0.66, ax) * smoothstep(4.15, 3.95, position.y), wF = wU * smoothstep(3.12, 2.96, position.y);
+    if (wU > 0.0) {
+      mat3 Ru = side > 0.0 ? uArmR : uArmL, Rf = side > 0.0 ? uForeR : uForeL;
+      vec3 S = vec3(0.66 * side, 3.92, 0.0), E = vec3(0.8 * side, 3.04, -0.03), E2 = S + Ru * (E - S);
+      pos = mix(pos, S + Ru * (position - S), wU); nrm = mix(nrm, Ru * normal, wU);
+      pos = mix(pos, E2 + Rf * (position - E), wF); nrm = normalize(mix(nrm, Rf * normal, wF));
+    }
   }
   vec4 world = modelMatrix * vec4(pos, 1.0);
-  vWorld = world.xyz; vUv = uv; vObj = pos; vObjN = nrm; vAccent = aAccent;
+  vWorld = world.xyz; vUv = uv; vObj = position; vObjN = normal; vAccent = aAccent;   // detail is fixed to the rest shape
   vNormal = normalize(normalMatrix * nrm);
   vec4 mv = viewMatrix * world;
   vView = -mv.xyz;
@@ -409,7 +418,8 @@ export function create(wrap, opts = {}) {
   camera.lookAt(0, 2.68, 0);
 
   // ---- shared uniforms: one update per frame drives every hologram material ------------------------------------
-  const U = { uHead: { value: new THREE.Matrix3() }, uAccent: { value: new THREE.Color("#3dffb8") },
+  const U = { uHead: { value: new THREE.Matrix3() }, uArmR: { value: new THREE.Matrix3() }, uArmL: { value: new THREE.Matrix3() },
+              uForeR: { value: new THREE.Matrix3() }, uForeL: { value: new THREE.Matrix3() }, uAccent: { value: new THREE.Color("#3dffb8") },
               uTime: { value: 0 }, uTint: { value: CHAMPAGNE.clone() }, uRimK: { value: 1 }, uGain: { value: 1 },
               uScan: { value: 1 }, uFlow: { value: 0.3 }, uFlicker: { value: 0 }, uReflect: { value: 0 } };
   const EYE = { value: 1 }, REACTOR = { value: 1 };
@@ -496,9 +506,6 @@ export function create(wrap, opts = {}) {
   part("figure", 1, (add) => {
     figureMat = holo({ opacity: 1.0, rim: 1.6, core: 0.085, panel: 0.35, panelScale: 7, contour: 1, head: true });
     add(new THREE.Mesh(figureGeo, figureMat));
-    const wire = add(new THREE.Mesh(figureGeo, new THREE.MeshBasicMaterial({ color: CHAMPAGNE, wireframe: true, transparent: true,
-      opacity: 0.025, blending: THREE.AdditiveBlending, depthWrite: false })));
-    wire.userData.wire = true;
   });
   const shed = (() => {   // sparkles leaving the surface, drifting up and out
     const src = figureGeo.attributes.position.array, nsrc = figureGeo.attributes.normal.array, acc = figureGeo.attributes.aAccent.array;
@@ -522,9 +529,8 @@ export function create(wrap, opts = {}) {
           gl_FragColor = vec4(mix(mix(uTint, vec3(1.0, 0.95, 0.85), 0.45), uAccent, vAc) * 1.4, vA * smoothstep(0.5, 0.0, d) * uGain); }` });
     const pts = new THREE.Points(g, m); pts.frustumCulled = false; body.add(pts); return pts;
   })();
-  part("meridians", 3, (add) => {   // stage 3: energy lines along the body (centre line, arms, legs)
+  part("meridians", 3, (add) => {   // stage 3: energy lines along the body (centre line, legs)
     for (const pts of [[[0, 4.15, 0.12], [0, 3.62, 0.33], [0, 3.05, 0.28], [0, 2.6, 0.29]],
-                       [[0.6, 3.98, 0.16], [0.8, 3.05, 0.1], [0.88, 2.3, 0.12]], [[-0.6, 3.98, 0.16], [-0.8, 3.05, 0.1], [-0.88, 2.3, 0.12]],
                        [[0.24, 2.4, 0.2], [0.27, 1.36, 0.17], [0.25, 0.4, 0.07]], [[-0.24, 2.4, 0.2], [-0.27, 1.36, 0.17], [-0.25, 0.4, 0.07]]]) {
       const curve = new THREE.CatmullRomCurve3(pts.map(([x, y, z]) => new THREE.Vector3(x, y, z)));
       add(new THREE.Mesh(new THREE.TubeGeometry(curve, 48, 0.008, 4, false), holo({ opacity: 1, rim: 1, flow: true, core: 0.35 })));
@@ -837,6 +843,30 @@ export function create(wrap, opts = {}) {
     kick();
   }
 
+  // Gestures, chosen only by the real state: [shoulder out, forearm forward, forearm out] per side (radians).
+  const POSES = {
+    rest:    { r: [0.02, 0.08, 0.02], l: [0.02, 0.08, 0.02] },
+    present: { r: [0.16, 0.75, 0.42], l: [0.03, 0.12, 0.03] },   // speaking: the right hand opens toward you
+    work:    { r: [0.08, 0.95, -0.12], l: [0.08, 0.95, -0.12] }, // coding / executing: both hands up, working
+    raise:   { r: [0.38, 0.3, 2.45], l: [0.03, 0.12, 0.03] },    // waiting for your approval: the right hand raised
+    open:    { r: [0.24, 0.32, 0.5], l: [0.24, 0.32, 0.5] },     // completed: both hands open
+  };
+  const POSE_OF = { speaking: "present", coding: "work", executing: "work", approval: "raise", completed: "open" };
+  const armCur = { r: [0.02, 0.08, 0.02], l: [0.02, 0.08, 0.02] };
+  const _e = new THREE.Euler(), _m4 = new THREE.Matrix4(), _m4b = new THREE.Matrix4();
+  function armPose(k) {
+    const pose = POSES[POSE_OF[state] || "rest"], work = POSE_OF[state] === "work" && mode === "full";
+    for (const sd of ["r", "l"]) {
+      const sg = sd === "r" ? 1 : -1, c = armCur[sd];
+      for (let i = 0; i < 3; i++) c[i] += (pose[sd][i] - c[i]) * k;
+      const typing = work ? Math.sin(t * 2.2 + (sg > 0 ? 0 : 1.6)) * 0.05 : 0;   // small alternating hand motion while working
+      _m4.makeRotationFromEuler(_e.set(0, 0, c[0] * sg));
+      _m4b.makeRotationFromEuler(_e.set(-(c[1] + typing), 0, c[2] * sg));
+      U[sd === "r" ? "uArmR" : "uArmL"].value.setFromMatrix4(_m4);
+      U[sd === "r" ? "uForeR" : "uForeL"].value.setFromMatrix4(_m4.clone().multiply(_m4b));
+    }
+  }
+
   function headMotion() {
     const h = target.head;
     if (h === "attend") headTarget.set(0.1, Math.sin(t * 0.4) * 0.03, 0);              // toward the message box
@@ -873,6 +903,7 @@ export function create(wrap, opts = {}) {
     const moving = mode === "full";
     if (moving) t += dt;
     const k = moving ? 1 - Math.exp(-dt * 2.2) : 1;   // ~0.6–1 s blend between states
+    armPose(k);
     for (const key of NUMERIC) cur[key] += ((target[key] ?? 0) - cur[key]) * k;
     cur.tint.lerp(targetTint, k);
     flash = Math.max(0, flash - dt * 0.8);
@@ -976,8 +1007,6 @@ export function create(wrap, opts = {}) {
       headPivot.rotation.copy(headCur);
       U.uHead.value.setFromMatrix4(new THREE.Matrix4().makeRotationFromEuler(headCur));   // turns the figure's head
       shed.material.uniforms.uRate.value = 0.8 + Math.abs(cur.flow) * 0.4 + flash * 3;
-      const armAmp = state === "executing" || state === "coding" ? 0.025 : 0.01;
-      for (const a of arms) a.pivot.rotation.z = a.s * armAmp * Math.sin(t * 0.8 + a.s);
       orbitRings.forEach((r) => { r.rotation.z += dt * (0.05 + cur.ring) * r.userData.spin; });
       for (const s of spinners) s.obj.rotation[s.axis] += dt * s.speed * (0.5 + cur.ring);
       for (const rr of reactorRings) {

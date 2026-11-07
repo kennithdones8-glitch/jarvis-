@@ -350,3 +350,28 @@ def test_figure_has_glowing_suit_contours_that_grow_with_the_stage():
     assert "figureMat.uniforms.uContour.value = [0.75, 0.9, 1.05, 1.2][tier - 1]" in AV3
     for word in ("mouth", "jaw", "nose", "eye"):                              # contours stay off the face
         assert word not in AV3.split("float anat(vec3 p)")[1].split("return min(c, 1.0);")[0]
+
+
+def test_gestures_come_only_from_real_states_and_bend_the_arms_in_the_shader():
+    poses = AV3.split("const POSE_OF = ")[1].split(";")[0]
+    assert poses == '{ speaking: "present", coding: "work", executing: "work", approval: "raise", completed: "open" }'
+    assert "const pose = POSES[POSE_OF[state] || \"rest\"]" in AV3                 # anything else: arms at rest
+    assert "uniform mat3 uHead, uArmR, uArmL, uForeR, uForeL;" in AV3
+    assert "vObj = position; vObjN = normal;" in AV3                               # seams and panels stay on the moving arm
+    assert "armPose(k);" in AV3 and "wireframe: true" not in AV3                   # no unposed overlay left behind
+
+
+def test_data_wall_shows_real_signals_only():
+    fn_wall = fn(JS, "renderWall")
+    assert "auraValues(d)" in fn_wall and 'w.dataset.model = ui.chatBusy ? "on" : "off";' in fn_wall
+    assert '(v === null || v === undefined ? "na"' in fn_wall                     # unavailable stays at rest, never invented
+    for g in ("rb-cpu", "rb-mem", "rb-model", "rb-work"):
+        assert f'<g class="{g}">' in HTML
+    assert 'style="' not in HTML.split('class="env-ribbons"')[1].split("</svg>")[0]
+
+
+def test_focus_view_screen_wall_is_decoration_that_respects_motion_settings():
+    assert HTML.count('<div class="vw-tile"></div>') == 7 and '<div class="vwall" aria-hidden="true">' in HTML
+    css = (STATIC / "avatar.css").read_text()
+    assert ':root[data-fx="reduced"] .vw-tile::after, :root[data-fx="off"] .vw-tile::after { animation: none; display: none; }' in css
+    assert "@media (prefers-reduced-motion: reduce) { .vw-tile::after { animation: none; display: none; } }" in css

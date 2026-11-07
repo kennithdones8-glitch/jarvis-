@@ -1256,3 +1256,15 @@ body[data-view="workspace"] .sysbar { display: none; }
 :root[data-projection="subtle"] .env-ribbons { opacity: .3; }
 @media (prefers-reduced-motion: reduce) { .env-ribbons * { animation: none !important; } }
 @media (max-width: 760px) { .env-ribbons { opacity: .3; } }
+/* live data wall: each stream's glow follows a real signal (set by renderWall in app.js; "na" keeps the resting glow) */
+.rb-cpu, .rb-mem, .rb-work, .rb-model { opacity: .55; transition: opacity 1.2s ease; }
+.env-ribbons[data-cpu="0"] .rb-cpu, .env-ribbons[data-mem="0"] .rb-mem, .env-ribbons[data-work="0"] .rb-work { opacity: .3; }
+.env-ribbons[data-cpu="1"] .rb-cpu, .env-ribbons[data-mem="1"] .rb-mem, .env-ribbons[data-work="1"] .rb-work { opacity: .5; }
+.env-ribbons[data-cpu="2"] .rb-cpu, .env-ribbons[data-mem="2"] .rb-mem, .env-ribbons[data-work="2"] .rb-work { opacity: .7; }
+.env-ribbons[data-cpu="3"] .rb-cpu, .env-ribbons[data-mem="3"] .rb-mem, .env-ribbons[data-work="3"] .rb-work { opacity: .85; }
+.env-ribbons[data-cpu="4"] .rb-cpu, .env-ribbons[data-mem="4"] .rb-mem, .env-ribbons[data-work="4"] .rb-work { opacity: 1; }
+.env-ribbons[data-cpu="4"] .rb-cpu path, .env-ribbons[data-mem="4"] .rb-mem path { stroke-width: 1.6; }
+.env-ribbons[data-model="on"] .rb-model { opacity: 1; }
+.env-ribbons[data-model="on"] .rb-model path { stroke: rgba(255, 170, 100, .5); stroke-width: 1.5; }
+.env-ribbons[data-model="on"] .rb-model path { stroke-dasharray: 60 140; animation: rb-pulse 2.4s linear infinite; }
+@keyframes rb-pulse { to { stroke-dashoffset: -200; } }

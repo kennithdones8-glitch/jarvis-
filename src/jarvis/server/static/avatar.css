@@ -163,7 +163,32 @@ body[data-activity="voice"] .hud > .center > :is(.matters, .suggest, .hint, .sys
 @keyframes av-task-in { from { opacity: 0; transform: translateX(6px); } to { opacity: 1; transform: none; } }
 @media (max-width: 760px) { .av-task { display: none; } }
 
-.proj-backdrop { position: fixed; inset: 0; z-index: 55; background: radial-gradient(ellipse at 45% 50%, rgba(20, 14, 6, .86), rgba(3, 2, 1, .96)); }
+.proj-backdrop { position: fixed; inset: 0; z-index: 55; background: radial-gradient(ellipse at 45% 50%, rgba(14, 9, 5, .96), rgba(3, 2, 1, .985)); }
+/* the command-centre screen wall behind the projection: seven panels curving around the figure; the live data wall
+   glows like the reference's video wall. Decoration only: it carries no data of its own. */
+.vwall { position: absolute; left: 42%; top: 13%; height: 56%; width: min(1180px, 92vw); transform: translateX(-50%);
+  display: flex; gap: 10px; perspective: 1100px; pointer-events: none; }
+.vw-tile { flex: 1; border: 1px solid rgba(235, 168, 102, .16); border-top-color: rgba(255, 160, 90, .5);
+  background: radial-gradient(140% 38% at 30% 105%, rgba(255, 138, 58, .16), transparent 62%),
+    radial-gradient(120% 30% at 80% -5%, rgba(61, 255, 184, .07), transparent 60%),
+    linear-gradient(180deg, rgba(255, 150, 70, .06), rgba(20, 12, 6, .3) 30%, rgba(61, 255, 184, .03)),
+    repeating-linear-gradient(0deg, rgba(235, 168, 102, .07) 0 1px, transparent 1px 22px),
+    repeating-linear-gradient(90deg, rgba(235, 168, 102, .07) 0 1px, transparent 1px 22px);
+  box-shadow: inset 0 0 40px rgba(255, 140, 60, .06), 0 0 18px rgba(255, 140, 60, .05); position: relative; overflow: hidden; }
+.vw-tile::after { content: ""; position: absolute; left: 0; right: 0; height: 30%; top: 0; transform: translateY(-100%);
+  background: linear-gradient(180deg, transparent, rgba(255, 190, 130, .07), transparent); animation: vw-scan 7s linear infinite; }
+.vw-tile:nth-child(1) { transform: rotateY(38deg); transform-origin: right center; }
+.vw-tile:nth-child(2) { transform: rotateY(24deg); transform-origin: right center; }
+.vw-tile:nth-child(3) { transform: rotateY(10deg); transform-origin: right center; }
+.vw-tile:nth-child(5) { transform: rotateY(-10deg); transform-origin: left center; }
+.vw-tile:nth-child(6) { transform: rotateY(-24deg); transform-origin: left center; }
+.vw-tile:nth-child(7) { transform: rotateY(-38deg); transform-origin: left center; }
+.vw-tile:nth-child(4) { border-top-color: rgba(61, 255, 184, .45); }
+.vw-tile:nth-child(2)::after { animation-delay: -2s; } .vw-tile:nth-child(4)::after { animation-delay: -4s; } .vw-tile:nth-child(6)::after { animation-delay: -5.5s; }
+@keyframes vw-scan { to { transform: translateY(334%); } }
+:root[data-fx="reduced"] .vw-tile::after, :root[data-fx="off"] .vw-tile::after { animation: none; display: none; }
+@media (prefers-reduced-motion: reduce) { .vw-tile::after { animation: none; display: none; } }
+@media (max-width: 760px) { .vwall { display: none; } }
 .proj-backdrop[hidden], .proj-panel[hidden] { display: none; }
 body.projection .top { position: relative; z-index: 70; }   /* the emergency stop stays reachable */
 body.projection .hud > .center > .core-wrap.has-avatar { position: fixed !important; z-index: 60; left: 42%; top: calc(50% + 30px);
@@ -179,7 +204,7 @@ body.projection .core-wrap .av-task { display: none; }
   padding: 6px 8px; background: rgba(0, 0, 0, .3); border: 1px solid rgba(235, 168, 102, .2); color: inherit; cursor: pointer; }
 .ps-sys small { grid-column: 1 / -1; color: var(--muted, #b9aa91); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ps-sys:hover, .ps-sys:focus-visible { border-color: rgba(246, 230, 194, .55); }
-.pp-evo { margin-top: 12px; width: 100%; }
+.pp-evo { margin-top: 12px; width: 100%; white-space: normal; overflow-wrap: anywhere; }
 @media (max-width: 760px) {
   body.projection .hud > .center > .core-wrap.has-avatar { left: 50%; top: 34%; width: min(62vw, 34vh) !important; grid-column: auto; }
   .proj-panel { left: 12px; right: 12px; top: auto; bottom: calc(12px + env(safe-area-inset-bottom)); transform: none; width: auto; max-height: 44vh; }

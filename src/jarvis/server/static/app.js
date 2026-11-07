@@ -246,6 +246,7 @@ function renderHead(d) {
   }
   renderAvTask(d);
   if (window.JarvisAvatar && d && d.telemetry) JarvisAvatar.setAura(auraValues(d));
+  renderWall(d);
   const wrap = $(".core-wrap");
   if (d && d.evolution && wrap) wrap.title = `Core evolution: ${d.evolution.name} · ${d.evolution.verified} of ${d.evolution.total} milestones verified (details in Command center → Diagnostics)`;
   $(".headline").className = `headline ${s.cls}`;
@@ -1996,6 +1997,20 @@ function auraValues(d) {
     missions: Math.min(1, d.tasks.filter((x) => ACTIVE.includes(x.state)).length / 5),
     decisions: Math.min(1, d.approvals.length / 5),
   };
+}
+
+// The background data wall shows real signals only: the orange stream is CPU load, the teal stream memory use, the
+// faint upper stream lights while a model is actually answering, and the left network brightens with active missions.
+// Levels are coarse (0–4) data attributes, styled in app.css; "na" (unavailable) leaves that stream at its resting glow.
+function renderWall(d) {
+  const w = $(".env-ribbons");
+  if (!w) return;
+  const a = d && d.telemetry ? auraValues(d) : { cpu: null, memory: null, missions: null };
+  const lvl = (v) => (v === null || v === undefined ? "na" : String(Math.max(0, Math.min(4, Math.round(v * 4)))));
+  w.dataset.cpu = lvl(a.cpu);
+  w.dataset.mem = lvl(a.memory);
+  w.dataset.work = lvl(a.missions);
+  w.dataset.model = ui.chatBusy ? "on" : "off";
 }
 
 function renderAvTask(d) {
