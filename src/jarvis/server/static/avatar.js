@@ -167,6 +167,7 @@
       let boot = false;
       try { boot = fxLevel() === "full" && !sessionStorage.getItem("jarvis-booted"); } catch (e) { boot = false; }
       const endBoot = () => {
+        if (SM) SM.setLifecycle(null);
         document.body.classList.remove("booting");
         try { sessionStorage.setItem("jarvis-booted", "1"); } catch (e) { /* plays again next time */ }
         document.removeEventListener("keydown", skip, true); document.removeEventListener("pointerdown", skip, true);
@@ -177,7 +178,7 @@
       av.three = three;
       if (av.systems) three.setSystems(av.systems);
       if (av.aura) three.setAura(av.aura);
-      if (boot) { document.body.classList.add("booting"); document.addEventListener("keydown", skip, true); document.addEventListener("pointerdown", skip, true); }
+      if (boot) { if (SM) SM.setLifecycle("materializing"); document.body.classList.add("booting"); document.addEventListener("keydown", skip, true); document.addEventListener("pointerdown", skip, true); }
       three.onLost = () => { av.wrap.classList.remove("has-3d"); try { three.dispose(); } catch (e) { /* gone */ } av.three = null; loop(); };
       av.wrap.classList.add("has-3d");
       loop();
@@ -260,8 +261,32 @@
     if (av.three) av.three.setTier(tier);
   }
 
+  // Every state goes through the central state machine (avatar-state.js): priorities, minimum times, the 4 s
+  // success, stale-input fallback and previews live there, not here.
+  const SM = window.JarvisAvatarState ? window.JarvisAvatarState.createMachine() : null;
+  let smTimer = 0, smOut = { state: "idle", profile: "idle", preview: false, lifecycle: null };
+  function schedule() {
+    clearTimeout(smTimer); smTimer = 0;
+    const next = SM && SM.nextIn;
+    if (next !== null && next !== undefined) smTimer = setTimeout(() => { show(SM.tick()); schedule(); }, next);
+  }
   function setState(state) {
     if (!STATES.includes(state)) state = "idle";
+    if (!SM) return show({ state, profile: state, preview: false, lifecycle: null });
+    show(SM.input(state)); schedule();
+  }
+  function previewState(state) {   // shows a state for at most 10 s, always flagged as a preview
+    if (!SM) return null;
+    show(SM.previewState(state)); schedule();
+    return smOut;
+  }
+  function endPreview() { if (SM) { show(SM.endPreview()); schedule(); } }
+  function show(out) {
+    smOut = out;
+    if (av.wrap) av.wrap.dataset.preview = out.preview ? "1" : "";
+    applyState(out.state);
+  }
+  function applyState(state) {
     if (!av.svg || state === av.state) return;
     av.state = state;
     av.svg.dataset.state = LOOK_2D[state] || state;
@@ -340,8 +365,9 @@
     else { if (av.raf) cancelAnimationFrame(av.raf); av.raf = 0; clear(); }
   }
 
-  const api = { mount, setState, setTier, setSystems, setAura, setThought, systemAt, pulse, registerPart, refresh: loop, STATES, onFocus: null, onSystem: null,
-                          get state() { return av.state; }, get tier() { return av.tier; },
+  const api = { mount, setState, previewState, endPreview, setTier, setSystems, setAura, setThought, systemAt, pulse, registerPart, refresh: loop, STATES, onFocus: null, onSystem: null,
+                          get state() { return av.state; }, get profile() { return smOut.profile; }, get preview() { return smOut.preview; },
+                          get lifecycle() { return smOut.lifecycle; }, get tier() { return av.tier; },
                           get animating() { return av.raf !== 0 || !!(av.three && av.three.animating); },
                           get renderer() { return av.three ? "3d" : "2d"; },
                           get stats() { return av.three ? av.three.stats : null; },

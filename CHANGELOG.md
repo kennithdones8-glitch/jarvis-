@@ -1,5 +1,15 @@
 # Changelog
 
+## Unreleased — Avatar 3D, step 1: module split and the central state machine
+
+- **Central state machine** (`static/avatar-state.js`): every state the projection shows now passes through one
+  place, with priorities, minimum display times, a 4 s success, a fall-back to idle when activity stops being
+  reported, lifecycle phases (dormant, materializing, dematerializing) and flagged 10 s previews. Unit-tested in Node.
+- **Queued missions no longer look active**: they show the idle look and a "Queued — nothing is running yet" card.
+- `JarvisAvatar` gains `previewState`, `endPreview`, `profile`, `preview` and `lifecycle`.
+- The 3D renderer is split into modules: shaders and geometry move out of `avatar3d.js` (1,372 → 916 lines);
+  dead torso helpers removed. No visual change.
+
 ## Unreleased — Avatar 3.5.2: a refined face
 
 - The face is reworked to read as an elegant sculpted mask rather than a crude one: almond-shaped eyes with lifted

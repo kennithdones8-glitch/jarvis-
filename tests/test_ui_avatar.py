@@ -109,7 +109,7 @@ def test_every_avatar_state_comes_from_a_real_signal(tmp_path):
     assert got == {
         "idle": "idle", "connecting": "unknown", "decision": "approval", "blocked": "approval", "stopped": "halted",
         "offline": "error", "no models": "warning", "executing": "executing", "task verifying": "verifying",
-        "recovering": "recovery", "planning": "planning", "queued": "planning", "researching": "researching",
+        "recovering": "recovery", "planning": "planning", "queued": "idle", "researching": "researching",
         "understanding": "understanding", "context": "understanding", "lookup": "researching",
         "waiting for words": "reasoning", "words arriving": "writing", "code arriving": "coding",
         "answer check": "verifying", "code test": "coding", "microphone": "listening", "typing": "listening",
@@ -181,7 +181,8 @@ def test_phone_layout_rules():
 # ---- 3D core (Three.js) -----------------------------------------------------------------------------------------
 import hashlib  # noqa: E402
 
-AV3 = (STATIC / "avatar3d.js").read_text()
+# the 3D renderer is split into modules; checks read them as one source
+AV3 = "\n".join((STATIC / f).read_text() for f in ("avatar3d-shaders.js", "avatar3d-geometry.js", "avatar3d.js"))
 THREE_SHA256 = "3e690ac7d180b0aadf0891bea39eec643e29e2d3e75c99b18689518665f69ba6"  # three@0.160.0 build/three.module.min.js
 
 
@@ -193,7 +194,8 @@ def test_three_is_the_exact_pinned_build_and_served_from_this_mac(dash):
     status, headers, body = call(d, "/static/vendor/three.module.min.js")
     assert status == 200 and headers["Content-Type"].startswith("text/javascript") and hashlib.sha256(body).hexdigest() == THREE_SHA256
     assert call(d, "/static/vendor/three.LICENSE.txt")[0] == 404  # only the one file is served
-    assert call(d, "/static/avatar3d.js")[0] == 200
+    for f in ("avatar3d.js", "avatar3d-shaders.js", "avatar3d-geometry.js", "avatar-state.js"):
+        assert call(d, f"/static/{f}")[0] == 200
     csp = call(d, "/")[1]["Content-Security-Policy"]
     assert "script-src 'self'" in csp and "connect-src 'self'" in csp and "unsafe" not in csp  # unchanged
 
@@ -307,7 +309,9 @@ def test_bloom_and_surface_detail_are_local_and_fail_safe():
     # post-processing is our own small pipeline (no extra library) and the projection still draws without it
     assert "} catch (e) { return null; }   // no post-processing: draw directly" in AV3
     assert "if (post) post.begin(); else renderer.clear();" in AV3 and "if (post) post.end(t, intensity);" in AV3
-    assert AV3.count('from "/static/vendor/three.module.min.js"') == 1 and "import(" not in AV3
+    imports = set(re.findall(r'from "([^"]+)";', AV3))   # only Three.js (served locally) and our own modules
+    assert imports <= {"/static/vendor/three.module.min.js", "/static/avatar3d-shaders.js", "/static/avatar3d-geometry.js"}
+    assert "import(" not in AV3
     # surfaces turned away are dimmer (depth), and armour gets panel seams; glowing parts stay smooth
     assert "a *= gl_FrontFacing ? 1.0 : 0.38;" in AV3
     assert "uPanel: { value: o.panel ?? ((o.core ?? 0.035) < 0.2 && !o.flow && !o.self ? 0.85 : 0) }" in AV3

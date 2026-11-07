@@ -253,6 +253,21 @@ prefer="quality")` and up to 2000 tokens, falling back to the best available mod
 - Palette: deep black, metallic gold `--gold`, champagne `--champagne`, warm white `--warm-white`; amber only for
   activity and warnings; cyan only for listening/speaking.
 
+## Avatar 3D — module layout and the central state machine
+
+- `static/avatar-state.js` (classic script, loaded before `avatar.js`): the **one place that decides what the
+  projection shows**. Pure logic, unit-tested in Node (`tests/test_avatar_state.py`, skipped without Node).
+  - Input: the state `avatarState()` derives from real signals on each poll. Output: `{ state, profile, preview, lifecycle }`.
+  - 14 + 2 profiles: dormant, materializing, idle, listening, thinking, researching, planning, executing, speaking,
+    success, warning, error, recovering, dematerializing, plus approval and halted.
+  - Priorities (halted > error > approval > warning > recovering > success > live work > idle): a critical state
+    replaces anything at once; routine activity waits until a more important state has had its minimum time.
+  - Success shows for at most 4 s; live-work states fall back to idle if the dashboard stops reporting for 10 s;
+    previews are flagged, last at most 10 s and give way to a real critical state.
+  - Queued missions show as idle with a "Queued — nothing is running yet" card, never as active work.
+- `static/avatar3d.js` (engine and scene) imports `avatar3d-shaders.js` (GLSL only) and `avatar3d-geometry.js`
+  (the figure's distance field, meshing and mesh helpers). Every module is on the server's static allow-list.
+
 ## Avatar 2.0 — living intelligence projection
 
 - **Renderer** `static/avatar3d.js` (Three.js, unchanged dependency): body that breathes, head on a neck pivot,

@@ -197,7 +197,8 @@ function avatarState(s, d) {
     case "attention": case "blocked": return "approval";              // a decision or input is needed
     case "executing": return s.kicker === "Verifying" ? "verifying" : "executing";
     case "recovering": return "recovery";                             // a task is being recovered after a restart
-    case "planning": case "queued": return "planning";
+    case "planning": return "planning";
+    case "queued": return "idle";                                     // waiting for the runner: nothing is running yet
     case "researching": return "researching";
     case "thinking": {                                                // the live chat stream's real stages
       const st = ui.stage && ui.stage.stage;
@@ -1985,6 +1986,8 @@ function liveWork(d) {
   if (ui.chatBusy && ui.stage && ui.stage.stage === "generating") return { kind: "Reply", text: `${ui.stage.model.split("/").pop()} ${ui.stage.location === "local" ? "on this Mac" : "in the cloud"}`, sub: stageLabel(ui.stage) };
   const job = d.jobs.find((j) => j.state === "planning");
   if (job) return { kind: "Planning", text: job.request, sub: `${job.elapsed}s` };
+  const queued = d.tasks.find((t) => t.state === "queued");
+  if (queued) return { kind: "Queued", text: queued.goal, sub: "Waiting for the runner — nothing is running yet" };
   return null;
 }
 
