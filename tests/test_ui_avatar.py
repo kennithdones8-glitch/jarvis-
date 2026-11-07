@@ -342,3 +342,11 @@ def test_figure_is_a_light_body_with_teal_hands_and_sparkles_kept_out_of_the_ref
     assert "shed.visible = moving;" in AV3                                    # sparkles only while motion is allowed
     hidden = AV3.split("const hidden = [")[1].split("]")[0]
     assert "shed" in hidden and "thought" in hidden                           # hidden during the floor-reflection pass
+
+
+def test_figure_has_glowing_suit_contours_that_grow_with_the_stage():
+    assert "float anat(vec3 p)" in AV3 and "float c = anat(vObj) * uContour;" in AV3
+    assert "contour: 1, head: true" in AV3                                    # only the figure carries the seams
+    assert "figureMat.uniforms.uContour.value = [0.75, 0.9, 1.05, 1.2][tier - 1]" in AV3
+    for word in ("mouth", "jaw", "nose", "eye"):                              # contours stay off the face
+        assert word not in AV3.split("float anat(vec3 p)")[1].split("return min(c, 1.0);")[0]

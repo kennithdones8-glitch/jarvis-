@@ -1,5 +1,16 @@
 # Changelog
 
+## Unreleased — Avatar 3.2: athletic light body, suit contours, warmer dashboard
+
+- **Sculpt refined**: V-taper (lats, trapezius, deltoids), chest, abdominal wall, biceps and forearms, quadriceps,
+  knees, closed hands and a swept-back faceless head.
+- **Glowing suit contours** drawn in the shader along the body (sternum, collar, chest, flanks, waist, hip lines,
+  elbows, wrists, knees, ankles, leg seams, spine, crest over the head) with energy rising along them; they brighten
+  with each verified stage. The square panel grid on the body is toned down.
+- **More sparkles** (1600 on desktop, 600 on phones), some teal, a few brighter.
+- **Dashboard palette follows the figure**: headings and identity accents warm light-orange, healthy status teal-green
+  (all text still meets WCAG AA); the background data wall is brighter.
+
 ## Unreleased — Avatar 3.1: light-body figure (from the owner's reference)
 
 - **Sleek figure made of light** replaces the armoured robot (owner feedback: "looks like a toy robot", "too much

@@ -66,11 +66,30 @@ void main() {
 // a rising light band; faces turned away drawn dimmer for depth; a materialisation edge; a fade into the projector
 // beam; a floor reflection; a faint projection distortion. Shared uniforms are the same objects in every material.
 const FRAG = `
-uniform vec3 uTint0, uAccent; uniform float uTime, uOpacity, uRim, uRimK, uGain, uSelf, uScan, uFlow, uFlowOn, uFlicker, uReveal, uFadeLow, uReflect, uCore, uPanel, uPanelScale;
+uniform vec3 uTint0, uAccent; uniform float uTime, uOpacity, uRim, uRimK, uGain, uSelf, uScan, uFlow, uFlowOn, uFlicker, uReveal, uFadeLow, uReflect, uCore, uPanel, uPanelScale, uContour;
 varying vec3 vNormal; varying vec3 vView; varying vec3 vWorld; varying vec2 vUv; varying vec3 vObj; varying vec3 vObjN; varying float vAccent;
 float hash(float n) { return fract(sin(n) * 43758.5453); }
 float seam(vec2 p, float w) { vec2 g = abs(fract(p - 0.5) - 0.5) / max(fwidth(p), vec2(1e-4)); return 1.0 - min(min(g.x, g.y) / w, 1.0); }
 float tri(vec3 p, vec3 wt, float w) { return seam(p.yz, w) * wt.x + seam(p.xz, w) * wt.y + seam(p.xy, w) * wt.z; }
+// glowing suit contours on the figure: thin anti-aliased lines along curves fixed to the body (they turn with the head)
+float L(float d, float w) { float f = fwidth(d) + 1e-4; return 1.0 - smoothstep(w, w + 1.5 * f, abs(d)); }
+float win(float v, float a, float b) { return smoothstep(a - 0.03, a, v) * smoothstep(b + 0.03, b, v); }
+float anat(vec3 p) {
+  float ax = abs(p.x), fr = smoothstep(0.0, 0.1, p.z), bk = smoothstep(0.0, -0.1, p.z);
+  float torso = 1.0 - smoothstep(0.5, 0.58, ax), arm = smoothstep(0.62, 0.7, ax), leg = (1.0 - arm) * (1.0 - smoothstep(2.35, 2.45, p.y));
+  float c = L(p.x, 0.006) * fr * win(p.y, 2.8, 3.98);                                     // sternum
+  c = max(c, L(p.y - (3.86 + 0.42 * ax), 0.007) * fr * win(ax, 0.05, 0.5));               // collar V
+  c = max(c, L(p.y - (3.46 + 0.9 * (ax - 0.24) * (ax - 0.24)), 0.006) * fr * win(ax, 0.04, 0.48));   // chest line
+  c = max(c, L(ax - (0.2 + 0.25 * (3.42 - p.y)), 0.005) * fr * win(p.y, 2.85, 3.38) * 0.7);   // flank lines
+  c = max(c, L(p.y - 2.74, 0.006) * torso * (1.0 - arm));                                  // waist band
+  c = max(c, L(p.y - (2.36 + 0.55 * ax), 0.006) * fr * win(ax, 0.06, 0.4));               // hip lines
+  c = max(c, max(L(p.y - 3.04, 0.004), L(p.y - 2.3, 0.006)) * arm);                      // elbows, wrists
+  c = max(c, max(L(p.y - 1.36, 0.007), L(p.y - 0.42, 0.007)) * leg);                     // knees, ankles
+  c = max(c, L(ax - 0.25, 0.005) * fr * win(p.y, 0.5, 2.25) * leg * (1.0 - win(p.y, 1.3, 1.42)));   // leg seams
+  c = max(c, L(p.x, 0.006) * bk * win(p.y, 2.7, 4.15));                                   // spine
+  c = max(c, L(p.x, 0.006) * win(p.y, 4.5, 5.1) * smoothstep(0.24, 0.12, p.z));           // crest over the head
+  return min(c, 1.0);
+}
 void main() {
   vec3 uTint = mix(uTint0, uAccent, vAccent);   // teal-green accents where marked (the hands)
   float h = uReflect > 0.5 ? -vWorld.y : vWorld.y;
@@ -93,6 +112,12 @@ void main() {
     float lines = (major + fine) * uPanel;
     col += mix(uTint * 0.9, vec3(1.0, 0.97, 0.9), run) * lines * (0.7 + 1.6 * run);
     a += lines * (0.22 + 0.5 * run) * uOpacity;
+  }
+  if (uContour > 0.0) {
+    float c = anat(vObj) * uContour;
+    float run = exp(-pow((fract(vObj.y * 0.3 - uTime * 0.18 * (0.6 + abs(uFlow))) - 0.5) * 10.0, 2.0));   // energy rising along the seams
+    col += mix(mix(uTint, vec3(1.0, 0.96, 0.9), 0.35), vec3(1.0, 0.98, 0.94), run) * c * (0.65 + 1.5 * run);
+    a += c * (0.28 + 0.5 * run) * uOpacity;
   }
   if (uFlowOn > 0.5) {
     float d = fract(vUv.x * 3.0 - uTime * uFlow * 0.35);
@@ -229,22 +254,31 @@ function sdLimb(px, py, pz, ax, ay, az, bx, by, bz, ra, rb) {   // a capsule who
 }
 export function sdHuman(x, y, z) {
   const ax = Math.abs(x);   // symmetric
-  let d = sdEll(x, y, z, 0, 4.74, 0.02, 0.25, 0.33, 0.29);                                   // cranium
-  d = smin(d, sdEll(x, y, z, 0, 4.55, 0.07, 0.17, 0.17, 0.2), 0.12);                         // lower head (smooth, faceless)
-  d = smin(d, sdLimb(x, y, z, 0, 4.2, -0.01, 0, 4.48, 0.02, 0.12, 0.11), 0.1);               // neck
-  d = smin(d, sdEll(x, y, z, 0, 3.62, 0, 0.55, 0.56, 0.31), 0.14);                           // ribcage
-  d = smin(d, sdEll(ax, y, z, 0.2, 3.76, 0.16, 0.22, 0.15, 0.14), 0.1);                      // chest
-  d = smin(d, sdLimb(ax, y, z, 0.05, 4.12, -0.02, 0.56, 3.98, -0.02, 0.12, 0.1), 0.12);      // shoulder line
-  d = smin(d, sdEll(ax, y, z, 0.63, 3.93, 0, 0.2, 0.18, 0.18), 0.1);                         // shoulders
-  d = smin(d, sdEll(x, y, z, 0, 3.05, 0.02, 0.41, 0.46, 0.25), 0.16);                        // abdomen
-  d = smin(d, sdEll(x, y, z, 0, 2.55, 0, 0.46, 0.32, 0.28), 0.15);                           // hips
-  d = smin(d, sdLimb(ax, y, z, 0.66, 3.86, 0, 0.8, 3.05, -0.03, 0.135, 0.11), 0.08);         // upper arms
-  d = smin(d, sdLimb(ax, y, z, 0.8, 3.03, -0.03, 0.88, 2.24, 0.05, 0.1, 0.075), 0.06);       // forearms
-  d = smin(d, sdEll(ax, y, z, 0.9, 2.04, 0.07, 0.075, 0.17, 0.05), 0.05);                    // hands
-  d = smin(d, sdLimb(ax, y, z, 0.24, 2.42, 0, 0.26, 1.36, 0.03, 0.2, 0.135), 0.1);           // thighs
-  d = smin(d, sdLimb(ax, y, z, 0.26, 1.33, 0.03, 0.25, 0.32, -0.03, 0.125, 0.075), 0.07);    // lower legs
-  d = smin(d, sdEll(ax, y, z, 0.26, 1.0, -0.07, 0.1, 0.24, 0.1), 0.06);                      // calves
-  d = smin(d, sdLimb(ax, y, z, 0.25, 0.2, -0.06, 0.27, 0.1, 0.24, 0.075, 0.055), 0.05);      // feet
+  let d = sdEll(x, y, z, 0, 4.75, 0.0, 0.235, 0.32, 0.28);                                   // cranium
+  d = smin(d, sdEll(x, y, z, 0, 4.8, -0.07, 0.22, 0.27, 0.26), 0.1);                         // swept-back crown
+  d = smin(d, sdEll(x, y, z, 0, 4.54, 0.07, 0.16, 0.18, 0.19), 0.12);                        // lower head (smooth, faceless)
+  d = smin(d, sdLimb(x, y, z, 0, 4.18, -0.02, 0, 4.48, 0.02, 0.11, 0.095), 0.1);             // neck
+  d = smin(d, sdLimb(ax, y, z, 0.02, 4.22, -0.06, 0.5, 4.02, -0.05, 0.1, 0.07), 0.14);       // trapezius
+  d = smin(d, sdEll(x, y, z, 0, 3.66, -0.01, 0.56, 0.52, 0.3), 0.14);                        // ribcage
+  d = smin(d, sdEll(ax, y, z, 0.36, 3.42, -0.05, 0.2, 0.36, 0.2), 0.14);                     // lats (V-taper)
+  d = smin(d, sdEll(ax, y, z, 0.21, 3.75, 0.15, 0.24, 0.17, 0.15), 0.08);                    // chest
+  d = smin(d, sdLimb(ax, y, z, 0.05, 4.1, -0.02, 0.58, 3.98, -0.02, 0.12, 0.1), 0.12);       // shoulder line
+  d = smin(d, sdEll(ax, y, z, 0.64, 3.9, 0.01, 0.17, 0.22, 0.17), 0.16);                     // deltoids
+  d = smin(d, sdEll(x, y, z, 0, 3.05, 0.03, 0.36, 0.46, 0.235), 0.16);                       // abdomen (narrow waist)
+  d = smin(d, sdEll(x, y, z, 0, 3.12, 0.12, 0.2, 0.36, 0.15), 0.08);                         // abdominal wall
+  d = smin(d, sdEll(x, y, z, 0, 2.52, 0, 0.39, 0.3, 0.26), 0.16);                            // hips
+  d = smin(d, sdLimb(ax, y, z, 0.68, 3.86, 0, 0.8, 3.05, -0.03, 0.125, 0.1), 0.08);          // upper arms
+  d = smin(d, sdEll(ax, y, z, 0.74, 3.44, 0.04, 0.115, 0.24, 0.12), 0.07);                   // biceps
+  d = smin(d, sdLimb(ax, y, z, 0.8, 3.03, -0.03, 0.88, 2.26, 0.05, 0.095, 0.068), 0.06);     // forearms
+  d = smin(d, sdEll(ax, y, z, 0.82, 2.82, 0.0, 0.1, 0.24, 0.095), 0.06);                     // forearm muscle
+  d = smin(d, sdEll(ax, y, z, 0.9, 2.08, 0.07, 0.07, 0.13, 0.045), 0.05);                    // hands (palm)
+  d = smin(d, sdLimb(ax, y, z, 0.9, 2.0, 0.07, 0.91, 1.86, 0.08, 0.045, 0.03), 0.04);        // fingers, closed
+  d = smin(d, sdLimb(ax, y, z, 0.24, 2.42, 0, 0.26, 1.36, 0.03, 0.2, 0.125), 0.1);           // thighs
+  d = smin(d, sdEll(ax, y, z, 0.25, 1.9, 0.08, 0.15, 0.4, 0.13), 0.08);                      // quadriceps
+  d = smin(d, sdEll(ax, y, z, 0.26, 1.34, 0.08, 0.1, 0.1, 0.08), 0.06);                      // knees
+  d = smin(d, sdLimb(ax, y, z, 0.26, 1.33, 0.03, 0.25, 0.32, -0.03, 0.115, 0.07), 0.07);     // lower legs
+  d = smin(d, sdEll(ax, y, z, 0.26, 1.0, -0.07, 0.1, 0.25, 0.1), 0.06);                      // calves
+  d = smin(d, sdLimb(ax, y, z, 0.25, 0.2, -0.06, 0.27, 0.1, 0.24, 0.07, 0.05), 0.05);        // feet
   return d;
 }
 // Surface nets: one vertex per cell that the surface crosses, quads across every crossed grid edge. Smooth
@@ -392,7 +426,7 @@ export function create(wrap, opts = {}) {
                   uReveal: building ? building.reveal : { value: 10 },
                   // armour surfaces (low inner glow, no energy flow) get machined panel seams unless told otherwise
                   uPanel: { value: o.panel ?? ((o.core ?? 0.035) < 0.2 && !o.flow && !o.self ? 0.85 : 0) },
-                  uPanelScale: { value: o.panelScale ?? 6 } },
+                  uPanelScale: { value: o.panelScale ?? 6 }, uContour: { value: o.contour ?? 0 } },
       extensions: { derivatives: true },
     });
     return m;
@@ -460,7 +494,7 @@ export function create(wrap, opts = {}) {
   const joints = [], eyeGlows = [], irises = [], sparks = [];
   let figureMat = null;
   part("figure", 1, (add) => {
-    figureMat = holo({ opacity: 1.0, rim: 1.6, core: 0.085, panel: 0.75, panelScale: 7, head: true });
+    figureMat = holo({ opacity: 1.0, rim: 1.6, core: 0.085, panel: 0.35, panelScale: 7, contour: 1, head: true });
     add(new THREE.Mesh(figureGeo, figureMat));
     const wire = add(new THREE.Mesh(figureGeo, new THREE.MeshBasicMaterial({ color: CHAMPAGNE, wireframe: true, transparent: true,
       opacity: 0.025, blending: THREE.AdditiveBlending, depthWrite: false })));
@@ -468,11 +502,11 @@ export function create(wrap, opts = {}) {
   });
   const shed = (() => {   // sparkles leaving the surface, drifting up and out
     const src = figureGeo.attributes.position.array, nsrc = figureGeo.attributes.normal.array, acc = figureGeo.attributes.aAccent.array;
-    const N = phone ? 380 : 900, P = new Float32Array(N * 3), Nn = new Float32Array(N * 3), seed = new Float32Array(N), ac = new Float32Array(N);
+    const N = phone ? 600 : 1600, P = new Float32Array(N * 3), Nn = new Float32Array(N * 3), seed = new Float32Array(N), ac = new Float32Array(N);
     const r = rng(23);
     for (let i = 0; i < N; i++) { const q = Math.floor(r() * (src.length / 3));
       P.set([src[q * 3], src[q * 3 + 1], src[q * 3 + 2]], i * 3); Nn.set([nsrc[q * 3], nsrc[q * 3 + 1], nsrc[q * 3 + 2]], i * 3);
-      seed[i] = r(); ac[i] = acc[q]; }
+      seed[i] = r(); ac[i] = Math.max(acc[q], r() < 0.14 ? 1 : 0); }
     const g = new THREE.BufferGeometry();
     g.setAttribute("position", new THREE.BufferAttribute(P, 3)); g.setAttribute("aN", new THREE.BufferAttribute(Nn, 3));
     g.setAttribute("aSeed", new THREE.BufferAttribute(seed, 1)); g.setAttribute("aAccent", new THREE.BufferAttribute(ac, 1));
@@ -482,10 +516,10 @@ export function create(wrap, opts = {}) {
         void main() { float t = fract(aSeed * 7.0 + uTime * (0.08 + aSeed * 0.12) * uRate);
           vec3 p = position + aN * t * 0.45 + vec3(sin(aSeed * 40.0 + uTime) * 0.05, t * 0.7, 0.0);
           vA = sin(t * 3.14159) * (0.4 + 0.6 * fract(aSeed * 13.0)); vAc = aAccent;
-          vec4 mv = modelViewMatrix * vec4(p, 1.0); gl_PointSize = (1.6 + fract(aSeed * 5.0) * 2.4) * (8.0 / -mv.z); gl_Position = projectionMatrix * mv; }`,
+          vec4 mv = modelViewMatrix * vec4(p, 1.0); gl_PointSize = (1.8 + fract(aSeed * 5.0) * 2.8 + step(0.93, fract(aSeed * 17.0)) * 3.0) * (8.0 / -mv.z); gl_Position = projectionMatrix * mv; }`,
       fragmentShader: `uniform vec3 uTint, uAccent; uniform float uGain; varying float vA; varying float vAc;
         void main() { float d = length(gl_PointCoord - 0.5); if (d > 0.5) discard;
-          gl_FragColor = vec4(mix(mix(uTint, vec3(1.0, 0.95, 0.85), 0.35), uAccent, vAc), vA * smoothstep(0.5, 0.0, d) * uGain); }` });
+          gl_FragColor = vec4(mix(mix(uTint, vec3(1.0, 0.95, 0.85), 0.45), uAccent, vAc) * 1.4, vA * smoothstep(0.5, 0.0, d) * uGain); }` });
     const pts = new THREE.Points(g, m); pts.frustumCulled = false; body.add(pts); return pts;
   })();
   part("meridians", 3, (add) => {   // stage 3: energy lines along the body (centre line, arms, legs)
@@ -643,7 +677,7 @@ export function create(wrap, opts = {}) {
       float a = (0.06 + on * (0.45 + 0.2 * sin(vUv.x * 90.0 - uTime * 2.0)) + head * 1.2) * uGain;
       gl_FragColor = vec4(uColor * (1.0 + head * 0.6), a); }`;
   const aura = {};
-  [["cpu", "#f3e3bd", 1.9, 0.95, 0.16], ["memory", "#fff8ec", 1.96, 1.15, -0.1], ["missions", "#d9b45f", 2.02, 1.35, 0.12],
+  [["cpu", "#f3e3bd", 1.9, 0.95, 0.16], ["memory", "#fff8ec", 1.96, 1.15, -0.1], ["missions", "#eba866", 2.02, 1.35, 0.12],
    ["decisions", "#f2a33a", 2.08, 1.55, -0.14]].forEach(([key, c, r, y, tilt], i) => {
     const mat = new THREE.ShaderMaterial({ vertexShader: AURA_VERT, fragmentShader: AURA_FRAG, transparent: true, depthWrite: false,
       blending: THREE.AdditiveBlending, uniforms: { uColor: { value: new THREE.Color(c) }, uFill: { value: 0 }, uGain: U.uGain, uTime: U.uTime } });
@@ -870,7 +904,10 @@ export function create(wrap, opts = {}) {
     const bootDim = boot ? Math.min(1, Math.max(0, (boot.t - 3.2) / 0.5)) : 1;   // the reactor ignites last
     REACTOR.value *= boot ? 0.08 + 0.92 * bootDim : 1;
     beamMat.uniforms.uBeam.value *= boot ? Math.min(1, boot.t / 0.8) : 1;
-    if (figureMat) figureMat.uniforms.uPanel.value = [0.6, 0.85, 1.05, 1.25][tier - 1] || 0.75;   // finer detail lights up with each stage
+    if (figureMat) {   // finer detail and brighter seams light up with each stage
+      figureMat.uniforms.uPanel.value = [0.25, 0.35, 0.45, 0.55][tier - 1] || 0.35;
+      figureMat.uniforms.uContour.value = [0.75, 0.9, 1.05, 1.2][tier - 1] || 0.9;
+    }
     shed.visible = moving;
     for (const a of Object.values(aura)) {
       a.value += (a.target - a.value) * (moving ? 1 - Math.exp(-dt * 2) : 1);
