@@ -45,7 +45,7 @@ const NUMERIC = ["eyes", "rim", "scan", "flow", "ring", "beam", "reactor", "neur
 
 // ---- shaders ---------------------------------------------------------------------------------------------------
 const VERT = `
-uniform mat3 uHead, uArmR, uArmL, uForeR, uForeL; uniform float uHeadOn; attribute float aAccent;
+uniform mat3 uHead, uArmR, uArmL, uForeR, uForeL; uniform float uHeadOn, uInflate; attribute float aAccent;
 varying vec3 vNormal; varying vec3 vView; varying vec3 vWorld; varying vec2 vUv; varying vec3 vObj; varying vec3 vObjN; varying float vAccent;
 void main() {
   vec3 pos = position, nrm = normal;
@@ -62,6 +62,7 @@ void main() {
       pos = mix(pos, E2 + Rf * (position - E), wF); nrm = normalize(mix(nrm, Rf * normal, wF));
     }
   }
+  pos += nrm * uInflate;   // the aura shell: the same body, slightly larger
   vec4 world = modelMatrix * vec4(pos, 1.0);
   vWorld = world.xyz; vUv = uv; vObj = position; vObjN = normal; vAccent = aAccent;   // detail is fixed to the rest shape
   vNormal = normalize(normalMatrix * nrm);
@@ -75,7 +76,7 @@ void main() {
 // a rising light band; faces turned away drawn dimmer for depth; a materialisation edge; a fade into the projector
 // beam; a floor reflection; a faint projection distortion. Shared uniforms are the same objects in every material.
 const FRAG = `
-uniform vec3 uTint0, uAccent; uniform float uTime, uOpacity, uRim, uRimK, uGain, uSelf, uScan, uFlow, uFlowOn, uFlicker, uReveal, uFadeLow, uReflect, uCore, uPanel, uPanelScale, uContour;
+uniform vec3 uTint0, uAccent; uniform float uTime, uOpacity, uRim, uRimK, uGain, uSelf, uScan, uFlow, uFlowOn, uFlicker, uReveal, uFadeLow, uReflect, uCore, uPanel, uPanelScale, uContour, uDetail, uCoreE;
 varying vec3 vNormal; varying vec3 vView; varying vec3 vWorld; varying vec2 vUv; varying vec3 vObj; varying vec3 vObjN; varying float vAccent;
 float hash(float n) { return fract(sin(n) * 43758.5453); }
 float seam(vec2 p, float w) { vec2 g = abs(fract(p - 0.5) - 0.5) / max(fwidth(p), vec2(1e-4)); return 1.0 - min(min(g.x, g.y) / w, 1.0); }
@@ -97,7 +98,34 @@ float anat(vec3 p) {
   c = max(c, L(ax - 0.25, 0.005) * fr * win(p.y, 0.5, 2.25) * leg * (1.0 - win(p.y, 1.3, 1.42)));   // leg seams
   c = max(c, L(p.x, 0.006) * bk * win(p.y, 2.7, 4.15));                                   // spine
   c = max(c, L(p.x, 0.006) * win(p.y, 4.5, 5.1) * smoothstep(0.24, 0.12, p.z));           // crest over the head
+  // armour plates over the light body
+  c = max(c, L(p.y - (3.97 - 0.5 * (ax - 0.64) * (ax - 0.64) * 4.0), 0.006) * smoothstep(0.5, 0.56, ax) * (1.0 - smoothstep(0.8, 0.86, ax)));   // shoulder plates
+  c = max(c, max(L(p.y - 2.56, 0.004), L(p.y - 2.76, 0.004)) * arm * 0.8);                  // forearm bands
+  c = max(c, max(L(p.y - 2.34, 0.004), L(p.y - 2.3, 0.006)) * arm);                         // wrist emitter (double band)
+  c = max(c, L(length(vec2((ax - 0.25) / 0.13, (p.y - 1.9) / 0.38)) - 1.0, 0.03) * fr * leg * 0.7);   // thigh plates
+  c = max(c, L(length(vec2((ax - 0.26) / 0.085, (p.y - 1.34) / 0.085)) - 1.0, 0.06) * fr * leg);   // knee caps
+  c = max(c, L(length(vec2((ax - 0.255) / 0.08, (p.y - 0.9) / 0.32)) - 1.0, 0.04) * fr * leg * 0.7);   // shin guards
+  // hands: finger grooves and knuckle points (fingers hang below y 1.99, spread along x)
+  float hu = (ax - 0.9) / 0.026, hand = win(ax, 0.85, 0.95) * arm;
+  c = max(c, L((hu - floor(hu + 0.5)) * 0.026, 0.0035) * hand * win(p.y, 1.84, 1.98) * step(abs(hu), 1.2));
+  c = max(c, L(length(vec2((fract(hu) - 0.5) * 0.026, p.y - 2.0)) - 0.004, 0.004) * hand * step(abs(hu), 2.0) * 1.3);
+  // helmet: rings around the temple pods and a line along the rear fin
+  c = max(c, L(length(vec2(p.y - 4.68, p.z + 0.03)) - 0.085, 0.005) * smoothstep(0.18, 0.21, ax));
+  c = max(c, L(p.y - (4.96 - 0.35 * max(-p.z, 0.0)), 0.004) * smoothstep(0.0, -0.05, p.z) * win(ax, 0.02, 0.2) * 0.7);
   return min(c, 1.0);
+}
+float hash2(vec2 q) { return fract(sin(dot(q, vec2(127.1, 311.7))) * 43758.5453); }
+// circuit traces: per cell a straight run, a turn or a via, projected on the face of the body it is on
+float circuit(vec2 q, float t, out float pulse) {
+  vec2 id = floor(q), f = fract(q); float h = hash2(id), w = 0.035, c;
+  float hx = 1.0 - smoothstep(w, w + 1.5 * fwidth(f.y), abs(f.y - 0.5)), vy = 1.0 - smoothstep(w, w + 1.5 * fwidth(f.x), abs(f.x - 0.5));
+  if (h < 0.3) c = hx; else if (h < 0.55) c = vy;
+  else if (h < 0.8) c = max(hx * step(f.x, 0.5 + w), vy * step(0.5 - w, f.y));
+  else c = 0.0;
+  c = max(c, (1.0 - smoothstep(0.1, 0.1 + 1.5 * fwidth(f.x), length(f - 0.5))) * step(0.55, h));   // via pads
+  if (h > 0.92) c = 0.0;
+  pulse = smoothstep(0.85, 1.0, sin((id.x + id.y) * 0.9 + h * 6.28 - t * 2.2));
+  return c;
 }
 void main() {
   vec3 uTint = mix(uTint0, uAccent, vAccent);   // teal-green accents where marked (the hands)
@@ -128,6 +156,29 @@ void main() {
     col += mix(mix(uTint, vec3(1.0, 0.96, 0.9), 0.35), vec3(1.0, 0.98, 0.94), run) * c * (0.65 + 1.5 * run);
     a += c * (0.28 + 0.5 * run) * uOpacity;
   }
+  if (uDetail > 0.0) {
+    vec3 p = vObj; vec3 n = abs(normalize(vObjN)); float ax = abs(p.x);
+    float body = 1.0 - smoothstep(4.4, 4.5, p.y);   // the head stays smooth
+    // circuit traces (a finer second layer from stage 3)
+    vec2 q = n.z > max(n.x, n.y) ? p.xy : (n.x > n.y ? p.zy : p.xz);
+    float pl, pl2; float cc = circuit(q * 13.0, uTime, pl);
+    float cc2 = uDetail > 0.95 ? circuit(q * 26.0 + 7.3, uTime * 1.3, pl2) * 0.5 : 0.0;
+    float circ = max(cc, cc2) * body * 1.0 * uDetail;
+    col += mix(uTint * 0.7, vec3(1.0, 0.97, 0.9), pl) * circ * (0.18 + 1.1 * pl);
+    a += circ * (0.05 + 0.3 * pl) * uOpacity;
+    // energy veins spreading from the core over the chest, pulsing outward with the reactor
+    vec2 rc = p.xy - vec2(0.0, 3.62); float r = length(rc), ang = atan(rc.y, rc.x);
+    float vein = abs(sin(ang * 4.0 + sin(r * 9.0) * 0.55 + sin(r * 23.0) * 0.12));
+    float vd = vein * r * 0.25;
+    float veins = (1.0 - smoothstep(0.004, 0.004 + 1.5 * fwidth(vd), vd)) * smoothstep(0.3, 0.38, r) * smoothstep(1.05, 0.55, r) * smoothstep(0.05, 0.15, p.z);
+    float vp = exp(-pow((fract(r * 1.4 - uTime * 0.7) - 0.5) * 7.0, 2.0));
+    float ve = veins * (0.35 + 0.65 * min(uCoreE, 1.5)) * uDetail;
+    col += mix(uTint, vec3(1.0, 0.98, 0.94), vp) * ve * (0.6 + 1.8 * vp);
+    a += ve * (0.15 + 0.5 * vp) * uOpacity;
+    // glowing soles
+    float sole = smoothstep(0.16, 0.03, p.y);
+    col += mix(uTint, vec3(1.0, 0.96, 0.9), 0.5) * sole * 1.2; a += sole * 0.35 * uOpacity;
+  }
   if (uFlowOn > 0.5) {
     float d = fract(vUv.x * 3.0 - uTime * uFlow * 0.35);
     float pulse = smoothstep(0.0, 0.05, d) * smoothstep(0.22, 0.05, d);
@@ -140,6 +191,46 @@ void main() {
   if (uReflect > 0.5) a *= 0.2 * smoothstep(-2.2, 0.0, vWorld.y);
   a *= 1.0 - uFlicker * step(0.55, hash(floor(uTime * 18.0))) * 0.65;
   gl_FragColor = vec4(col, clamp(a, 0.0, 1.0));
+}`;
+
+// Dark alloy armour plates: the same vertex path as the figure (they bend with the arms and head), each plate
+// pushed out along its own direction by uOpen when it vents light. Graphite with a soft sheen and an orange rim
+// reflection; the plate borders are glowing seams (aEdge = distance inside the plate), brighter with uSeam.
+const PLATE_VERT = VERT
+  .replace("uniform float uHeadOn, uInflate;", "uniform float uHeadOn, uInflate, uOpen; attribute float aEdge; attribute vec3 aOpenDir; varying float vEdge;")
+  .replace("vec3 pos = position, nrm = normal;", "vec3 pos = position + aOpenDir * uOpen, nrm = normal; vEdge = aEdge;");
+const PLATE_FRAG = `
+uniform vec3 uTint; uniform float uTime, uGain, uReveal, uReflect, uSeam, uOpacity;
+varying vec3 vNormal; varying vec3 vView; varying vec3 vWorld; varying vec3 vObj; varying float vEdge;
+void main() {
+  float h = uReflect > 0.5 ? -vWorld.y : vWorld.y;
+  if (h > uReveal || vEdge < 0.0) discard;   // a smooth plate border
+  vec3 n = normalize(vNormal), v = normalize(vView), l = normalize(vec3(-0.45, 0.65, 0.6));
+  float diff = max(dot(n, l), 0.0), spec = pow(max(dot(reflect(-l, n), v), 0.0), 36.0);
+  float fres = pow(1.0 - abs(dot(n, v)), 3.0);
+  vec3 col = vec3(0.055, 0.05, 0.047) * (0.45 + 0.9 * diff) + vec3(1.0, 0.86, 0.7) * spec * 0.4 + uTint * fres * 0.35;
+  float edge = 1.0 - smoothstep(0.004, 0.02, vEdge), inner = 1.0 - smoothstep(0.0, 0.0045, abs(vEdge - 0.05));
+  float run = exp(-pow((fract(vObj.y * 0.4 - uTime * 0.25) - 0.5) * 8.0, 2.0));
+  col += mix(uTint, vec3(1.0, 0.96, 0.9), 0.4) * (edge * (1.6 + 2.6 * uSeam) + inner * 0.5 * (0.4 + uSeam)) * (1.0 + run * uSeam);
+  float a = mix(0.9, 1.0, edge) * uOpacity * min(uGain, 1.0);
+  if (uReveal < 9.0) col += vec3(1.0, 0.95, 0.85) * smoothstep(uReveal - 0.18, uReveal, h) * 1.4;
+  gl_FragColor = vec4(col, a);
+}`;
+// The alert shield: a hexagon energy field just outside the body, flaring only on a real error or warning.
+const SHIELD_FRAG = `
+uniform vec3 uTint; uniform float uTime, uGain, uShield;
+varying vec3 vNormal; varying vec3 vView; varying vec3 vObj; varying vec3 vObjN;
+float hexd(vec2 p) { p = abs(p); return max(dot(p, vec2(0.5, 0.866)), p.x); }
+void main() {
+  vec3 nn = abs(normalize(vObjN));
+  vec2 q = (nn.z > max(nn.x, nn.y) ? vObj.xy : (nn.x > nn.y ? vObj.zy : vObj.xz)) * 7.0;
+  const vec2 sz = vec2(1.0, 1.732);
+  vec2 a = mod(q, sz) - sz * 0.5, b = mod(q - sz * 0.5, sz) - sz * 0.5, g = dot(a, a) < dot(b, b) ? a : b;
+  float e = hexd(g), line = 1.0 - smoothstep(0.42, 0.42 + 1.5 * fwidth(e), e);
+  float fres = pow(1.0 - abs(dot(normalize(vNormal), normalize(vView))), 2.0);
+  float sweep = exp(-pow((fract(vObj.y * 0.25 - uTime * 0.5) - 0.5) * 6.0, 2.0));
+  float aa = ((1.0 - line) * (0.5 + sweep) + fres * 0.4) * uShield * uGain;
+  gl_FragColor = vec4(mix(uTint, vec3(1.0, 0.95, 0.9), 0.4), clamp(aa, 0.0, 1.0) * 0.6);
 }`;
 
 // ---- post-processing: bloom (bright edges and cores glow), a slight lens fringe and fine grain ------------------
@@ -246,6 +337,20 @@ function onChest(x, y, lift = 0.025) {   // a point on the front of the torso (f
   const r = torsoRadius(y), k = Math.min(0.98, Math.abs(x) / r);
   return new THREE.Vector3(x, y, Math.sqrt(1 - k * k) * r * TORSO_Z + lift);
 }
+function mergeGeos(geos) {   // one draw call for many tubes (position, normal, uv, index)
+  let nv = 0, ni = 0; for (const g of geos) { nv += g.attributes.position.count; ni += g.index.count; }
+  const pos = new Float32Array(nv * 3), nrm = new Float32Array(nv * 3), uv = new Float32Array(nv * 2), idx = new Uint32Array(ni);
+  let ov = 0, oi = 0;
+  for (const g of geos) {
+    pos.set(g.attributes.position.array, ov * 3); nrm.set(g.attributes.normal.array, ov * 3); uv.set(g.attributes.uv.array, ov * 2);
+    const ix = g.index.array; for (let i = 0; i < ix.length; i++) idx[oi + i] = ix[i] + ov;
+    ov += g.attributes.position.count; oi += ix.length; g.dispose();
+  }
+  const out = new THREE.BufferGeometry();
+  out.setAttribute("position", new THREE.BufferAttribute(pos, 3)); out.setAttribute("normal", new THREE.BufferAttribute(nrm, 3));
+  out.setAttribute("uv", new THREE.BufferAttribute(uv, 2)); out.setIndex(new THREE.BufferAttribute(idx, 1));
+  return out;
+}
 function rng(seed) { let s = seed >>> 0; return () => ((s = (s * 1664525 + 1013904223) >>> 0) / 4294967296); }
 
 // ---- the figure: a sleek humanoid sculpted as a blended distance field, meshed once with surface nets ------------
@@ -266,6 +371,9 @@ export function sdHuman(x, y, z) {
   let d = sdEll(x, y, z, 0, 4.75, 0.0, 0.235, 0.32, 0.28);                                   // cranium
   d = smin(d, sdEll(x, y, z, 0, 4.8, -0.07, 0.22, 0.27, 0.26), 0.1);                         // swept-back crown
   d = smin(d, sdEll(x, y, z, 0, 4.54, 0.07, 0.16, 0.18, 0.19), 0.12);                        // lower head (smooth, faceless)
+  d = smin(d, sdLimb(x, y, z, 0, 5.02, 0.1, 0, 4.92, -0.24, 0.035, 0.03), 0.06);             // helmet crest ridge
+  d = smin(d, sdLimb(x, y, z, 0, 4.9, -0.2, 0, 4.6, -0.36, 0.03, 0.008), 0.06);              // swept rear fin
+  d = smin(d, sdEll(ax, y, z, 0.225, 4.68, -0.03, 0.035, 0.075, 0.075), 0.04);               // temple pods
   d = smin(d, sdLimb(x, y, z, 0, 4.18, -0.02, 0, 4.48, 0.02, 0.11, 0.095), 0.1);             // neck
   d = smin(d, sdLimb(ax, y, z, 0.02, 4.22, -0.06, 0.5, 4.02, -0.05, 0.1, 0.07), 0.14);       // trapezius
   d = smin(d, sdEll(x, y, z, 0, 3.66, -0.01, 0.56, 0.52, 0.3), 0.14);                        // ribcage
@@ -436,7 +544,8 @@ export function create(wrap, opts = {}) {
                   uReveal: building ? building.reveal : { value: 10 },
                   // armour surfaces (low inner glow, no energy flow) get machined panel seams unless told otherwise
                   uPanel: { value: o.panel ?? ((o.core ?? 0.035) < 0.2 && !o.flow && !o.self ? 0.85 : 0) },
-                  uPanelScale: { value: o.panelScale ?? 6 }, uContour: { value: o.contour ?? 0 } },
+                  uPanelScale: { value: o.panelScale ?? 6 }, uContour: { value: o.contour ?? 0 }, uDetail: { value: o.detail ?? 0 }, uCoreE: REACTOR,
+                  uInflate: { value: o.inflate ?? 0 } },
       extensions: { derivatives: true },
     });
     return m;
@@ -470,7 +579,7 @@ export function create(wrap, opts = {}) {
   function part(name, tier, build) {
     const p = { tier, reveal: { value: 10 }, objs: [] };
     parts[name] = p; building = p;
-    build((mesh, to = body) => { to.add(mesh); p.objs.push(mesh); return mesh; });
+    build((mesh, to = body) => { to.add(mesh); p.objs.push(mesh); return mesh; }, p.reveal);
     building = null;
     return p;
   }
@@ -502,10 +611,14 @@ export function create(wrap, opts = {}) {
   // the figure (built once), sparkles shedding from its surface, and energy lines that come with higher stages
   const figureGeo = meshFigure(phone ? 0.04 : 0.03);
   const joints = [], eyeGlows = [], irises = [], sparks = [];
-  let figureMat = null;
+  let figureMat = null, auraMat = null;
   part("figure", 1, (add) => {
-    figureMat = holo({ opacity: 1.0, rim: 1.6, core: 0.085, panel: 0.35, panelScale: 7, contour: 1, head: true });
+    figureMat = holo({ opacity: 1.0, rim: 1.6, core: 0.1, panel: 0.35, panelScale: 7, contour: 1, detail: 0.75, head: true });
     add(new THREE.Mesh(figureGeo, figureMat));
+    if (!phone) {   // a soft outline glow around the whole figure
+      auraMat = holo({ opacity: 0.3, rim: 1.3, core: 0.0, panel: 0, inflate: 0.035, head: true });
+      add(new THREE.Mesh(figureGeo, auraMat));
+    }
   });
   const shed = (() => {   // sparkles leaving the surface, drifting up and out
     const src = figureGeo.attributes.position.array, nsrc = figureGeo.attributes.normal.array, acc = figureGeo.attributes.aAccent.array;
@@ -535,6 +648,61 @@ export function create(wrap, opts = {}) {
       const curve = new THREE.CatmullRomCurve3(pts.map(([x, y, z]) => new THREE.Vector3(x, y, z)));
       add(new THREE.Mesh(new THREE.TubeGeometry(curve, 48, 0.008, 4, false), holo({ opacity: 1, rim: 1, flow: true, core: 0.35 })));
     }
+  });
+
+  // Inner energy: a glowing skeleton and nerve network seen through the translucent body, brighter while thinking.
+  // Built in the rest pose; the figure's vertex shader bends it with the arms and the head, like the body around it.
+  let innerMat = null;
+  part("inner", 1, (add) => {
+    const V = (x, y, z) => new THREE.Vector3(x, y, z), paths = [];
+    paths.push([V(0, 2.55, -0.1), V(0, 3.0, -0.12), V(0, 3.6, -0.1), V(0, 4.15, -0.06), V(0, 4.42, -0.02)]);   // spine
+    for (const y of [3.95, 3.82, 3.68, 3.54, 3.4]) for (const sg of [-1, 1]) {                                 // ribs
+      const w = 0.42 - (3.95 - y) * 0.25;
+      paths.push([V(0, y, -0.12), V(sg * w * 0.75, y + 0.01, -0.1), V(sg * w, y - 0.05, 0.02)]);
+    }
+    for (const sg of [-1, 1]) {
+      paths.push([V(0, 4.08, 0.08), V(sg * 0.3, 4.1, 0.05), V(sg * 0.6, 4.0, 0.0)]);                         // clavicle
+      paths.push([V(sg * 0.66, 3.92, 0), V(sg * 0.74, 3.45, 0.0), V(sg * 0.8, 3.04, -0.03)]);               // upper arm
+      paths.push([V(sg * 0.8, 3.04, -0.03), V(sg * 0.84, 2.66, 0.01), V(sg * 0.88, 2.28, 0.05)]);           // forearm
+      paths.push([V(sg * 0.88, 2.28, 0.05), V(sg * 0.9, 2.08, 0.07), V(sg * 0.905, 1.9, 0.075)]);           // hand
+      paths.push([V(sg * 0.1, 2.5, -0.02), V(sg * 0.3, 2.62, 0.02), V(sg * 0.34, 2.42, 0.08), V(sg * 0.1, 2.36, 0.12)]);   // pelvis
+      paths.push([V(sg * 0.25, 2.42, 0.0), V(sg * 0.26, 1.9, 0.02), V(sg * 0.26, 1.36, 0.03)]);             // thigh
+      paths.push([V(sg * 0.26, 1.36, 0.03), V(sg * 0.255, 0.85, -0.01), V(sg * 0.25, 0.32, -0.03)]);        // shin
+      paths.push([V(sg * 0.25, 0.32, -0.03), V(sg * 0.26, 0.14, 0.08), V(sg * 0.27, 0.1, 0.22)]);           // foot
+      // nerves: thin branches from the spine out to the limbs
+      paths.push([V(0, 3.7, -0.1), V(sg * 0.3, 3.85, -0.02), V(sg * 0.62, 3.9, 0.0)]);
+      paths.push([V(0, 2.8, -0.12), V(sg * 0.18, 2.62, -0.02), V(sg * 0.25, 2.4, 0.0)]);
+    }
+    const geos = paths.map((pts) => new THREE.TubeGeometry(new THREE.CatmullRomCurve3(pts), 24, 0.009, 5, false));
+    innerMat = holo({ opacity: 0.35, rim: 0.8, flow: true, core: 0.55, head: true });
+    add(new THREE.Mesh(mergeGeos(geos), innerMat));
+  });
+  const wisps = (() => {   // energy wisps peeling off the shoulders and the head, slower and larger than the sparkles
+    const src = figureGeo.attributes.position.array, nsrc = figureGeo.attributes.normal.array, pick = [];
+    for (let q = 0; q < src.length / 3; q++) { const y = src[q * 3 + 1], ax = Math.abs(src[q * 3]);
+      if (y > 4.45 || (y > 3.8 && ax > 0.45 && ax < 0.85)) pick.push(q); }
+    const N = phone ? 120 : 320, P = new Float32Array(N * 3), Nn = new Float32Array(N * 3), seed = new Float32Array(N), r = rng(77);
+    for (let i = 0; i < N; i++) { const q = pick[Math.floor(r() * pick.length)];
+      P.set([src[q * 3], src[q * 3 + 1], src[q * 3 + 2]], i * 3); Nn.set([nsrc[q * 3], nsrc[q * 3 + 1], nsrc[q * 3 + 2]], i * 3); seed[i] = r(); }
+    const g = new THREE.BufferGeometry();
+    g.setAttribute("position", new THREE.BufferAttribute(P, 3)); g.setAttribute("aN", new THREE.BufferAttribute(Nn, 3));
+    g.setAttribute("aSeed", new THREE.BufferAttribute(seed, 1));
+    const m = new THREE.ShaderMaterial({ transparent: true, depthWrite: false, blending: THREE.AdditiveBlending,
+      uniforms: { uTime: U.uTime, uTint: U.uTint, uGain: U.uGain, uRate: { value: 1 }, uAmt: { value: 1 } },
+      vertexShader: `attribute vec3 aN; attribute float aSeed; uniform float uTime, uRate; varying float vA;
+        void main() { float t = fract(aSeed * 5.0 + uTime * (0.05 + aSeed * 0.05) * uRate);
+          vec3 p = position + aN * t * 0.25 + vec3(sin(aSeed * 31.0 + uTime * 0.7) * 0.12 * t, t * 1.1, cos(aSeed * 17.0) * 0.06 * t);
+          vA = sin(t * 3.14159) * (0.25 + 0.5 * fract(aSeed * 9.0));
+          vec4 mv = modelViewMatrix * vec4(p, 1.0); gl_PointSize = (5.0 + fract(aSeed * 3.0) * 7.0) * (1.0 + t) * (8.0 / -mv.z); gl_Position = projectionMatrix * mv; }`,
+      fragmentShader: `uniform vec3 uTint; uniform float uGain, uAmt; varying float vA;
+        void main() { float d = length(gl_PointCoord - 0.5); if (d > 0.5) discard;
+          gl_FragColor = vec4(mix(uTint, vec3(1.0, 0.95, 0.85), 0.3), vA * pow(smoothstep(0.5, 0.0, d), 2.0) * 0.45 * uGain * uAmt); }` });
+    const pts = new THREE.Points(g, m); pts.frustumCulled = false; body.add(pts); return pts;
+  })();
+  const soleGlows = [-1, 1].map((sg) => {   // the glowing soles light the floor where the figure stands
+    const m = new THREE.Mesh(new THREE.PlaneGeometry(0.7, 0.7), new THREE.MeshBasicMaterial({ map: glowTexture(), color: new THREE.Color("#ffb070"),
+      transparent: true, opacity: 0.5, blending: THREE.AdditiveBlending, depthWrite: false }));
+    m.rotation.x = -Math.PI / 2; m.position.set(sg * 0.26, 0.02, 0.06); body.add(m); return m;
   });
 
   // ---- central reactor assembly around the SVG core: independent rings, inner rotor, discharge arcs -------------
@@ -577,7 +745,63 @@ export function create(wrap, opts = {}) {
     blending: THREE.AdditiveBlending, depthWrite: false }));
   reactorGlow.scale.set(1.6, 1.6, 1); reactor.add(reactorGlow);
 
+  // Alloy armour: key plates cut from the figure's own surface (so they hug the sleek body), lifted slightly off it.
+  // m(p) > 0 inside a plate; its value near the border feeds the glowing seam.
   const metals = [];
+  const PLATES = [
+    { name: "chest", order: 0, dir: [0, 0.1, 1], m: (x, y, z) => { const ax = Math.abs(x);
+      return Math.min(y - (3.4 + 0.9 * (ax - 0.22) ** 2), (3.83 + 0.4 * ax) - y, 0.47 - 0.6 * (y - 3.68) ** 2 - ax, z - 0.04,
+        ax - 0.028, Math.hypot(x, y - 3.62) - 0.21); } },                                      // two pectoral plates around the core
+    { name: "abdomen", order: 0.12, dir: [0, -0.2, 1], m: (x, y, z) => { const ax = Math.abs(x);
+      return Math.min(y - 2.82, 3.3 - 0.4 * ax - y, 0.2 - 0.25 * (3.06 - y) ** 2 - ax, z - 0.08, Math.abs(y - 3.06) > 0.012 ? 1 : -1); } },
+    ...[1, -1].map((sg) => ({ name: "shoulder", order: 0.25, dir: [sg, 0.7, 0], m: (x, y, z) => sg * x <= 0 ? -1
+        : Math.min(0.27 - Math.hypot(Math.abs(x) - 0.66, (y - 3.93) * 0.9, z), y - (3.7 + 0.25 * Math.abs(z)), Math.abs(x) - 0.5) })),
+    ...[1, -1].map((sg) => ({ name: "forearm", order: 0.45, dir: [sg, 0, 0.3], m: (x, y, z) => sg * x <= 0 ? -1
+        : Math.min(y - 2.42, 2.94 - y - 0.8 * Math.abs(z), Math.abs(x) - (0.79 + 0.08 * (3.04 - y)) + 0.05) })),
+    ...[1, -1].map((sg) => ({ name: "shin", order: 0.65, dir: [0, 0, 1], m: (x, y, z) => { const ax = Math.abs(x);
+      return sg * x <= 0 ? -1 : Math.min(y - 0.52, 1.26 - y - 1.3 * Math.abs(ax - 0.255), z - 0.0, (0.1 - 0.04 * (1.2 - y)) - Math.abs(ax - 0.255)); } })),
+    { name: "helmet", order: 0.85, dir: [0, 0.4, -1], m: (x, y, z) => Math.min(y - 4.47, y - (4.8 - 1.2 * (0.1 - z))) },   // crown, sides and back; face open
+  ];
+  const plateUni = { uOpen: { value: 0 }, uSeam: { value: 0.25 } };
+  part("armour", 1, (add, reveal) => {
+    const P = figureGeo.attributes.position.array, N = figureGeo.attributes.normal.array, I = figureGeo.index.array;
+    for (const pl of PLATES) {
+      const nv = P.length / 3, mv = new Float32Array(nv);
+      for (let q = 0; q < nv; q++) mv[q] = pl.m(P[q * 3], P[q * 3 + 1], P[q * 3 + 2]);
+      const remap = new Int32Array(nv).fill(-1), pos = [], nrm = [], edge = [], idx = [];
+      const lift = pl.name === "helmet" ? 0.022 : 0.03;
+      for (let t = 0; t < I.length; t += 3) {
+        const a = I[t], b = I[t + 1], c = I[t + 2];
+        if (mv[a] <= 0 && mv[b] <= 0 && mv[c] <= 0) continue;   // border triangles are kept and trimmed smoothly in the shader
+        for (const v of [a, b, c]) {
+          if (remap[v] < 0) { remap[v] = pos.length / 3;
+            pos.push(P[v * 3] + N[v * 3] * lift, P[v * 3 + 1] + N[v * 3 + 1] * lift, P[v * 3 + 2] + N[v * 3 + 2] * lift);
+            nrm.push(N[v * 3], N[v * 3 + 1], N[v * 3 + 2]); edge.push(Math.max(mv[v], -0.04)); }
+          idx.push(remap[v]);
+        }
+      }
+      if (!idx.length) continue;
+      const g = new THREE.BufferGeometry(), n = pos.length / 3, d = new THREE.Vector3(...pl.dir).normalize();
+      g.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3));
+      g.setAttribute("normal", new THREE.Float32BufferAttribute(nrm, 3));
+      g.setAttribute("aEdge", new THREE.Float32BufferAttribute(edge, 1));
+      g.setAttribute("aOpenDir", new THREE.Float32BufferAttribute(Array.from({ length: n }, () => [d.x, d.y, d.z]).flat(), 3));
+      g.setAttribute("uv", new THREE.BufferAttribute(new Float32Array(n * 2), 2));
+      g.setIndex(idx);
+      const mat = new THREE.ShaderMaterial({ vertexShader: PLATE_VERT, fragmentShader: PLATE_FRAG, transparent: true, depthWrite: true,
+        uniforms: { ...U, uHeadOn: { value: 1 }, uInflate: { value: 0 }, uReveal: reveal, uOpacity: { value: 1 }, ...plateUni },
+        extensions: { derivatives: true } });
+      const mesh = add(new THREE.Mesh(g, mat)); mesh.renderOrder = 5;   // drawn over the light body: it shows in the gaps
+      metals.push({ mesh, order: pl.order, dir: d });
+    }
+  });
+  let shieldMat = null, shieldMesh = null, shieldFlare = 0;
+  if (!phone) part("shield", 1, (add) => {
+    shieldMat = new THREE.ShaderMaterial({ vertexShader: VERT, fragmentShader: SHIELD_FRAG, transparent: true, depthWrite: false,
+      blending: THREE.AdditiveBlending, side: THREE.DoubleSide,
+      uniforms: { ...U, uHeadOn: { value: 1 }, uInflate: { value: 0.11 }, uShield: { value: 0 } }, extensions: { derivatives: true } });
+    shieldMesh = add(new THREE.Mesh(figureGeo, shieldMat)); shieldMesh.renderOrder = 6;
+  });
 
   // ---- evolution: light and energy only ---------------------------------------------------------------------------
   part("halo", 4, (add) => {
@@ -754,6 +978,7 @@ export function create(wrap, opts = {}) {
     const prev = state;
     state = s; target = LOOKS[s]; targetTint.set(target.tint);
     if (s === "completed") { flash = 1; firePulse(1.4); }
+    if (s === "error" || s === "warning") shieldFlare = 2.5;   // the shield flares on a real alert
     if (s === "recovery" && mode === "full") for (const p of Object.values(parts)) p.reveal.value = -1.5;   // reconstruction
     if (prev === "halted" && mode === "full") for (const p of Object.values(parts)) p.reveal.value = -1.5;
     settling = 2.5; kick();
@@ -812,10 +1037,10 @@ export function create(wrap, opts = {}) {
   // remember where every plate belongs (for the assembly sequence)
   for (const m of metals) {
     m.home = { p: m.mesh.position.clone(), q: m.mesh.quaternion.clone(), s: m.mesh.scale.clone() };
-    const dir = m.home.p.clone().sub(new THREE.Vector3(0, 2.2, 0)); if (dir.lengthSq() < 0.01) dir.set(0, 0, 1);
+    const dir = m.dir ? m.dir.clone() : m.home.p.clone().sub(new THREE.Vector3(0, 2.2, 0)); if (dir.lengthSq() < 0.01) dir.set(0, 0, 1);
     dir.normalize();
     m.from = { p: m.home.p.clone().add(dir.multiplyScalar(2.6)).add(new THREE.Vector3(0, 0.8, 1.2)),
-               q: m.home.q.clone().multiply(new THREE.Quaternion().setFromEuler(new THREE.Euler((Math.random() - 0.5) * 1.6, (Math.random() - 0.5) * 1.6, (Math.random() - 0.5) * 1.6))) };
+               q: m.home.q.clone().multiply(new THREE.Quaternion().setFromEuler(new THREE.Euler((Math.random() - 0.5) * 0.3, (Math.random() - 0.5) * 0.3, (Math.random() - 0.5) * 0.3))) };
   }
   // Startup assembly (once per session, Normal mode only): platform → hologram body → plates lock on → reactor ignites.
   let boot = opts.boot && mode === "full" ? { t: 0, fired: false } : null;
@@ -904,6 +1129,19 @@ export function create(wrap, opts = {}) {
     if (moving) t += dt;
     const k = moving ? 1 - Math.exp(-dt * 2.2) : 1;   // ~0.6–1 s blend between states
     armPose(k);
+    // armour: seams brighten and plates vent (part slightly) only while really working; the shield after an alert
+    const busyState = ["reasoning", "planning", "coding", "executing", "researching", "verifying", "writing", "understanding"].includes(state);
+    const heavy = ["coding", "executing", "reasoning"].includes(state);
+    plateUni.uSeam.value += ((busyState ? 1 : state === "error" ? 0.6 : 0.25) - plateUni.uSeam.value) * k;
+    plateUni.uOpen.value += ((heavy && moving ? 0.045 + Math.sin(t * 1.7) * 0.008 : 0) - plateUni.uOpen.value) * k;
+    if (shieldMat) {
+      shieldFlare = Math.max(0, shieldFlare - dt);
+      const alert = state === "error" ? 0.25 : 0;
+      const flick = moving ? (0.6 + 0.4 * Math.sin(t * 23) * Math.sin(t * 7.3)) : 1;
+      shieldMat.uniforms.uShield.value = Math.max(alert, Math.min(1, shieldFlare) * (moving ? flick : 0.5));
+      shieldMesh.visible = shieldMat.uniforms.uShield.value > 0.01 && tier >= 1;
+      if (shieldFlare > 0 && moving) settling = Math.max(settling, 0.2);
+    }
     for (const key of NUMERIC) cur[key] += ((target[key] ?? 0) - cur[key]) * k;
     cur.tint.lerp(targetTint, k);
     flash = Math.max(0, flash - dt * 0.8);
@@ -921,6 +1159,7 @@ export function create(wrap, opts = {}) {
     EYE.value = eyeLevel;
     const breathe = moving ? 0.92 + 0.08 * Math.sin(t * 1.3) : 1;
     REACTOR.value = cur.reactor * breathe * (1 + speech * 0.8 + flash);
+    if (innerMat) innerMat.uniforms.uOpacity.value = 0.12 + cur.neural * 0.5 + flash * 0.3;   // the inner network brightens while thinking
     const seams = [0.7, 1.0, 1.2, 1.35][tier - 1] || 1;
     for (const m of lineMats) { m.color.copy(cur.tint); m.opacity = m.userData.lineBase * seams * Math.min(1.3, intensity); }
     for (const g of eyeGlows) { g.material.opacity = Math.min(1, 0.7 * eyeLevel * intensity); g.material.color.copy(cur.tint).lerp(WHITE, 0.75); }
@@ -938,8 +1177,10 @@ export function create(wrap, opts = {}) {
     if (figureMat) {   // finer detail and brighter seams light up with each stage
       figureMat.uniforms.uPanel.value = [0.25, 0.35, 0.45, 0.55][tier - 1] || 0.35;
       figureMat.uniforms.uContour.value = [0.75, 0.9, 1.05, 1.2][tier - 1] || 0.9;
+      figureMat.uniforms.uDetail.value = [0.75, 0.85, 1.0, 1.15][tier - 1] || 0.75;   // rich now, maximum at stage 4 (finer circuits from stage 3)
+      if (auraMat) auraMat.uniforms.uOpacity.value = [0.3, 0.36, 0.42, 0.5][tier - 1] || 0.3;
     }
-    shed.visible = moving;
+    shed.visible = moving; wisps.visible = moving;
     for (const a of Object.values(aura)) {
       a.value += (a.target - a.value) * (moving ? 1 - Math.exp(-dt * 2) : 1);
       a.ring.material.uniforms.uFill.value = a.value;
@@ -1007,6 +1248,7 @@ export function create(wrap, opts = {}) {
       headPivot.rotation.copy(headCur);
       U.uHead.value.setFromMatrix4(new THREE.Matrix4().makeRotationFromEuler(headCur));   // turns the figure's head
       shed.material.uniforms.uRate.value = 0.8 + Math.abs(cur.flow) * 0.4 + flash * 3;
+      wisps.material.uniforms.uRate.value = 0.8 + cur.neural * 0.8 + flash * 2;
       orbitRings.forEach((r) => { r.rotation.z += dt * (0.05 + cur.ring) * r.userData.spin; });
       for (const s of spinners) s.obj.rotation[s.axis] += dt * s.speed * (0.5 + cur.ring);
       for (const rr of reactorRings) {
@@ -1021,7 +1263,7 @@ export function create(wrap, opts = {}) {
     if (post) post.begin(); else renderer.clear();
     renderer.render(scene, camera);
     // the head reflects ~4 units below the floor, where the reflection has faded to nothing: skip it
-    const hidden = [beam, dust, data, sweep, net.g, orbits, reactor, grid, baseGlow, headPivot, thought, shed, ...metals.map((m) => m.mesh),
+    const hidden = [beam, dust, data, sweep, net.g, orbits, reactor, grid, baseGlow, headPivot, thought, shed, wisps, ...soleGlows, ...(shieldMesh ? [shieldMesh] : []), ...metals.map((m) => m.mesh),
       ...Object.values(aura).map((a) => a.ring), ...shafts, ...pulses.map((p) => p.m), ...eyeGlows, ...parts.pad.objs];
     const was = hidden.map((o) => o.visible);
     hidden.forEach((o) => { o.visible = false; });

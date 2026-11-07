@@ -1,5 +1,22 @@
 # Changelog
 
+## Unreleased — Avatar 3.4: character detail and alloy armour
+
+- **More detail, growing with evolution** (rich now, maximum at stage 4): helmet crest ridge, swept rear fin and temple
+  pods; finger grooves, knuckle points, forearm bands and a double wrist band; knee caps, thigh and shin lines;
+  glowing soles that light the floor; fine circuit traces with travelling pulses (a finer second layer from stage 3);
+  energy veins spreading from the core, pulsing with the reactor. The face stays smooth.
+- **Inner energy**: a faint skeleton and nerve network inside the translucent body that brightens only while JARVIS
+  is really thinking; it bends with the arms and the head.
+- **Particles and aura**: energy wisps peeling off the shoulders and head (Normal mode only), and a soft outline glow
+  around the whole figure (not on phones).
+- **Dark alloy armour, key plates** (owner's choice): chest (two plates around the core), abdomen, shoulders,
+  forearms, shins and a helmet shell over the crown and back. Cut from the figure's own surface so they hug the sleek
+  body, with smooth borders and glowing orange seams; they assemble during the startup sequence.
+  - Seams brighten while JARVIS is really working; plates part slightly to vent light during coding, executing and
+    reasoning (Normal mode only).
+  - A hexagon energy shield flares over the body on a real error or warning, and stays faint while an error lasts.
+
 ## Unreleased — Avatar 3.3: gestures, live data wall, screen wall
 
 - **Gestures from real states only**: speaking opens the right hand toward you, coding and executing raise both hands

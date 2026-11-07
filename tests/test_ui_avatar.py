@@ -336,7 +336,7 @@ def test_thought_constellation_counts_real_stages_and_surge_needs_a_real_complet
 
 
 def test_figure_is_a_light_body_with_teal_hands_and_sparkles_kept_out_of_the_reflection():
-    assert "const metals = [];" in AV3                                        # no metal armour: the owner asked for light, not a robot
+    assert "const metals = [];" in AV3 and "MeshStandardMaterial" not in AV3   # no bulky lit-metal robot plates (owner's feedback)
     assert 'uAccent: { value: new THREE.Color("#3dffb8") }' in AV3            # teal-green accent, marked per vertex (hands)
     assert "vec3 uTint = mix(uTint0, uAccent, vAccent);" in AV3
     assert "shed.visible = moving;" in AV3                                    # sparkles only while motion is allowed
@@ -346,7 +346,7 @@ def test_figure_is_a_light_body_with_teal_hands_and_sparkles_kept_out_of_the_ref
 
 def test_figure_has_glowing_suit_contours_that_grow_with_the_stage():
     assert "float anat(vec3 p)" in AV3 and "float c = anat(vObj) * uContour;" in AV3
-    assert "contour: 1, head: true" in AV3                                    # only the figure carries the seams
+    assert "contour: 1, detail: 0.75, head: true" in AV3                      # only the figure carries the seams
     assert "figureMat.uniforms.uContour.value = [0.75, 0.9, 1.05, 1.2][tier - 1]" in AV3
     for word in ("mouth", "jaw", "nose", "eye"):                              # contours stay off the face
         assert word not in AV3.split("float anat(vec3 p)")[1].split("return min(c, 1.0);")[0]
@@ -375,3 +375,30 @@ def test_focus_view_screen_wall_is_decoration_that_respects_motion_settings():
     css = (STATIC / "avatar.css").read_text()
     assert ':root[data-fx="reduced"] .vw-tile::after, :root[data-fx="off"] .vw-tile::after { animation: none; display: none; }' in css
     assert "@media (prefers-reduced-motion: reduce) { .vw-tile::after { animation: none; display: none; } }" in css
+
+
+def test_character_detail_grows_with_the_stage_and_keeps_the_face_smooth():
+    assert "figureMat.uniforms.uDetail.value = [0.75, 0.85, 1.0, 1.15][tier - 1]" in AV3   # rich now, maximum at stage 4
+    assert "uDetail > 0.95 ? circuit(" in AV3                                              # finer circuits only from stage 3
+    assert "float body = 1.0 - smoothstep(4.4, 4.5, p.y);   // the head stays smooth" in AV3
+    for gone in ("eye", "mouth", "visor"):                                                 # owner's choice: fully smooth face
+        assert gone not in AV3.split("// ---- the figure:")[1].split("export function meshFigure")[0].lower()
+    assert 'innerMat = holo({ opacity: 0.35, rim: 0.8, flow: true, core: 0.55, head: true });' in AV3   # bends with the arms
+    assert "innerMat.uniforms.uOpacity.value = 0.12 + cur.neural * 0.5" in AV3             # brighter only while really thinking
+    assert "shed.visible = moving; wisps.visible = moving;" in AV3                         # no particles in Low performance / Reduced motion
+    assert "if (!phone) {   // a soft outline glow" in AV3                                 # the aura shell is skipped on phones
+
+
+def test_alloy_armour_hugs_the_body_and_reacts_only_to_real_work_and_alerts():
+    assert 'part("armour", 1,' in AV3 and "const PLATES = [" in AV3
+    names = re.findall(r'name: "(\w+)"', AV3.split("const PLATES = [")[1].split("];")[0])
+    assert set(names) == {"chest", "abdomen", "shoulder", "forearm", "shin", "helmet"}       # key plates, not a full suit
+    assert "const P = figureGeo.attributes.position.array" in AV3                           # cut from the figure's own surface
+    assert "if (h > uReveal || vEdge < 0.0) discard;   // a smooth plate border" in AV3
+    assert "const PLATE_VERT = VERT" in AV3                                                 # bends with the arms and head
+    assert "metals.push({ mesh, order: pl.order, dir: d });" in AV3                         # assembles during startup, hidden in the reflection
+    vent = AV3.split("plateUni.uOpen.value +=")[1].split(";")[0]
+    assert "heavy && moving" in vent                                                        # plates part only while really working, Normal mode
+    assert 'const heavy = ["coding", "executing", "reasoning"].includes(state);' in AV3
+    assert 'if (s === "error" || s === "warning") shieldFlare = 2.5;' in AV3                # the shield flares only on a real alert
+    assert "if (!phone) part(\"shield\", 1," in AV3
