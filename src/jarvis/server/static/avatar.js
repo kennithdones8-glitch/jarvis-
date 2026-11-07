@@ -173,12 +173,13 @@
         document.removeEventListener("keydown", skip, true); document.removeEventListener("pointerdown", skip, true);
       };
       const skip = () => { if (av.three) av.three.skipBoot(); };
-      const three = mod.create(av.wrap, { state: av.state, tier: av.tier, mode: fxLevel(), intensity: intensity(), boot, onBootEnd: endBoot,
+      const three = mod.create(av.wrap, { state: av.state, tier: av.tier, mode: fxLevel(), intensity: intensity(), boot, onBootEnd: endBoot, options: av.options,
                                         onLifecycle: (phase) => { if (SM) show(SM.setLifecycle(phase)); } });
       if (!three) return;
       av.three = three;
       if (av.systems) three.setSystems(av.systems);
       if (av.aura) three.setAura(av.aura);
+      if (av.panels) three.setPanels(av.panels);
       if (boot) { if (SM) SM.setLifecycle("materializing"); document.body.classList.add("booting"); document.addEventListener("keydown", skip, true); document.addEventListener("pointerdown", skip, true); }
       three.onLost = () => { av.wrap.classList.remove("has-3d"); try { three.dispose(); } catch (e) { /* gone */ } av.three = null; loop(); };
       av.wrap.classList.add("has-3d");
@@ -254,7 +255,7 @@
   }
 
   function setTier(tier) {
-    tier = Math.max(1, Math.min(4, Number(tier) || 1));
+    tier = Math.max(1, Math.min(5, Number(tier) || 1));
     if (!av.svg || tier === av.tier) return;
     const up = tier > av.tier;
     av.tier = tier;
@@ -276,6 +277,9 @@
     if (!SM) return show({ state, profile: state, preview: false, lifecycle: null });
     show(SM.input(state)); schedule();
   }
+  // projection settings (per device) and the floating panels' real status lines; the 2D core ignores both
+  function setOptions(o) { av.options = { ...(av.options || {}), ...o }; if (av.three) av.three.setOptions(o); }
+  function setPanels(items) { av.panels = items; if (av.three) av.three.setPanels(items); }
   function previewState(state) {   // shows a state for at most 10 s, always flagged as a preview
     if (!SM) return null;
     show(SM.previewState(state)); schedule();
@@ -366,9 +370,10 @@
     else { if (av.raf) cancelAnimationFrame(av.raf); av.raf = 0; clear(); }
   }
 
-  const api = { mount, setState, previewState, endPreview, setTier, setSystems, setAura, setThought, systemAt, pulse, registerPart, refresh: loop, STATES, onFocus: null, onSystem: null,
+  const api = { mount, setState, previewState, endPreview, setOptions, setPanels, setTier, setSystems, setAura, setThought, systemAt, pulse, registerPart, refresh: loop, STATES, onFocus: null, onSystem: null,
                           get state() { return av.state; }, get profile() { return smOut.profile; }, get preview() { return smOut.preview; },
-                          get lifecycle() { return smOut.lifecycle; }, get tier() { return av.tier; },
+                          get lifecycle() { return smOut.lifecycle; },
+                          get quality() { return av.three ? av.three.quality : null; }, get modules() { return av.three ? av.three.modules : []; }, get tier() { return av.tier; },
                           get animating() { return av.raf !== 0 || !!(av.three && av.three.animating); },
                           get renderer() { return av.three ? "3d" : "2d"; },
                           get stats() { return av.three ? av.three.stats : null; },

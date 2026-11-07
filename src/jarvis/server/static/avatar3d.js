@@ -19,6 +19,7 @@ import { sdHuman, meshFigure, meshHands, mergeGeos, rng, glowTexture } from "/st
 import { buildReactor } from "/static/avatar3d-reactor.js";
 import { buildNeural } from "/static/avatar3d-neural.js";
 import { buildReconstruction } from "/static/avatar3d-particles.js";
+import { buildEnvironment } from "/static/avatar3d-environment.js";
 export { sdHuman, meshFigure };
 
 const CHAMPAGNE = new THREE.Color("#f3e3bd"), WHITE = new THREE.Color("#fff8ec"), AMBER = new THREE.Color("#f2a33a");
@@ -467,6 +468,7 @@ export function create(wrap, opts = {}) {
   // ---- environment ------------------------------------------------------------------------------------------------
   // orbit rings (more layers at stage 2) carrying the eight system satellites (status from the dashboard's snapshot)
   const orbits = new THREE.Group(); figure.add(orbits);
+  const envX = buildEnvironment({ holo, part, U, REACTOR, glowTexture, phone }, { scene, figure, SCALE, BASE_Y });
   const orbitRings = [];
   for (const [r, y, tilt, o, tier] of [[2.05, 2.0, 0.18, 0.75, 1], [1.78, 2.0, -0.1, 0.5, 1], [2.3, 2.3, 0.3, 0.3, 2]]) {
     building = parts["orbit" + orbitRings.length] = { tier, reveal: { value: 10 }, objs: [] };
@@ -611,6 +613,48 @@ export function create(wrap, opts = {}) {
 
   // ---- state ------------------------------------------------------------------------------------------------------
   const cur = { ...LOOKS.idle, tint: new THREE.Color(LOOKS.idle.tint) };
+  // The owner's projection settings (per device) and the quality preset. Auto starts Balanced and steps down
+  // when frames take too long (or up when there is room), measured in Normal mode while animating.
+  const OPT = { quality: "auto", particles: "normal", animation: "normal", reactor: "normal", orbit: "normal", env: true, orbitals: true, panels: false };
+  const K = { particles: { low: 0.35, normal: 0.7, high: 1 }, animation: { calm: 0.6, normal: 1, lively: 1.35 },
+              reactor: { soft: 0.7, normal: 1, bright: 1.3 }, orbit: { slow: 0.5, normal: 1, fast: 1.6 } };
+  let quality = phone ? "low" : "balanced", panelItems = null;
+  const autoQ = { sum: 0, n: 0, at: 0, good: 0 };
+  function applyQuality() {
+    renderer.setPixelRatio(Math.min({ high: 1.5, balanced: 1.25, low: 1 }[quality], window.devicePixelRatio || 1));
+    const dens = K.particles[OPT.particles] * (quality === "low" ? 0.6 : 1);
+    for (const pts of [shed, wisps, dust, rebuild.points, reactorX.swirl()].filter(Boolean)) {
+      const n = pts.geometry.attributes.position.count; pts.geometry.setDrawRange(0, Math.max(1, Math.floor(n * dens)));
+    }
+    envX.setVisible(OPT.env, OPT.orbitals); orbits.visible = OPT.orbitals;
+    resize();
+  }
+  let optKey = "";
+  function setOptions(o = {}) {
+    for (const k of Object.keys(OPT)) if (o[k] !== undefined) OPT[k] = o[k];
+    const key = JSON.stringify(OPT);
+    if (key === optKey) return;   // unchanged: nothing to redraw
+    optKey = key;
+    if (OPT.quality !== "auto") quality = OPT.quality;
+    applyQuality(); envX.setPanels(panelItems, OPT.panels && OPT.env); kick();
+  }
+  let panelKey = "";
+  function setPanels(items) {   // redraw only when the lines change and the panels are showing (no wake-ups on every poll)
+    const key = JSON.stringify(items || null);
+    if (key === panelKey) return;
+    panelKey = key; panelItems = items;
+    if (OPT.panels && OPT.env) { envX.setPanels(items, true); kick(); }
+  }
+  function autoQuality(interval) {   // called once per animated frame in Normal mode
+    if (OPT.quality !== "auto") return;
+    autoQ.sum += interval; autoQ.n++;
+    if (autoQ.n < 90) return;
+    const avg = autoQ.sum / autoQ.n; autoQ.sum = 0; autoQ.n = 0;
+    const order = ["low", "balanced", "high"], i = order.indexOf(quality);
+    if (avg > 55 && i > 0) { quality = order[i - 1]; autoQ.good = 0; applyQuality(); }        // under ~18 fps: lighter
+    else if (avg < 37 && i < 2) { if (++autoQ.good >= 2) { quality = order[i + 1]; autoQ.good = 0; applyQuality(); } }   // holding the frame cap: richer
+    else autoQ.good = 0;
+  }
   let target = LOOKS.idle, state = "idle", tier = 1, mode = opts.mode || "full", intensity = opts.intensity || 1;
   const targetTint = new THREE.Color(LOOKS.idle.tint);
   let t = 0, last = 0, raf = 0, visible = true, flash = 0, settling = 2.5, speech = 0, beatAt = 0, arcAt = 0;
@@ -635,7 +679,7 @@ export function create(wrap, opts = {}) {
     settling = 2.5; kick();
   }
   function setTier(n) {
-    n = Math.max(1, Math.min(4, Number(n) || 1));
+    n = Math.max(1, Math.min(5, Number(n) || 1));
     if (n === tier) return;
     const up = tier !== 0 && n > tier;
     tier = n; applyTier(up);
@@ -694,6 +738,12 @@ export function create(wrap, opts = {}) {
   }
 
   for (const p of Object.values(parts)) { p.reveal.value = mode === "full" ? -1.2 : 10; for (const o of p.objs) o.visible = tier >= p.tier; }
+  setOptions(opts.options || {});   // the owner's projection settings and the quality preset
+  {   // compile every shader now (all layers, including those a quality or stage change shows later), not mid-animation
+    const off = []; scene.traverse((o) => { if (!o.visible) { off.push(o); o.visible = true; } });
+    try { renderer.compile(scene, camera); } catch (e) { /* compiled on first use instead */ }
+    for (const o of off) o.visible = false;
+  }
   // remember where every plate belongs (for the assembly sequence)
   for (const m of metals) {
     m.home = { p: m.mesh.position.clone(), q: m.mesh.quaternion.clone(), s: m.mesh.scale.clone() };
@@ -784,6 +834,7 @@ export function create(wrap, opts = {}) {
     const cap = phone ? 1000 / 24 : 1000 / 30;
     if (mode === "full" && now - last < cap) { raf = requestAnimationFrame(frame); return; }
     const dt = Math.min(0.1, last ? (now - last) / 1000 : 0.033);
+    if (mode === "full" && last && !boot) autoQuality(now - last);
     last = now;
     const moving = mode === "full";
     if (moving) t += dt;
@@ -836,11 +887,12 @@ export function create(wrap, opts = {}) {
     FACE.uEyeHot.value += ((state === "error" ? 0 : 1) - FACE.uEyeHot.value) * k;   // deep red eyes only on a genuine error
     if (!moving) { FACE.uEyeOpen.value = 1; FACE.uEyeLook.value = 0; FACE.uEyeScan.value = 0; }
     const breathe = moving ? 0.92 + 0.08 * Math.sin(t * 1.3) : 1;
-    REACTOR.value = cur.reactor * breathe * (1 + speech * 0.8 + flash);
+    REACTOR.value = cur.reactor * breathe * (1 + speech * 0.8 + flash) * K.reactor[OPT.reactor];
     if (innerMat) innerMat.uniforms.uOpacity.value = 0.12 + cur.neural * 0.5 + flash * 0.3;   // the inner network brightens while thinking
     neuralX.update(cur.neural, ["executing", "coding", "verifying"].includes(state), REACTOR.value);
-    const confirming = reactorX.update(dt, moving, target.rpat);
-    const seams = [0.7, 1.0, 1.2, 1.35][tier - 1] || 1;
+    const confirming = reactorX.update(dt * K.animation[OPT.animation], moving, target.rpat);
+    envX.update(dt, moving, { ring: cur.ring, reactor: REACTOR.value, animK: K.animation[OPT.animation], orbitK: K.orbit[OPT.orbit] });
+    const seams = [0.7, 1.0, 1.2, 1.35, 1.5][tier - 1] || 1;
     for (const m of lineMats) { m.color.copy(cur.tint); m.opacity = m.userData.lineBase * seams * Math.min(1.3, intensity); }
     for (const g of eyeGlows) { g.material.opacity = Math.min(1, 0.7 * eyeLevel * intensity); g.material.color.copy(cur.tint).lerp(WHITE, 0.75); }
     reactorGlow.material.opacity = Math.min(1, 0.25 * REACTOR.value * intensity); reactorGlow.material.color.copy(cur.tint).lerp(WHITE, 0.5);
@@ -859,13 +911,15 @@ export function create(wrap, opts = {}) {
     REACTOR.value *= boot ? 0.08 + 0.92 * bootDim : 1;
     beamMat.uniforms.uBeam.value *= boot ? Math.min(1, boot.t / 0.8) : 1;
     if (figureMat) {   // finer detail and brighter seams light up with each stage
-      figureMat.uniforms.uPanel.value = [0.25, 0.35, 0.45, 0.55][tier - 1] || 0.35;
+      figureMat.uniforms.uPanel.value = [0.25, 0.35, 0.45, 0.55, 0.62][tier - 1] || 0.35;
       const circ = boot ? ease((boot.t - 2.3) / 0.8) : 1;   // during startup the circuitry lights after the body forms
-      figureMat.uniforms.uContour.value = ([0.75, 0.9, 1.05, 1.2][tier - 1] || 0.9) * circ;
-      figureMat.uniforms.uDetail.value = ([0.75, 0.85, 1.0, 1.15][tier - 1] || 0.75) * circ;   // rich now, maximum at stage 4 (finer circuits from stage 3)
-      if (auraMat) auraMat.uniforms.uOpacity.value = [0.3, 0.36, 0.42, 0.5][tier - 1] || 0.3;
+      figureMat.uniforms.uContour.value = ([0.75, 0.9, 1.05, 1.2, 1.3][tier - 1] || 0.9) * circ;
+      figureMat.uniforms.uDetail.value = ([0.75, 0.85, 1.0, 1.15, 1.25][tier - 1] || 0.75) * circ;   // rich now, maximum at stage 5 (finer circuits from stage 3)
+      if (auraMat) auraMat.uniforms.uOpacity.value = [0.3, 0.36, 0.42, 0.5, 0.56][tier - 1] || 0.3;
     }
     shed.visible = moving; wisps.visible = moving;
+    if (parts.wire) for (const o of parts.wire.objs) o.visible = tier >= 2 && quality === "high";   // fine wireframe: High only
+    if (auraMesh) auraMesh.visible = quality !== "low";
     for (const a of Object.values(aura)) {
       a.value += (a.target - a.value) * (moving ? 1 - Math.exp(-dt * 2) : 1);
       a.ring.material.uniforms.uFill.value = a.value;
@@ -937,8 +991,9 @@ export function create(wrap, opts = {}) {
       U.uHead.value.setFromMatrix4(new THREE.Matrix4().makeRotationFromEuler(headCur));   // turns the figure's head
       shed.material.uniforms.uRate.value = 0.8 + Math.abs(cur.flow) * 0.4 + flash * 3;
       wisps.material.uniforms.uRate.value = 0.8 + cur.neural * 0.8 + flash * 2;
-      orbitRings.forEach((r) => { r.rotation.z += dt * (0.05 + cur.ring) * r.userData.spin; });
-      for (const s of spinners) s.obj.rotation[s.axis] += dt * s.speed * (0.5 + cur.ring);
+      const animK = K.animation[OPT.animation], orbitK = K.orbit[OPT.orbit];
+      orbitRings.forEach((r) => { r.rotation.z += dt * (0.05 + cur.ring) * r.userData.spin * orbitK; });
+      for (const s of spinners) s.obj.rotation[s.axis] += dt * s.speed * (0.5 + cur.ring) * animK;
       for (const rr of reactorRings) {
         if (rr.orbit) { rr.obj.userData.angle += dt * rr.speed * (0.4 + cur.reactor); const a = rr.obj.userData.angle;
           rr.obj.position.set(Math.cos(a) * rr.orbit, Math.sin(a) * rr.orbit, 0); rr.obj.rotation.z = a; }
@@ -951,13 +1006,13 @@ export function create(wrap, opts = {}) {
     if (post) post.begin(); else renderer.clear();
     renderer.render(scene, camera);
     // the head reflects ~4 units below the floor, where the reflection has faded to nothing: skip it
-    const hidden = [beam, dust, data, sweep, net.g, orbits, reactor, grid, baseGlow, headPivot, thought, shed, wisps, scanRing, rebuild.points, ...soleGlows, ...reactorX.hidden(), ...(shieldMesh ? [shieldMesh] : []), ...(auraMesh ? [auraMesh] : []), ...metals.map((m) => m.mesh),
+    const hidden = [beam, dust, data, sweep, net.g, orbits, reactor, grid, baseGlow, headPivot, thought, shed, wisps, scanRing, rebuild.points, ...envX.hidden(), ...soleGlows, ...reactorX.hidden(), ...(shieldMesh ? [shieldMesh] : []), ...(auraMesh ? [auraMesh] : []), ...metals.map((m) => m.mesh),
       ...Object.values(aura).map((a) => a.ring), ...shafts, ...pulses.map((p) => p.m), ...eyeGlows, ...parts.pad.objs];
     const was = hidden.map((o) => o.visible);
     hidden.forEach((o) => { o.visible = false; });
     for (const m of lineMats) m.visible = false;
     figure.scale.y = -SCALE; U.uReflect.value = 1;
-    renderer.render(scene, camera);
+    if (quality !== "low") renderer.render(scene, camera);   // the floor reflection: skipped on Low
     figure.scale.y = SCALE; U.uReflect.value = 0;
     hidden.forEach((o, i) => { o.visible = was[i]; });
     for (const m of lineMats) m.visible = true;
@@ -998,7 +1053,9 @@ export function create(wrap, opts = {}) {
   resize();
 
   const api = {
-    setState, setTier, setMode, setIntensity, setSystems, setAura, setThought, pulse, pick, onLost: null,
+    setState, setTier, setMode, setIntensity, setSystems, setAura, setThought, pulse, pick, setOptions, setPanels, onLost: null,
+    get quality() { return quality; }, get options() { return { ...OPT }; },
+    get modules() { return Object.entries(parts).map(([name, p]) => ({ name, tier: p.tier, on: tier >= p.tier })); },
     skipBoot() { if (boot) { boot.t = BOOT_END; kick(); } }, get booting() { return !!boot; },
     get animating() { return raf !== 0; },
     get eyes() { return { hot: FACE.uEyeHot.value, level: EYE.value, open: FACE.uEyeOpen.value, look: FACE.uEyeLook.value, scan: FACE.uEyeScan.value, speech: FACE.uSpeech.value }; }, get lost() { return lost; }, get state() { return state; },

@@ -95,11 +95,11 @@ LOCAL = [{"location": "local", "available": ["m"]}]
 def test_tiers_follow_verified_milestones_only(make_kernel):
     k = make_kernel()
     r = evolution.evaluate(k, facts())
-    assert (r["tier"], r["name"], r["verified"]) == (1, "Initial Projection", 1)  # only "Core online"
+    assert (r["tier"], r["name"], r["verified"]) == (1, "Foundational Projection", 1)  # only "Core online"
     assert r["next"] == {"tier": 2, "name": "Advanced Projection", "needs": 4}
     r = evolution.evaluate(k, facts(providers=LOCAL, confirmed_memories=1, completed_tasks=1, touch_id=True))
     assert (r["tier"], r["name"], r["verified"]) == (2, "Advanced Projection", 5)
-    assert r["version"] == evolution.DEFINITION_VERSION and r["stages"][3] == "Evolved Intelligence"
+    assert r["version"] == evolution.DEFINITION_VERSION and r["stages"][3] == "Evolved Projection" and r["stages"][4] == "Signature Projection"
     assert {m["id"] for m in r["milestones"] if m["verified"]} == {"core_online", "local_mind", "memory", "first_mission", "touch_id"}
 
 
@@ -165,7 +165,7 @@ def test_activity_alone_earns_nothing(make_kernel):
                                 touch_id=False)["confirmed_memories"] == 1
 
 
-@pytest.mark.parametrize("count,tier", [(0, 1), (4, 1), (5, 2), (9, 2), (10, 3), (14, 3), (15, 4), (19, 4)])
+@pytest.mark.parametrize("count,tier", [(0, 1), (4, 1), (5, 2), (9, 2), (10, 3), (14, 3), (15, 4), (18, 4), (19, 5)])
 def test_tier_thresholds(count, tier):
     assert evolution.tier_for(count)[0] == tier
 

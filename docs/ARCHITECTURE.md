@@ -265,8 +265,15 @@ prefer="quality")` and up to 2000 tokens, falling back to the best available mod
   - Success shows for at most 4 s; live-work states fall back to idle if the dashboard stops reporting for 10 s;
     previews are flagged, last at most 10 s and give way to a real critical state.
   - Queued missions show as idle with a "Queued — nothing is running yet" card, never as active work.
-- `static/avatar3d.js` (engine and scene) imports `avatar3d-shaders.js` (GLSL only) and `avatar3d-geometry.js`
-  (the figure's distance field, meshing and mesh helpers). Every module is on the server's static allow-list.
+- `static/avatar3d.js` (engine, scene, state looks, gestures, quality) imports: `avatar3d-shaders.js` (GLSL only),
+  `avatar3d-geometry.js` (body and hand distance fields, meshing, the faceless helmet), `avatar3d-reactor.js`
+  (reactor layers), `avatar3d-neural.js` (the neural network), `avatar3d-particles.js` (materialise /
+  dematerialise particles) and `avatar3d-environment.js` (platform, orbitals, chamber, ground light, panels).
+  Every module is on the server's static allow-list; no dependency besides the vendored Three.js r160.
+- Settings: the focus view's projection controls are stored with the display settings (`jarvis-display`, per
+  device) and reach the renderer through `JarvisAvatar.setOptions`; the floating panels get the dashboard's own
+  systems lines through `JarvisAvatar.setPanels` (shown only in the focus view).
+- Evolution has five stages (`evolution.TIERS`, definitions v4); stage 5 needs all 19 milestones.
 
 ## Avatar 2.0 — living intelligence projection
 

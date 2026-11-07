@@ -1,5 +1,24 @@
 # Changelog
 
+## Unreleased — Avatar 3D, step 5: chamber, controls, stage 5, quality presets
+
+- **Projection chamber** (`avatar3d-environment.js`): platform markers and a turning segmented ring; orbital systems
+  around the knees (stage 1), diagonally around the torso (stage 2), around the chest (stage 3) and a counter-rotating
+  pair above the head (stage 5), their speed following the real activity level; a depth grid and projection boundary
+  (stage 3); ground light that follows the reactor, a soft contact shadow and a faint haze.
+- **Floating panels** in the focus view only, with the same real status lines as the systems bar (intelligence,
+  missions, health: counts and states, never message text or memories).
+- **Projection controls** in the focus view (saved per device with the display settings): intensity, quality
+  (Auto / High / Balanced / Low), particles, animation, reactor, orbit speed, orbitals on/off, environment holograms
+  on/off, motion; a list of visual modules and the stage each needs; **state preview** marked "PREVIEW — not live",
+  at most 10 s, ended by Esc or by any real alert.
+- **Quality presets**: High (sharper, wireframe, reflection), Balanced, Low (no reflection pass, no aura shell, fewer
+  particles); Auto starts Balanced and steps down when frames are slow, up when there is room. Every shader is
+  compiled at startup so a change never stalls an animation. Panels and settings redraw only when they change.
+- **Evolution: five stages** — Foundational, Advanced, Intelligence, Evolved, and **Signature Projection** (every one
+  of the 19 milestones verified, including 30 days reliable and 100 verified missions). Definitions v4 (audited);
+  the displayed stage can be capped at any earned stage on this device.
+
 ## Unreleased — Avatar 3D, step 4: materialise and dematerialise
 
 - **Reconstruction particles** (`avatar3d-particles.js`): each particle belongs to a point on the body. During the

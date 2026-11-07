@@ -25,7 +25,7 @@ from typing import Any, Callable
 META_KEY = "evolution.first_verified"   # per milestone: first / last verification (name kept for existing data)
 VERSION_KEY = "evolution.version"
 STAGE_KEY = "evolution.stage"
-DEFINITION_VERSION = 3
+DEFINITION_VERSION = 4   # 4: five stages (Signature: every milestone verified, including 30 days reliable)
 CHECK_KEY = "evolution.check."         # + doctor / mac_check / drill: the last real run's outcome on this install
 CHECK_FRESH_DAYS = 30
 BENCH_PASS = 0.8                       # share of scored benchmark tasks passing (e.g. 18 of 22)
@@ -33,10 +33,11 @@ RELIABLE_DAYS = 30
 GRACE_DAYS = 7
 LAST_REFRESH = timedelta(hours=1)        # how often "last verified" is rewritten while a milestone keeps verifying
 TIERS = (  # (minimum counting milestones, stage number, name)
-    (0, 1, "Initial Projection"),
+    (0, 1, "Foundational Projection"),
     (5, 2, "Advanced Projection"),
     (10, 3, "Intelligence Projection"),
-    (15, 4, "Evolved Intelligence"),
+    (15, 4, "Evolved Projection"),
+    (19, 5, "Signature Projection"),   # every milestone, including 30 days reliable and 100 verified missions
 )
 STAGE_NAMES = [t[2] for t in TIERS]
 

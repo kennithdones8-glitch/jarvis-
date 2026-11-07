@@ -231,3 +231,13 @@ body.booting .rail-right .panel { animation-delay: 3.45s; }
 @keyframes surge { from { transform: scale(.3); opacity: 1; } 70% { opacity: .35; } to { transform: scale(55); opacity: 0; } }
 .pp-aura { margin: 10px 0 0; font-size: 12.5px; }
 @media (prefers-reduced-motion: reduce) { .surge { display: none; } body.booting .hud .panel, body.booting .hud > .center > * { animation: none; } }
+
+/* projection controls in the focus view, and the preview marker (a preview is never real activity) */
+.pp-ctl { margin-top: 12px; } .pp-ctl summary { cursor: pointer; min-height: 44px; display: flex; align-items: center; color: var(--gold-hi, #f6e6c2); }
+.pp-ctl .row { flex-wrap: wrap; gap: 6px; }
+.pp-mods { list-style: none; padding: 0; margin: 6px 0; font-size: 13px; columns: 2; }
+.pp-mods li.ok { color: var(--text, #fbf6ec); } .pp-mods li.no { color: var(--muted, #b9aa91); }
+.core-wrap.has-avatar[data-preview="1"]::after { content: "PREVIEW — not live"; display: block; position: absolute; inset: auto; left: 50%; top: 4%;
+  transform: translateX(-50%); border-radius: 0; box-shadow: none; animation: none; white-space: nowrap;
+  font: 600 12px var(--display, system-ui); letter-spacing: .24em; color: #1a1206; background: rgba(246, 230, 194, .92); padding: 4px 10px;
+  pointer-events: none; z-index: 5; }

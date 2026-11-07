@@ -248,6 +248,7 @@ function renderHead(d) {
   renderAvTask(d);
   if (window.JarvisAvatar && d && d.telemetry) JarvisAvatar.setAura(auraValues(d));
   renderWall(d);
+  if (window.JarvisAvatar && d) JarvisAvatar.setPanels(panelItems(d));
   const wrap = $(".core-wrap");
   if (d && d.evolution && wrap) wrap.title = `Core evolution: ${d.evolution.name} · ${d.evolution.verified} of ${d.evolution.total} milestones verified (details in Command center → Diagnostics)`;
   $(".headline").className = `headline ${s.cls}`;
@@ -1416,14 +1417,28 @@ const DISPLAY_KEY = "jarvis-display";
 const DISPLAY = { text: [["normal", "Normal"], ["large", "Large"], ["larger", "Larger"]],
                   density: [["comfortable", "Comfortable"], ["compact", "Compact"]],
                   fx: [["full", "Normal"], ["reduced", "Low performance"], ["off", "Reduced motion"]],
-                  projection: [["subtle", "Subtle"], ["standard", "Standard"], ["vivid", "Vivid"]] };
+                  projection: [["subtle", "Subtle"], ["standard", "Standard"], ["vivid", "Vivid"]],
+                  // projection controls (focus view): each changes the 3D projection only, on this device
+                  quality: [["auto", "Auto"], ["high", "High"], ["balanced", "Balanced"], ["low", "Low"]],
+                  particles: [["low", "Low"], ["normal", "Normal"], ["high", "High"]],
+                  animation: [["calm", "Calm"], ["normal", "Normal"], ["lively", "Lively"]],
+                  reactor: [["soft", "Soft"], ["normal", "Normal"], ["bright", "Bright"]],
+                  orbit: [["slow", "Slow"], ["normal", "Normal"], ["fast", "Fast"]],
+                  env: [["on", "On"], ["off", "Off"]],
+                  orbitals: [["on", "On"], ["off", "Off"]] };
+const DISPLAY_DEFAULT = { text: "normal", density: "comfortable", fx: "full", projection: "standard", quality: "auto", particles: "normal",
+                          animation: "normal", reactor: "normal", orbit: "normal", env: "on", orbitals: "on" };
 function loadDisplay() {
   let d = {};
   try { d = JSON.parse(localStorage.getItem(DISPLAY_KEY) || "{}") || {}; } catch (e) { d = {}; }
-  return { text: DISPLAY.text.some(([k]) => k === d.text) ? d.text : "normal",
-           density: DISPLAY.density.some(([k]) => k === d.density) ? d.density : "comfortable",
-           fx: DISPLAY.fx.some(([k]) => k === d.fx) ? d.fx : "full",
-           projection: DISPLAY.projection.some(([k]) => k === d.projection) ? d.projection : "standard" };
+  const out = {};
+  for (const [key, def] of Object.entries(DISPLAY_DEFAULT)) out[key] = DISPLAY[key].some(([k]) => k === d[key]) ? d[key] : def;
+  return out;
+}
+function saveDisplay(d) { try { localStorage.setItem(DISPLAY_KEY, JSON.stringify(d)); } catch (e) { /* this visit only */ } }
+function avatarOptions(d) {
+  return { quality: d.quality, particles: d.particles, animation: d.animation, reactor: d.reactor, orbit: d.orbit,
+           env: d.env === "on", orbitals: d.orbitals === "on", panels: document.body.classList.contains("projection") };
 }
 function applyDisplay(d) {
   const root = document.documentElement;
@@ -1431,7 +1446,7 @@ function applyDisplay(d) {
   root.dataset.density = d.density;
   root.dataset.fx = d.fx;
   root.dataset.projection = d.projection;
-  if (window.JarvisAvatar) JarvisAvatar.refresh();
+  if (window.JarvisAvatar) { JarvisAvatar.setOptions(avatarOptions(d)); JarvisAvatar.refresh(); }
 }
 function showDisplaySettings() {
   const cur = loadDisplay();
@@ -2005,6 +2020,44 @@ function auraValues(d) {
 // The background data wall shows real signals only: the orange stream is CPU load, the teal stream memory use, the
 // faint upper stream lights while a model is actually answering, and the left network brightens with active missions.
 // Levels are coarse (0–4) data attributes, styled in app.css; "na" (unavailable) leaves that stream at its resting glow.
+// The floating panels in the focus view: the same real status lines as the systems bar (counts and states only;
+// never message text, memories or anything private).
+function panelItems(d) {
+  const by = Object.fromEntries(systems(d).map((x) => [x.id, x]));
+  return ["intelligence", "missions", "health"].filter((id) => by[id]).map((id) => ({ title: by[id].label, value: by[id].value, status: by[id].status }));
+}
+
+// Projection controls (focus view): every control changes the projection on this device and nothing else.
+const MODULE_LABEL = { figure: "Light body", hands: "Articulated hands", armour: "Alloy armour", joints: "Joint hubs", inner: "Inner skeleton",
+  neural: "Neural backbone", neural3: "Neural branches", wire: "Wireframe (High quality)", reactor: "Reactor rings", reactorcore: "Reactor cage",
+  reactorcore2: "Plasma core", reactorgyro: "Gyroscope rings", reactorpaths: "Energy pathways", reactorsupports: "Reactor supports",
+  reactorswirl: "Reactor particles", reactor2: "Outer reactor ring", platform2: "Platform markers", orbit_low: "Lower orbital",
+  orbit_diag: "Diagonal orbital", orbit_upper: "Upper orbital", orbit_sig: "Signature orbitals", chamber: "Chamber grid and boundary",
+  ground: "Ground light and shadow", panels: "Floating panels", halo: "Halo", crown: "Crown", meridians: "Energy meridians", shield: "Alert shield" };
+const PREVIEW_STATES = ["idle", "listening", "reasoning", "researching", "planning", "executing", "speaking", "completed", "warning", "error", "recovery"];
+function renderProjControls() {
+  const el = $("#projctlbody");
+  if (!el || !window.JarvisAvatar) return;
+  const cur = loadDisplay();
+  const choose = (key, label) => [h("h3", { class: "sys-part" }, label), h("div", { class: "row", role: "group", "aria-label": label },
+    DISPLAY[key].map(([value, text]) => h("button", { class: `chip${cur[key] === value ? " on" : ""}`, type: "button", "aria-pressed": String(cur[key] === value),
+      onclick: () => { cur[key] = value; saveDisplay(cur); applyDisplay(cur); renderProjControls(); } }, text)))];
+  const mods = JarvisAvatar.modules || [];
+  el.replaceChildren(
+    ...choose("projection", "Intensity"), ...choose("quality", `Quality${JarvisAvatar.quality ? ` (now ${JarvisAvatar.quality})` : ""}`),
+    ...choose("particles", "Particles"), ...choose("animation", "Animation"), ...choose("reactor", "Reactor"),
+    ...choose("orbit", "Orbit speed"), ...choose("orbitals", "Orbitals"), ...choose("env", "Environment holograms"),
+    ...choose("fx", "Motion"),
+    h("h3", { class: "sys-part" }, "Preview a state"),
+    h("p", { class: "hl-sub" }, "Shows a look for up to 10 seconds, marked PREVIEW. It is not real activity, and a real alert ends it at once."),
+    h("div", { class: "row", role: "group", "aria-label": "Preview a state" }, PREVIEW_STATES.map((st) =>
+      h("button", { class: "chip", type: "button", onclick: () => JarvisAvatar.previewState(st) }, st))),
+    h("h3", { class: "sys-part" }, "Visual modules"),
+    h("ul", { class: "pp-mods" }, mods.filter((m) => MODULE_LABEL[m.name]).map((m) =>
+      h("li", { class: m.on ? "ok" : "no" }, `${m.on ? "✓" : "·"} ${MODULE_LABEL[m.name]}${m.on ? "" : ` (stage ${m.tier})`}`))),
+    h("p", { class: "hl-sub" }, "Modules follow the displayed evolution stage. Settings here change only the look on this device; they never change what JARVIS can do."));
+}
+
 function renderWall(d) {
   const w = $(".env-ribbons");
   if (!w) return;
@@ -2029,6 +2082,8 @@ function openProjection() {
   if (document.body.dataset.view !== "home" && document.body.dataset.view !== "workspace") return;
   document.body.classList.add("projection");
   $("#projpanel").hidden = false; $("#projback").hidden = false;
+  if (window.JarvisAvatar) JarvisAvatar.setOptions({ panels: true });   // the floating panels appear in the focus view only
+  renderProjControls();
   renderProjection(ui.data);
   $("#projexit").focus();
 }
@@ -2036,6 +2091,7 @@ function closeProjection() {
   if (!document.body.classList.contains("projection")) return;
   document.body.classList.remove("projection");
   $("#projpanel").hidden = true; $("#projback").hidden = true;
+  if (window.JarvisAvatar) { JarvisAvatar.setOptions({ panels: false }); JarvisAvatar.endPreview(); }
 }
 
 function renderProjection(d) {
@@ -2058,12 +2114,12 @@ function renderProjection(d) {
 
 // Evolution: the stage comes from the server (verified milestones). This device may choose to show a lower stage.
 const EVO_CAP_KEY = "jarvis-evo-cap";
-function evoCap() { try { const v = Number(localStorage.getItem(EVO_CAP_KEY)); return v >= 1 && v <= 4 ? v : 0; } catch (e) { return 0; } }
+function evoCap() { try { const v = Number(localStorage.getItem(EVO_CAP_KEY)); return v >= 1 && v <= 5 ? v : 0; } catch (e) { return 0; } }
 function displayStage(evo) { const cap = evoCap(); return cap ? Math.min(cap, evo.tier) : evo.tier; }
 
 function showEvolution() {
   const evo = ui.data && ui.data.evolution;
-  const names = (evo && evo.stages) || ["Initial Projection", "Advanced Projection", "Intelligence Projection", "Evolved Intelligence"];
+  const names = (evo && evo.stages) || ["Foundational Projection", "Advanced Projection", "Intelligence Projection", "Evolved Projection", "Signature Projection"];
   const body = !evo ? [h("p", { class: "hl-sub" }, "The first check runs within a minute of starting JARVIS.")] : [
     h("p", { class: "hl-sub" }, `Earned: stage ${evo.tier} — ${names[evo.tier - 1]} (${evo.verified} of ${evo.total} milestones count). `
       + (evo.next ? `${names[evo.next.tier - 1]} needs ${evo.next.needs} more.` : "Highest stage.")
@@ -2075,7 +2131,7 @@ function showEvolution() {
         : m.first_verified ? `lost (last verified ${(m.last_verified || m.first_verified).slice(0, 10)})` : `not yet: ${m.evidence}`)))),
     h("h3", { class: "sys-part" }, "Show on this device"),
     h("div", { class: "row", role: "group", "aria-label": "Displayed stage" },
-      [[0, "Earned stage"], ...[1, 2, 3, 4].filter((n) => n <= evo.tier).map((n) => [n, `Stage ${n}`])].map(([v, label]) =>
+      [[0, "Earned stage"], ...[1, 2, 3, 4, 5].filter((n) => n <= evo.tier).map((n) => [n, `Stage ${n}`])].map(([v, label]) =>
         h("button", { class: `chip${evoCap() === v || (!evoCap() && v === 0) ? " on" : ""}`, type: "button", "aria-pressed": String(evoCap() === v),
           onclick: () => { try { if (v) localStorage.setItem(EVO_CAP_KEY, String(v)); else localStorage.removeItem(EVO_CAP_KEY); } catch (e) { /* this visit only */ }
             dlg.close(); renderHead(ui.data); showEvolution(); } }, label))),

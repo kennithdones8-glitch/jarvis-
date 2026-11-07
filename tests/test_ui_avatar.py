@@ -183,7 +183,7 @@ import hashlib  # noqa: E402
 
 # the 3D renderer is split into modules; checks read them as one source
 AV3 = "\n".join((STATIC / f).read_text() for f in ("avatar3d-shaders.js", "avatar3d-geometry.js", "avatar3d-reactor.js",
-                                                    "avatar3d-neural.js", "avatar3d-particles.js", "avatar3d.js"))
+                                                    "avatar3d-neural.js", "avatar3d-particles.js", "avatar3d-environment.js", "avatar3d.js"))
 THREE_SHA256 = "3e690ac7d180b0aadf0891bea39eec643e29e2d3e75c99b18689518665f69ba6"  # three@0.160.0 build/three.module.min.js
 
 
@@ -195,7 +195,7 @@ def test_three_is_the_exact_pinned_build_and_served_from_this_mac(dash):
     status, headers, body = call(d, "/static/vendor/three.module.min.js")
     assert status == 200 and headers["Content-Type"].startswith("text/javascript") and hashlib.sha256(body).hexdigest() == THREE_SHA256
     assert call(d, "/static/vendor/three.LICENSE.txt")[0] == 404  # only the one file is served
-    for f in ("avatar3d.js", "avatar3d-shaders.js", "avatar3d-geometry.js", "avatar3d-reactor.js", "avatar3d-neural.js", "avatar3d-particles.js", "avatar-state.js"):
+    for f in ("avatar3d.js", "avatar3d-shaders.js", "avatar3d-geometry.js", "avatar3d-reactor.js", "avatar3d-neural.js", "avatar3d-particles.js", "avatar3d-environment.js", "avatar-state.js"):
         assert call(d, f"/static/{f}")[0] == 200
     csp = call(d, "/")[1]["Content-Security-Policy"]
     assert "script-src 'self'" in csp and "connect-src 'self'" in csp and "unsafe" not in csp  # unchanged
@@ -293,7 +293,7 @@ def test_projection_intensity_and_displayed_stage_are_per_device_settings():
     assert 'projection: [["subtle", "Subtle"], ["standard", "Standard"], ["vivid", "Vivid"]]' in JS
     assert "root.dataset.projection = d.projection;" in JS
     assert 'const INTENSITY = { subtle: 0.75, standard: 1, vivid: 1.3 };' in AV
-    assert 'localStorage.setItem(EVO_CAP_KEY, String(v))' in JS and "[1, 2, 3, 4].filter((n) => n <= evo.tier)" in JS
+    assert 'localStorage.setItem(EVO_CAP_KEY, String(v))' in JS and "[1, 2, 3, 4, 5].filter((n) => n <= evo.tier)" in JS
 
 
 def test_idle_liveliness_is_limited_to_rest_and_never_fakes_activity():
@@ -313,7 +313,8 @@ def test_bloom_and_surface_detail_are_local_and_fail_safe():
     assert "if (post) post.begin(); else renderer.clear();" in AV3 and "if (post) post.end(t, intensity);" in AV3
     imports = set(re.findall(r'from "([^"]+)";', AV3))   # only Three.js (served locally) and our own modules
     assert imports <= {"/static/vendor/three.module.min.js", "/static/avatar3d-shaders.js", "/static/avatar3d-geometry.js",
-                       "/static/avatar3d-reactor.js", "/static/avatar3d-neural.js", "/static/avatar3d-particles.js"}
+                       "/static/avatar3d-reactor.js", "/static/avatar3d-neural.js", "/static/avatar3d-particles.js",
+                       "/static/avatar3d-environment.js"}
     assert "import(" not in AV3
     # surfaces turned away are dimmer (depth), and armour gets panel seams; glowing parts stay smooth
     assert "a *= gl_FrontFacing ? 1.0 : 0.38;" in AV3
@@ -363,7 +364,7 @@ def test_figure_is_gold_light_with_sparkles_kept_out_of_the_reflection():
 def test_figure_has_glowing_suit_contours_that_grow_with_the_stage():
     assert "float anat(vec3 p)" in AV3 and "float c = anat(vObj) * uContour * (gl_FrontFacing ? 1.0 : 0.15);" in AV3
     assert "contour: 1, detail: 0.75, head: true" in AV3                      # only the figure carries the seams
-    assert "figureMat.uniforms.uContour.value = ([0.75, 0.9, 1.05, 1.2][tier - 1] || 0.9) * circ;" in AV3
+    assert "figureMat.uniforms.uContour.value = ([0.75, 0.9, 1.05, 1.2, 1.3][tier - 1] || 0.9) * circ;" in AV3
     assert "smoothstep(0.12, 0.02, p.z));           // crest over the head (not the face)" in AV3
 
 
@@ -393,7 +394,7 @@ def test_focus_view_screen_wall_is_decoration_that_respects_motion_settings():
 
 
 def test_character_detail_grows_with_the_stage_and_keeps_the_helmet_clean():
-    assert "figureMat.uniforms.uDetail.value = ([0.75, 0.85, 1.0, 1.15][tier - 1] || 0.75) * circ;" in AV3   # rich now, maximum at stage 4
+    assert "figureMat.uniforms.uDetail.value = ([0.75, 0.85, 1.0, 1.15, 1.25][tier - 1] || 0.75) * circ;" in AV3   # rich now, maximum at stage 4
     assert "uDetail > 0.95 ? circuit(" in AV3                                              # finer circuits only from stage 3
     assert "float body = 1.0 - smoothstep(4.4, 4.5, p.y);   // the head stays smooth" in AV3
     assert 'innerMat = holo({ opacity: 0.35, rim: 0.8, flow: true, core: 0.55, head: true });' in AV3   # bends with the arms
@@ -472,3 +473,27 @@ def test_materialise_and_dematerialise_follow_real_events_only():
     assert "onLifecycle: (phase) => { if (SM) show(SM.setLifecycle(phase)); }" in AV
     order = AV3.split("// order: body forms, circuitry lights, sensors wake, the reactor ignites, the orbitals synchronise")[1][:300]
     assert "EYE.value *= ease((boot.t - 2.0) / 0.5);" in order and "orbits.scale.setScalar(0.4 + 0.6 * ease((boot.t - 3.4) / 0.9));" in order
+
+
+def test_environment_orbitals_and_panels_show_real_data_only():
+    for p in ('part("platform2", 1,', 'orbital("orbit_low", 1,', 'orbital("orbit_diag", 2,', 'orbital("orbit_upper", 3,',
+              'orbital("orbit_sig", 5,', 'part("chamber", 3,', 'part("ground", 1,', 'part("panels", 1,'):
+        assert p in AV3, p
+    assert "o.obj.rotation.y += dt * o.speed * (0.4 + lv.ring) * lv.orbitK;" in AV3        # speed follows the real activity level
+    items = fn(JS, "panelItems")
+    assert '["intelligence", "missions", "health"]' in items and "title: by[id].label, value: by[id].value, status: by[id].status" in items
+    assert "JarvisAvatar.setOptions({ panels: true });" in fn(JS, "openProjection")       # panels in the focus view only
+    assert "JarvisAvatar.endPreview();" in fn(JS, "closeProjection")
+
+
+def test_projection_controls_are_per_device_and_every_one_has_an_effect():
+    defaults = JS.split("const DISPLAY_DEFAULT = ")[1].split(";")[0]
+    for key in ("quality", "particles", "animation", "reactor", "orbit", "env", "orbitals"):
+        assert key in defaults, key
+    for k in ("K.particles[OPT.particles]", "K.animation[OPT.animation]", "K.reactor[OPT.reactor]", "K.orbit[OPT.orbit]",
+              "envX.setVisible(OPT.env, OPT.orbitals); orbits.visible = OPT.orbitals;"):
+        assert k in AV3, k
+    assert 'if (quality !== "low") renderer.render(scene, camera);   // the floor reflection: skipped on Low' in AV3
+    assert 'o.visible = tier >= 2 && quality === "high";' in AV3
+    assert "if (avg > 55 && i > 0)" in AV3                                                  # Auto steps down when frames are slow
+    assert 'content: "PREVIEW — not live"' in (STATIC / "avatar.css").read_text()            # a preview is always marked
