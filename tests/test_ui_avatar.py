@@ -182,7 +182,8 @@ def test_phone_layout_rules():
 import hashlib  # noqa: E402
 
 # the 3D renderer is split into modules; checks read them as one source
-AV3 = "\n".join((STATIC / f).read_text() for f in ("avatar3d-shaders.js", "avatar3d-geometry.js", "avatar3d.js"))
+AV3 = "\n".join((STATIC / f).read_text() for f in ("avatar3d-shaders.js", "avatar3d-geometry.js", "avatar3d-reactor.js",
+                                                    "avatar3d-neural.js", "avatar3d.js"))
 THREE_SHA256 = "3e690ac7d180b0aadf0891bea39eec643e29e2d3e75c99b18689518665f69ba6"  # three@0.160.0 build/three.module.min.js
 
 
@@ -194,7 +195,7 @@ def test_three_is_the_exact_pinned_build_and_served_from_this_mac(dash):
     status, headers, body = call(d, "/static/vendor/three.module.min.js")
     assert status == 200 and headers["Content-Type"].startswith("text/javascript") and hashlib.sha256(body).hexdigest() == THREE_SHA256
     assert call(d, "/static/vendor/three.LICENSE.txt")[0] == 404  # only the one file is served
-    for f in ("avatar3d.js", "avatar3d-shaders.js", "avatar3d-geometry.js", "avatar-state.js"):
+    for f in ("avatar3d.js", "avatar3d-shaders.js", "avatar3d-geometry.js", "avatar3d-reactor.js", "avatar3d-neural.js", "avatar-state.js"):
         assert call(d, f"/static/{f}")[0] == 200
     csp = call(d, "/")[1]["Content-Security-Policy"]
     assert "script-src 'self'" in csp and "connect-src 'self'" in csp and "unsafe" not in csp  # unchanged
@@ -311,7 +312,8 @@ def test_bloom_and_surface_detail_are_local_and_fail_safe():
     assert "} catch (e) { return null; }   // no post-processing: draw directly" in AV3
     assert "if (post) post.begin(); else renderer.clear();" in AV3 and "if (post) post.end(t, intensity);" in AV3
     imports = set(re.findall(r'from "([^"]+)";', AV3))   # only Three.js (served locally) and our own modules
-    assert imports <= {"/static/vendor/three.module.min.js", "/static/avatar3d-shaders.js", "/static/avatar3d-geometry.js"}
+    assert imports <= {"/static/vendor/three.module.min.js", "/static/avatar3d-shaders.js", "/static/avatar3d-geometry.js",
+                       "/static/avatar3d-reactor.js", "/static/avatar3d-neural.js"}
     assert "import(" not in AV3
     # surfaces turned away are dimmer (depth), and armour gets panel seams; glowing parts stay smooth
     assert "a *= gl_FrontFacing ? 1.0 : 0.38;" in AV3
@@ -442,3 +444,18 @@ def test_joints_and_wireframe_are_baked_into_rest_coordinates():
     assert 'part("joints", 1,' in AV3 and "// baked into rest coordinates (the joints bend them)" in AV3
     assert 'part("wire", 2,' in AV3 and "wire: true" in AV3                                  # stage 2: fine holographic wireframe
     assert "vec3 p0 = pos, n0 = nrm;" in AV3                                                 # joints carry local changes (venting, fingers)
+
+
+def test_reactor_layers_follow_the_real_reactor_level_and_confirm_only_real_completions():
+    for layer in ('part("reactorcore2", 1,', 'part("reactorgyro", 2,', 'part("reactorpaths", 1,', 'part("reactorsupports", 1,', 'part("reactorswirl", 1,'):
+        assert layer in AV3, layer
+    assert "uLvl: REACTOR" in AV3                                                    # the plasma core and swirl follow the real level
+    assert 'if (s === "completed") { flash = 1; firePulse(1.4); reactorX.confirm(); }' in AV3   # golden pulse: a real completion only
+    assert AV3.count("reactorX.confirm()") == 1
+    assert "never a blown-out disc" in AV3
+
+
+def test_neural_network_reflects_real_thinking_and_execution_and_bends_with_the_body():
+    assert 'part("neural", 1, build(false));' in AV3 and 'part("neural3", 3, build(true));' in AV3   # branches from stage 3
+    assert 'neuralX.update(cur.neural, ["executing", "coding", "verifying"].includes(state), REACTOR.value);' in AV3
+    assert AV3.count("flow: true, core: 0.6, head: true }") >= 2                    # drawn with the figure's vertex shader (bends)

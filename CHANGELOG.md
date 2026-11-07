@@ -1,5 +1,17 @@
 # Changelog
 
+## Unreleased — Avatar 3D, step 3: the reactor and the neural network
+
+- **Reactor** (`avatar3d-reactor.js`), added in depth around the existing rings, rotor, hex cage and arcs: a plasma
+  core sphere, an inner ring of twelve segments, two tilted gyroscope rings (stage 2), eight radial energy pathways
+  with pulses travelling outward, six mechanical supports locking it into the chest plates (dark alloy with lit
+  edges), a swirl of energy particles (not on phones), and a golden confirmation ring that expands only when a task
+  really completes. Every level is the real reactor level of the current state.
+- **Neural network** (`avatar3d-neural.js`): nodes at the head, neck, sternum, shoulders, elbows, wrists, hips, knees
+  and ankles, linked from the reactor to the head, hands and feet; stage 3 adds branches and more nodes. Pulses run
+  along the links with the shared flow; brightness follows the real thinking level, and the reactor-to-limb links
+  light only while a mission is really executing, coding or verifying. It bends with the arms and turns with the head.
+
 ## Unreleased — Avatar 3D, step 2: helmet, hands, layered armour, gold identity
 
 - **Gold identity restored** (owner's brief): warm gold, gold-white and amber for every state; red only for a genuine

@@ -16,6 +16,8 @@ import * as THREE from "/static/vendor/three.module.min.js";
 import { VERT, FRAG, PLATE_VERT, PLATE_FRAG, SHIELD_FRAG, QUAD_VERT, BRIGHT_FRAG, BLUR_FRAG, COMPOSITE_FRAG, BEAM_VERT, BEAM_FRAG, DUST_VERT, DOT_FRAG, NET_VERT, NET_FRAG, NODE_VERT, DATA_VERT, DASH_FRAG } from "/static/avatar3d-shaders.js";
 import { HAND_VERT, HAND_PLATE_VERT } from "/static/avatar3d-shaders.js";
 import { sdHuman, meshFigure, meshHands, mergeGeos, rng, glowTexture } from "/static/avatar3d-geometry.js";
+import { buildReactor } from "/static/avatar3d-reactor.js";
+import { buildNeural } from "/static/avatar3d-neural.js";
 export { sdHuman, meshFigure };
 
 const CHAMPAGNE = new THREE.Color("#f3e3bd"), WHITE = new THREE.Color("#fff8ec"), AMBER = new THREE.Color("#f2a33a");
@@ -332,6 +334,8 @@ export function create(wrap, opts = {}) {
   const reactorGlow = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTexture(), color: WHITE, transparent: true, opacity: 0.4,
     blending: THREE.AdditiveBlending, depthWrite: false }));
   reactorGlow.scale.set(1.6, 1.6, 1); reactor.add(reactorGlow);
+  const reactorX = buildReactor({ holo, part, U, REACTOR, phone }, reactor);   // core, gyros, pathways, supports, swirl, confirmation
+  const neuralX = buildNeural({ holo, part, mergeGeos }, body);                  // the neural network inside the body
 
   // Alloy armour: key plates cut from the figure's own surface (so they hug the sleek body), lifted slightly off it.
   // m(p) > 0 inside a plate; its value near the border feeds the glowing seam.
@@ -611,7 +615,7 @@ export function create(wrap, opts = {}) {
     if (!LOOKS[s] || s === state) return;
     const prev = state;
     state = s; target = LOOKS[s]; targetTint.set(target.tint);
-    if (s === "completed") { flash = 1; firePulse(1.4); }
+    if (s === "completed") { flash = 1; firePulse(1.4); reactorX.confirm(); }   // the golden confirmation: a real completion only
     if (s === "error" || s === "warning") shieldFlare = 2.5;   // the shield flares on a real alert
     if (s === "recovery" && mode === "full") for (const p of Object.values(parts)) p.reveal.value = -1.5;   // reconstruction
     if (prev === "halted" && mode === "full") for (const p of Object.values(parts)) p.reveal.value = -1.5;
@@ -800,6 +804,8 @@ export function create(wrap, opts = {}) {
     const breathe = moving ? 0.92 + 0.08 * Math.sin(t * 1.3) : 1;
     REACTOR.value = cur.reactor * breathe * (1 + speech * 0.8 + flash);
     if (innerMat) innerMat.uniforms.uOpacity.value = 0.12 + cur.neural * 0.5 + flash * 0.3;   // the inner network brightens while thinking
+    neuralX.update(cur.neural, ["executing", "coding", "verifying"].includes(state), REACTOR.value);
+    const confirming = reactorX.update(dt, moving, target.rpat);
     const seams = [0.7, 1.0, 1.2, 1.35][tier - 1] || 1;
     for (const m of lineMats) { m.color.copy(cur.tint); m.opacity = m.userData.lineBase * seams * Math.min(1.3, intensity); }
     for (const g of eyeGlows) { g.material.opacity = Math.min(1, 0.7 * eyeLevel * intensity); g.material.color.copy(cur.tint).lerp(WHITE, 0.75); }
@@ -906,7 +912,7 @@ export function create(wrap, opts = {}) {
     if (post) post.begin(); else renderer.clear();
     renderer.render(scene, camera);
     // the head reflects ~4 units below the floor, where the reflection has faded to nothing: skip it
-    const hidden = [beam, dust, data, sweep, net.g, orbits, reactor, grid, baseGlow, headPivot, thought, shed, wisps, ...soleGlows, ...(shieldMesh ? [shieldMesh] : []), ...(auraMesh ? [auraMesh] : []), ...metals.map((m) => m.mesh),
+    const hidden = [beam, dust, data, sweep, net.g, orbits, reactor, grid, baseGlow, headPivot, thought, shed, wisps, ...soleGlows, ...reactorX.hidden(), ...(shieldMesh ? [shieldMesh] : []), ...(auraMesh ? [auraMesh] : []), ...metals.map((m) => m.mesh),
       ...Object.values(aura).map((a) => a.ring), ...shafts, ...pulses.map((p) => p.m), ...eyeGlows, ...parts.pad.objs];
     const was = hidden.map((o) => o.visible);
     hidden.forEach((o) => { o.visible = false; });
@@ -918,7 +924,7 @@ export function create(wrap, opts = {}) {
     for (const m of lineMats) m.visible = true;
     if (post) post.end(t, intensity);
     settling -= dt;
-    if (moving || revealing || boot || settling > 0 && mode === "full") raf = requestAnimationFrame(frame);
+    if (moving || revealing || boot || confirming || settling > 0 && mode === "full") raf = requestAnimationFrame(frame);
   }
   function kick() { if (!raf && visible && !document.hidden) raf = requestAnimationFrame(frame); }
 

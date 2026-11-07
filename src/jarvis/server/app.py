@@ -1016,7 +1016,8 @@ class Dashboard:
         if url.path in ("/static/app.js", "/static/app.css", "/static/phone.js", "/static/qrcode.js",
                         "/static/bench.js", "/static/bench.css", "/static/trust.js", "/static/proposals.js",
                         "/static/avatar.js", "/static/avatar.css", "/static/avatar3d.js", "/static/avatar-state.js",
-                        "/static/avatar3d-shaders.js", "/static/avatar3d-geometry.js"):
+                        "/static/avatar3d-shaders.js", "/static/avatar3d-geometry.js",
+                        "/static/avatar3d-reactor.js", "/static/avatar3d-neural.js"):
             ctype = "text/javascript" if url.path.endswith(".js") else "text/css"
             return self._send(h, 200, (STATIC / url.path.rsplit("/", 1)[1]).read_bytes(), f"{ctype}; charset=utf-8")
         if url.path == "/static/vendor/three.module.min.js":  # Three.js r160, served from this Mac (MIT)
