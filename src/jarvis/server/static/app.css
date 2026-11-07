@@ -1268,3 +1268,62 @@ body[data-view="workspace"] .sysbar { display: none; }
 .env-ribbons[data-model="on"] .rb-model path { stroke: rgba(250, 205, 120, .5); stroke-width: 1.5; }
 .env-ribbons[data-model="on"] .rb-model path { stroke-dasharray: 60 140; animation: rb-pulse 2.4s linear infinite; }
 @keyframes rb-pulse { to { stroke-dashoffset: -200; } }
+
+/* ======================================================================================================
+   UI 3 — holographic glass (matches the 3D projection). One layer over the earlier themes: panels become
+   lit glass with a gold hairline edge and depth; headers get a divider; real ratios show as slim meters;
+   the composer, mode controls and navigation follow the same language. Nothing here adds information.
+   ====================================================================================================== */
+:root { --glass3: linear-gradient(162deg, rgba(46, 34, 18, .78), rgba(14, 10, 6, .86) 46%, rgba(22, 15, 8, .82));
+        --edge3: linear-gradient(135deg, rgba(246, 230, 194, .62), rgba(217, 180, 95, .16) 24%, rgba(217, 180, 95, .05) 58%, rgba(246, 230, 194, .38)); }
+.panel { background: repeating-linear-gradient(0deg, rgba(255, 226, 160, .016) 0 1px, transparent 1px 3px) padding-box, var(--glass3) padding-box, var(--edge3) border-box;
+  border: 1px solid transparent;
+  box-shadow: inset 0 1px 0 rgba(255, 240, 210, .09), inset 0 0 48px rgba(242, 184, 75, .045), 0 22px 48px -24px rgba(0, 0, 0, .9), 0 0 32px -12px rgba(242, 184, 75, .12); }
+.panel::before { width: 14px; height: 14px; border-color: var(--gold-hi); opacity: .9; filter: drop-shadow(0 0 4px rgba(246, 230, 194, .6)); }
+.panel::after { height: 1px; background: linear-gradient(90deg, rgba(255, 244, 220, .75), rgba(242, 196, 109, .35) 40%, transparent); }
+.ph { position: relative; padding-bottom: 10px; }
+.ph::after { content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 1px; pointer-events: none;
+  background: linear-gradient(90deg, rgba(217, 180, 95, .5), rgba(217, 180, 95, .12) 55%, transparent); }
+.ph h2 { text-shadow: 0 0 16px rgba(246, 210, 140, .35); }
+/* a light catching the top edge now and then (Normal effects only) */
+.hud .panel { overflow: hidden; }
+.hud .panel > .ph::before { content: ""; position: absolute; top: -16px; left: -30%; width: 30%; height: 1px; pointer-events: none;
+  background: linear-gradient(90deg, transparent, rgba(255, 246, 224, .9), transparent); animation: ui3-glint 9s ease-in-out infinite; opacity: .8; }
+@keyframes ui3-glint { 0%, 70% { transform: translateX(0); } 100% { transform: translateX(480%); } }
+:root[data-fx="reduced"] .hud .panel > .ph::before, :root[data-fx="off"] .hud .panel > .ph::before { animation: none; display: none; }
+@media (prefers-reduced-motion: reduce) { .hud .panel > .ph::before { animation: none; display: none; } }
+
+/* meters: a real ratio, coarse (data-fill 0-10); amber when nearly full */
+.meter { display: block; position: relative; height: 3px; flex-basis: 100%; grid-column: 1 / -1; margin-top: 6px; background: rgba(217, 180, 95, .12); }
+.meter::after { content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: var(--f, 0%);
+  background: linear-gradient(90deg, rgba(217, 180, 95, .55), var(--gold-hi)); box-shadow: 0 0 8px rgba(246, 210, 140, .55); }
+.meter[data-fill="0"] { --f: 0%; } .meter[data-fill="1"] { --f: 10%; } .meter[data-fill="2"] { --f: 20%; } .meter[data-fill="3"] { --f: 30%; }
+.meter[data-fill="4"] { --f: 40%; } .meter[data-fill="5"] { --f: 50%; } .meter[data-fill="6"] { --f: 60%; } .meter[data-fill="7"] { --f: 70%; }
+.meter[data-fill="8"] { --f: 80%; } .meter[data-fill="9"] { --f: 90%; } .meter[data-fill="10"] { --f: 100%; }
+.meter[data-fill="9"]::after, .meter[data-fill="10"]::after { background: linear-gradient(90deg, rgba(242, 163, 58, .6), #ffb347); }
+.ro { flex-wrap: wrap; }
+
+/* command center: the open system spans the row, its readings in two columns when there is room */
+.cc-sys { background: rgba(10, 7, 4, .55); box-shadow: inset 0 1px 0 rgba(255, 240, 210, .05); }
+.cc-sys[open] { grid-column: 1 / -1; background: linear-gradient(170deg, rgba(40, 29, 15, .6), rgba(10, 7, 4, .7)); box-shadow: inset 0 0 40px rgba(242, 184, 75, .05), 0 0 24px -10px rgba(242, 184, 75, .25); }
+@media (min-width: 1100px) { .cc-sys[open] .cc-rows { display: grid; grid-template-columns: 1fr 1fr; column-gap: 28px; } }
+.cc-sys > summary:hover { background: rgba(217, 180, 95, .06); }
+
+/* composer: one lit console */
+.cmd textarea { background: linear-gradient(180deg, rgba(8, 6, 3, .85), rgba(20, 14, 7, .75)); border: 1px solid rgba(217, 180, 95, .35);
+  box-shadow: inset 0 0 18px rgba(0, 0, 0, .6); transition: border-color .2s, box-shadow .2s; }
+.cmd textarea:focus { border-color: var(--gold-hi); box-shadow: inset 0 0 18px rgba(0, 0, 0, .6), 0 0 0 1px rgba(246, 230, 194, .25), 0 0 22px -4px rgba(242, 196, 109, .45); outline: none; }
+.btn-primary { background: linear-gradient(180deg, rgba(246, 214, 140, .22), rgba(217, 180, 95, .08)); border-color: var(--gold-hi);
+  box-shadow: inset 0 1px 0 rgba(255, 244, 220, .25), 0 0 18px -6px rgba(242, 196, 109, .6); }
+.btn-primary:hover { box-shadow: inset 0 1px 0 rgba(255, 244, 220, .35), 0 0 24px -4px rgba(242, 196, 109, .75); }
+.tabs .tab[aria-selected="true"], .imode[aria-checked="true"] { background: linear-gradient(180deg, rgba(246, 214, 140, .16), rgba(217, 180, 95, .04));
+  box-shadow: inset 0 -2px 0 var(--gold-hi), 0 6px 14px -8px rgba(242, 196, 109, .6); color: var(--gold-hi); }
+
+/* navigation: the current section glows */
+@media (min-width: 761px) {
+  .sidenav a[aria-current="page"] { background: linear-gradient(90deg, rgba(217, 180, 95, .2), transparent); box-shadow: inset 2px 0 0 var(--gold-hi), -6px 0 16px -6px rgba(246, 210, 140, .7); }
+}
+@media (max-width: 760px) {   /* the bottom bar on phones: the current tab glows from the top edge */
+  .sidenav a[aria-current="page"] { background: linear-gradient(180deg, rgba(217, 180, 95, .2), transparent); box-shadow: inset 0 2px 0 var(--gold-hi); border-left-color: transparent; }
+}
+.sidenav a[aria-current="page"] .ni { text-shadow: 0 0 10px rgba(246, 210, 140, .8); color: var(--gold-hi); }

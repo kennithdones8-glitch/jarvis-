@@ -48,3 +48,15 @@ def test_activity_never_shows_raw_data_for_idea_events(dash):
     js = _js(d)
     assert '"proposals.refreshed": () => "Checked its own record for improvement ideas"' in js
     assert "entries = entries.map(wordEvent);" in js and '"memory.important": (p) =>' in js
+
+
+def test_ui3_meters_show_only_real_ratios_and_effects_respect_motion_settings():
+    from pathlib import Path
+    static = Path(__file__).resolve().parents[1] / "src" / "jarvis" / "server" / "static"
+    js, css = (static / "app.js").read_text(), (static / "app.css").read_text()
+    assert "if (ratio === null || ratio === undefined || !Number.isFinite(ratio)) return null;" in js     # unknown: no meter
+    assert 'total ? online / total : null' in js and "m.budget.monthly_limit_usd ? (m.budget.spent_this_month_usd || 0) / m.budget.monthly_limit_usd : null" in js
+    assert '.meter[data-fill="10"] { --f: 100%; }' in css and 'style="' not in js                           # no inline styles (CSP)
+    assert ':root[data-fx="reduced"] .hud .panel > .ph::before, :root[data-fx="off"] .hud .panel > .ph::before { animation: none; display: none; }' in css
+    assert "@media (prefers-reduced-motion: reduce) { .hud .panel > .ph::before { animation: none; display: none; } }" in css
+    assert ".cc-sys[open] { grid-column: 1 / -1;" in css

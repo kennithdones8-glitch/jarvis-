@@ -1588,14 +1588,15 @@ function renderSummary(d) {
   const total = m.providers.reduce((n, p) => n + p.configured.length, 0);
   const active = d.tasks.filter((t) => ACTIVE.includes(t.state)).length;
   const claude = (m.cloud_usage || []).find((u) => u.provider === "claude");
-  const ro = (label, value, cls) => h("div", { class: "ro" }, h("span", {}, label), h("b", { class: cls || null }, value));
+  const ro = (label, value, cls, ratio) => h("div", { class: "ro" }, h("span", {}, label), h("b", { class: cls || null }, value), meter(ratio));
   fill($("#summary"),
     ro("Health", !d.health ? "Checking…" : d.health.ok ? "✓ Healthy" : `⚠ ${plural(d.health.items.filter((i) => !i.ok).length, "problem")}`,
        d.health && !d.health.ok ? "bad" : d.health ? "ok" : null),
-    ro("Models online", `${online} of ${total}`, total && !online ? "bad" : null),
+    ro("Models online", `${online} of ${total}`, total && !online ? "bad" : null, total ? online / total : null),
     ro("Missions active", String(active)),
     claude ? ro("Claude", claude.limited_until ? `resets ${clock(claude.limited_until)}` : `${claude.calls} calls · 5h`) : null,
-    ro("Spent this month", `$${(m.budget.spent_this_month_usd || 0).toFixed(2)} of $${(m.budget.monthly_limit_usd || 0).toFixed(2)}`));
+    ro("Spent this month", `$${(m.budget.spent_this_month_usd || 0).toFixed(2)} of $${(m.budget.monthly_limit_usd || 0).toFixed(2)}`, null,
+       m.budget.monthly_limit_usd ? (m.budget.spent_this_month_usd || 0) / m.budget.monthly_limit_usd : null));
 }
 
 function render() {
@@ -1831,6 +1832,11 @@ function since(ts) {
   return s < 90 ? "just now" : s < 5400 ? `${Math.round(s / 60)} min ago` : s < 129600 ? `${Math.round(s / 3600)} h ago` : `${Math.round(s / 86400)} d ago`;
 }
 
+// a real ratio (0-1) as a slim meter; nothing when the value is unknown
+function meter(ratio) {
+  if (ratio === null || ratio === undefined || !Number.isFinite(ratio)) return null;
+  return h("i", { class: "meter", "data-fill": String(Math.max(0, Math.min(10, Math.round(ratio * 10)))), "aria-hidden": "true" });
+}
 function systems(d) {
   const t = d.telemetry || {};
   const health = d.health || { ok: null, items: [] };
@@ -1847,14 +1853,14 @@ function systems(d) {
   const errors = d.audit.filter((e) => /error|failed|denied|no_route/.test(e.event));
   const sensitive = d.audit.filter((e) => /^(approval\.(approved|rejected|requested)|egress\.send|permission\.denied|stop\.|killswitch|device\.)/.test(e.event));
   const vs = d.voice || {};
-  const row = (k, v, cls) => ({ k, v, cls });
+  const row = (k, v, cls, fill) => ({ k, v, cls, fill });
   return [
     { id: "health", short: "Health", icon: "◉", label: "System health",
       status: health.ok === false ? "bad" : "ok", value: health.ok === false ? `${plural(problems.length, "problem")}` : mem,
       rows: [
-        t.cpu && t.cpu.available ? row("CPU load", `${t.cpu.load_per_core} per core · ${t.cpu.cores} cores`, t.cpu.load_per_core > 1.5 ? "bad" : "") : row("CPU load", `unavailable — ${(t.cpu || {}).reason || "no data"}`, "muted"),
-        t.memory && t.memory.available ? row("Memory", `${GB(t.memory.used_bytes)} of ${GB(t.memory.total_bytes)} (${Math.round(t.memory.used_pct)}%)`, t.memory.used_pct > 90 ? "bad" : "") : row("Memory", `unavailable — ${(t.memory || {}).reason || "no data"}`, "muted"),
-        t.storage && t.storage.available ? row("Storage", `${GB(t.storage.free_bytes)} free of ${GB(t.storage.total_bytes)}`, t.storage.free_bytes < 2e9 ? "bad" : "") : row("Storage", "unavailable", "muted"),
+        t.cpu && t.cpu.available ? row("CPU load", `${t.cpu.load_per_core} per core · ${t.cpu.cores} cores`, t.cpu.load_per_core > 1.5 ? "bad" : "", Math.min(1, t.cpu.load_per_core / 1.5)) : row("CPU load", `unavailable — ${(t.cpu || {}).reason || "no data"}`, "muted"),
+        t.memory && t.memory.available ? row("Memory", `${GB(t.memory.used_bytes)} of ${GB(t.memory.total_bytes)} (${Math.round(t.memory.used_pct)}%)`, t.memory.used_pct > 90 ? "bad" : "", t.memory.used_pct / 100) : row("Memory", `unavailable — ${(t.memory || {}).reason || "no data"}`, "muted"),
+        t.storage && t.storage.available ? row("Storage", `${GB(t.storage.free_bytes)} free of ${GB(t.storage.total_bytes)}`, t.storage.free_bytes < 2e9 ? "bad" : "", 1 - t.storage.free_bytes / t.storage.total_bytes) : row("Storage", "unavailable", "muted"),
         t.network ? row("Network", t.network.route ? "route available" : "no network route", t.network.route ? "" : "bad") : row("Network", "unavailable", "muted"),
         t.process && t.process.available ? row("JARVIS process", `peak ${MB(t.process.peak_bytes)}`) : row("JARVIS process", "unavailable", "muted"),
         ...health.items.map((i) => row(i.name, i.detail, i.ok ? "ok" : "bad")),
@@ -1973,7 +1979,7 @@ function renderCommand(d) {
     const det = h("details", { class: `cc-sys ${x.status}`, id: `cc-${x.id}`, open: ui.ccOpen.has(x.id) },
       h("summary", {}, h("span", { class: "sc-dot", "aria-hidden": "true" }), h("span", { class: "sc-icon", "aria-hidden": "true" }, x.icon),
         h("span", { class: "cc-label" }, x.label), h("span", { class: "cc-value" }, x.value)),
-      h("dl", { class: "cc-rows" }, x.rows.map((r) => h("div", { class: `cc-row ${r.cls || ""}` }, h("dt", {}, r.k), h("dd", {}, r.v)))),
+      h("dl", { class: "cc-rows" }, x.rows.map((r) => h("div", { class: `cc-row ${r.cls || ""}` }, h("dt", {}, r.k), h("dd", {}, r.v), meter(r.fill)))),
       x.note ? h("p", { class: "cc-note" }, x.note) : null,
       x.link || x.action ? h("div", { class: "row mt" },
         x.link ? h("a", { class: "btn btn-sm", href: x.link[0] }, x.link[1]) : null,

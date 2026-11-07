@@ -1,5 +1,17 @@
 # Changelog
 
+## Unreleased — UI 3: holographic glass panels
+
+- **Panels** are lit glass that matches the projection: a gold hairline edge, depth and inner glow, a faint scan
+  texture, brighter corner brackets, a divider under each header, and a light that catches the top edge now and
+  then (Normal effects only; still in Low performance and Reduced motion).
+- **Meters** where a real ratio exists: models online, spend against the monthly budget, and CPU load, memory and
+  storage in the command center. Unknown values show no meter. Styled through coarse data attributes, no inline
+  styles (CSP unchanged).
+- **Command center**: the open system spans the full width, its readings in two columns on wide screens.
+- **Composer, mode controls and navigation** follow the same language: a lit console input with a focus glow, a gold
+  Send, glowing selected tabs and modes, and a glowing current section (a top bar on phones).
+
 ## Unreleased — Avatar 3D, step 5: chamber, controls, stage 5, quality presets
 
 - **Projection chamber** (`avatar3d-environment.js`): platform markers and a turning segmented ring; orbital systems
