@@ -1,14 +1,16 @@
 # Changelog
 
-## Unreleased — merging the holographic dashboard with 0.18.3 (branch `holo-merge-v1`, owner-approved review)
+## 0.19.0 — Holographic dashboard, Quick/Balanced/Deep, live Claude replies (owner-approved after a test on the Mac)
 
-- Merged the holographic dashboard work (branch `claude/funny-allen-ygy8kk`) with 0.18.1–0.18.3.
+- Merged the holographic dashboard work (branch `claude/funny-allen-ygy8kk`, reviewed) with 0.18.1–0.18.3. Sections
+  below list what it adds.
 - **Quick stays quick:** Quick mode asks for the fastest local model, and the 0.18.3 "stronger local model for maths,
-  logic and code" upgrade now respects that (it applies to Balanced, and to answers kept local by routing). Deep
-  already asks for the strongest model.
-- To be tried on the Mac in the test copy (WebGL in Safari, the look, speed) before release as 0.19.0.
+  logic and code" upgrade respects that (it applies to Balanced and to answers kept local by routing).
+- Review: replies stream only after consent; local-only data stays local in every mode; the emergency stop kills a
+  streaming reply; Three.js 0.160.0 is byte-identical to npm; CSP unchanged; release-gate items only added.
+- Tried by the owner on the Mac in a test copy (port 8766) before release.
 
-## Unreleased — Cinematic core: 3D hologram, gold-white environment
+### Cinematic core: 3D hologram, gold-white environment
 
 - **3D holographic core** (Three.js r160, served from the Mac, pinned by hash): translucent gold-white figure with
   rim light, scan lines, energy pulses along its circuits, a beam and rising dust from the projector, a floor
@@ -20,7 +22,7 @@
 - **Living environment** (owner-approved): a gliding perspective grid floor, breathing light and drifting dust.
 - **Display → Effects** is now Normal / Low performance / Reduced motion.
 
-## Unreleased — Dashboard theme v2: holographic command deck
+### Dashboard theme v2: holographic command deck
 
 - The hologram stands on a projector pad in a beam of light, its torso dissolving into the beam; orbit rings pass in
   front of and behind it; soft glow, scan-line texture, and a flicker as it powers up.
@@ -34,7 +36,7 @@
 - Presentation only: no change to what JARVIS does. Still no background animation; Effects Off and reduced motion
   still make everything still.
 
-## Unreleased — Phase 2: holographic core and command center
+### Phase 2: holographic core and command center
 
 - **Holographic core**: an amber humanoid hologram (layered SVG, energy motes) with the reactor as its chest core.
   13 states, each from a real signal (the live chat stage, missions, decisions, voice, errors). Helmet, visor and face
@@ -49,7 +51,7 @@
 - **Display → Effects**: Full / Reduced / Off. Reduced motion is respected; animations pause when the page is hidden.
 - iPhone: the Quick/Balanced/Deep choice is one button in the tab row, so the message box keeps its width.
 
-## Unreleased — Phase 3a: faster chat
+### Phase 3a: faster chat
 
 - **Claude replies appear as they're written.** Chat used Claude Code's whole-reply JSON output, so nothing showed
   until Claude had finished. It now uses `stream-json` with partial messages; every safety flag is unchanged (tools
