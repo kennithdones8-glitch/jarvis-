@@ -16,7 +16,7 @@ import time
 
 from ..models import ChatRequest, Message, ModelService, Need, NoModelAvailable
 from ..models.types import Category, UsageLimited
-from .answer_checks import refuses
+from .answer_checks import left_out, refuses
 
 MAX_INSTRUCTION = 2_000
 MAX_INPUT_CHARS = 120_000   # big documents; the router only picks models whose context fits
@@ -92,4 +92,26 @@ class ComposeTool:
                                          step_id=ctx.step_id, allow_fallback=False)
             except NoModelAvailable:
                 pass  # keep the first answer
-        return {"text": r.text.strip(), "model": f"{r.provider}/{r.model}", "input_chars": total}
+        texts = [_as_text(i) for i in inputs]
+        missing = left_out(instruction, texts, r.text)
+        if missing and r.provider in self.models.router.local:
+            # Asked for every decision (etc.) and some were left out: one local retry naming them. The data still
+            # can't change the plan; this only asks for the items the owner's instruction already asked for.
+            retry = ChatRequest((*request.messages, Message("assistant", r.text, Category.CONVERSATION),
+                                 Message("user", "You left out these items from the DATA, which the instruction asks "
+                                         "for: " + " | ".join(missing) + "\nRewrite the full text including every "
+                                         "item. Output only the requested text.", Category.CONVERSATION)),
+                                max_tokens=1200, temperature=0.2)
+            try:
+                again = self.models.complete(Need("summarize", prefer="auto", local_only=True), retry,
+                                             purpose="compose text (missing items retry)", task_id=ctx.task_id,
+                                             step_id=ctx.step_id, allow_fallback=False)
+                if len(left_out(instruction, texts, again.text)) < len(missing):
+                    r = again
+            except NoModelAvailable:
+                pass  # keep the first answer
+            missing = left_out(instruction, texts, r.text)
+        out = {"text": r.text.strip(), "model": f"{r.provider}/{r.model}", "input_chars": total}
+        if missing:
+            out["possibly_left_out"] = missing[:10]  # shown in the task's step output, never hidden
+        return out

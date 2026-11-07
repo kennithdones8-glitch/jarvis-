@@ -95,3 +95,45 @@ def chat_problems(question: str, answer: str, *, looked_up: bool, puzzle: bool =
         problems.append("this is a puzzle with several conditions: check your answer against each condition in the "
                         "question one by one, fix anything that breaks one, then give the final answer")
     return problems
+
+
+# ---- "list every decision from both meetings": nothing left out (owner's Mac, 0.19.0 benchmark) -----------------
+# Real failure: asked to list every decision from two meeting notes, the 7B wrote four items and dropped "the budget
+# is approved at 12,000". When the instruction asks to list/combine X and the data has lines labelled "X:"/"Xs:", JARVIS
+# checks each labelled sentence is in the text, and names the missing ones for one retry. Nothing else is checked.
+WANTS_ALL = re.compile(r"\b(every|all|each|list|lists|listing|combine[ds]?|merge[ds]?|both|full)\b", re.I)
+STOP = frozenset("that this with from have will were been they them their then than there these those what when "
+                 "which while into onto about also just only some more most very would could should does doing done "
+                 "being over under after before again each other such your yours ours".split())
+
+
+def _words(text: str) -> set[str]:
+    return {w.strip(".,;:'\"").replace(",", "") for w in re.findall(r"[a-z0-9][a-z0-9,'.]*", text.lower())
+            if len(w.strip(".,;:'\"")) >= 4 and w.strip(".,;:'\"") not in STOP}
+
+
+def listed_items(instruction: str, inputs: list[str]) -> list[str]:
+    """Sentences under a "Decisions:" (etc.) label in the data, when the instruction asks for every decision."""
+    if not WANTS_ALL.search(instruction or ""):
+        return []
+    nouns = {w.lower().rstrip("s") for w in re.findall(r"[A-Za-z]{4,20}", instruction or "")}
+    nouns -= {"item", "thing", "line", "word", "file", "note", "meeting", "point", "both", "time", "list", "every",
+              "each", "combine", "combined", "merge", "full", "from", "into", "with", "save", "write", "read"}
+    items: list[str] = []
+    for noun in nouns:
+        label = re.compile(rf"(?im)^\s*{re.escape(noun)}s?\b[^:\n]{{0,20}}:\s*(.+)$")
+        for text in inputs:
+            for m in label.finditer(text or ""):
+                items += [x.strip() for x in re.split(r"(?<=[.!?;])\s+", m.group(1)) if len(x.strip()) > 3]
+    return items[:40]
+
+
+def left_out(instruction: str, inputs: list[str], text: str) -> list[str]:
+    """Items the instruction asked for "every" of that the written text doesn't mention (by their key words)."""
+    have = _words(text)
+    missing = []
+    for item in listed_items(instruction, inputs):
+        key = _words(item)
+        if key and len(key & have) * 2 < len(key):  # fewer than half of its key words: treat it as left out
+            missing.append(item)
+    return missing

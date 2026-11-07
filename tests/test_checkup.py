@@ -57,7 +57,7 @@ def test_only_fixed_read_only_commands_are_run(tmp_path):
     c, calls = mac(tmp_path)
     c.all(updates=True)
     allowed = {"/usr/bin/sw_vers", "/usr/sbin/softwareupdate", "/usr/bin/du", "/bin/ps", "/usr/sbin/sysctl",
-               "/usr/sbin/system_profiler", "/usr/bin/tmutil"}
+               "/usr/sbin/system_profiler", "/usr/bin/tmutil", "/usr/bin/defaults"}
     assert {a[0] for a in calls} <= allowed
     for a in calls:  # never an install, delete, restart or shell
         assert not set(a) & {"--install", "-i", "--restart", "-r", "rm", "sh", "-c", "delete"} or a[0] == "/bin/ps"
@@ -102,3 +102,18 @@ def test_cli_records_counts_only(tmp_path, capsys, monkeypatch):
     [ev] = [e for e in k.audit.entries(limit=50) if e["event"] == "checkup.run"]
     assert ev["payload"] == {"checks": 1, "warnings": 1, "updates": False} and "SecretApp" not in str(ev)
     assert Path(tmp_path / "home").exists()
+
+
+def test_time_machine_date_from_its_settings_when_tmutil_gives_none(tmp_path):
+    """On the owner's Mac tmutil answered without a date; Time Machine's own settings still have it."""
+    plist = ('{\n    Destinations = (\n        {\n            SnapshotDates = (\n'
+             '                "2026-11-01 09:15:00 +0000",\n                "2026-11-05 09:15:00 +0000"\n'
+             '            );\n        }\n    );\n}\n')
+    c, calls = mac(tmp_path, tmutil="\n", defaults=plist)
+    f = c.time_machine()
+    assert f.status == OK and "last backup 2 day(s) ago" in f.detail
+    assert ["/usr/bin/defaults", "read", "/Library/Preferences/com.apple.TimeMachine"] in calls  # read, never write
+    c, _ = mac(tmp_path, tmutil="Unable to locate machine directory for host.\n")
+    f = c.time_machine()
+    assert f.status == INFO and "tmutil said: Unable to locate machine directory" in f.detail
+    assert "System Settings" in f.advice

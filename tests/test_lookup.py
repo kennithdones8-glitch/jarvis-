@@ -182,7 +182,8 @@ def test_calendar_lookups_cover_whole_days(env):
 
 def test_an_invented_reminders_list_falls_back_to_every_list(env):
     d, script, seen, fake, _ = env
-    fake.reminders.append({"title": "Pay rent", "due": None, "completed": False, "notes": "", "list": "Reminders"})
+    due = (datetime.now().astimezone() - timedelta(days=2)).isoformat()  # overdue, so it is listed (0.19.1 filters)
+    fake.reminders.append({"title": "Pay rent", "due": due, "completed": False, "notes": "", "list": "Reminders"})
     script["lookups"] = [{"tool": "reminders", "action": "list", "args": {"list": "overdue"}}]
     r = chat(d, "What's overdue?")
     assert [c[1].get("list") for c in fake.calls] == ["overdue", None]
@@ -257,3 +258,92 @@ def test_a_right_lookup_is_left_alone(env):
     script["lookups"] = [{"tool": "calendar", "action": "events", "args": week()}]
     r = chat(d, "Am I free tomorrow afternoon?")
     assert not any("corrected" in n for n in r["lookup_notes"])
+
+
+# ---- exact facts worked out by JARVIS, not the small model (owner's Mac, 0.19.0 benchmark) -------------------------
+def _ev(day, start, end, title, base):
+    d = base + timedelta(days=day)
+    at = lambda hm: datetime(d.year, d.month, d.day, *map(int, hm.split(":"))).astimezone().isoformat()  # noqa: E731
+    return {"title": title, "start": at(start), "end": at(end), "all_day": False, "location": "", "calendar": "Work"}
+
+
+def _days(base, n):
+    lo = datetime(base.year, base.month, base.day).astimezone()
+    return {"from": lo.isoformat(), "to": (lo + timedelta(days=n)).isoformat()}
+
+
+def test_first_event_and_free_time_are_stated_exactly():
+    """Real failure: with a 09:00 Standup in the list, the 7B said the first commitment was the 13:00 lunch."""
+    from datetime import date
+    from jarvis.orchestrator.lookup import FACTS_HEAD, calendar_facts, worked_out
+    fri, sat = date(2026, 11, 6), date(2026, 11, 7)
+    events = [_ev(1, "09:00", "09:30", "Standup", fri), _ev(1, "13:00", "14:00", "Lunch with Sam", fri),
+              _ev(1, "15:30", "16:30", "Dentist", fri), _ev(2, "07:00", "08:00", "Gym", fri)]
+    msg = "Am I free tomorrow between 2pm and 3:30pm? And what's my first commitment tomorrow, and when is it?"
+    lines = calendar_facts(events, _days(sat, 1), msg, today=fri)
+    assert lines[0] == "- First event on Sat 07 Nov: 09:00–09:30 Standup"
+    assert "- Sat 07 Nov 14:00–15:30: FREE (nothing scheduled then)" in lines  # lunch ends at 14:00, dentist at 15:30
+    busy = calendar_facts(events, _days(sat, 1), "Am I free tomorrow between 1pm and 2pm?", today=fri)
+    assert "- Sat 07 Nov 13:00–14:00: BUSY: Lunch with Sam 13:00–14:00" in busy
+    text = worked_out(("calendar", "events"), {"events": events}, _days(sat, 1), msg)
+    assert text.startswith(FACTS_HEAD) and text.endswith("The full list:")
+
+
+def test_clashes_are_found_by_jarvis():
+    """Real failure: the model listed both meetings but never said they clash."""
+    from datetime import date
+    from jarvis.orchestrator.lookup import calendar_facts
+    base = date(2026, 11, 6)
+    events = [_ev(1, "14:00", "15:00", "Client call", base), _ev(1, "14:30", "15:30", "Team review", base),
+              _ev(2, "07:00", "08:00", "Gym", base), _ev(2, "12:30", "13:30", "Lunch with Alex", base)]
+    lines = calendar_facts(events, _days(base, 3), "Do I have any clashing appointments in the next three days?")
+    assert "- CLASH on Sat 07 Nov: Client call 14:00–15:00 overlaps Team review 14:30–15:30" in lines
+    back_to_back = [_ev(1, "13:00", "14:00", "A", base), _ev(1, "14:00", "15:00", "B", base)]
+    assert "- No clashes: none of these events overlap" in calendar_facts(back_to_back, _days(base, 3), "clashes?")
+
+
+def test_reminders_outside_the_asked_window_are_counted_not_listed():
+    """Real failure: asked for the next 7 days, the model also listed "Book dentist", due in 9 days."""
+    from jarvis.orchestrator.lookup import render, reminder_facts
+    now = datetime(2026, 11, 6, 21, 0).astimezone()
+    at = lambda days, hm="09:00": (datetime(2026, 11, 6, *map(int, hm.split(":"))).astimezone()  # noqa: E731
+                                   + timedelta(days=days)).isoformat()
+    rem = [{"title": "Renew car insurance", "due": at(3, "10:00"), "list": "Admin"},
+           {"title": "Call the plumber", "due": at(5), "list": "Home"},
+           {"title": "Book dentist", "due": at(9), "list": "Home"},
+           {"title": "Tax return", "due": at(20, "17:00"), "list": "Admin"},
+           {"title": "Learn Spanish", "due": None, "list": "Someday"},
+           {"title": "Pay rent", "due": at(-2), "list": "Home"}]
+    lines, keep = reminder_facts(rem, "Which of my reminders are due in the next 7 days?", now)
+    assert lines[0] == "- Overdue (1): Pay rent"
+    assert lines[1].endswith("(2): Renew car insurance, Call the plumber")
+    assert lines[2].startswith("- Not in that: 3 other open reminder(s)")
+    assert [r["title"] for r in keep] == ["Pay rent", "Renew car insurance", "Call the plumber"]
+    lines, keep = reminder_facts(rem, "Which of my reminders are overdue?", now)
+    assert lines[0] == "- Overdue (1): Pay rent" and [r["title"] for r in keep] == ["Pay rent"]
+    assert reminder_facts(rem, "Show me all my reminders", now) == ([], rem)  # no window asked: everything, as before
+    shown = render(("reminders", "list"), {"reminders": rem}, "Which of my reminders are due in the next 7 days?")
+    assert "Book dentist" not in shown and "Call the plumber" in shown
+
+
+def test_facts_reach_the_answering_model(env):
+    d, script, seen, fake, _ = env
+    script["lookups"] = [{"tool": "calendar", "action": "events", "args": week()}]
+    chat(d, "Am I free tomorrow between 2pm and 3:30pm? What's my first commitment tomorrow?")
+    prompt = seen["answer_prompts"][-1]
+    assert "Worked out by JARVIS" in prompt and "BUSY: Dentist 14:00" in prompt  # the fixture's 14:00 dentist
+
+
+def test_parsing_times_and_windows():
+    from jarvis.orchestrator.lookup import asked_window, reminder_window
+    assert asked_window("Am I free tomorrow between 2pm and 3:30pm?") == ((14, 0), (15, 30))
+    assert asked_window("between 2 and 3:30") == ((14, 0), (15, 30))
+    assert asked_window("from 11 to 1pm") == ((11, 0), (13, 0))
+    assert asked_window("from noon to 2pm") == ((12, 0), (14, 0))
+    assert asked_window("14:00-15:30") == ((14, 0), (15, 30))
+    for nothing in ("the score was 3-4", "Am I free tomorrow afternoon?", "2026-11-07"):
+        assert asked_window(nothing) is None, nothing
+    assert reminder_window("Which of my reminders are due in the next 7 days?") == ("within", 7)
+    assert reminder_window("Which of my reminders are overdue?") == ("overdue", None)
+    assert reminder_window("What's due tomorrow?") == ("within", 1)
+    assert reminder_window("Remind me to call Sam") is None

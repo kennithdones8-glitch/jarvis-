@@ -189,7 +189,8 @@ class LookupService:
                 notes.append(f"{label}: {problem}")
                 continue
             checked.append(label)
-            parts.append(f"## {label}\n{render(key, result)}")
+            facts = worked_out(key, result, args, message)
+            parts.append(f"## {label}\n" + (f"{facts}\n" if facts else "") + render(key, result, message))
         if not parts and not notes:
             return None, checked, notes
         body = "\n\n".join(parts + (["## Couldn't look up\n" + "\n".join(f"- {n}" for n in notes)] if notes else []))
@@ -348,7 +349,163 @@ def describe(key: tuple[str, str], args: dict) -> str:
     return f"{'Files' if tool == 'fs' else 'Document'}: {args.get('query') or str(args.get('path', '')).split('/')[-1]}"
 
 
-def render(key: tuple[str, str], r: Any) -> str:
+# ---- facts worked out by JARVIS, not the model (owner's choice, 0.19.1) ------------------------------------------
+# On the owner's Mac the small model read correct calendar data wrongly (called a 13:00 lunch the first commitment
+# when a 09:00 standup was listed, missed an obvious clash, listed a reminder due in 9 days as "within 7"). These
+# are exact questions with exact answers, so JARVIS works them out here and hands the model the result.
+FACTS_HEAD = "Worked out by JARVIS from the data below (exact; answer from these lines):"
+_T = r"(\d{1,2})(?:[:.](\d{2}))?\s*(a\.?m\.?|p\.?m\.?)?|noon|midday"
+WINDOW = re.compile(rf"(?:between|from)?\s*\b(?P<a>{_T})\s*(?:and|to|until|till|-|–)\s*(?P<b>{_T})(?![\w:])", re.I)
+SPAN_DAYS = re.compile(r"\b(?:next|coming|following)\s+(\d{1,2}|two|three|four|five|six|seven|ten|fourteen)\s+days?\b"
+                       r"|\b(this|next|the coming)\s+week\b|\bweek ahead\b|\b(within|in)\s+(?:a|one)\s+week\b", re.I)
+WORDS = {"two": 2, "three": 3, "four": 4, "five": 5, "six": 6, "seven": 7, "ten": 10, "fourteen": 14}
+OVERDUE = re.compile(r"\b(overdue|past due|late|missed)\b", re.I)
+
+
+def _clock(text: str) -> tuple[int, int, str | None] | None:
+    m = re.fullmatch(_T, text.strip(), re.I)
+    if not m:
+        return None
+    if not m.group(1):
+        return 12, 0, "pm"  # noon / midday
+    h, mins = int(m.group(1)), int(m.group(2) or 0)
+    half = (m.group(3) or "").replace(".", "").lower() or None
+    if h > 23 or mins > 59 or (half and not 1 <= h <= 12):
+        return None
+    return h, mins, half
+
+
+def asked_window(message: str) -> tuple[tuple[int, int], tuple[int, int]] | None:
+    """The time span a message asks about ("between 2pm and 3:30pm" → 14:00–15:30), as 24-hour (h, m) pairs."""
+    for m in WINDOW.finditer(message or ""):
+        a, b = _clock(m.group("a")), _clock(m.group("b"))
+        if not a or not b:
+            continue
+        said = bool(re.match(r"(?i)\s*(between|from)\b", m.group(0)))
+        if a[2] is None and b[2] is None and not said and ":" not in m.group(0):
+            continue  # a bare "3-4" could be anything (a score, a range of days…)
+        a_half = a[2]
+        if a_half is None and b[2] == "pm":
+            a_half = "pm" if a[0] % 12 <= b[0] % 12 else "am"  # "2 to 3:30pm" → pm; "11 to 1pm" → am
+        elif a_half is None and b[2] == "am":
+            a_half = "am"
+
+        def h24(h: int, half: str | None) -> int:
+            if half is None:  # no am/pm at all: "between 2 and 3:30" means the afternoon; 14:00 stays 14:00
+                return h + 12 if 1 <= h <= 7 else h
+            if half == "pm":
+                return h if h == 12 else h + 12
+            return 0 if h == 12 else h
+        start, end = (h24(a[0], a_half), a[1]), (h24(b[0], b[2]), b[1])
+        if end > start:
+            return start, end
+    return None
+
+
+def _dt(iso: str | None) -> datetime | None:
+    try:
+        return datetime.fromisoformat(str(iso).replace("Z", "+00:00")).astimezone()
+    except ValueError:
+        return None
+
+
+def _hm(t: datetime) -> str:
+    return t.strftime("%H:%M")
+
+
+def calendar_facts(events: list[dict], args: dict, message: str, today: date | None = None) -> list[str]:
+    """First event of each day looked up, free/busy for a time the message names, and clashes."""
+    timed = []
+    for e in events:
+        s, t = _dt(e.get("start")), _dt(e.get("end"))
+        if s and t and not e.get("all_day"):
+            timed.append((s, max(t, s), str(e.get("title", "(untitled)"))))
+    timed.sort()
+    lo, hi = _dt(args.get("from")), _dt(args.get("to"))
+    days: list[date] = []
+    if lo and hi:
+        d = lo.date()
+        while datetime(d.year, d.month, d.day).astimezone() < hi and len(days) < 8:
+            days.append(d)
+            d += timedelta(days=1)
+    lines = []
+    for d in days[:7]:
+        first = next(((s, t, n) for s, t, n in timed if s.date() == d), None)
+        lines.append(f"- First event on {d:%a %d %b}: {_hm(first[0])}–{_hm(first[1])} {first[2]}" if first
+                     else f"- {d:%a %d %b}: no events with a set time")
+    window = asked_window(message)
+    if window:
+        named = named_days(message, today)
+        day = named[0] if named else (days[0] if days else (today or datetime.now().astimezone().date()))
+        ws = datetime(day.year, day.month, day.day, *window[0]).astimezone()
+        we = datetime(day.year, day.month, day.day, *window[1]).astimezone()
+        busy = [(s, t, n) for s, t, n in timed if s < we and t > ws]
+        span = f"{day:%a %d %b} {_hm(ws)}–{_hm(we)}"
+        lines.append(f"- {span}: FREE (nothing scheduled then)" if not busy else
+                     f"- {span}: BUSY: " + "; ".join(f"{n} {_hm(s)}–{_hm(t)}" for s, t, n in busy))
+    clashes = [(a, b) for i, a in enumerate(timed[:200]) for b in timed[i + 1:200] if b[0] < a[1]]
+    if clashes:
+        lines += [f"- CLASH on {a[0]:%a %d %b}: {a[2]} {_hm(a[0])}–{_hm(a[1])} overlaps {b[2]} {_hm(b[0])}–{_hm(b[1])}"
+                  for a, b in clashes[:10]]
+    elif timed:
+        lines.append("- No clashes: none of these events overlap")
+    return lines
+
+
+def reminder_window(message: str) -> tuple[str, int | None] | None:
+    """("overdue", None), ("within", days) or None, from words like "overdue" or "in the next 7 days"."""
+    if OVERDUE.search(message or ""):
+        return "overdue", None
+    m = SPAN_DAYS.search(message or "")
+    if m:
+        n = m.group(1)
+        return "within", (int(n) if n and n.isdigit() else WORDS.get((n or "").lower(), 7))
+    low = (message or "").lower()
+    if re.search(r"\bdue\b|\breminders?\b|\bto-?dos?\b", low):
+        if "tomorrow" in low:
+            return "within", 1
+        if "today" in low or "tonight" in low:
+            return "within", 0
+    return None
+
+
+def reminder_facts(reminders: list[dict], message: str, now: datetime | None = None) -> tuple[list[str], list[dict]]:
+    """Overdue and due-within-the-window reminders, counted by JARVIS. Returns the fact lines and, when the message
+    names a window, just the reminders it covers (the others are counted, not listed, so they can't be mistaken)."""
+    window = reminder_window(message)
+    now = now or datetime.now().astimezone()
+    if not window:
+        return [], reminders
+    overdue = [r for r in reminders if (d := _dt(r.get("due"))) and d < now]
+    lines = [f"- Overdue ({len(overdue)}): " + (", ".join(r["title"] for r in overdue) if overdue else "none")]
+    keep = list(overdue)
+    if window[0] == "within":
+        days = window[1] or 0
+        until = datetime(now.year, now.month, now.day).astimezone() + timedelta(days=days + 1)
+        soon = [r for r in reminders if (d := _dt(r.get("due"))) and now <= d < until]
+        lines.append(f"- Due in the window you asked about (now until the end of {until - timedelta(seconds=1):%a %d %b}) "
+                     f"({len(soon)}): " + (", ".join(r["title"] for r in soon) if soon else "none"))
+        keep += soon
+    rest = len(reminders) - len(keep)
+    if rest:
+        lines.append(f"- Not in that: {rest} other open reminder(s), due later or with no due date (not listed)")
+    return lines, keep
+
+
+def worked_out(key: tuple[str, str], r: Any, args: dict, message: str) -> str:
+    try:
+        if key == ("calendar", "events"):
+            lines = calendar_facts(r.get("events", []), args, message)
+        elif key == ("reminders", "list"):
+            lines = reminder_facts(r.get("reminders", []), message)[0]
+        else:
+            return ""
+    except Exception:  # a fact we can't work out is left out, never guessed
+        return ""
+    return FACTS_HEAD + "\n" + "\n".join(lines) + "\nThe full list:" if lines else ""
+
+
+def render(key: tuple[str, str], r: Any, message: str = "") -> str:
     """Compact, readable text for the answering model (local times, no raw JSON noise)."""
     if key == ("calendar", "events"):
         if not r["events"]:
@@ -359,9 +516,17 @@ def render(key: tuple[str, str], r: Any) -> str:
     if key == ("reminders", "list"):
         if not r["reminders"]:
             return "No open reminders."
+        shown = r["reminders"]
+        if message:
+            try:
+                shown = reminder_facts(shown, message)[1]
+            except Exception:
+                shown = r["reminders"]
+            if not shown:
+                return "(none in the window asked about)"
         return "\n".join(f"- {x['title']}" + (f" (due {_local(x['due'])}, {_when(x['due'])})" if x["due"] else "")
                          + f" [{x['list']}]"
-                         for x in r["reminders"][:60])
+                         for x in shown[:60])
     if key == ("notes", "search"):
         return "\n".join(f"- {x['title']} ({_local(x['modified'], '%d %b %Y')}): {x['snippet'][:160]}" for x in r["results"]) \
             or "No matching notes."

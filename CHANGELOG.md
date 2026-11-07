@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased: right day, warm start, Mac checkup (branch `checkup-v1`, owner's choice)
+## Unreleased: right day, warm start, Mac checkup, smarter answers (branches `checkup-v1`, `smarter-v1`)
 
 - **"Tomorrow" is worked out by JARVIS, not the small model.** Asked late on Fri 6 Nov about tomorrow, the local
   model looked up Friday, found nothing and made up a meeting (benchmark `planning-free`, 0/5). JARVIS now reads
@@ -15,7 +15,25 @@
   helpers and Time Machine, each with plain advice. `--updates` also lists waiting macOS updates (the only check
   that uses the network, via Software Update). Fixed system commands only; nothing is installed, deleted or
   changed; the audit log gets counts only.
-- To be proven on the Mac: planning tasks ×5 before/after.
+- **A model just for maths, logic and code** (branch `smarter-v1`): a local model listed with
+  `capabilities = ["reasoning"]` answers maths, logic and code questions that are answered on this Mac, and nothing
+  else: everyday chat, planning, tools and Quick mode never use it, and it isn't loaded at start. Missing or failing,
+  JARVIS uses the usual local model. On the owner's Mac, qwen2.5:14b-instruct passed 30/30 maths/code runs vs 20/30
+  for the 7B (coding-duration 0/5 → 5/5, reasoning-schedule 1/5 → 5/5), at about 2–3× the wait. When Claude is
+  unavailable for such a question, the local fallback also uses it instead of the fastest model.
+- **Calendar and reminder facts worked out by JARVIS:** above the looked-up list, the model now gets exact lines:
+  the first event of each day, FREE/BUSY for a time the message names ("between 2pm and 3:30pm"), every clash
+  (overlapping events), and for reminders, which are overdue and which fall in the window asked about ("next 7
+  days", "tomorrow"); reminders outside that window are counted, not listed. Real failures fixed by this: the 13:00
+  lunch called the first commitment with a 09:00 standup listed; a clash listed but never called one; a reminder due
+  in 9 days listed as "within 7".
+- **Nothing left out when combining notes:** when an instruction asks to list/combine items the data labels
+  ("Decisions: …"), JARVIS checks each one is in the written text and retries once locally, naming the missing ones;
+  anything still missing is shown in the step output ("possibly_left_out"). Real failure: "the budget is approved"
+  dropped from a combined decisions list.
+- **Time Machine date:** when `tmutil` gives no date, the checkup reads it from Time Machine's own settings
+  (`defaults read`, read-only), and otherwise shows what tmutil said.
+- To be proven on the Mac: planning tasks ×5 and the 6 maths/code tasks ×5 before/after; tooluse-decisions ×5.
 
 ## 0.19.0 — Holographic dashboard, Quick/Balanced/Deep, live Claude replies (owner-approved after a test on the Mac)
 

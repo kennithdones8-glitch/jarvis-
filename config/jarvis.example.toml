@@ -63,6 +63,15 @@ context_tokens = 16384
 quality = 3
 speed = 2
 
+# Optional, for maths, logic and code only (about 9 GB; `ollama pull qwen2.5:14b-instruct` first). "reasoning" means
+# it is never used for everyday chat, planning or tools, isn't loaded at start, and Quick mode never uses it.
+# [[providers.ollama.models]]
+# id = "qwen2.5:14b-instruct"
+# capabilities = ["reasoning"]
+# context_tokens = 16384
+# quality = 4
+# speed = 1
+
 # ---------------------------------------------------------------- cloud (disabled)
 # Free tiers have limits that change, and some free tiers let the provider use your data.
 # Verify current terms before enabling. Never attach billing to a key used here unless you

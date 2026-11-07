@@ -204,14 +204,32 @@ class Checkup:
                            "Time Machine with an external disk protects everything on this Mac, not just JARVIS. "
                            "System Settings → General → Time Machine.")
         m = re.search(r"(\d{4})-(\d{2})-(\d{2})-(\d{2})(\d{2})(\d{2})", latest)
-        if not m:
-            return Finding("Time Machine", INFO, "set up; last backup date not readable")
-        when = time.mktime(time.strptime("-".join(m.groups()), "%Y-%m-%d-%H-%M-%S"))
+        when = time.mktime(time.strptime("-".join(m.groups()), "%Y-%m-%d-%H-%M-%S")) if m else self._tm_settings_date()
+        if when is None:
+            # On the owner's Mac (14.1.1) tmutil answered without a date (backup disk not connected, or Terminal
+            # without Full Disk Access). Say what it said rather than guess.
+            said = " ".join(latest.split())[:80]
+            return Finding("Time Machine", INFO, "set up; last backup date not readable"
+                           + (f" (tmutil said: {said})" if said else " (backup disk not connected?)"),
+                           "Check the date in System Settings → General → Time Machine.")
         days = (self.now - when) / 86400
         detail = f"last backup {days:.0f} day(s) ago"
         if days > 7:
             return Finding("Time Machine", WARN, detail, "Connect the backup disk so Time Machine can catch up.")
         return Finding("Time Machine", OK, detail)
+
+
+    def _tm_settings_date(self) -> float | None:
+        """The newest backup date in Time Machine's own settings (readable without the backup disk connected)."""
+        try:
+            out = self.run(["/usr/bin/defaults", "read", "/Library/Preferences/com.apple.TimeMachine"], 10)
+        except (subprocess.SubprocessError, OSError):
+            return None
+        dates = re.findall(r"(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} [+-]\d{4})", out)
+        if not dates:
+            return None
+        from datetime import datetime
+        return max(datetime.strptime(d, "%Y-%m-%d %H:%M:%S %z").timestamp() for d in dates)
 
 
 def report(findings: list[Finding]) -> str:

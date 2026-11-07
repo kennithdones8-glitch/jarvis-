@@ -110,6 +110,8 @@ SECURITY: dict[str, tuple[str, list[str]]] = {
         "test_audit_privacy::audit_fingerprints_free_text_but_keeps_paths_and_structure",
         "test_memory::audit_holds_no_memory_text", "test_memory::memory_context_is_private_category",
         "test_lookup::lookup_results_are_private_and_the_question_stays_local",
+        "test_models::reasoning_model_in_hybrid_only_when_the_answer_stays_local",
+        "test_models::reasoning_model_answers_maths_and_code_but_never_everyday_chat",
         "test_research::asks_before_researching_and_never_falls_back_to_local",
         "test_audit::secrets_redacted_in_audit", "test_bench::runs_never_touch_the_real_jarvis",
         "test_flight::holds_no_private_text", "test_outcome::profile_reaches_the_answering_model_as_private_memory",
