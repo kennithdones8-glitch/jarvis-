@@ -3,17 +3,18 @@
    motion is on or Display → Effects is Off; no orbit/scan/float when Effects is Reduced. */
 
 /* ---- placement: the reactor (#core) becomes the avatar's chest core ---- */
-.core-wrap.has-avatar { aspect-ratio: 5 / 6; }
+.core-wrap.has-avatar { aspect-ratio: 20 / 27; }
 .core-wrap.has-avatar::before, .core-wrap.has-avatar::after { display: none; }
 .core-wrap.has-avatar .avatar, .core-wrap.has-avatar .avatar-fx { position: absolute; inset: 0; width: 100%; height: 100%; }
 .core-wrap.has-avatar .avatar { overflow: visible; }
 .core-wrap.has-avatar .avatar-fx { pointer-events: none; z-index: 2; }
-.core-wrap.has-avatar #core { position: absolute; z-index: 1; width: 26%; height: auto; aspect-ratio: 1; left: 37%; top: 57.9%; }
+.core-wrap.has-avatar #core { position: absolute; z-index: 1; width: 26%; height: auto; aspect-ratio: 1; left: 37%; top: 51.5%; }
 
 /* ---- colour: amber by default, a tint per state ---- */
 .core-wrap.has-avatar { --hue: #ffb347; --hue-hi: #ffe9b8; } /* the chest core is amber at rest; per-state colours still apply */
 .avatar { --av-rgb: 242, 184, 75; --av: rgb(var(--av-rgb)); --av-hi: #ffe9b8; color: var(--av);
-  transform-box: view-box; animation: av-float 7s ease-in-out infinite; }
+  transform-box: view-box; animation: av-float 7s ease-in-out infinite; will-change: transform;
+  filter: drop-shadow(0 0 4px rgba(var(--av-rgb), .55)) drop-shadow(0 0 16px rgba(var(--av-rgb), .22)); }
 .avatar[data-state="listening"] { --av-rgb: 95, 214, 255; --av-hi: #e6fbff; }
 .avatar[data-state="researching"] { --av-rgb: 180, 140, 255; --av-hi: #efe4ff; }
 .avatar[data-state="approval"] { --av-rgb: 255, 179, 71; --av-hi: #ffe2bd; }
@@ -113,3 +114,29 @@ body[data-activity="voice"] .hud > .center > :is(.matters, .suggest, .hint, .sys
   body[data-activity="voice"] .hud > .center > .headline { grid-column: 1 / -1; text-align: center; }
 }
 @media (prefers-reduced-motion: reduce) { .hud > .center > .core-wrap.has-avatar { transition: none; } }
+
+/* ---- projector, beam, depth, texture ---- */
+.av-b0 { stop-color: rgb(var(--av-rgb)); stop-opacity: .26; }
+.av-b1 { stop-color: rgb(var(--av-rgb)); stop-opacity: .07; }
+.av-b2 { stop-color: rgb(var(--av-rgb)); stop-opacity: 0; }
+.av-p0 { stop-color: rgb(var(--av-rgb)); stop-opacity: .45; }
+.av-p1 { stop-color: rgb(var(--av-rgb)); stop-opacity: 0; }
+.av-padring { stroke-dasharray: .03 .02; animation: av-flow 26s linear infinite; }
+.av-front { fill: none; stroke: var(--av-hi); stroke-width: 1.3; stroke-opacity: .55; stroke-dasharray: .015 .02;
+  animation: av-flow 40s linear infinite; }
+.av-front.f2 { animation-direction: reverse; animation-duration: 55s; stroke-opacity: .35; }
+.av-front.f3 { animation-duration: 28s; stroke-opacity: .45; }
+.avatar:is([data-state="planning"], [data-state="executing"], [data-state="researching"]) .av-front { animation-duration: 7s; }
+.avatar[data-state="listening"] .av-orbitfront { transform-box: view-box; transform-origin: 200px 330px; animation: av-listen 1.6s ease-in-out infinite; }
+.avatar:is([data-state="understanding"], [data-state="reasoning"], [data-state="writing"], [data-state="coding"], [data-state="verifying"],
+  [data-state="planning"], [data-state="executing"], [data-state="researching"]) .av-beam { animation: av-beam 2.4s ease-in-out infinite; }
+.core-wrap.has-avatar .avatar-lines { position: absolute; inset: 0; z-index: 2; pointer-events: none;
+  background: repeating-linear-gradient(0deg, rgba(5, 3, 2, .34) 0 1px, transparent 1px 3px);
+  -webkit-mask-image: radial-gradient(60% 55% at 50% 45%, #000 40%, transparent 75%);
+  mask-image: radial-gradient(60% 55% at 50% 45%, #000 40%, transparent 75%); }
+.avatar.materialize { animation: av-power 1.8s linear 1; }
+@keyframes av-beam { 0%, 100% { opacity: .75; } 50% { opacity: 1; } }
+@keyframes av-power { 0% { opacity: 0; } 6% { opacity: .7; } 9% { opacity: .1; } 14% { opacity: .9; } 18% { opacity: .3; }
+  26% { opacity: 1; } 31% { opacity: .6; } 36%, 100% { opacity: 1; } }
+:root[data-fx="off"] .avatar { filter: drop-shadow(0 0 4px rgba(var(--av-rgb), .45)); }
+:root[data-fx="off"] .avatar-lines { display: none; }

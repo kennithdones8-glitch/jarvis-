@@ -175,6 +175,9 @@ function situation(d) {
   if (ui.chatBusy) return { core: "thinking", cls: "", kicker: "Thinking", main: "Composing a reply", sub: "" };
   const online = d.models ? d.models.providers.reduce((n, p) => n + p.available.length, 0) : 0;
   if (d.models && !online) return { core: "degraded", cls: "attention", kicker: "Systems", main: "No model available", sub: "Is Ollama running? Open the Ollama app, then wait a few seconds." };
+  const problems = d.health && d.health.items ? d.health.items.filter((x) => !x.ok) : [];
+  if (problems.length) return { core: "online", cls: "", warn: true, kicker: `${plural(problems.length, "system")} to check`, main: `${greeting()}.`,
+    sub: `${plural(online, "model")} online · ${problems.map((x) => x.name).join(", ")} — details in Command center.` };
   return { core: "online", cls: "", kicker: "All systems nominal", main: `${greeting()}.`, sub: `${plural(online, "model")} online · nothing needs you right now.` };
 }
 
@@ -235,7 +238,8 @@ function renderHead(d) {
   $("#hl-sub").textContent = s.sub;
   const pill = $("#statuspill");
   pill.dataset.state = s.core;
-  $("#statustext").textContent = s.main && s.kicker !== "All systems nominal" ? `${s.kicker} · ${s.main}` : s.kicker;
+  if (s.warn) pill.dataset.warn = "1"; else delete pill.dataset.warn;
+  $("#statustext").textContent = s.main && s.kicker !== "All systems nominal" && !s.warn ? `${s.kicker} · ${s.main}` : s.kicker;
   pill.setAttribute("href", d && d.approvals && d.approvals.length ? "#/decisions" : "#/home");
   document.title = s.core === "attention" ? "● JARVIS — decision required" : "JARVIS";
   const stop = d && d.emergency_stop;
@@ -1109,10 +1113,20 @@ function wordEvent(e) {
     : e.event.replace(/[._]/g, " ").replace(/^\w/, (c) => c.toUpperCase());  // e.g. "Device step up"
   return { ...e, detail: words };
 }
+// Colour of an event's node in the Recent activity timeline.
+function eventKind(event) {
+  if (/error|failed|denied|no_route|rejected|stop/.test(event)) return "bad";
+  if (/^approval|^device/.test(event)) return "decision";
+  if (/^evolution/.test(event)) return "evolution";
+  if (/^memory/.test(event)) return "memory";
+  if (/^task/.test(event)) return "mission";
+  if (/^model|^egress|^chat/.test(event)) return "model";
+  return "other";
+}
 function renderActivity(entries) {
   entries = entries.map(wordEvent);
   $("#ticker").replaceChildren(...entries.slice(0, 6).map((e) => h("li", {}, h("time", {}, clock(e.ts)), e.detail)));
-  $("#recent").replaceChildren(...(entries.length ? entries.slice(0, 6).map((e) => h("li", {}, h("time", {}, clock(e.ts)), h("span", {}, e.detail)))
+  $("#recent").replaceChildren(...(entries.length ? entries.slice(0, 6).map((e) => h("li", { class: `ev-${eventKind(e.event)}` }, h("time", {}, clock(e.ts)), h("span", {}, e.detail)))
     : [h("li", { class: "empty" }, "Nothing yet.")]));
   $("#activity").replaceChildren(...entries.map((e) => h("li", {}, h("time", {}, clock(e.ts)), h("span", {}, e.detail))));
 }
@@ -1847,7 +1861,7 @@ function systems(d) {
         ...research.slice(-3).map((m) => row("Answer", m.text.slice(0, 90) + (m.text.length > 90 ? "…" : ""))),
       ],
       note: "Research history beyond this page isn't kept: the audit log stores only fingerprints of what was asked." },
-    { id: "personal", short: "Personal", icon: "◷", label: "Personal operations",
+    { id: "personal", short: "Personal", icon: "◷", label: "Personal ops",
       status: d.capabilities && d.capabilities.mac_apps ? "ok" : "off",
       value: d.capabilities && d.capabilities.mac_apps ? "Mac apps ready" : "not set up",
       rows: [

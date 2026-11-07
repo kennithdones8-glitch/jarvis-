@@ -948,3 +948,147 @@ body[data-view="command"] .hud .panel:not(.command-panel) { display: none !impor
   .cmd:has(.intel-cycle:not([hidden])) .tabs { grid-column: 1; }
   .cc-row { grid-template-columns: 1fr; gap: 0; }
 }
+
+/* =====================================================================================================
+   Theme v2 — "holographic command deck". Presentation only: overrides earlier rules by cascade.
+   One colour rule: amber = JARVIS, cyan = listening/speaking, orange/red = needs you / problem.
+   ===================================================================================================== */
+:root { --glass: linear-gradient(160deg, rgba(46, 30, 12, .70), rgba(12, 8, 4, .84));
+        --edge: rgba(242, 184, 75, .18); --edge-hi: rgba(255, 217, 142, .55); --glow: 0 0 22px -8px rgba(242, 184, 75, .55); }
+
+/* backdrop: deeper vignette and a warm floor glow under the core (static — no background animation) */
+.backdrop { background:
+    radial-gradient(640px 520px at 50% 34%, rgba(242, 184, 75, .13), transparent 70%),
+    radial-gradient(1100px 760px at 50% 40%, rgba(120, 40, 18, .20), transparent 72%),
+    repeating-linear-gradient(0deg, rgba(242, 184, 75, .05) 0 1px, transparent 1px 48px),
+    repeating-linear-gradient(90deg, rgba(242, 184, 75, .05) 0 1px, transparent 1px 48px),
+    var(--bg); }
+
+/* top bar: a thin light line under it */
+.top { position: relative; }
+.top::after { content: ""; position: absolute; left: 28px; right: 28px; bottom: 0; height: 1px; pointer-events: none;
+  background: linear-gradient(90deg, transparent, var(--edge-hi), transparent); opacity: .5; }
+.wordmark { background: linear-gradient(180deg, #fff3d6, var(--gold) 70%); -webkit-background-clip: text; background-clip: text;
+  color: transparent; text-shadow: none; filter: drop-shadow(0 0 10px rgba(242, 184, 75, .35)); }
+.wordmark span { -webkit-text-fill-color: var(--muted); }
+.statuspill { border-radius: 999px; border-color: var(--edge); background: rgba(10, 6, 3, .6); box-shadow: inset 0 0 12px rgba(242, 184, 75, .06); }
+.statuspill[data-state="online"] i { background: var(--gold); box-shadow: 0 0 10px var(--gold); }
+.statuspill[data-warn] { border-color: #ffb347; }
+.statuspill[data-warn] i { background: #ffb347; box-shadow: 0 0 10px #ffb347; }
+.statuspill[data-state="online"] i, .statuspill[data-state="thinking"] i, .statuspill[data-state="executing"] i { animation: pill-pulse 2.4s ease-in-out infinite; }
+@keyframes pill-pulse { 0%, 100% { opacity: 1; } 50% { opacity: .45; } }
+
+/* panels: glass with a lit top edge; one corner bracket instead of two */
+.panel { background: var(--glass); border-color: var(--edge);
+  box-shadow: inset 0 1px 0 rgba(255, 217, 142, .10), inset 0 0 40px rgba(242, 184, 75, .035), 0 24px 48px -30px #000; }
+.panel::before { width: 16px; height: 16px; border-color: var(--gold); opacity: .9; }
+.panel::after { top: 0; left: var(--cut); right: 18%; bottom: auto; width: auto; height: 1px; border: 0;
+  background: linear-gradient(90deg, var(--edge-hi), transparent); }
+.ph h2 { display: flex; align-items: center; gap: 10px; letter-spacing: .24em; white-space: nowrap; text-shadow: 0 0 12px rgba(242, 184, 75, .35); }
+.ph h2::before { content: ""; width: 6px; height: 6px; transform: rotate(45deg); background: var(--gold); box-shadow: 0 0 8px var(--gold); flex: none; }
+
+/* conversation: JARVIS speaks in amber; cyan is reserved for listening/speaking */
+.msg.jarvis { border-left-color: var(--gold); background: linear-gradient(90deg, rgba(242, 184, 75, .10), transparent 85%); }
+.msg.jarvis .who { color: var(--gold-hi); }
+.msg.live::after { color: var(--gold); }
+.stage-line { color: var(--gold-hi); }
+.msg.user { background: rgba(255, 233, 184, .06); border-color: var(--edge); }
+
+/* "what matters now": a slim alert strip instead of big cards */
+.matters { margin: 10px 0 2px; }
+.matters-h { font-size: 12px; letter-spacing: .28em; opacity: .85; }
+.matter { padding: 6px 10px; gap: 10px; background: linear-gradient(90deg, rgba(255, 179, 71, .10), rgba(0, 0, 0, .25) 60%); border-color: var(--edge); }
+.matter .m-text { display: flex; flex-wrap: wrap; align-items: baseline; column-gap: 10px; min-width: 0; }
+.matter .m-text small { order: 0; } .matter .m-text b { order: 1; } .matter .m-text span { order: 2; }
+
+/* message box: docked glass console */
+.cmd.panel { background: linear-gradient(180deg, rgba(40, 26, 10, .92), rgba(10, 6, 3, .95)); border-color: rgba(242, 184, 75, .32);
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, .5), 0 -18px 40px -28px rgba(242, 184, 75, .35), inset 0 1px 0 rgba(255, 217, 142, .14); }
+.cmd textarea:focus { border-color: var(--gold); box-shadow: 0 0 0 1px var(--gold), var(--glow); outline: none; }
+@media (min-width: 761px) {
+  body[data-view="home"] .hud > .center > .cmd { position: sticky; bottom: 14px; z-index: 15; }
+}
+
+/* recent activity: a timeline with a coloured node per kind of event */
+.recent li { position: relative; padding-left: 18px; }
+.recent li::before { content: ""; position: absolute; left: 3px; top: 9px; width: 7px; height: 7px; border-radius: 50%;
+  background: var(--gold); box-shadow: 0 0 6px var(--gold); }
+.recent li::after { content: ""; position: absolute; left: 6px; top: 20px; bottom: -10px; width: 1px; background: var(--edge); }
+.recent li:last-child::after { display: none; }
+.recent li.ev-decision::before { background: #ffb347; box-shadow: 0 0 6px #ffb347; }
+.recent li.ev-bad::before { background: var(--red); box-shadow: 0 0 6px var(--red); }
+.recent li.ev-model::before { background: #ffe9b8; }
+.recent li.ev-evolution::before { background: #fff; box-shadow: 0 0 10px var(--gold-hi); }
+.recent li.ev-memory::before { background: #b48cff; box-shadow: 0 0 6px #b48cff; }
+.recent li.ev-mission::before { background: var(--ok); box-shadow: 0 0 6px var(--ok); }
+
+/* status chips: HUD readouts */
+.sys-chip { background: linear-gradient(180deg, rgba(242, 184, 75, .06), rgba(0, 0, 0, .3)); border-color: var(--edge); position: relative; }
+.sys-chip:hover, .sys-chip:focus-visible { box-shadow: var(--glow); }
+.sc-dot { animation: pill-pulse 3s ease-in-out infinite; }
+.sys-chip.off .sc-dot { animation: none; }
+
+/* ---- the hero: hologram in the middle, the eight systems as callouts on both sides (wide screens) ---- */
+@media (min-width: 1200px) {
+  body[data-view="home"]:not(.cinematic) .hud > .center { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+    column-gap: 22px; row-gap: 0; align-items: center; justify-items: center; }
+  body[data-view="home"]:not(.cinematic) .hud > .center > * { grid-column: 1 / -1; }
+  body[data-view="home"]:not(.cinematic) .hud > .center > .core-wrap { grid-column: 2; grid-row: 1 / span 4; margin: 0; }
+  body[data-view="home"]:not(.cinematic) .hud > .center > .stats { display: none; }
+  body[data-view="home"]:not(.cinematic) .sysbar { display: contents; }
+  body[data-view="home"]:not(.cinematic) .sysbar > .sys-chip { width: min(100%, 232px); background: none; border: 0;
+    border-bottom: 1px solid var(--edge); padding: 6px 2px; min-height: 52px; }
+  body[data-view="home"]:not(.cinematic) .sysbar > .sys-chip:hover { background: rgba(242, 184, 75, .06); box-shadow: none; }
+  body[data-view="home"]:not(.cinematic) .sysbar > .sys-chip:nth-child(-n+4) { grid-column: 1; justify-self: end;
+    grid-template-columns: 1fr auto auto; text-align: right; }
+  body[data-view="home"]:not(.cinematic) .sysbar > .sys-chip:nth-child(-n+4) .sc-dot { order: 3; }
+  body[data-view="home"]:not(.cinematic) .sysbar > .sys-chip:nth-child(-n+4) .sc-icon { order: 2; }
+  body[data-view="home"]:not(.cinematic) .sysbar > .sys-chip:nth-child(-n+4) .sc-label { order: 1; }
+  body[data-view="home"]:not(.cinematic) .sysbar > .sys-chip:nth-child(-n+4) .sc-value { order: 4; }
+  body[data-view="home"]:not(.cinematic) .sysbar > .sys-chip .sc-label { letter-spacing: .1em; overflow: visible; }
+  body[data-view="home"]:not(.cinematic) .sysbar > .sys-chip .sc-value { font-size: 14px; color: var(--text); white-space: normal; }
+  body[data-view="home"]:not(.cinematic) .sysbar > .sys-chip:nth-child(n+5) { grid-column: 3; justify-self: start; }
+  body[data-view="home"]:not(.cinematic) .sysbar > .sys-chip:is(:nth-child(1), :nth-child(5)) { grid-row: 1; }
+  body[data-view="home"]:not(.cinematic) .sysbar > .sys-chip:is(:nth-child(2), :nth-child(6)) { grid-row: 2; }
+  body[data-view="home"]:not(.cinematic) .sysbar > .sys-chip:is(:nth-child(3), :nth-child(7)) { grid-row: 3; }
+  body[data-view="home"]:not(.cinematic) .sysbar > .sys-chip:is(:nth-child(4), :nth-child(8)) { grid-row: 4; }
+  /* the outer rows sit closer to the core, so the callouts curve around it */
+  body[data-view="home"]:not(.cinematic) .sysbar > .sys-chip:is(:nth-child(2), :nth-child(3)) { transform: translateX(-18px); }
+  body[data-view="home"]:not(.cinematic) .sysbar > .sys-chip:is(:nth-child(6), :nth-child(7)) { transform: translateX(18px); }
+  /* leader lines toward the hologram */
+  body[data-view="home"]:not(.cinematic) .sysbar > .sys-chip::after { content: ""; position: absolute; bottom: -1px; width: 26px; height: 1px;
+    background: linear-gradient(90deg, var(--edge-hi), transparent); }
+  body[data-view="home"]:not(.cinematic) .sysbar > .sys-chip:nth-child(-n+4)::after { right: -26px; }
+  body[data-view="home"]:not(.cinematic) .sysbar > .sys-chip:nth-child(n+5)::after { left: -26px; transform: scaleX(-1); }
+  body[data-view="home"]:not(.cinematic) .sysbar > .sys-chip.bad { border-bottom-color: rgba(255, 59, 71, .55); }
+  body[data-view="home"]:not(.cinematic) .sysbar > .sys-chip.warn { border-bottom-color: rgba(255, 179, 71, .55); }
+  body[data-view="home"]:not(.cinematic) .hud > .center > .core-wrap.has-avatar { width: min(340px, 26vw); }
+  body[data-view="home"].has-matters:not(.cinematic) .hud > .center > .core-wrap.has-avatar { width: min(320px, 24vw); }
+  body[data-view="home"][data-activity="conversation"]:not(.cinematic) .hud > .center > .core-wrap.has-avatar { width: min(250px, 20vw); }
+  body[data-view="home"]:is([data-activity="research"], [data-activity="mission"]):not(.cinematic) .hud > .center > .core-wrap.has-avatar { width: min(200px, 16vw); }
+  body[data-view="home"][data-activity="voice"]:not(.cinematic) .hud > .center > .core-wrap.has-avatar { width: min(420px, 32vw); }
+  body[data-view="home"]:not(.cinematic) .hud > .center > .headline { margin-top: 4px; }
+}
+body[data-view="workspace"] .sysbar { display: none; }
+
+/* ---- iPhone: compact one-line header, swipeable system strip ---- */
+@media (max-width: 760px) {
+  .top { padding: 10px 14px 6px; gap: 8px; flex-wrap: wrap; }
+  .top::after { left: 14px; right: 14px; }
+  .wordmark { font-size: 17px; letter-spacing: .3em; }
+  .wordmark span { display: none; }
+  .top-right { gap: 8px; }
+  .top-right .btn-danger { padding: 6px 10px; font-size: 12px; letter-spacing: .1em; }
+  .statuspill { min-height: 44px; margin-top: 2px; }
+  .sysbar { display: grid; grid-auto-flow: column; grid-template-columns: none; grid-auto-columns: minmax(88px, 27%); overflow-x: auto;
+    overscroll-behavior-x: contain; scroll-snap-type: x mandatory; scrollbar-width: none; padding-bottom: 2px; }
+  .sysbar::-webkit-scrollbar { display: none; }
+  .sys-chip { scroll-snap-align: start; }
+  .hud > .center { grid-template-columns: 84px 1fr; }
+  .matter { grid-template-columns: 22px 1fr auto; padding: 6px 8px; }
+  .matter .btn { grid-column: 3; justify-self: end; }
+  .matter .m-text small { display: none; }
+  .hud > .center > .core-wrap.has-avatar { width: 84px; }
+}
+@media (prefers-reduced-motion: reduce) { .statuspill i, .sc-dot { animation: none !important; } }
+:root[data-fx="off"] .statuspill i, :root[data-fx="off"] .sc-dot { animation: none !important; }

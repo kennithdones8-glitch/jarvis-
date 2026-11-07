@@ -1,5 +1,19 @@
 # Changelog
 
+## Unreleased — Dashboard theme v2: holographic command deck
+
+- The hologram stands on a projector pad in a beam of light, its torso dissolving into the beam; orbit rings pass in
+  front of and behind it; soft glow, scan-line texture, and a flicker as it powers up.
+- Wide screens: the eight systems sit around the hologram as HUD callouts with leader lines (chips on smaller screens,
+  a swipeable strip on the iPhone).
+- Glass panels with a lit top edge, one colour rule (amber = JARVIS, cyan only for listening/speaking, orange/red for
+  problems), "What matters now" as a slim alert strip, the message box docked at the bottom, Recent activity as a
+  colour-coded timeline with plain wording for more events.
+- Fix: the status pill said "All systems nominal" while a health check was failing; it now says how many systems to
+  check. iPhone header is more compact.
+- Presentation only: no change to what JARVIS does. Still no background animation; Effects Off and reduced motion
+  still make everything still.
+
 ## Unreleased — Phase 2: holographic core and command center
 
 - **Holographic core**: an amber humanoid hologram (layered SVG, energy motes) with the reactor as its chest core.

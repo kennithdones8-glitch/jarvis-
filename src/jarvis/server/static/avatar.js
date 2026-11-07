@@ -19,6 +19,12 @@
   // [id, minimum evolution tier, markup]. Order is paint order (back to front).
   const PARTS = [
     ["aura", 1, `<ellipse class="av-aura" cx="200" cy="230" rx="190" ry="230" fill="url(#av-aura)"/>`],
+    ["pad", 1, `<path class="av-beam" d="M118 506 L168 150 L232 150 L282 506 Z" fill="url(#av-beam)"/>
+                <ellipse class="av-padglow" cx="200" cy="506" rx="170" ry="26" fill="url(#av-padglow)"/>
+                <ellipse class="av-wire" pathLength="1" cx="200" cy="506" rx="124" ry="15"/>
+                <ellipse class="av-thin av-padring" pathLength="1" cx="200" cy="506" rx="146" ry="19"/>
+                <ellipse class="av-thin" pathLength="1" cx="200" cy="506" rx="88" ry="10"/>
+                <path class="av-thin" pathLength="1" d="M60 506 L20 506 M340 506 L380 506"/>`],
     ["halo", 4, `<circle class="av-wire av-halo-ring" pathLength="1" cx="200" cy="140" r="112"/>
                  <circle class="av-thin av-halo-ring2" pathLength="1" cx="200" cy="140" r="124"/>`],
     ["orbits", 1, `<g class="av-orbit o1"><ellipse class="av-thin" pathLength="1" cx="200" cy="330" rx="178" ry="34"/></g>
@@ -71,8 +77,13 @@
       </g>`],
     ["visor", 1, `<path class="av-visor" d="M146 136 L186 145 L200 149 L214 145 L254 136 L249 156 L214 163 L200 167 L186 163 L151 156 Z"/>
                   <path class="av-visor-glint" d="M156 142 L186 149 L188 153 L158 148 Z"/>`],
+    ["orbitfront", 1, `<path class="av-front f1" pathLength="1" d="M22 330 A178 34 0 0 0 378 330"/>
+                       <path class="av-front f2" pathLength="1" d="M50 330 A150 22 0 0 0 350 330"/>
+                       <path class="av-front f3" pathLength="1" d="M90 140 A110 16 0 0 0 310 140"/>`],
     ["scan", 1, `<rect class="av-scan" x="20" y="0" width="360" height="5"/>`],
   ];
+
+  const FADED = new Set(["body", "sideplates", "circuits", "plates"]);
 
   function nodes(markup) {
     const doc = new DOMParser().parseFromString(`<svg xmlns="${NS}">${markup}</svg>`, "image/svg+xml");
@@ -91,23 +102,33 @@
   function mount(wrap) {
     if (av.svg || !wrap) return;
     const svg = document.createElementNS(NS, "svg");
-    svg.setAttribute("viewBox", "0 0 400 480");
+    svg.setAttribute("viewBox", "0 0 400 540");
     svg.setAttribute("class", "avatar materialize");
     svg.setAttribute("aria-hidden", "true");
     svg.dataset.state = "idle";
     svg.append(...nodes(`<defs>
         <radialGradient id="av-aura"><stop offset="0%" class="av-a0"/><stop offset="60%" class="av-a1"/><stop offset="100%" class="av-a2"/></radialGradient>
         <linearGradient id="av-glass" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" class="av-g0"/><stop offset="100%" class="av-g1"/></linearGradient>
+        <linearGradient id="av-beam" x1="0" y1="1" x2="0" y2="0"><stop offset="0%" class="av-b0"/><stop offset="55%" class="av-b1"/><stop offset="100%" class="av-b2"/></linearGradient>
+        <radialGradient id="av-padglow"><stop offset="0%" class="av-p0"/><stop offset="100%" class="av-p1"/></radialGradient>
+        <linearGradient id="av-fadegrad" gradientUnits="userSpaceOnUse" x1="0" y1="380" x2="0" y2="500">
+          <stop offset="0%" stop-color="#fff"/><stop offset="100%" stop-color="#000"/></linearGradient>
+        <mask id="av-fade" maskUnits="userSpaceOnUse" x="0" y="0" width="400" height="540"><rect x="0" y="0" width="400" height="540" fill="url(#av-fadegrad)"/></mask>
       </defs>`));
     for (const [id, tier, markup] of PARTS) {
       const g = document.createElementNS(NS, "g");
       g.setAttribute("class", `av-layer av-${id}`);
       g.dataset.part = id;
       g.dataset.tier = String(tier);
+      if (FADED.has(id)) g.setAttribute("mask", "url(#av-fade)"); // the torso dissolves into the projector beam
       g.append(...nodes(markup));
       svg.append(g);
       av.layers[id] = g;
     }
+    const lines = document.createElement("div");
+    lines.className = "avatar-lines";
+    lines.setAttribute("aria-hidden", "true");
+    wrap.prepend(lines);
     const canvas = document.createElement("canvas");
     canvas.className = "avatar-fx";
     canvas.setAttribute("aria-hidden", "true");
@@ -176,7 +197,7 @@
   }
 
   function spawn(w, hgt, fast) {
-    const x = w * (0.2 + Math.random() * 0.6), y = hgt * (0.55 + Math.random() * 0.4);
+    const x = w * (0.25 + Math.random() * 0.5), y = hgt * (0.72 + Math.random() * 0.22); // rise from the projector
     av.motes.push({ x, y, vx: (Math.random() - 0.5) * 0.3, vy: -(0.2 + Math.random() * (fast ? 1.1 : 0.4)),
                     life: 1, r: 0.6 + Math.random() * 1.6 });
   }
@@ -186,7 +207,7 @@
     const [w, hgt] = size();
     for (let i = 0; i < 40; i++) {
       const a = Math.random() * Math.PI * 2, s = 1 + Math.random() * 2.5;
-      av.motes.push({ x: w / 2, y: hgt * 0.68, vx: Math.cos(a) * s, vy: Math.sin(a) * s, life: 1, r: 1 + Math.random() * 1.5 });
+      av.motes.push({ x: w / 2, y: hgt * 0.61, vx: Math.cos(a) * s, vy: Math.sin(a) * s, life: 1, r: 1 + Math.random() * 1.5 });
     }
   }
 

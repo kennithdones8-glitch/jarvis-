@@ -112,6 +112,12 @@ def describe_event(event: str, p: dict[str, Any], *, task_id: str | None = None,
     lines = {
         "task.created": lambda: "New task" + (f": {goals.get(task_id)}" if goals.get(task_id) else ""),
         "task.deleted": lambda: "Deleted a task and its history",
+        "egress.grant_created": lambda: f"Standing permission: your {p.get('category')} may go to {p.get('provider')}",
+        "egress.grant_revoked": lambda: "Withdrew a standing privacy permission",
+        "model.no_route": lambda: "No suitable model for one request (details in Command center → Intelligence)",
+        "egress.received": lambda: f"Reply from {p.get('provider')}/{p.get('model')} in {p.get('latency_s')}s",
+        "chat.answer_check": lambda: ("Answer checked: fine" if not p.get("problems") else
+                                      f"Answer checked: {p.get('problems')} problem(s){', retried' if p.get('retried') else ''}"),
         "evolution.milestone": lambda: f"Core evolution: verified “{_milestone_title(p.get('milestone'))}”",
         "evolution.tier": lambda: f"Core evolution: tier {p.get('frm')} → {p.get('to')} ({p.get('verified')} milestones verified)",
         "chat.mode_fallback": lambda: f"{str(p.get('mode', '')).capitalize()} mode: answered with {p.get('model')} instead",
