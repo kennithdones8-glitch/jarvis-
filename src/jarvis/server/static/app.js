@@ -1137,6 +1137,20 @@ function wordEvent(e) {
     : e.event.replace(/[._]/g, " ").replace(/^\w/, (c) => c.toUpperCase());  // e.g. "Device step up"
   return { ...e, detail: words };
 }
+// A short, friendly line for the Home timeline. The full wording stays in the full log (and on hover).
+const modelName = (m) => { const n = String(m || "").split("/").pop(); return n ? n.charAt(0).toUpperCase() + n.slice(1) : "a model"; };
+function shortEvent(e) {
+  const d = e.detail || "";
+  let m;
+  if (e.event === "model.route" && (m = d.match(/Model chosen: ([\w./:-]+) \((cloud|local)/))) return `Routed to ${modelName(m[1])} · ${m[2] === "local" ? "on this Mac" : "cloud"}`;
+  if (e.event === "egress.received" && (m = d.match(/Reply from ([\w./:-]+) in ([\d.]+)s/))) return `Reply · ${modelName(m[1])} · ${Number(m[2]).toFixed(1)} s`;
+  if (e.event === "model.local_call" && (m = d.match(/^(.+?) answered \(.*?, ([\d.]+)s\)/))) return `Reply · ${modelName(m[1])} · ${Number(m[2]).toFixed(1)} s · on this Mac`;
+  if (e.event === "egress.send" && (m = d.match(/ to (\w+)/))) return `Request sent to ${modelName(m[1])}`;
+  if (e.event === "chat.answer_check") return d === "Answer checked: fine" ? "Answer checked ✓" : d;
+  if (e.event === "model.no_route") return "No model available for a request";
+  if (e.event === "evolution.milestone" && (m = d.match(/verified “(.+)”/))) return `Milestone verified · ${m[1]}`;
+  return d.length > 64 ? `${d.slice(0, 62).trimEnd()}…` : d;
+}
 // Colour of an event's node in the Recent activity timeline.
 function eventKind(event) {
   if (/error|failed|denied|no_route|rejected|stop/.test(event)) return "bad";
@@ -1150,7 +1164,7 @@ function eventKind(event) {
 function renderActivity(entries) {
   entries = entries.map(wordEvent);
   $("#ticker").replaceChildren(...entries.slice(0, 6).map((e) => h("li", {}, h("time", {}, clock(e.ts)), e.detail)));
-  $("#recent").replaceChildren(...(entries.length ? entries.slice(0, 6).map((e) => h("li", { class: `ev-${eventKind(e.event)}` }, h("time", {}, clock(e.ts)), h("span", {}, e.detail)))
+  $("#recent").replaceChildren(...(entries.length ? entries.slice(0, 6).map((e) => h("li", { class: `ev-${eventKind(e.event)}`, title: e.detail }, h("time", {}, clock(e.ts)), h("span", {}, shortEvent(e))))
     : [h("li", { class: "empty" }, "Nothing yet.")]));
   $("#activity").replaceChildren(...entries.map((e) => h("li", {}, h("time", {}, clock(e.ts)), h("span", {}, e.detail))));
 }

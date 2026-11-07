@@ -1,5 +1,18 @@
 # Changelog
 
+## Unreleased — UI 5: frosted glass, short activity, docked command bar (owner's spec)
+
+- Chosen with the owner (Vision Pro calm + Marvel JARVIS fine lines + HUD structure, subtle glow, balanced layout,
+  moderate density): **rounded frosted-glass panels**, glow only on edges and titles, body text plain white, gold
+  first with silver secondary, green for healthy and red only for real problems. No blur in Low performance or
+  Reduced motion (solid dark glass instead).
+- **Recent activity on Home reads in short lines** ("Reply · Sonnet · 5.5 s", "Answer checked ✓"); the full log keeps
+  every detail, and hovering a line shows it.
+- **Bottom area**: "What matters now" is a slim banner at the top of the centre column; suggestions are one row of
+  small chips (swipeable on phones); the **command bar is docked at the bottom** — the field fills it, Ask / Research /
+  Do and Quick / Balanced / Deep are small pills inside it, Send at the end.
+- Replaces the UI 3 panel look and the UI 4 see-through draft (meters and the wider command center stay).
+
 ## Unreleased — UI 3: holographic glass panels
 
 - **Panels** are lit glass that matches the projection: a gold hairline edge, depth and inner glow, a faint scan

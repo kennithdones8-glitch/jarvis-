@@ -50,13 +50,15 @@ def test_activity_never_shows_raw_data_for_idea_events(dash):
     assert "entries = entries.map(wordEvent);" in js and '"memory.important": (p) =>' in js
 
 
-def test_ui3_meters_show_only_real_ratios_and_effects_respect_motion_settings():
+def test_ui_meters_show_only_real_ratios_and_the_glass_respects_effects_settings():
     from pathlib import Path
     static = Path(__file__).resolve().parents[1] / "src" / "jarvis" / "server" / "static"
     js, css = (static / "app.js").read_text(), (static / "app.css").read_text()
     assert "if (ratio === null || ratio === undefined || !Number.isFinite(ratio)) return null;" in js     # unknown: no meter
     assert 'total ? online / total : null' in js and "m.budget.monthly_limit_usd ? (m.budget.spent_this_month_usd || 0) / m.budget.monthly_limit_usd : null" in js
     assert '.meter[data-fill="10"] { --f: 100%; }' in css and 'style="' not in js                           # no inline styles (CSP)
-    assert ':root[data-fx="reduced"] .hud .panel > .ph::before, :root[data-fx="off"] .hud .panel > .ph::before { animation: none; display: none; }' in css
-    assert "@media (prefers-reduced-motion: reduce) { .hud .panel > .ph::before { animation: none; display: none; } }" in css
+    # UI 5 (owner's spec): rounded frosted panels, no blur when effects are low/off, bar docked at the bottom
+    assert "border-radius: 18px; clip-path: none;" in css and "backdrop-filter: blur(18px)" in css
+    assert ':root[data-fx="reduced"] .panel, :root[data-fx="off"] .panel { backdrop-filter: none;' in css
+    assert ".cmdbar { position: sticky; bottom: 14px;" in css and ".hud > .center > .matters { order: -1; }" in css
     assert ".cc-sys[open] { grid-column: 1 / -1;" in css

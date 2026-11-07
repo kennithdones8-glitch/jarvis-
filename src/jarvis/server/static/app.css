@@ -1274,25 +1274,6 @@ body[data-view="workspace"] .sysbar { display: none; }
    lit glass with a gold hairline edge and depth; headers get a divider; real ratios show as slim meters;
    the composer, mode controls and navigation follow the same language. Nothing here adds information.
    ====================================================================================================== */
-:root { --glass3: linear-gradient(162deg, rgba(46, 34, 18, .78), rgba(14, 10, 6, .86) 46%, rgba(22, 15, 8, .82));
-        --edge3: linear-gradient(135deg, rgba(246, 230, 194, .62), rgba(217, 180, 95, .16) 24%, rgba(217, 180, 95, .05) 58%, rgba(246, 230, 194, .38)); }
-.panel { background: repeating-linear-gradient(0deg, rgba(255, 226, 160, .016) 0 1px, transparent 1px 3px) padding-box, var(--glass3) padding-box, var(--edge3) border-box;
-  border: 1px solid transparent;
-  box-shadow: inset 0 1px 0 rgba(255, 240, 210, .09), inset 0 0 48px rgba(242, 184, 75, .045), 0 22px 48px -24px rgba(0, 0, 0, .9), 0 0 32px -12px rgba(242, 184, 75, .12); }
-.panel::before { width: 14px; height: 14px; border-color: var(--gold-hi); opacity: .9; filter: drop-shadow(0 0 4px rgba(246, 230, 194, .6)); }
-.panel::after { height: 1px; background: linear-gradient(90deg, rgba(255, 244, 220, .75), rgba(242, 196, 109, .35) 40%, transparent); }
-.ph { position: relative; padding-bottom: 10px; }
-.ph::after { content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 1px; pointer-events: none;
-  background: linear-gradient(90deg, rgba(217, 180, 95, .5), rgba(217, 180, 95, .12) 55%, transparent); }
-.ph h2 { text-shadow: 0 0 16px rgba(246, 210, 140, .35); }
-/* a light catching the top edge now and then (Normal effects only) */
-.hud .panel { overflow: hidden; }
-.hud .panel > .ph::before { content: ""; position: absolute; top: -16px; left: -30%; width: 30%; height: 1px; pointer-events: none;
-  background: linear-gradient(90deg, transparent, rgba(255, 246, 224, .9), transparent); animation: ui3-glint 9s ease-in-out infinite; opacity: .8; }
-@keyframes ui3-glint { 0%, 70% { transform: translateX(0); } 100% { transform: translateX(480%); } }
-:root[data-fx="reduced"] .hud .panel > .ph::before, :root[data-fx="off"] .hud .panel > .ph::before { animation: none; display: none; }
-@media (prefers-reduced-motion: reduce) { .hud .panel > .ph::before { animation: none; display: none; } }
-
 /* meters: a real ratio, coarse (data-fill 0-10); amber when nearly full */
 .meter { display: block; position: relative; height: 3px; flex-basis: 100%; grid-column: 1 / -1; margin-top: 6px; background: rgba(217, 180, 95, .12); }
 .meter::after { content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: var(--f, 0%);
@@ -1327,3 +1308,85 @@ body[data-view="workspace"] .sysbar { display: none; }
   .sidenav a[aria-current="page"] { background: linear-gradient(180deg, rgba(217, 180, 95, .2), transparent); box-shadow: inset 0 2px 0 var(--gold-hi); border-left-color: transparent; }
 }
 .sidenav a[aria-current="page"] .ni { text-shadow: 0 0 10px rgba(246, 210, 140, .8); color: var(--gold-hi); }
+
+/* ======================================================================================================
+   UI 5 — the owner's spec: Vision Pro calm + Marvel JARVIS fine lines + HUD structure, subtle glow.
+   Rounded frosted-glass panels; glow only on edges and titles; body text plain white; gold first, silver
+   second, green for healthy, red only for real problems. Bottom area: a slim alert banner at the top of the
+   centre column, suggestion chips above a command bar docked at the bottom.
+   ====================================================================================================== */
+:root { --silver: #c9ccd3; --silver-line: rgba(214, 218, 226, .16); --glass5: rgba(22, 18, 12, .5); }
+.panel { border-radius: 18px; clip-path: none; border: 1px solid rgba(255, 238, 205, .14);
+  background: linear-gradient(165deg, rgba(48, 38, 22, .5), rgba(14, 11, 8, .55) 60%, rgba(20, 16, 10, .5));
+  backdrop-filter: blur(18px) saturate(1.25); -webkit-backdrop-filter: blur(18px) saturate(1.25);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .07), 0 24px 56px -28px rgba(0, 0, 0, .95), 0 0 26px -16px rgba(242, 196, 109, .4); }
+/* fine holographic lines (Marvel): a lit hairline along the top edge and tiny tick marks in two corners (HUD) */
+.panel::before { display: block; content: ""; position: absolute; top: 10px; left: 10px; width: 10px; height: 10px; border: 0;
+  border-top: 1px solid rgba(255, 217, 143, .7); border-left: 1px solid rgba(255, 217, 143, .7); border-radius: 4px 0 0 0; opacity: 1; filter: none; }
+.panel::after { display: block; content: ""; position: absolute; top: 0; left: 24px; right: 24px; bottom: auto; width: auto; height: 1px; border: 0;
+  background: linear-gradient(90deg, transparent, rgba(255, 238, 205, .55), rgba(242, 196, 109, .35), transparent); box-shadow: none; }
+.ph { margin-left: 4px; padding-bottom: 10px; }
+.ph::after { background: linear-gradient(90deg, rgba(214, 218, 226, .28), rgba(214, 218, 226, .06) 70%, transparent); }
+.ph h2 { font-size: 13px; letter-spacing: .2em; color: var(--gold); text-shadow: 0 0 10px rgba(242, 196, 109, .3); }
+.ph h2::before { width: 5px; height: 5px; box-shadow: 0 0 6px rgba(242, 196, 109, .8); }
+.panel :is(p, li, span, b, dd, dt, time) { text-shadow: none; }
+.ro span, .cc-row dt { color: var(--silver); }
+#recent time { color: var(--silver); }
+/* effects off or low: no blur (cheaper), a solid dark glass instead */
+:root[data-fx="reduced"] .panel, :root[data-fx="off"] .panel { backdrop-filter: none; -webkit-backdrop-filter: none; background: rgba(16, 13, 9, .94); }
+
+/* bottom area ------------------------------------------------------------------------------------------------- */
+/* the order in the centre column: alert banner, avatar, greeting, conversation, suggestion chips, command bar */
+.hud > .center > .matters { order: -1; } .hud > .center > .suggest { order: 4; } .hud > .center > .cmd { order: 5; }
+/* "What matters now" as a slim banner */
+.matters { max-width: 720px; margin: 0 0 6px; }
+.matters .matters-h { display: none; }
+.matters-quiet { display: none; }
+.matter { grid-template-columns: 20px minmax(0, 1fr) auto; gap: 10px; padding: 6px 8px 6px 14px; border-radius: 999px; border: 1px solid rgba(255, 238, 205, .14);
+  border-left-width: 1px; background: rgba(20, 15, 10, .6); }
+.matter.bad { border-color: rgba(255, 75, 85, .45); box-shadow: 0 0 18px -8px rgba(255, 75, 85, .6); }
+.matter.attention { border-color: rgba(255, 217, 143, .5); }
+.matter .m-text { display: flex; gap: 8px; align-items: baseline; white-space: nowrap; overflow: hidden; }
+.matter .m-text small { flex: none; }
+.matter .m-text span { overflow: hidden; text-overflow: ellipsis; }
+.matter .btn { border-radius: 999px; min-height: 30px; padding: 4px 12px; }
+/* suggestion chips: one row of small pills just above the bar */
+.suggest { margin: 8px 0 8px; gap: 6px; }
+.suggest .chip { border-radius: 999px; padding: 5px 12px; font-size: 13px; border: 1px solid var(--silver-line); background: rgba(20, 15, 10, .55); }
+.suggest .chip small { font: 600 12px var(--display); letter-spacing: .14em; color: var(--gold); margin-right: 6px; }
+.suggest .chip:hover { border-color: rgba(255, 217, 143, .5); }
+/* the command bar: docked at the bottom of the centre column, always reachable */
+.cmdbar { position: sticky; bottom: 14px; z-index: 30; width: 100%; max-width: 720px; border-radius: 22px;
+  display: grid; grid-template-columns: 1fr auto; grid-template-areas: "field send" "tabs modes"; gap: 8px 12px; align-items: center; padding: 12px 14px 10px 18px;
+  background: linear-gradient(165deg, rgba(42, 33, 20, .82), rgba(14, 11, 8, .86)); }
+.cmdbar::before { display: none; }
+.cmdbar textarea { grid-area: field; border: 0; background: transparent; box-shadow: none; min-height: 44px; resize: none; padding: 6px 2px; font-size: 16px; }
+.cmdbar textarea:focus { box-shadow: none; outline: none; }
+.cmdbar:focus-within { border-color: rgba(255, 217, 143, .45); box-shadow: 0 0 0 1px rgba(255, 217, 143, .18), 0 0 30px -10px rgba(242, 196, 109, .55), 0 24px 56px -28px rgba(0, 0, 0, .95); }
+.cmdbar .cmd-actions { grid-area: send; display: flex; gap: 6px; align-self: start; }
+.cmdbar .tabs { grid-area: tabs; border: 0; background: none; gap: 4px; justify-self: start; }
+.cmdbar .intel-modes { grid-area: modes; border: 0; background: none; gap: 4px; justify-self: end; }
+.cmdbar .intel-cycle { grid-area: modes; justify-self: end; }
+.cmdbar .tab, .cmdbar .imode { border: 1px solid transparent; border-radius: 999px; padding: 3px 12px; min-height: 30px; background: none; box-shadow: none;
+  font-size: 12px; letter-spacing: .14em; color: var(--silver); }
+.cmdbar .tab[aria-selected="true"], .cmdbar .imode[aria-checked="true"] { border-color: rgba(255, 217, 143, .45); color: #ffe7b8; background: rgba(242, 196, 109, .1); box-shadow: none; }
+.cmdbar #send { border-radius: 999px; padding: 8px 18px; }
+@media (pointer: coarse), (max-width: 760px) { .cmdbar .tab, .cmdbar .imode, .matter .btn { min-height: 44px; } .cmdbar { bottom: calc(76px + env(safe-area-inset-bottom)); } }
+.cmdbar .cmd-actions { justify-self: end; width: auto; margin: 0; }
+.suggest { flex-wrap: nowrap; overflow: hidden; justify-content: center; }
+.suggest .chip { display: inline-flex; align-items: baseline; white-space: nowrap; min-width: 0; flex: 0 1 auto; }
+.suggest .chip small { display: inline; }
+.suggest .chip { overflow: hidden; text-overflow: ellipsis; }
+@media (max-width: 760px) { .suggest { flex-wrap: wrap; } }
+/* explicit places in the bar (older phone rules used grid columns; these win at every size) */
+.cmdbar > textarea { grid-row: 1; grid-column: 1; }
+.cmdbar > .cmd-actions { grid-row: 1; grid-column: 2; }
+.cmdbar > .tabs { grid-row: 2; grid-column: 1; }
+.cmdbar > .intel-modes, .cmdbar > .intel-cycle { grid-row: 2; grid-column: 2; }
+@media (max-width: 760px) {   /* phones: the chips are one row you can swipe */
+  .suggest { flex-wrap: nowrap; overflow-x: auto; justify-content: flex-start; scrollbar-width: none; padding-bottom: 2px; }
+  .suggest::-webkit-scrollbar { display: none; }
+  .suggest .chip { flex: none; max-width: 80vw; }
+}
+.cmd.cmdbar > .intel-cycle:not([hidden]) { grid-row: 2; grid-column: 2; justify-self: end; border-radius: 999px; }
+.cmd.cmdbar:has(.intel-cycle:not([hidden])) > .tabs { grid-row: 2; grid-column: 1; }
