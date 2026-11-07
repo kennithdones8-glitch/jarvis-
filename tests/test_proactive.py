@@ -129,8 +129,22 @@ def test_health_alert_generic_and_rate_limited(make_kernel):
 
 
 # ---- dashboard & CLI ------------------------------------------------------------------------
-def test_dashboard_announces_briefing_once(dash):
-    d, *_ = dash
+@pytest.fixture
+def briefing_dash(monkeypatch, request):
+    """The dashboard, with its background loop kept from announcing on the real clock.
+
+    The maintenance loop calls ``maybe_briefing()`` with the wall-clock time; inside the briefing window that marks
+    the briefing sent (and may push) before the test drives it with its own times. Patched before the dashboard
+    starts, so the loop's first pass is covered too; calls with an explicit ``now`` run the real method."""
+    from jarvis.server import Dashboard
+
+    real = Dashboard.maybe_briefing
+    monkeypatch.setattr(Dashboard, "maybe_briefing", lambda self, now=None: False if now is None else real(self, now))
+    return request.getfixturevalue("dash")
+
+
+def test_dashboard_announces_briefing_once(briefing_dash):
+    d, *_ = briefing_dash
     push = FakePush()
     d.notifier = Notifier(d.kernel, push, schedule=Schedule(quiet_hours=""))
     assert d.maybe_briefing(now=at(7)) is False
