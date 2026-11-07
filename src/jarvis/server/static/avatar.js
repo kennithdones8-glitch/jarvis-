@@ -41,7 +41,7 @@
         ${pair("av-wire", "M178 220 L172 252")}
         <path class="av-thin" pathLength="1" d="M176 232 C190 238 210 238 224 232"/>
       </g>`],
-    ["sideplates", 4, `${pair("av-plate", "M42 344 L70 334 L80 424 L58 436 Z")}`],
+    ["sideplates", 1, `${pair("av-plate", "M42 344 L70 334 L80 424 L58 436 Z")}`],
     ["circuits", 2, `<g class="av-circuits">
         ${pair("av-trace", "M200 300 L200 282 L170 272 L136 272")}
         ${pair("av-trace", "M156 330 L112 330 L96 352")}
@@ -51,12 +51,12 @@
         <circle class="av-node" cx="96" cy="352" r="3"/><circle class="av-node" cx="304" cy="352" r="3"/>
         <circle class="av-node" cx="118" cy="412" r="3"/><circle class="av-node" cx="282" cy="412" r="3"/>
       </g>`],
-    ["plates", 2, `${pair("av-plate", "M120 290 C150 280 184 282 195 296 L195 300 C190 304 186 312 186 322 L120 376 C116 350 116 316 120 290 Z")}
+    ["plates", 1, `${pair("av-plate", "M120 290 C150 280 184 282 195 296 L195 300 C190 304 186 312 186 322 L120 376 C116 350 116 316 120 290 Z")}
                    ${pair("av-plate", "M160 400 L195 398 L195 418 L164 420 Z")}
                    ${pair("av-plate", "M166 426 L195 424 L195 444 L170 446 Z")}`],
-    ["pauldrons", 3, `${pair("av-plate av-heavy", "M58 282 C70 250 120 238 162 252 L152 292 C120 286 90 292 62 314 Z")}
+    ["pauldrons", 1, `${pair("av-plate av-heavy", "M58 282 C70 250 120 238 162 252 L152 292 C120 286 90 292 62 314 Z")}
                       ${pair("av-thin", "M74 280 C96 264 124 258 150 262")}`],
-    ["gorget", 3, `<path class="av-plate av-heavy" pathLength="1" d="M160 236 C180 250 220 250 240 236 L252 262 C222 278 178 278 148 262 Z"/>`],
+    ["gorget", 1, `<path class="av-plate av-heavy" pathLength="1" d="M160 236 C180 250 220 250 240 236 L252 262 C222 278 178 278 148 262 Z"/>`],
     ["helmet", 1, `<path class="av-glow" d="M200 58 C240 58 266 86 268 128 L266 168 C262 192 246 212 222 222 L200 228 L178 222 C154 212 138 192 134 168 L132 128 C134 86 160 58 200 58 Z"/>
                    <path class="av-glow" d="M172 248 C130 250 82 258 54 282 M228 248 C270 250 318 258 346 282"/>
                    <path class="av-helm" pathLength="1" d="M200 58 C240 58 266 86 268 128 L266 168 C262 192 246 212 222 222 L200 228 L178 222 C154 212 138 192 134 168 L132 128 C134 86 160 58 200 58 Z"/>

@@ -13,19 +13,19 @@ const GOLD = new THREE.Color("#d9b45f"), CHAMPAGNE = new THREE.Color("#f3e3bd"),
 // Per state: tint, rim, scan speed, energy flow, ring speed, beam, chest light, flicker. Values chosen for legibility
 // at a glance; every state is driven by a real signal (see avatarState() in app.js).
 const LOOKS = {
-  idle:          { tint: "#f3e3bd", rim: 1.0, scan: 1.0, flow: 0.35, ring: 0.12, beam: 0.65, light: 1.0, flicker: 0 },
-  listening:     { tint: "#d6f3ff", rim: 1.3, scan: 1.4, flow: 0.6,  ring: 0.45, beam: 0.9,  light: 1.2, flicker: 0, pulse: 2.6 },
-  understanding: { tint: "#fff3d6", rim: 1.2, scan: 3.0, flow: 0.7,  ring: 0.35, beam: 0.85, light: 1.15, flicker: 0 },
-  planning:      { tint: "#f6e2b0", rim: 1.2, scan: 1.6, flow: 0.9,  ring: 0.9,  beam: 0.9,  light: 1.2, flicker: 0 },
-  researching:   { tint: "#e6dcff", rim: 1.25, scan: 2.6, flow: 0.8, ring: 0.8,  beam: 0.95, light: 1.2, flicker: 0 },
-  reasoning:     { tint: "#fff0cc", rim: 1.3, scan: 1.2, flow: -1.2, ring: 0.5,  beam: 0.9,  light: 1.35, flicker: 0, pulse: 1.4 },
-  writing:       { tint: "#fff6e2", rim: 1.35, scan: 1.4, flow: 1.6, ring: 0.55, beam: 1.0,  light: 1.4, flicker: 0 },
-  coding:        { tint: "#ffd98a", rim: 1.35, scan: 1.8, flow: 2.6, ring: 0.7,  beam: 1.0,  light: 1.4, flicker: 0 },
-  verifying:     { tint: "#f3f0e6", rim: 1.2, scan: 4.0, flow: 0.9,  ring: 0.5,  beam: 0.95, light: 1.25, flicker: 0 },
-  approval:      { tint: "#f2a33a", rim: 1.3, scan: 1.0, flow: 0.4,  ring: 0.2,  beam: 0.85, light: 1.3, flicker: 0, pulse: 1.8 },
-  executing:     { tint: "#f8dda0", rim: 1.3, scan: 1.8, flow: 1.7, ring: 1.2,  beam: 1.0,  light: 1.4, flicker: 0 },
-  completed:     { tint: "#ffffff", rim: 1.8, scan: 1.0, flow: 1.0, ring: 0.6,  beam: 1.2,  light: 2.2, flicker: 0 },
-  error:         { tint: "#ff6b62", rim: 1.1, scan: 0.6, flow: 0.0, ring: 0.0,  beam: 0.45, light: 0.6, flicker: 0.8 },
+  idle:          { tint: "#f3e3bd", eyes: 0.8, rim: 1.0, scan: 1.0, flow: 0.35, ring: 0.12, beam: 0.65, light: 1.0, flicker: 0 },
+  listening:     { tint: "#d6f3ff", eyes: 1.25, rim: 1.3, scan: 1.4, flow: 0.6,  ring: 0.45, beam: 0.9,  light: 1.2, flicker: 0, pulse: 2.6 },
+  understanding: { tint: "#fff3d6", eyes: 1.0, rim: 1.2, scan: 3.0, flow: 0.7,  ring: 0.35, beam: 0.85, light: 1.15, flicker: 0 },
+  planning:      { tint: "#f6e2b0", eyes: 1.0, rim: 1.2, scan: 1.6, flow: 0.9,  ring: 0.9,  beam: 0.9,  light: 1.2, flicker: 0 },
+  researching:   { tint: "#e6dcff", eyes: 1.05, rim: 1.25, scan: 2.6, flow: 0.8, ring: 0.8,  beam: 0.95, light: 1.2, flicker: 0 },
+  reasoning:     { tint: "#fff0cc", eyes: 1.1, rim: 1.3, scan: 1.2, flow: -1.2, ring: 0.5,  beam: 0.9,  light: 1.35, flicker: 0, pulse: 1.4 },
+  writing:       { tint: "#fff6e2", eyes: 1.6, rim: 1.35, scan: 1.4, flow: 1.6, ring: 0.55, beam: 1.0,  light: 1.4, flicker: 0 },
+  coding:        { tint: "#ffd98a", eyes: 1.4, rim: 1.35, scan: 1.8, flow: 2.6, ring: 0.7,  beam: 1.0,  light: 1.4, flicker: 0 },
+  verifying:     { tint: "#f3f0e6", eyes: 1.1, rim: 1.2, scan: 4.0, flow: 0.9,  ring: 0.5,  beam: 0.95, light: 1.25, flicker: 0 },
+  approval:      { tint: "#f2a33a", eyes: 1.1, rim: 1.3, scan: 1.0, flow: 0.4,  ring: 0.2,  beam: 0.85, light: 1.3, flicker: 0, pulse: 1.8 },
+  executing:     { tint: "#f8dda0", eyes: 1.2, rim: 1.3, scan: 1.8, flow: 1.7, ring: 1.2,  beam: 1.0,  light: 1.4, flicker: 0 },
+  completed:     { tint: "#ffffff", eyes: 2.0, rim: 1.8, scan: 1.0, flow: 1.0, ring: 0.6,  beam: 1.2,  light: 2.2, flicker: 0 },
+  error:         { tint: "#ff6b62", eyes: 0.45, rim: 1.1, scan: 0.6, flow: 0.0, ring: 0.0,  beam: 0.45, light: 0.6, flicker: 0.8 },
 };
 
 const VERT = `
@@ -118,6 +118,17 @@ function torsoRadius(y) {
 function onChest(x, y, lift = 0.025) {
   const r = torsoRadius(y), k = Math.min(0.98, Math.abs(x) / r);
   return new THREE.Vector3(x, y, Math.sqrt(1 - k * k) * r * TORSO_Z + lift);
+}
+
+let glowTex = null;
+function glowTexture() {
+  if (glowTex) return glowTex;
+  const c = document.createElement("canvas"); c.width = c.height = 64;
+  const g = c.getContext("2d"), r = g.createRadialGradient(32, 32, 0, 32, 32, 32);
+  r.addColorStop(0, "rgba(255,250,236,1)"); r.addColorStop(0.35, "rgba(255,236,190,.45)"); r.addColorStop(1, "rgba(255,220,160,0)");
+  g.fillStyle = r; g.fillRect(0, 0, 64, 64);
+  glowTex = new THREE.CanvasTexture(c);
+  return glowTex;
 }
 
 export function create(wrap, opts = {}) {
@@ -221,52 +232,131 @@ export function create(wrap, opts = {}) {
     }
     const neck = add(new THREE.Mesh(new THREE.CylinderGeometry(0.27, 0.34, 0.42, 24, 1, true), holo({ opacity: 0.85 })));
     neck.position.y = 2.98;
-    const housing = add(new THREE.Mesh(new THREE.TorusGeometry(0.3, 0.035, 10, 48), holo({ opacity: 1, rim: 1.6, core: 0.35 })), false);
-    housing.position.copy(onChest(0, 2.0, 0.04));
+
   });
+
+  // ---- helmet: sentinel faceplate with knight elements (original design; every piece is its own part) ----------
+  // Faceted (flat-shaded) geometry reads as forged armour plates rather than a smooth egg.
+  const facet = (g) => { const f = g.index ? g.toNonIndexed() : g; f.computeVertexNormals(); return f; };
+  const plate = (shape, depth = 0.04, bevel = 0.012) => facet(new THREE.ExtrudeGeometry(shape, { depth, bevelEnabled: true,
+    bevelThickness: bevel, bevelSize: bevel, bevelSegments: 1 }));
+  const shapeOf = (pts) => { const sh = new THREE.Shape(); sh.moveTo(pts[0][0], pts[0][1]); for (const [x, y] of pts.slice(1)) sh.lineTo(x, y); sh.closePath(); return sh; };
+  const edged = (add, geo, mesh, o = 0.34) => { const l = add(lines(geo, o, 24), false); l.position.copy(mesh.position); l.rotation.copy(mesh.rotation); l.scale.copy(mesh.scale); return l; };
 
   part("helmet", 1, (add) => {
-    const prof = [V2(0.001, 3.12), V2(0.36, 3.15), V2(0.56, 3.3), V2(0.67, 3.56), V2(0.71, 3.9), V2(0.69, 4.22), V2(0.59, 4.52), V2(0.38, 4.76), V2(0.001, 4.86)];
-    const geo = new THREE.LatheGeometry(prof, 48);
-    const shell = add(new THREE.Mesh(geo, holo({ opacity: 0.85, rim: 1.15 })));
-    shell.scale.set(0.93, 1, 1.0);
-    const browGeo = new THREE.TorusGeometry(0.665, 0.016, 6, 48, 1.7).rotateZ(Math.PI / 2 - 0.85);  // arc centred on +y …
-    const brow = add(new THREE.Mesh(browGeo, holo({ opacity: 1, rim: 1.6, core: 0.45 })), false);
-    brow.rotation.x = Math.PI / 2 - 0.1;  // … turned to face forward, just above the visor
-    brow.position.y = 4.1;
-    add(lines(geo, 0.18, 40), false);
-    const crest = add(new THREE.Mesh(new THREE.TorusGeometry(0.72, 0.012, 6, 64, Math.PI), holo({ opacity: 1, rim: 1.5, core: 0.4 })));
-    crest.rotation.set(0, Math.PI / 2, 0); crest.position.y = 3.95;
-  });
-  part("face", 1, (add) => {
-    const geo = new THREE.SphereGeometry(0.73, 40, 20, Math.PI / 2 - 0.95, 1.9, 1.35, 1.25);
-    const plate = add(new THREE.Mesh(geo, holo({ opacity: 1, rim: 1.4, core: 0.11 })));
-    plate.position.set(0, 3.86, 0.03); plate.scale.set(1, 1.18, 1.02);
-    add(lines(geo, 0.22, 20), false).position.copy(plate.position);
-    for (const s of [-1, 1]) {   // cheek ridges
-      const ridge = add(new THREE.Mesh(new THREE.BoxGeometry(0.03, 0.42, 0.04), holo({ opacity: 1, rim: 1.6, core: 0.4 })), false);
-      ridge.position.set(0.33 * s, 3.55, 0.62); ridge.rotation.z = 0.5 * s;
-    }
-    for (let i = 0; i < 3; i++) { // mouth grille
-      const bar = add(new THREE.Mesh(new THREE.BoxGeometry(0.28 - i * 0.06, 0.018, 0.02), holo({ opacity: 1, rim: 1, core: 0.5 })), false);
-      bar.position.set(0, 3.38 - i * 0.07, 0.69);
-    }
-  });
-  part("visor", 1, (add) => {
+    const prof = [V2(0.001, 3.22), V2(0.42, 3.26), V2(0.6, 3.42), V2(0.7, 3.7), V2(0.72, 3.98), V2(0.69, 4.28), V2(0.58, 4.56), V2(0.38, 4.78), V2(0.001, 4.88)];
+    const geo = facet(new THREE.LatheGeometry(prof, 14));
+    const shell = add(new THREE.Mesh(geo, holo({ opacity: 0.8, rim: 1.2 })));
+    shell.scale.set(0.92, 1, 0.98);
+    edged(add, geo, shell, 0.16);
+    // knight crest: a blade ridge from the brow over the crown to the back
+    const crestGeo = new THREE.TorusGeometry(0.8, 0.045, 4, 56, 2.7).rotateZ(0.25);
+    const crest = add(new THREE.Mesh(crestGeo, holo({ opacity: 1, rim: 1.7, core: 0.25 })));
+    crest.rotation.y = Math.PI / 2; crest.position.y = 3.98; crest.scale.set(1, 1, 0.45);
+    // side guards (knight cheek guards) with a small sensor disc
     for (const s of [-1, 1]) {
-      const geo = new THREE.CylinderGeometry(0.735, 0.735, 0.075, 24, 1, true, s < 0 ? 0.04 : -0.86, 0.82);
-      const v = add(new THREE.Mesh(geo, holo({ opacity: 1.7, rim: 2.4, core: 1.1 })));
-      v.position.set(0.05 * -s, 3.96, 0.02); v.rotation.z = 0.2 * s;
-    }
-  });
-  part("ears", 1, (add) => {
-    for (const s of [-1, 1]) {
-      const d = add(new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.16, 0.08, 28), holo({ opacity: 1, rim: 1.6, core: 0.2 })));
-      d.rotation.z = Math.PI / 2; d.position.set(0.71 * s, 3.88, 0);
-      const l = add(lines(d.geometry, 0.4), false); l.position.copy(d.position); l.rotation.copy(d.rotation);
+      const g = plate(shapeOf([[-0.22, 0.12], [0.1, 0.16], [0.16, -0.08], [0.02, -0.34], [-0.2, -0.26]]), 0.035);
+      const m = add(new THREE.Mesh(g, holo({ opacity: 1, rim: 1.5, core: 0.08 })));
+      m.position.set(0.64 * s, 3.66, -0.08); m.rotation.set(0, (Math.PI / 2 + 0.35) * s, 0.15 * s);
+      edged(add, g, m);
+      const disc = add(new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.07, 0.05, 20), holo({ opacity: 1, rim: 1.8, core: 0.5 })), false);
+      disc.rotation.z = Math.PI / 2; disc.position.set(0.69 * s, 3.9, -0.12);
     }
   });
 
+  part("face", 1, (add) => {
+    // angled V-brow: shades the eyes and gives the calm, powerful expression
+    const browGeo = plate(shapeOf([[-0.52, 0.1], [0, 0.0], [0.52, 0.1], [0.5, 0.16], [0, 0.07], [-0.5, 0.16]]), 0.06);
+    const brow = add(new THREE.Mesh(browGeo, holo({ opacity: 1, rim: 1.8, core: 0.14 })));
+    brow.position.set(0, 4.0, 0.6); brow.rotation.x = -0.2;
+    edged(add, browGeo, brow, 0.45);
+    // knight visor bar / nose ridge down the centre
+    const keelGeo = plate(shapeOf([[-0.05, 0.0], [0.05, 0.0], [0.045, -0.3], [0, -0.38], [-0.045, -0.3]]), 0.05);
+    const keel = add(new THREE.Mesh(keelGeo, holo({ opacity: 1, rim: 1.6, core: 0.1 })));
+    keel.position.set(0, 3.84, 0.7); keel.rotation.x = -0.12;
+    edged(add, keelGeo, keel, 0.4);
+    // cheek plates wrap around the face; layered jaw plates and breathing vents below
+    for (const s of [-1, 1]) {
+      const cg = plate(shapeOf([[0.07, 0.0], [0.4, 0.06], [0.38, -0.16], [0.18, -0.42], [0.06, -0.38]]), 0.04);
+      const c = add(new THREE.Mesh(cg, holo({ opacity: 1, rim: 1.5, core: 0.07 })));
+      c.position.set(0, 3.8, 0.56); c.scale.x = s; c.rotation.set(-0.08, 0.55 * s, 0);
+      edged(add, cg, c);
+      for (let i = 0; i < 3; i++) {
+        const v = add(new THREE.Mesh(new THREE.BoxGeometry(0.13, 0.016, 0.02), holo({ opacity: 1, rim: 1.2, core: 0.55 })), false);
+        v.position.set(0.2 * s, 3.56 - i * 0.05, 0.64); v.rotation.y = 0.5 * s;
+      }
+    }
+    const jawGeo = plate(shapeOf([[-0.2, 0], [0.2, 0], [0.13, -0.17], [-0.13, -0.17]]), 0.05);
+    const jaw = add(new THREE.Mesh(jawGeo, holo({ opacity: 1, rim: 1.5, core: 0.1 })));
+    jaw.position.set(0, 3.42, 0.6); jaw.rotation.x = 0.25;
+    edged(add, jawGeo, jaw, 0.4);
+  });
+
+  // two glowing eye slits, angled slightly upward toward the outside; brighter while JARVIS speaks or writes
+  const eyeMats = [], eyeGlows = [];
+  part("eyes", 1, (add) => {
+    for (const s of [-1, 1]) {
+      const g = new THREE.ExtrudeGeometry(shapeOf([[0.06, -0.008], [0.34, 0.045], [0.33, 0.0], [0.07, -0.05]]), { depth: 0.02, bevelEnabled: false });
+      const m = holo({ opacity: 2.2, rim: 3.0, core: 2.0 });
+      eyeMats.push(m);
+      const e = add(new THREE.Mesh(g, m), false);
+      e.position.set(0, 3.925, 0.71); e.scale.x = s; e.rotation.y = 0.3 * s;
+      const glow = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTexture(), color: WHITE, transparent: true, opacity: 0.5,
+        blending: THREE.AdditiveBlending, depthWrite: false }));
+      glow.position.set(0.21 * s, 3.935, 0.86); glow.scale.set(0.75, 0.3, 1);
+      eyeGlows.push(glow); add(glow, false);
+    }
+  }, false);
+
+  // ---- body armour: all of it from the start; evolution adds light and energy only ---------------------------
+  part("gorget", 1, (add) => {
+    for (const [prof, o] of [[[V2(0.33, 3.05), V2(0.42, 2.96), V2(0.6, 2.86), V2(0.82, 2.76)], 1], [[V2(0.3, 3.16), V2(0.36, 3.08), V2(0.47, 3.0)], 0.9]]) {
+      const g = facet(new THREE.LatheGeometry(prof, 16));
+      const m = add(new THREE.Mesh(g, holo({ opacity: o, rim: 1.6, core: 0.1 })));
+      m.scale.z = 0.62; edged(add, g, m, 0.3);
+    }
+  });
+  part("cuirass", 1, (add) => {
+    const shell = facet(new THREE.SphereGeometry(1, 16, 10, Math.PI / 2 - 1.25, 2.5, 0.28 * Math.PI, 0.36 * Math.PI));
+    const c = add(new THREE.Mesh(shell, holo({ opacity: 0.85, rim: 1.4, core: 0.05, fadeLow: 0.5 })));
+    c.position.set(0, 2.08, 0); c.scale.set(1.32, 0.95, 0.88);
+    edged(add, shell, c, 0.22);
+    const keel = add(new THREE.Mesh(new THREE.BoxGeometry(0.045, 0.42, 0.04), holo({ opacity: 1, rim: 1.6, core: 0.3, fadeLow: 0.5 })));
+    keel.position.copy(onChest(0, 1.12, 0.1));
+    for (const s of [-1, 1]) {   // pectoral plates
+      const g = plate(shapeOf([[0, 0], [0.6, 0.06], [0.68, -0.22], [0.56, -0.5], [0.1, -0.56], [0.02, -0.3]]), 0.045, 0.015);
+      const m = add(new THREE.Mesh(g, holo({ opacity: 0.95, rim: 1.5, core: 0.08, fadeLow: 0.5 })));
+      m.position.copy(onChest(0.3 * s, 2.55, 0.1)); m.scale.set(0.82 * s, 0.82, 1); m.rotation.set(-0.12, 0.32 * s, 0.1 * s);
+      edged(add, g, m, 0.36);
+    }
+    for (let r = 0; r < 3; r++) for (const s of [-1, 1]) {   // abdominal plates
+      const g = facet(new THREE.BoxGeometry(0.3, 0.16, 0.05));
+      const m = add(new THREE.Mesh(g, holo({ opacity: 0.9, rim: 1.4, core: 0.08, fadeLow: 0.5 })));
+      m.position.copy(onChest(0.18 * s, 1.45 - r * 0.21, 0.06)); m.rotation.y = 0.12 * s;
+      edged(add, g, m, 0.3);
+    }
+  });
+  part("pauldrons", 1, (add) => {
+    for (const s of [-1, 1]) for (let i = 0; i < 3; i++) {   // knight-style layered shoulder lames
+      const r = 0.66 - i * 0.08;
+      const g = facet(new THREE.SphereGeometry(r, 14, 6, 0, Math.PI * 2, 0, Math.PI / 2));
+      const m = add(new THREE.Mesh(g, holo({ opacity: 1 - i * 0.1, rim: 1.6, core: 0.07 })));
+      m.position.set((1.3 + i * 0.07) * s, 2.56 - i * 0.16, 0); m.scale.set(1, 0.5, 0.85); m.rotation.z = -0.52 * s;
+      edged(add, g, m, 0.3 - i * 0.05);
+    }
+  });
+  part("bracers", 1, (add) => {
+    for (const s of [-1, 1]) {
+      const g = facet(new THREE.CylinderGeometry(0.33, 0.3, 0.66, 12, 1, true, -1.6, 3.2));
+      const m = add(new THREE.Mesh(g, holo({ opacity: 0.95, rim: 1.5, core: 0.07, fadeLow: 0.55 })));
+      m.position.set(1.6 * s, 1.85, -0.03); m.rotation.z = 0.12 * s;
+      edged(add, g, m, 0.28);
+      const couter = add(new THREE.Mesh(facet(new THREE.SphereGeometry(0.2, 10, 6)), holo({ opacity: 0.9, rim: 1.5, fadeLow: 0.55 })));
+      couter.position.set(1.66 * s, 1.08, 0.12); couter.scale.set(1, 0.8, 0.6);
+    }
+  });
+
+  // ---- evolution: light and energy only ---------------------------------------------------------------------
   part("circuits", 2, (add) => {
     const paths = [
       [[0, 2.0], [0.2, 2.25], [0.55, 2.38], [0.95, 2.4]], [[0, 2.0], [-0.2, 2.25], [-0.55, 2.38], [-0.95, 2.4]],
@@ -278,49 +368,22 @@ export function create(wrap, opts = {}) {
       add(new THREE.Mesh(new THREE.TubeGeometry(curve, 40, 0.012, 5, false), holo({ opacity: 0.9, rim: 1, flow: true, core: 0.3, fadeLow: 0.5 })), false);
     }
   });
-  part("plates", 2, (add) => {
-    for (const s of [-1, 1]) {
-      const shape = new THREE.Shape();
-      shape.moveTo(0, 0); shape.lineTo(0.62, 0.08); shape.quadraticCurveTo(0.74, -0.25, 0.6, -0.55); shape.lineTo(0.08, -0.62);
-      shape.quadraticCurveTo(-0.04, -0.3, 0, 0);
-      const geo = new THREE.ExtrudeGeometry(shape, { depth: 0.04, bevelEnabled: true, bevelThickness: 0.015, bevelSize: 0.015, bevelSegments: 1 });
-      const p = add(new THREE.Mesh(geo, holo({ opacity: 0.95, rim: 1.4, core: 0.1, fadeLow: 0.5 })));
-      const at = onChest(0.32 * s, 2.52, 0.0);
-      p.position.copy(at); p.scale.set(0.8 * s, 0.8, 1); p.rotation.set(-0.12, 0.3 * s, 0.12 * s);
-      const l = add(lines(geo, 0.3), false); l.position.copy(at); l.scale.copy(p.scale); l.rotation.copy(p.rotation);
-    }
-    for (let r = 0; r < 3; r++) for (const s of [-1, 1]) {
-      const geo = new THREE.BoxGeometry(0.3, 0.16, 0.04);
-      const b = add(new THREE.Mesh(geo, holo({ opacity: 0.9, rim: 1.3, core: 0.1, fadeLow: 0.5 })));
-      b.position.copy(onChest(0.18 * s, 1.45 - r * 0.21, 0.01));
-    }
-  });
-  part("pauldrons", 3, (add) => {
-    for (const s of [-1, 1]) {
-      const geo = new THREE.SphereGeometry(0.62, 32, 12, 0, Math.PI * 2, 0, Math.PI / 2);
-      const p = add(new THREE.Mesh(geo, holo({ opacity: 1, rim: 1.5, core: 0.08 })));
-      p.position.set(1.3 * s, 2.55, 0); p.scale.set(1, 0.55, 0.82); p.rotation.z = -0.5 * s;
-      const l = add(lines(geo, 0.3, 30), false); l.position.copy(p.position); l.scale.copy(p.scale); l.rotation.copy(p.rotation);
-    }
-  });
-  part("gorget", 3, (add) => {
-    const g = add(new THREE.Mesh(new THREE.TorusGeometry(0.44, 0.07, 10, 40), holo({ opacity: 1, rim: 1.5, core: 0.12 })));
-    g.rotation.x = Math.PI / 2; g.position.y = 2.84; g.scale.set(1, 0.75, 1);
-  });
-  part("fins", 4, (add) => {
-    for (const s of [-1, 1]) {
-      const shape = new THREE.Shape(); shape.moveTo(0, 0); shape.lineTo(0.42, 0.55); shape.lineTo(0.12, -0.25); shape.lineTo(0, 0);
-      const geo = new THREE.ExtrudeGeometry(shape, { depth: 0.03, bevelEnabled: false });
-      const f = add(new THREE.Mesh(geo, holo({ opacity: 1, rim: 1.6, core: 0.15 })));
-      f.position.set(0.74 * s, 3.92, -0.05); f.scale.x = s; f.rotation.y = -0.35 * s;
-    }
-    const side = new THREE.BoxGeometry(0.12, 0.7, 0.4);
-    for (const s of [-1, 1]) { const b = add(new THREE.Mesh(side, holo({ opacity: 0.9, rim: 1.4, fadeLow: 0.5 }))); b.position.set(1.52 * s, 1.55, 0); }
-  });
+  part("crestglow", 3, (add) => {   // energy running along the crest
+    const g = new THREE.TorusGeometry(0.815, 0.012, 4, 80, 2.7).rotateZ(0.25);
+    const m = add(new THREE.Mesh(g, holo({ opacity: 1, rim: 1.8, flow: true, core: 0.6 })), false);
+    m.rotation.y = Math.PI / 2; m.position.y = 3.98;
+  }, false);
   part("halo", 4, (add) => {
     for (const [r, o] of [[1.22, 0.9], [1.36, 0.45]]) {
       const ring = add(new THREE.Mesh(new THREE.TorusGeometry(r, 0.01, 6, 160), holo({ opacity: o, rim: 1.5, flow: true, core: 0.5 })), false);
       ring.position.set(0, 3.95, -0.45); ring.userData.spin = r > 1.3 ? -0.5 : 0.5;
+    }
+  }, false);
+  part("crown", 4, (add) => {   // a crown of light above the crest
+    for (const s of [-1, 1]) {
+      const g = new THREE.TorusGeometry(0.42, 0.008, 4, 40, 1.2).rotateZ(Math.PI / 2 - 0.6);
+      const m = add(new THREE.Mesh(g, holo({ opacity: 1, rim: 1.8, flow: true, core: 0.7 })), false);
+      m.position.set(0.18 * s, 4.75, -0.1); m.rotation.set(0.2, 0, -0.35 * s);
     }
   }, false);
 
@@ -395,7 +458,7 @@ export function create(wrap, opts = {}) {
     const moving = mode === "full";
     if (moving) t += dt;
     const k = mode === "full" ? 1 - Math.exp(-dt * 4) : 1;
-    for (const key of ["rim", "scan", "flow", "ring", "beam", "light", "flicker"]) cur[key] += ((target[key] ?? 0) - cur[key]) * k;
+    for (const key of ["rim", "scan", "flow", "ring", "beam", "light", "flicker", "eyes"]) cur[key] += ((target[key] ?? 0) - cur[key]) * k;
     cur.tint.lerp(targetTint, k);
     flash = Math.max(0, flash - dt * 0.9);
     const pulse = target.pulse && moving ? 0.82 + 0.18 * Math.sin(t * target.pulse * Math.PI) : 1;
@@ -411,12 +474,16 @@ export function create(wrap, opts = {}) {
       u.uRim.value = m.userData.base.rim * cur.rim * pulse * (1 + flash * 0.8);
       u.uOpacity.value = m.userData.base.opacity * (1 + flash * 0.5);
     }
-    for (const m of lineMats) { m.color.copy(cur.tint); m.opacity = m.userData.lineBase * pulse; }
+    const seams = [0.7, 1.0, 1.2, 1.35][tier - 1] || 1;  // seams glow brighter as verified milestones accumulate
+    for (const m of lineMats) { m.color.copy(cur.tint); m.opacity = m.userData.lineBase * pulse * seams; }
+    const eyeLevel = cur.eyes * (1 + flash) * (1 - flicker * 0.5);
+    for (const m of eyeMats) { m.uniforms.uOpacity.value = m.userData.base.opacity * eyeLevel; m.uniforms.uTint.value.copy(cur.tint).lerp(WHITE, 0.7); }
+    for (const g of eyeGlows) { g.material.opacity = Math.min(1, 0.85 * eyeLevel); g.material.color.copy(cur.tint).lerp(WHITE, 0.75); }
     beamMat.uniforms.uTime.value = t; beamMat.uniforms.uBeam.value = cur.beam * (1 + flash); beamMat.uniforms.uTint.value.copy(cur.tint);
     dustMat.uniforms.uTime.value = t; dustMat.uniforms.uSpeed.value = 1 + flash * 4 + cur.flow * 0.3;
     dust.visible = moving;
     if (moving) {
-      figure.rotation.y = Math.sin(t * 0.22) * 0.16; mirror.rotation.y = figure.rotation.y;
+      figure.rotation.y = Math.sin(t * 0.18) * 0.07;  // calm: a slow, small turn mirror.rotation.y = figure.rotation.y;
       figure.position.y = BASE_Y + Math.sin(t * 0.9) * 0.025;
       orbits.children.forEach((r) => { r.rotation.z += dt * cur.ring * r.userData.spin; });
       for (const p of [parts.pad, parts.halo]) p.group.children.forEach((r) => { if (r.userData.spin) r.rotation.z += dt * 0.2 * r.userData.spin; });

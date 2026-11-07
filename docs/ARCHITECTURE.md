@@ -239,8 +239,8 @@ prefer="quality")` and up to 2000 tokens, falling back to the best available mod
 ## 3D holographic core and cinematic environment (theme v3)
 
 - `static/avatar3d.js` (ES module) draws the core with Three.js r160 (vendored, SHA-256 pinned by a test): shapes
-  built in code (no downloaded model), each a named, replaceable part (pad, torso, helmet, face, visor, ears,
-  circuits, plates, pauldrons, gorget, fins, halo) with a hologram shader (rim light, scan lines, rising light band,
+  built in code (no downloaded model), each a named, replaceable part (pad, torso, helmet, face, eyes, gorget, cuirass,
+  pauldrons, bracers; evolution-only light: circuits, crestglow, halo, crown) with a hologram shader (rim light, scan lines, rising light band,
   energy pulses, materialisation edge, fade into the projector beam, floor reflection). The reactor (`#core`) stays
   as the chest core, so its states and tests are unchanged.
 - `avatar.js` loads it only when WebGL works and falls back to the 2D core on any failure or a lost GPU context.

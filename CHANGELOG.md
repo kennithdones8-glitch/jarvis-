@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased — Armoured avatar: sentinel helm with knight elements
+
+- New helmet (owner's choice: sentinel faceplate + knight elements): crest blade over the crown, angled V-brow,
+  two glowing eye slits that brighten while JARVIS speaks or writes, nose guard, cheek plates with vents, jaw
+  plate, swept side guards with sensor discs. Faceted plates for a forged-armour look; calm, slow movement.
+- Full armour from the start: layered collar, cuirass with pectoral and abdominal plates, three-lame pauldrons,
+  bracers and elbow guards. Evolution now adds only light and energy (glowing seams, circuits, crest energy,
+  halo, crown of light), still unlocked only by verified milestones. The 2D fallback follows the same rule.
+
 ## Unreleased — Cinematic core: 3D hologram, gold-white environment
 
 - **3D holographic core** (Three.js r160, served from the Mac, pinned by hash): translucent gold-white figure with
