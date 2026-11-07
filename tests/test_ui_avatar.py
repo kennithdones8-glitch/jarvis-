@@ -231,12 +231,16 @@ APPCSS = (STATIC / "app.css").read_text()
 HTML = (STATIC / "index.html").read_text()
 
 
-def test_the_helm_is_faceless():
-    for human in ("mouth", "jaw", "grille", "lips", "nose"):
-        assert human not in AV3.lower().replace("no mouth", ""), human
-    assert 'part("figure", 1,' in AV3 and "export function sdHuman(" in AV3 and "export function meshFigure(" in AV3
-    for gone in ("sensors", "faceplate", "mechanics"):   # the toy-robot parts are gone
-        assert f'part("{gone}"' not in AV3
+def test_the_face_is_sculpted_light_with_eyes_driven_by_real_signals():
+    # owner's choice (Avatar 3.4): a subtle sculpted face, like a statue of light; no moving mouth
+    assert "function face(d, x, ax, y, z) {" in AV3 and "if (y > 4.38 && z > 0.0) d = face(d, x, ax, y, z);" in AV3
+    for feature in ("eye sockets", "brow ridge", "nose bridge", "cheekbones", "upper lip", "lower lip", "chin", "jaw line"):
+        assert f"// {feature}" in AV3, feature
+    assert "meshFigure(phone ? 0.018 : 0.013, [-0.34, 4.3, -0.44]" in AV3                  # the head is meshed finer
+    assert "FACE.uEyeOpen.value = shut * narrow;" in AV3                                    # blinks and narrowing come from the state
+    assert 'FACE.uEyeScan.value += ((state === "researching" || state === "verifying" ? 1 : 0)' in AV3
+    assert "FACE.uSpeech.value = Math.min(1, speech);" in AV3                               # light pulse from real word boundaries only
+    assert 'part("sensors"' not in AV3 and 'part("faceplate"' not in AV3 and 'part("mechanics"' not in AV3
 
 
 def test_every_state_has_a_3d_look_with_the_engine_parameters():
@@ -348,8 +352,7 @@ def test_figure_has_glowing_suit_contours_that_grow_with_the_stage():
     assert "float anat(vec3 p)" in AV3 and "float c = anat(vObj) * uContour;" in AV3
     assert "contour: 1, detail: 0.75, head: true" in AV3                      # only the figure carries the seams
     assert "figureMat.uniforms.uContour.value = [0.75, 0.9, 1.05, 1.2][tier - 1]" in AV3
-    for word in ("mouth", "jaw", "nose", "eye"):                              # contours stay off the face
-        assert word not in AV3.split("float anat(vec3 p)")[1].split("return min(c, 1.0);")[0]
+    assert "smoothstep(0.12, 0.02, p.z));           // crest over the head (not the face)" in AV3
 
 
 def test_gestures_come_only_from_real_states_and_bend_the_arms_in_the_shader():
@@ -381,8 +384,7 @@ def test_character_detail_grows_with_the_stage_and_keeps_the_face_smooth():
     assert "figureMat.uniforms.uDetail.value = [0.75, 0.85, 1.0, 1.15][tier - 1]" in AV3   # rich now, maximum at stage 4
     assert "uDetail > 0.95 ? circuit(" in AV3                                              # finer circuits only from stage 3
     assert "float body = 1.0 - smoothstep(4.4, 4.5, p.y);   // the head stays smooth" in AV3
-    for gone in ("eye", "mouth", "visor"):                                                 # owner's choice: fully smooth face
-        assert gone not in AV3.split("// ---- the figure:")[1].split("export function meshFigure")[0].lower()
+    assert "visor" not in AV3.split("// ---- the figure:")[1].split("export function meshFigure")[0].lower()
     assert 'innerMat = holo({ opacity: 0.35, rim: 0.8, flow: true, core: 0.55, head: true });' in AV3   # bends with the arms
     assert "innerMat.uniforms.uOpacity.value = 0.12 + cur.neural * 0.5" in AV3             # brighter only while really thinking
     assert "shed.visible = moving; wisps.visible = moving;" in AV3                         # no particles in Low performance / Reduced motion

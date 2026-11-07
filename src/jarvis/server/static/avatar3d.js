@@ -76,7 +76,7 @@ void main() {
 // a rising light band; faces turned away drawn dimmer for depth; a materialisation edge; a fade into the projector
 // beam; a floor reflection; a faint projection distortion. Shared uniforms are the same objects in every material.
 const FRAG = `
-uniform vec3 uTint0, uAccent; uniform float uTime, uOpacity, uRim, uRimK, uGain, uSelf, uScan, uFlow, uFlowOn, uFlicker, uReveal, uFadeLow, uReflect, uCore, uPanel, uPanelScale, uContour, uDetail, uCoreE;
+uniform vec3 uTint0, uAccent; uniform float uTime, uOpacity, uRim, uRimK, uGain, uSelf, uScan, uFlow, uFlowOn, uFlicker, uReveal, uFadeLow, uReflect, uCore, uPanel, uPanelScale, uContour, uDetail, uCoreE, uEye, uEyeOpen, uEyeLook, uEyeScan, uSpeech;
 varying vec3 vNormal; varying vec3 vView; varying vec3 vWorld; varying vec2 vUv; varying vec3 vObj; varying vec3 vObjN; varying float vAccent;
 float hash(float n) { return fract(sin(n) * 43758.5453); }
 float seam(vec2 p, float w) { vec2 g = abs(fract(p - 0.5) - 0.5) / max(fwidth(p), vec2(1e-4)); return 1.0 - min(min(g.x, g.y) / w, 1.0); }
@@ -97,7 +97,7 @@ float anat(vec3 p) {
   c = max(c, max(L(p.y - 1.36, 0.007), L(p.y - 0.42, 0.007)) * leg);                     // knees, ankles
   c = max(c, L(ax - 0.25, 0.005) * fr * win(p.y, 0.5, 2.25) * leg * (1.0 - win(p.y, 1.3, 1.42)));   // leg seams
   c = max(c, L(p.x, 0.006) * bk * win(p.y, 2.7, 4.15));                                   // spine
-  c = max(c, L(p.x, 0.006) * win(p.y, 4.5, 5.1) * smoothstep(0.24, 0.12, p.z));           // crest over the head
+  c = max(c, L(p.x, 0.006) * win(p.y, 4.5, 5.1) * smoothstep(0.12, 0.02, p.z));           // crest over the head (not the face)
   // armour plates over the light body
   c = max(c, L(p.y - (3.97 - 0.5 * (ax - 0.64) * (ax - 0.64) * 4.0), 0.006) * smoothstep(0.5, 0.56, ax) * (1.0 - smoothstep(0.8, 0.86, ax)));   // shoulder plates
   c = max(c, max(L(p.y - 2.56, 0.004), L(p.y - 2.76, 0.004)) * arm * 0.8);                  // forearm bands
@@ -175,6 +175,14 @@ void main() {
     float ve = veins * (0.35 + 0.65 * min(uCoreE, 1.5)) * uDetail;
     col += mix(uTint, vec3(1.0, 0.98, 0.94), vp) * ve * (0.6 + 1.8 * vp);
     a += ve * (0.15 + 0.5 * vp) * uOpacity;
+    // the face: glowing eyes (open/blink, glance, scan light while researching) and a light pulse on each spoken word
+    float facem = smoothstep(4.4, 4.45, p.y) * smoothstep(4.95, 4.85, p.y) * smoothstep(0.12, 0.22, p.z);
+    vec2 eo = vec2((ax - 0.072 - uEyeLook * sign(p.x)) / 0.03, (p.y - 4.735) / (0.014 * max(uEyeOpen, 0.08)));
+    float eye = exp(-dot(eo, eo) * 1.4) * smoothstep(0.2, 0.25, p.z) * min(uEye, 2.0) * step(0.02, uEyeOpen);
+    float scanx = sin(uTime * 2.4) * 0.11;
+    float escan = exp(-pow((p.x - scanx) / 0.012, 2.0)) * exp(-pow((p.y - 4.735) / 0.02, 2.0)) * smoothstep(0.2, 0.25, p.z) * uEyeScan;
+    col += mix(uTint, vec3(1.0, 0.98, 0.95), 0.55) * (eye * 2.2 + escan * 1.6) + uTint * facem * uSpeech * 0.45;
+    a += (eye * 0.7 + escan * 0.5 + facem * uSpeech * 0.15) * uOpacity;
     // glowing soles
     float sole = smoothstep(0.16, 0.03, p.y);
     col += mix(uTint, vec3(1.0, 0.96, 0.9), 0.5) * sole * 1.2; a += sole * 0.35 * uOpacity;
@@ -340,15 +348,18 @@ function onChest(x, y, lift = 0.025) {   // a point on the front of the torso (f
 function mergeGeos(geos) {   // one draw call for many tubes (position, normal, uv, index)
   let nv = 0, ni = 0; for (const g of geos) { nv += g.attributes.position.count; ni += g.index.count; }
   const pos = new Float32Array(nv * 3), nrm = new Float32Array(nv * 3), uv = new Float32Array(nv * 2), idx = new Uint32Array(ni);
+  const acc = geos.every((g) => g.attributes.aAccent) ? new Float32Array(nv) : null;
   let ov = 0, oi = 0;
   for (const g of geos) {
     pos.set(g.attributes.position.array, ov * 3); nrm.set(g.attributes.normal.array, ov * 3); uv.set(g.attributes.uv.array, ov * 2);
+    if (acc) acc.set(g.attributes.aAccent.array, ov);
     const ix = g.index.array; for (let i = 0; i < ix.length; i++) idx[oi + i] = ix[i] + ov;
     ov += g.attributes.position.count; oi += ix.length; g.dispose();
   }
   const out = new THREE.BufferGeometry();
   out.setAttribute("position", new THREE.BufferAttribute(pos, 3)); out.setAttribute("normal", new THREE.BufferAttribute(nrm, 3));
   out.setAttribute("uv", new THREE.BufferAttribute(uv, 2)); out.setIndex(new THREE.BufferAttribute(idx, 1));
+  if (acc) out.setAttribute("aAccent", new THREE.BufferAttribute(acc, 1));
   return out;
 }
 function rng(seed) { let s = seed >>> 0; return () => ((s = (s * 1664525 + 1013904223) >>> 0) / 4294967296); }
@@ -356,6 +367,7 @@ function rng(seed) { let s = seed >>> 0; return () => ((s = (s * 1664525 + 10139
 // ---- the figure: a sleek humanoid sculpted as a blended distance field, meshed once with surface nets ------------
 // Original, made in code (no downloaded model). Units: feet at y ≈ 0, top of the head at y ≈ 5.07, facing +z.
 const smin = (a, b, k) => { const h = Math.max(k - Math.abs(a - b), 0) / k; return Math.min(a, b) - h * h * k * 0.25; };
+const smax = (a, b, k) => -smin(-a, -b, k);
 function sdEll(px, py, pz, cx, cy, cz, rx, ry, rz) {
   const x = (px - cx) / rx, y = (py - cy) / ry, z = (pz - cz) / rz;
   const k0 = Math.hypot(x, y, z), k1 = Math.hypot(x / rx, y / ry, z / rz);
@@ -366,11 +378,27 @@ function sdLimb(px, py, pz, ax, ay, az, bx, by, bz, ra, rb) {   // a capsule who
   const h = Math.max(0, Math.min(1, (pax * bax + pay * bay + paz * baz) / (bax * bax + bay * bay + baz * baz)));
   return Math.hypot(pax - bax * h, pay - bay * h, paz - baz * h) - (ra + (rb - ra) * h);
 }
+// The face, sculpted subtly like a statue of light (owner's choice): brow, eye sockets, cheekbones, nose, lips, chin.
+function face(d, x, ax, y, z) {
+  d = smax(d, -sdEll(ax, y, z, 0.072, 4.735, 0.3, 0.05, 0.03, 0.045), 0.025);                 // eye sockets
+  d = smin(d, sdLimb(ax, y, z, 0.015, 4.78, 0.272, 0.12, 4.775, 0.235, 0.016, 0.014), 0.03);   // brow ridge
+  d = smin(d, sdLimb(x, y, z, 0, 4.74, 0.28, 0, 4.615, 0.31, 0.012, 0.02), 0.025);             // nose bridge
+  d = smin(d, sdEll(x, y, z, 0, 4.612, 0.302, 0.026, 0.02, 0.02), 0.02);                       // nose tip
+  d = smin(d, sdEll(ax, y, z, 0.022, 4.6, 0.285, 0.014, 0.012, 0.012), 0.015);                 // nostril wings
+  d = smin(d, sdEll(ax, y, z, 0.105, 4.665, 0.215, 0.055, 0.03, 0.045), 0.04);                 // cheekbones
+  d = smin(d, sdEll(x, y, z, 0, 4.548, 0.272, 0.042, 0.012, 0.016), 0.015);                    // upper lip
+  d = smin(d, sdEll(x, y, z, 0, 4.522, 0.268, 0.036, 0.013, 0.016), 0.015);                    // lower lip
+  d = smax(d, -sdEll(x, y, z, 0, 4.536, 0.29, 0.04, 0.0035, 0.02), 0.006);                    // the line between the lips
+  d = smin(d, sdEll(x, y, z, 0, 4.445, 0.225, 0.05, 0.035, 0.04), 0.04);                       // chin
+  d = smin(d, sdLimb(ax, y, z, 0.15, 4.6, 0.04, 0.06, 4.45, 0.19, 0.03, 0.025), 0.06);         // jaw line
+  return d;
+}
 export function sdHuman(x, y, z) {
   const ax = Math.abs(x);   // symmetric
   let d = sdEll(x, y, z, 0, 4.75, 0.0, 0.235, 0.32, 0.28);                                   // cranium
   d = smin(d, sdEll(x, y, z, 0, 4.8, -0.07, 0.22, 0.27, 0.26), 0.1);                         // swept-back crown
-  d = smin(d, sdEll(x, y, z, 0, 4.54, 0.07, 0.16, 0.18, 0.19), 0.12);                        // lower head (smooth, faceless)
+  d = smin(d, sdEll(x, y, z, 0, 4.54, 0.07, 0.16, 0.18, 0.19), 0.12);                        // lower head
+  if (y > 4.38 && z > 0.0) d = face(d, x, ax, y, z);                                          // sculpted face (meshed finer)
   d = smin(d, sdLimb(x, y, z, 0, 5.02, 0.1, 0, 4.92, -0.24, 0.035, 0.03), 0.06);             // helmet crest ridge
   d = smin(d, sdLimb(x, y, z, 0, 4.9, -0.2, 0, 4.6, -0.36, 0.03, 0.008), 0.06);              // swept rear fin
   d = smin(d, sdEll(ax, y, z, 0.225, 4.68, -0.03, 0.035, 0.075, 0.075), 0.04);               // temple pods
@@ -400,8 +428,8 @@ export function sdHuman(x, y, z) {
 }
 // Surface nets: one vertex per cell that the surface crosses, quads across every crossed grid edge. Smooth
 // normals come from the field's gradient; aAccent marks the hands (teal-green accents, as in the owner's reference).
-export function meshFigure(h = 0.03) {
-  const [x0, y0, z0] = [-1.12, -0.05, -0.48], [x1, y1, z1] = [1.12, 5.15, 0.48];
+export function meshFigure(h = 0.03, lo = [-1.12, -0.05, -0.48], hi = [1.12, 5.15, 0.48]) {
+  const [x0, y0, z0] = lo, [x1, y1, z1] = hi;
   const nx = Math.ceil((x1 - x0) / h) + 1, ny = Math.ceil((y1 - y0) / h) + 1, nz = Math.ceil((z1 - z0) / h) + 1;
   const v = new Float32Array(nx * ny * nz);
   for (let k = 0; k < nz; k++) for (let j = 0; j < ny; j++) for (let i = 0; i < nx; i++)
@@ -531,6 +559,7 @@ export function create(wrap, opts = {}) {
               uTime: { value: 0 }, uTint: { value: CHAMPAGNE.clone() }, uRimK: { value: 1 }, uGain: { value: 1 },
               uScan: { value: 1 }, uFlow: { value: 0.3 }, uFlicker: { value: 0 }, uReflect: { value: 0 } };
   const EYE = { value: 1 }, REACTOR = { value: 1 };
+  const FACE = { uEyeOpen: { value: 1 }, uEyeLook: { value: 0 }, uEyeScan: { value: 0 }, uSpeech: { value: 0 } };   // eyes and speech light
   const lineMats = [];
   const parts = {};
   let building = null;   // the part whose meshes are being built (for its reveal uniform and visibility)
@@ -544,7 +573,7 @@ export function create(wrap, opts = {}) {
                   uReveal: building ? building.reveal : { value: 10 },
                   // armour surfaces (low inner glow, no energy flow) get machined panel seams unless told otherwise
                   uPanel: { value: o.panel ?? ((o.core ?? 0.035) < 0.2 && !o.flow && !o.self ? 0.85 : 0) },
-                  uPanelScale: { value: o.panelScale ?? 6 }, uContour: { value: o.contour ?? 0 }, uDetail: { value: o.detail ?? 0 }, uCoreE: REACTOR,
+                  uPanelScale: { value: o.panelScale ?? 6 }, uContour: { value: o.contour ?? 0 }, uDetail: { value: o.detail ?? 0 }, uCoreE: REACTOR, uEye: EYE, ...FACE,
                   uInflate: { value: o.inflate ?? 0 } },
       extensions: { derivatives: true },
     });
@@ -609,15 +638,16 @@ export function create(wrap, opts = {}) {
 
   // ---- body -------------------------------------------------------------------------------------------------------
   // the figure (built once), sparkles shedding from its surface, and energy lines that come with higher stages
-  const figureGeo = meshFigure(phone ? 0.04 : 0.03);
+  const figureGeo = mergeGeos([meshFigure(phone ? 0.04 : 0.03, [-1.12, -0.05, -0.48], [1.12, 4.38, 0.48]),   // body
+                                 meshFigure(phone ? 0.018 : 0.013, [-0.34, 4.3, -0.44], [0.34, 5.15, 0.38])]);   // head and face, finer
   const joints = [], eyeGlows = [], irises = [], sparks = [];
-  let figureMat = null, auraMat = null;
+  let figureMat = null, auraMat = null, auraMesh = null;
   part("figure", 1, (add) => {
     figureMat = holo({ opacity: 1.0, rim: 1.6, core: 0.1, panel: 0.35, panelScale: 7, contour: 1, detail: 0.75, head: true });
     add(new THREE.Mesh(figureGeo, figureMat));
     if (!phone) {   // a soft outline glow around the whole figure
       auraMat = holo({ opacity: 0.3, rim: 1.3, core: 0.0, panel: 0, inflate: 0.035, head: true });
-      add(new THREE.Mesh(figureGeo, auraMat));
+      auraMesh = add(new THREE.Mesh(figureGeo, auraMat));
     }
   });
   const shed = (() => {   // sparkles leaving the surface, drifting up and out
@@ -1156,7 +1186,8 @@ export function create(wrap, opts = {}) {
     U.uRimK.value = cur.rim * (1 + flash * 0.8);
     U.uGain.value = intensity * (1 + flash * 0.4);
     const eyeLevel = cur.eyes * (1 + flash * 0.6 + speech * 0.4);
-    EYE.value = eyeLevel;
+    EYE.value = eyeLevel; FACE.uSpeech.value = Math.min(1, speech);
+    if (!moving) { FACE.uEyeOpen.value = 1; FACE.uEyeLook.value = 0; FACE.uEyeScan.value = 0; }
     const breathe = moving ? 0.92 + 0.08 * Math.sin(t * 1.3) : 1;
     REACTOR.value = cur.reactor * breathe * (1 + speech * 0.8 + flash);
     if (innerMat) innerMat.uniforms.uOpacity.value = 0.12 + cur.neural * 0.5 + flash * 0.3;   // the inner network brightens while thinking
@@ -1227,6 +1258,8 @@ export function create(wrap, opts = {}) {
       const shut = target.head === "still" ? 1 : 1 - Math.sin(blink * Math.PI) * 0.85;
       const narrow = state === "warning" || state === "error" ? 0.6 : 1;
       const look = state === "researching" || state === "verifying" ? Math.sin(t * 2.2) * 0.022 : glance ? glance[1] * 0.05 : 0;
+      FACE.uEyeOpen.value = shut * narrow; FACE.uEyeLook.value = look * 0.4;
+      FACE.uEyeScan.value += ((state === "researching" || state === "verifying" ? 1 : 0) - FACE.uEyeScan.value) * k;
       irises.forEach((ir, i) => { ir.scale.y = 0.55 * shut * narrow; ir.position.x = ir.userData.at.x + look;
         const pulse = state === "reasoning" || state === "understanding" ? 0.85 + 0.15 * Math.sin(t * 3 + i) : 1; ir.scale.x = pulse; });
       sparks.forEach((sp, i) => { const a = t * (1.5 + cur.scan * 0.4) + i * Math.PI; const { at, s: sd } = sp.userData;
@@ -1263,7 +1296,7 @@ export function create(wrap, opts = {}) {
     if (post) post.begin(); else renderer.clear();
     renderer.render(scene, camera);
     // the head reflects ~4 units below the floor, where the reflection has faded to nothing: skip it
-    const hidden = [beam, dust, data, sweep, net.g, orbits, reactor, grid, baseGlow, headPivot, thought, shed, wisps, ...soleGlows, ...(shieldMesh ? [shieldMesh] : []), ...metals.map((m) => m.mesh),
+    const hidden = [beam, dust, data, sweep, net.g, orbits, reactor, grid, baseGlow, headPivot, thought, shed, wisps, ...soleGlows, ...(shieldMesh ? [shieldMesh] : []), ...(auraMesh ? [auraMesh] : []), ...metals.map((m) => m.mesh),
       ...Object.values(aura).map((a) => a.ring), ...shafts, ...pulses.map((p) => p.m), ...eyeGlows, ...parts.pad.objs];
     const was = hidden.map((o) => o.visible);
     hidden.forEach((o) => { o.visible = false; });

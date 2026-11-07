@@ -1,5 +1,17 @@
 # Changelog
 
+## Unreleased — Avatar 3.5: sculpted face
+
+- **A face, sculpted subtly in the light body** (owner's choice, replacing the smooth head): brow ridge, eye
+  sockets, cheekbones, nose bridge and tip, lips, chin and jaw line. The head is meshed at a finer resolution
+  than the body so the features hold up close.
+- **Eyes that glow with the real state**: brighter while listening and speaking, dimmer when idle, red only on a
+  genuine error; they blink, narrow on warnings and glance (from the existing idle-liveliness logic); a scan light
+  sweeps across them while researching or verifying.
+- **Speaking**: the face brightens on each spoken word, from the browser's real word-boundary events; nothing moves.
+- The aura shell is no longer drawn in the floor reflection (lighter frames); the head crest line no longer runs
+  down the face.
+
 ## Unreleased — Avatar 3.4: character detail and alloy armour
 
 - **More detail, growing with evolution** (rich now, maximum at stage 4): helmet crest ridge, swept rear fin and temple
