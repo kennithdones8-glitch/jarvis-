@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased: overdue + due today, a small memory seen whole (branch `smarter-v2`, owner's choice: fix 1 and 2A)
+## Unreleased: fixes for what the hard set found (branch `smarter-v2`, owner's choice: fixes 1, 2A and A–E)
 
 Built on `harder-bench-v1`. Fixes the two gaps the hard set found, where even a perfect model failed.
 - **"Overdue or due today" lists both.** Any time window in the question ("today", "tomorrow", "next 3 days") now
@@ -12,8 +12,21 @@ Built on `harder-bench-v1`. Fixes the two gaps the hard set found, where even a 
   they're only added when the answer is sure to stay on the Mac (Quick, local routing, no Claude configured, or
   hybrid rated "simple"). Answers that go to Claude get only the matching memories, still with consent. New
   Privacy gate test: `the_whole_memory_never_goes_to_claude`.
-- To be proven on the Mac: the hard set ×5 (before = harder-bench-v1 baseline), and core + extended ×5 for no new
-  failures.
+- **A. Reminders are looked up whenever the message asks what's due** ("overdue", "due", "to-dos"; not "due to").
+  The hard-set baseline showed "overdue or due today" looking at the calendar only.
+- **B. Free slots of the length you ask for are worked out exactly** ("a free 90-minute slot", "an hour", "two
+  hours"): JARVIS lists the gaps long enough, or says there are none and gives the longest. The model had called
+  11:00–13:15 free.
+- **C. A step can only use outputs earlier steps really produce.** "{{steps.1.urgent_item}}" from a writing step
+  (which only gives "text") is sent back to the planner once. Only results with a fixed shape are checked.
+- **D. A plan that breaks a "don't" in the request becomes a question.** "Save it as summary.md, but don't create
+  any new files" now asks which you meant, instead of asking you to approve the write.
+- **E. Look before acting.** A task that refers to an existing appointment, meeting, call or reminder ("my dentist
+  appointment tomorrow") is planned with the calendar and reminders looked up first (read-only), and the planner
+  is told to ask when the request doesn't match what's there. The looked-up data is private like folder contents:
+  it reaches Claude only through the privacy gate, with your consent, as before.
+- To be proven on the Mac: the hard set ×5 (before = 20261107-141713-local, 7 of 17), and core + extended ×5 for no
+  new failures.
 
 ## Unreleased: a harder benchmark set (branch `harder-bench-v1`, owner's choice)
 

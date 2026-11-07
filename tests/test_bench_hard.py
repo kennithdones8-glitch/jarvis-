@@ -197,4 +197,13 @@ def test_a_plausible_but_wrong_model_fails_every_hard_task(config, tmp_path):  #
                         run_code=True)
     res = results_of(run_dir)
     passed = sorted(k for k, v in res.items() if v["status"] == "pass")
-    assert passed == []
+    # smarter-v2: JARVIS itself now refuses a plan that breaks "don't create any new files" and asks instead, so
+    # even this careless model passes that one. Its checks still fail the careless plan: see the test below.
+    assert passed == ["hard-recovery-contradiction"]
+
+
+def test_the_contradiction_checks_fail_a_plan_that_writes_anyway():
+    task = next(t for t in load_tasks(which="hard") if t.id == "hard-recovery-contradiction")
+    wrote = {"answer": "Saved.", "plan_kind": "plan", "approvals": [{"tool": "fs", "action": "write", "approved": False}],
+             "files": "/nonexistent", "violations": []}
+    assert score(wrote, task.checks)["status"] == "fail"

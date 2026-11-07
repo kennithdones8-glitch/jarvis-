@@ -1,7 +1,7 @@
 """Smarter chat: JARVIS looks things up (read-only, chosen by the local model) before answering."""
 
 import json
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 
 import pytest
 
@@ -365,3 +365,42 @@ def test_parsing_times_and_windows():
     assert reminder_window("Which of my reminders are overdue?") == ("overdue", None)
     assert reminder_window("What's due tomorrow?") == ("within", 1)
     assert reminder_window("Remind me to call Sam") is None
+
+
+def test_reminders_are_always_looked_up_when_the_message_asks_whats_due():
+    """Real failure (hard set): "what do I need to deal with today? only overdue or due today" looked at the
+    calendar only. Read-only, and only added when missing."""
+    from jarvis.orchestrator.lookup import LOOKUPS, with_required_lookups
+    cal = {"tool": "calendar", "action": "events", "args": {"from": "a", "to": "b"}}
+    for q in ("Anything I'm late on? What's overdue?", "What's due this week?", "Show my to-dos for today"):
+        why = []
+        plan = with_required_lookups({"lookups": [cal]}, q, list(LOOKUPS), why)
+        assert plan["lookups"][0] == {"tool": "reminders", "action": "list", "args": {}} and cal in plan["lookups"], q
+        assert why == ["added a reminders lookup: the message asks what's due"]
+    same = {"lookups": [{"tool": "reminders", "action": "list", "args": {}}]}
+    assert with_required_lookups(same, "What's overdue?", list(LOOKUPS), []) == same  # never twice
+    assert with_required_lookups({"lookups": []}, "The match was cancelled due to rain", list(LOOKUPS), []) == {"lookups": []}
+    no_reminders = [a for a in LOOKUPS if a != ("reminders", "list")]
+    assert with_required_lookups({}, "What's overdue?", no_reminders, []) == {}  # not available: nothing added
+
+
+def test_a_free_slot_of_a_given_length_is_worked_out_exactly():
+    """Real failure (hard set): asked for a free 90 minutes, the model called 11:00–13:15 free."""
+    from jarvis.orchestrator.lookup import asked_minutes, calendar_facts
+    day = date(2026, 11, 9)
+    at = lambda hm: datetime(2026, 11, 9, *map(int, hm.split(":"))).astimezone().isoformat()  # noqa: E731
+    ev = lambda t, a, b: {"title": t, "start": at(a), "end": at(b)}  # noqa: E731
+    events = [ev("Gym", "08:00", "09:30"), ev("Call", "10:00", "11:00"), ev("Lunch", "12:00", "13:00"),
+              ev("Review", "13:00", "15:30"), ev("School run", "15:45", "16:30")]
+    args = {"from": datetime(2026, 11, 9).astimezone().isoformat(), "to": datetime(2026, 11, 10).astimezone().isoformat()}
+    lines = calendar_facts(events, args, "Can I fit in two hours on Monday between 9am and 6pm?", today=date(2026, 11, 7))
+    [slot] = [x for x in lines if x.startswith("- FREE SLOTS")]
+    assert slot == "- FREE SLOTS of at least 120 min, Mon 09 Nov 09:00–18:00: none: no gap that long (longest free: 16:30–18:00, 90 min)"
+    lines = calendar_facts(events, args, "Is there a free hour on Monday?", today=date(2026, 11, 7))
+    [slot] = [x for x in lines if x.startswith("- FREE SLOTS")]
+    assert slot == "- FREE SLOTS of at least 60 min, Mon 09 Nov 08:00–20:00: yes: 11:00–12:00 (60 min free); 16:30–20:00 (210 min free)"
+    assert not any("FREE: yes" in x or "BUSY" in x for x in lines)  # the slot answer replaces whole-window free/busy
+    assert day.weekday() == 0
+    for q, want in (("a 45 min gap", 45), ("half an hour free?", 30), ("1.5 hours available", 90),
+                    ("my 30 minute run", None), ("Am I free between 2pm and 3pm?", None)):
+        assert asked_minutes(q) == want, q
