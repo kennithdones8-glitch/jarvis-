@@ -173,7 +173,8 @@
         document.removeEventListener("keydown", skip, true); document.removeEventListener("pointerdown", skip, true);
       };
       const skip = () => { if (av.three) av.three.skipBoot(); };
-      const three = mod.create(av.wrap, { state: av.state, tier: av.tier, mode: fxLevel(), intensity: intensity(), boot, onBootEnd: endBoot });
+      const three = mod.create(av.wrap, { state: av.state, tier: av.tier, mode: fxLevel(), intensity: intensity(), boot, onBootEnd: endBoot,
+                                        onLifecycle: (phase) => { if (SM) show(SM.setLifecycle(phase)); } });
       if (!three) return;
       av.three = three;
       if (av.systems) three.setSystems(av.systems);

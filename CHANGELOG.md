@@ -1,5 +1,17 @@
 # Changelog
 
+## Unreleased — Avatar 3D, step 4: materialise and dematerialise
+
+- **Reconstruction particles** (`avatar3d-particles.js`): each particle belongs to a point on the body. During the
+  startup sequence and any reconstruction they stream in from a cloud over the platform and land as the build edge
+  reaches them; during the real emergency stop they lift off and disperse as the body erases from the head down.
+  Drawn only while a sequence runs (2,400 on desktop, 800 on phones).
+- **Startup order** now follows the brief: platform, scanning ring (riding the build edge), particles gather, legs,
+  torso and armour, head, then the circuitry lights, the sensors wake, the reactor ignites and the orbitals
+  synchronise.
+- **Dematerialisation on the real emergency stop** (Normal mode only): the figure leaves, the platform and orbitals
+  stay; releasing the stop rebuilds it. The 3D renderer reports these phases to the state machine (`lifecycle`).
+
 ## Unreleased — Avatar 3D, step 3: the reactor and the neural network
 
 - **Reactor** (`avatar3d-reactor.js`), added in depth around the existing rings, rotor, hex cage and arcs: a plasma

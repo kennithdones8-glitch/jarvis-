@@ -18,6 +18,7 @@ import { HAND_VERT, HAND_PLATE_VERT } from "/static/avatar3d-shaders.js";
 import { sdHuman, meshFigure, meshHands, mergeGeos, rng, glowTexture } from "/static/avatar3d-geometry.js";
 import { buildReactor } from "/static/avatar3d-reactor.js";
 import { buildNeural } from "/static/avatar3d-neural.js";
+import { buildReconstruction } from "/static/avatar3d-particles.js";
 export { sdHuman, meshFigure };
 
 const CHAMPAGNE = new THREE.Color("#f3e3bd"), WHITE = new THREE.Color("#fff8ec"), AMBER = new THREE.Color("#f2a33a");
@@ -336,6 +337,13 @@ export function create(wrap, opts = {}) {
   reactorGlow.scale.set(1.6, 1.6, 1); reactor.add(reactorGlow);
   const reactorX = buildReactor({ holo, part, U, REACTOR, phone }, reactor);   // core, gyros, pathways, supports, swirl, confirmation
   const neuralX = buildNeural({ holo, part, mergeGeos }, body);                  // the neural network inside the body
+  // reconstruction: particles that assemble the body (startup, reconstruction) or carry it away (emergency stop),
+  // and a scanning ring that rides the build edge
+  const rebuild = buildReconstruction({ U, rng }, figureGeo, body, phone ? 800 : 2400);
+  const scanRing = new THREE.Mesh(new THREE.TorusGeometry(1.0, 0.012, 6, 128), new THREE.MeshBasicMaterial({
+    color: new THREE.Color("#ffd98f").multiplyScalar(1.5), transparent: true, opacity: 0.8, blending: THREE.AdditiveBlending, depthWrite: false }));
+  scanRing.rotation.x = Math.PI / 2; scanRing.visible = false; body.add(scanRing);
+  let demat = null;   // the emergency-stop dematerialisation in progress (Normal mode only)
 
   // Alloy armour: key plates cut from the figure's own surface (so they hug the sleek body), lifted slightly off it.
   // m(p) > 0 inside a plate; its value near the border feeds the glowing seam.
@@ -618,7 +626,12 @@ export function create(wrap, opts = {}) {
     if (s === "completed") { flash = 1; firePulse(1.4); reactorX.confirm(); }   // the golden confirmation: a real completion only
     if (s === "error" || s === "warning") shieldFlare = 2.5;   // the shield flares on a real alert
     if (s === "recovery" && mode === "full") for (const p of Object.values(parts)) p.reveal.value = -1.5;   // reconstruction
-    if (prev === "halted" && mode === "full") for (const p of Object.values(parts)) p.reveal.value = -1.5;
+    if (prev === "halted" && mode === "full") { demat = null; for (const p of Object.values(parts)) p.reveal.value = -1.5; }   // rebuilt on release
+    if (s === "halted" && mode === "full") {   // the real emergency stop: the projection dematerialises from the head down
+      demat = { t: 0, done: false };
+      for (const p of figureParts()) p.reveal.value = Math.min(p.reveal.value, 5.4);
+      if (opts.onLifecycle) opts.onLifecycle("dematerializing");
+    }
     settling = 2.5; kick();
   }
   function setTier(n) {
@@ -626,6 +639,14 @@ export function create(wrap, opts = {}) {
     if (n === tier) return;
     const up = tier !== 0 && n > tier;
     tier = n; applyTier(up);
+  }
+  // the parts that make up the figure itself (not the platform, the orbits or the environment)
+  let figPartsCache = null;
+  function figureParts() {
+    if (figPartsCache) return figPartsCache;
+    const inFigure = (o) => { for (let x = o; x; x = x.parent) if (x === body || x === headPivot) return true; return false; };
+    figPartsCache = Object.values(parts).filter((p) => p.objs.length && p.objs.every(inFigure));
+    return figPartsCache;
   }
   function applyTier(animate) {
     for (const p of Object.values(parts)) {
@@ -637,6 +658,7 @@ export function create(wrap, opts = {}) {
     settling = 3; kick();
   }
   function setMode(m) {
+    if (m !== "full") demat = null;   // Low performance / Reduced motion: no sequences, the static look
     mode = m;
     if (mode !== "full") for (const p of Object.values(parts)) p.reveal.value = 10;
     settling = 1; kick();
@@ -682,7 +704,7 @@ export function create(wrap, opts = {}) {
   }
   // Startup assembly (once per session, Normal mode only): platform → hologram body → plates lock on → reactor ignites.
   let boot = opts.boot && mode === "full" ? { t: 0, fired: false } : null;
-  const BOOT_END = 4.3;
+  const BOOT_END = 4.6;
   const ease = (x) => 1 - Math.pow(1 - Math.min(1, Math.max(0, x)), 3);
   function bootStep(dt) {
     boot.t += dt;
@@ -789,9 +811,21 @@ export function create(wrap, opts = {}) {
     flash = Math.max(0, flash - dt * 0.8);
     speech = Math.max(0, speech - dt * 3);
     let revealing = false;
+    const down = demat ? new Set(figureParts()) : null;
     for (const p of Object.values(parts)) {
+      if (down && down.has(p)) { p.reveal.value = Math.max(-1.6, Math.min(p.reveal.value, 5.4) - dt * 2.4); continue; }
       if (p.reveal.value < 10) { p.reveal.value += dt * (state === "recovery" ? 1.6 : 3.2); revealing = true; if (p.reveal.value >= 6) p.reveal.value = 10; }
     }
+    if (demat && !demat.done) {
+      demat.t += dt; revealing = true;
+      if (figureParts().every((p) => p.reveal.value <= -1.55)) { demat.done = true; if (opts.onLifecycle) opts.onLifecycle(null); }
+    }
+    // particles and the scanning ring follow the figure's build edge while a sequence runs
+    const edge = parts.figure ? parts.figure.reveal.value : 10;
+    const seq = demat && !demat.done ? -1 : (edge < 6 && (boot || revealing) ? 1 : 0);
+    rebuild.update(edge, mode === "full" ? seq : 0);
+    scanRing.visible = seq !== 0 && mode === "full";
+    if (scanRing.visible) scanRing.position.y = (edge - BASE_Y) / SCALE;
     // shared uniforms
     U.uTime.value = t; U.uTint.value.copy(cur.tint); U.uScan.value = cur.scan; U.uFlow.value = cur.flow;
     U.uFlicker.value = moving ? cur.flicker : 0;
@@ -817,13 +851,18 @@ export function create(wrap, opts = {}) {
     dust.material.uniforms.uSpeed.value = 1 + flash * 4 + Math.abs(cur.flow) * 0.3;
     dust.visible = moving;
     if (boot) bootStep(dt);
+    if (boot) {   // order: body forms, circuitry lights, sensors wake, the reactor ignites, the orbitals synchronise
+      EYE.value *= ease((boot.t - 2.0) / 0.5);
+      orbits.scale.setScalar(0.4 + 0.6 * ease((boot.t - 3.4) / 0.9));
+    } else if (orbits.scale.x !== 1) orbits.scale.setScalar(1);
     const bootDim = boot ? Math.min(1, Math.max(0, (boot.t - 3.2) / 0.5)) : 1;   // the reactor ignites last
     REACTOR.value *= boot ? 0.08 + 0.92 * bootDim : 1;
     beamMat.uniforms.uBeam.value *= boot ? Math.min(1, boot.t / 0.8) : 1;
     if (figureMat) {   // finer detail and brighter seams light up with each stage
       figureMat.uniforms.uPanel.value = [0.25, 0.35, 0.45, 0.55][tier - 1] || 0.35;
-      figureMat.uniforms.uContour.value = [0.75, 0.9, 1.05, 1.2][tier - 1] || 0.9;
-      figureMat.uniforms.uDetail.value = [0.75, 0.85, 1.0, 1.15][tier - 1] || 0.75;   // rich now, maximum at stage 4 (finer circuits from stage 3)
+      const circ = boot ? ease((boot.t - 2.3) / 0.8) : 1;   // during startup the circuitry lights after the body forms
+      figureMat.uniforms.uContour.value = ([0.75, 0.9, 1.05, 1.2][tier - 1] || 0.9) * circ;
+      figureMat.uniforms.uDetail.value = ([0.75, 0.85, 1.0, 1.15][tier - 1] || 0.75) * circ;   // rich now, maximum at stage 4 (finer circuits from stage 3)
       if (auraMat) auraMat.uniforms.uOpacity.value = [0.3, 0.36, 0.42, 0.5][tier - 1] || 0.3;
     }
     shed.visible = moving; wisps.visible = moving;
@@ -912,7 +951,7 @@ export function create(wrap, opts = {}) {
     if (post) post.begin(); else renderer.clear();
     renderer.render(scene, camera);
     // the head reflects ~4 units below the floor, where the reflection has faded to nothing: skip it
-    const hidden = [beam, dust, data, sweep, net.g, orbits, reactor, grid, baseGlow, headPivot, thought, shed, wisps, ...soleGlows, ...reactorX.hidden(), ...(shieldMesh ? [shieldMesh] : []), ...(auraMesh ? [auraMesh] : []), ...metals.map((m) => m.mesh),
+    const hidden = [beam, dust, data, sweep, net.g, orbits, reactor, grid, baseGlow, headPivot, thought, shed, wisps, scanRing, rebuild.points, ...soleGlows, ...reactorX.hidden(), ...(shieldMesh ? [shieldMesh] : []), ...(auraMesh ? [auraMesh] : []), ...metals.map((m) => m.mesh),
       ...Object.values(aura).map((a) => a.ring), ...shafts, ...pulses.map((p) => p.m), ...eyeGlows, ...parts.pad.objs];
     const was = hidden.map((o) => o.visible);
     hidden.forEach((o) => { o.visible = false; });
