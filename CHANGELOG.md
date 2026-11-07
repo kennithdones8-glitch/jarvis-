@@ -1,5 +1,17 @@
 # Changelog
 
+## Unreleased: a harder benchmark set (branch `harder-bench-v1`, owner's choice)
+
+- **17 held-out hard tasks** (`--set hard`): reasoning ×4, coding ×3 (one is fixing a bug), memory ×3, planning ×3,
+  tool use ×2, recovery ×2. Core + extended were all passing (110/110), so they could no longer show a gain or a
+  loss. Answers were worked out by script (the five-person puzzle has exactly one solution). Benchmark only: no
+  change to how JARVIS answers.
+- `--set all` still means core + extended (24 tasks), so earlier runs stay comparable.
+- Writing them found **two gaps in JARVIS itself**, which fail even with a perfect model: "overdue or due today"
+  leaves out the reminder due today, and keyword recall can't link "take the cat to my mum's" to the flight memory.
+  Recorded, not fixed here.
+- To do on the Mac: a baseline of 0.19.2 on the hard set, ×5 with `--run-code`.
+
 ## 0.19.2 — Direct answers, one file means one write (owner-approved with the merge rule unmet; see below)
 
 - **"Am I free?" gets a yes or no.** The calendar facts now say "FREE: yes, you're free then" / "BUSY: no, you're

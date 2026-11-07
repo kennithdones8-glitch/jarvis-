@@ -1,0 +1,14 @@
+id = "hard-reasoning-journey"
+set = "hard"
+category = "reasoning"
+title = "Multi-step journey time"
+mode = "chat"
+time_limit_s = 300
+prompt = """
+A train leaves at 9:40. It travels 168 km at 72 km/h, waits 15 minutes at a station, then travels 90 km at 60 km/h.
+What time does it arrive? End with the time on its own line in 24-hour form, like 08:05.
+"""
+
+[[checks]]
+type = "regex"
+pattern = '(?m)^\W*13[:.]45\W*$'

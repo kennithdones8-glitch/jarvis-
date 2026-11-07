@@ -133,8 +133,8 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--b1", action="store_true", help="baseline with the same information JARVIS gets")
     p.add_argument("--coding-self-test", action="store_true",
                    help="run with the coding self-test on (code runs only inside the macOS sandbox)")
-    p.add_argument("--set", choices=["core", "extended", "all"], default="core",
-                   help="core: the 12 compared with the Claude app (default); extended: 12 more; all: both")
+    p.add_argument("--set", choices=["core", "extended", "hard", "all"], default="core",
+                   help="core: the 12 compared with the Claude app (default); extended: 12 more; all: both; hard: 17 held-out harder tasks")
     p.add_argument("--before", nargs="+", metavar="DIR", help="compare: one or more runs pooled as 'before'")
     p.add_argument("--after", nargs="+", metavar="DIR", help="compare: one or more runs pooled as 'after'")
     p.add_argument("--rescored", action="store_true", help="compare: use runs' re-scored results where they exist")
@@ -818,7 +818,7 @@ def _bench(kernel: Kernel, args) -> int:
     out = kernel.home / "bench-results"
     try:
         if args.op == "list":
-            for t in load_tasks(which=None if args.set == "all" else args.set):
+            for t in load_tasks(which=args.set):
                 print(f"{t.id:<26} {t.set:<9} {t.category:<10} {t.mode:<9} {t.title}")
             return 0
         if args.op == "baseline":
@@ -873,7 +873,7 @@ def _bench(kernel: Kernel, args) -> int:
             data = _json.loads((Path(args.ids[0]).expanduser() / "results.json").read_text())
             print(report(data["meta"], data["results"]))
             return 0
-        tasks = load_tasks(args.ids or None, which=None if args.set == "all" else args.set)
+        tasks = load_tasks(args.ids or None, which=args.set)
         if args.models == "hybrid":
             print("Hybrid: uses your Claude Pro plan (no money; it counts toward your usage limits). Each task runs in a\n"
                   "throwaway folder with made-up data, which may be sent to Claude without asking. Your real JARVIS\n"

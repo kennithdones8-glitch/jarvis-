@@ -1,0 +1,18 @@
+id = "hard-memory-combine"
+set = "hard"
+category = "memory"
+title = "Combine two remembered facts"
+mode = "chat"
+time_limit_s = 300
+prompt = "Which date do I need to take the cat to my mum's? End with the date on its own line."
+
+[setup]
+memories = [
+  "My flight to Lisbon is on 14 August.",
+  "Whenever I travel, the cat goes to my mum's the day before I leave.",
+  "My dentist appointment is on 20 August.",
+]
+
+[[checks]]
+type = "regex"
+pattern = '(?m)^\W*(13(th)?\s+(of\s+)?aug(ust)?|aug(ust)?\s+13(th)?)\W*$'

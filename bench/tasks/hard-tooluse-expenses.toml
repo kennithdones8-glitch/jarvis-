@@ -1,0 +1,26 @@
+id = "hard-tooluse-expenses"
+set = "hard"
+category = "tool_use"
+title = "Read three files, add up, save one file"
+mode = "do"
+time_limit_s = 900
+prompt = "Read expenses-jan.txt, expenses-feb.txt and expenses-mar.txt in my notes folder and save totals.md in the same folder with each month's total and the total for all three months."
+
+[setup]
+files = [
+  { path = "notes/expenses-jan.txt", content = "January\nGroceries 120.00\nPhone 45.50\n" },
+  { path = "notes/expenses-feb.txt", content = "February\nGroceries 80.00\nBus pass 20.00\n" },
+  { path = "notes/expenses-mar.txt", content = "March\nGroceries 210.25\n" },
+]
+
+[approve]
+match = ["totals.md"]
+
+[[checks]]
+type = "file_contains_all"
+path = "notes/totals.md"
+values = ["165.5", "100", "210.25", "475.75"]
+[[checks]]
+type = "approvals"
+min = 1
+max = 1

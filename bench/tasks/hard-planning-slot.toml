@@ -1,0 +1,23 @@
+id = "hard-planning-slot"
+set = "hard"
+category = "planning"
+title = "Find the only free 90-minute slot"
+mode = "chat"
+time_limit_s = 400
+prompt = "I need a free 90-minute slot tomorrow between 9:00 and 17:00. When can I fit it in?"
+
+[setup.mac]
+events = [
+  { title = "Standup", day = 1, start = "09:00", end = "10:30", calendar = "Work" },
+  { title = "Design review", day = 1, start = "11:00", end = "12:30", calendar = "Work" },
+  { title = "Lunch", day = 1, start = "12:30", end = "13:15" },
+  { title = "1:1 with Lee", day = 1, start = "13:15", end = "14:00", calendar = "Work" },
+  { title = "Client call", day = 1, start = "16:00", end = "17:00", calendar = "Work" },
+]
+
+[[checks]]
+type = "regex"
+pattern = '(14[:.]00|\b2(:00)?\s*pm)'
+[[checks]]
+type = "not_contains"
+values = ["10:30 to 12", "10:30-12", "10:30 - 12", "10:30–12"]
