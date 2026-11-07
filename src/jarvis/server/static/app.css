@@ -1400,3 +1400,46 @@ body[data-view="workspace"] .sysbar { display: none; }
 .routeconfirm .chip { border-radius: 999px; }
 .cmdbar > .tabs[hidden] { display: none; }
 .cmdbar > .intel-modes, .cmdbar > .intel-cycle { grid-row: 2; grid-column: 1 / -1; justify-self: start; }
+
+/* ======================================================================================================
+   HUD module (Iron Man direction): radial gauges, response-time trace, 3D depth for the side columns.
+   Rings turn constantly in Normal effects; everything is still in Low performance and Reduced motion.
+   ====================================================================================================== */
+.hud-gauges { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; margin: 2px 0 10px; }
+.hud-gauge { display: grid; justify-items: center; gap: 2px; position: relative; }
+.g-svg { width: 100%; max-width: 112px; overflow: visible; }
+.g-ticks .t-minor { stroke: rgba(214, 218, 226, .22); stroke-width: .8; }
+.g-ticks .t-major { stroke: rgba(255, 217, 143, .7); stroke-width: 1.2; }
+.g-track { fill: none; stroke: rgba(217, 180, 95, .14); stroke-width: 5; }
+.g-value { fill: none; stroke: #ffd98f; stroke-width: 5; transition: stroke-dasharray .9s cubic-bezier(.2, .8, .2, 1); filter: drop-shadow(0 0 4px rgba(255, 210, 120, .75)); }
+.g-inner { fill: none; stroke: rgba(214, 218, 226, .35); stroke-width: .8; stroke-dasharray: 2 5; }
+.g-num { fill: var(--text); font: 600 21px var(--display); letter-spacing: .02em; }
+.g-unit { fill: var(--silver); font: 500 13px var(--display); letter-spacing: .1em; text-transform: uppercase; }
+.g-label { font: 600 12px var(--display); letter-spacing: .22em; text-transform: uppercase; color: var(--gold); }
+.hud-gauge.bad .g-value { stroke: #ff6b5e; filter: drop-shadow(0 0 4px rgba(255, 90, 80, .8)); }
+.hud-gauge.unknown .g-num { fill: var(--muted); }
+.g-spin, .g-spin-rev { transform-box: view-box; transform-origin: 60px 60px; }
+.g-spin { animation: g-spin 40s linear infinite; } .g-spin-rev { animation: g-spin 14s linear infinite reverse; }
+@keyframes g-spin { to { transform: rotate(360deg); } }
+.hud-trace { margin: 0 0 10px; padding: 8px 10px 6px; border-radius: 10px; border: 1px solid var(--silver-line); background: rgba(8, 6, 3, .45); }
+.trace-h { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 4px; }
+.trace-h span { font: 600 12px var(--display); letter-spacing: .2em; text-transform: uppercase; color: var(--silver); }
+.trace-h b { font: 600 14px var(--display); color: var(--gold-hi); }
+.trace-svg { width: 100%; height: 36px; display: block; }
+.trace-svg .tr-cloud { fill: rgba(255, 217, 143, .85); } .trace-svg .tr-local { fill: rgba(214, 218, 226, .7); }
+.trace-svg .trace-base { stroke: rgba(217, 180, 95, .35); stroke-width: 1; }
+.hud-rows { display: grid; gap: 8px; }
+/* HUD detail on the Systems module: a fine scale along the left edge and a small corner readout */
+.summary-panel { position: relative; }
+.summary-panel .readouts { position: relative; padding-left: 14px; }
+.summary-panel .readouts::before { content: ""; position: absolute; left: 0; top: 4px; bottom: 4px; width: 6px; pointer-events: none;
+  background: repeating-linear-gradient(180deg, rgba(255, 217, 143, .55) 0 1px, transparent 1px 8px); opacity: .6; }
+/* 3D depth: side columns lean toward the projection (wide screens); the mouse adds a slight parallax */
+@media (min-width: 1200px) {
+  /* perspective on each column itself, not on .hud: a perspective there would re-anchor the focus view's fixed projection */
+  .rail-left { transform-origin: left center; transform: perspective(1800px) rotateY(calc(8deg + var(--px, 0) * 1.5deg)) rotateX(calc(var(--py, 0) * -1deg)); transition: transform .4s ease-out; }
+  .rail-right { transform-origin: right center; transform: perspective(1800px) rotateY(calc(-8deg + var(--px, 0) * 1.5deg)) rotateX(calc(var(--py, 0) * -1deg)); transition: transform .4s ease-out; }
+}
+:root[data-fx="reduced"] :is(.g-spin, .g-spin-rev), :root[data-fx="off"] :is(.g-spin, .g-spin-rev) { animation: none; }
+:root[data-fx="off"] .g-value { transition: none; }
+@media (prefers-reduced-motion: reduce) { :is(.g-spin, .g-spin-rev) { animation: none; } .g-value { transition: none; } .rail-left, .rail-right { transition: none; } }

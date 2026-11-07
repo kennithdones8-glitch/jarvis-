@@ -1,5 +1,16 @@
 # Changelog
 
+## Unreleased — HUD module: Systems panel, 3D depth (Iron Man direction)
+
+- Chosen with the owner: Iron Man HUD direction, live visuals, 3D depth, HUD detail; constant motion in Normal
+  effects, none in Low performance or Reduced motion. Started with the Systems panel.
+- **Systems is a HUD module**: three radial gauges (CPU load per core, memory used, models online) with tick rings
+  and turning inner rings, values from real telemetry and model availability ("—" and no arc when unknown); a
+  **model response-time trace** of the recent real model calls from the audit log (cloud in gold, local in silver);
+  compact rows for health, missions, Claude usage and spend. Built once and updated in place, so the rings never jump.
+- **3D depth**: on wide screens the side columns lean toward the projection, with a slight mouse parallax in Normal
+  effects. The perspective lives on each column (not the page grid), so the focus view's projection stays in place.
+
 ## Unreleased — automatic Ask / Research / Do
 
 - **No more mode buttons** (owner's choice): JARVIS works out what a message is (`jarvis/intent.py`). Instant rules on

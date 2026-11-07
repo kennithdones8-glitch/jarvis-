@@ -32,9 +32,13 @@ def test_what_matters_comes_only_from_tasks_and_health(dash):
 def test_the_old_stats_row_numbers_still_shown(dash):
     d, _, _ = dash
     summary = _fn(_js(d), "renderSummary")
-    for label in ("Health", "Models online", "Missions active", "Claude", "Spent this month"):
+    for label in ("Health", "Missions active", "Claude", "Spent this month"):
         assert f'ro("{label}"' in summary, label
-    assert "fill($(\"#summary\")" in summary  # optional rows are left out, never printed as "null"
+    for gauge in ("CPU", "Memory", "Models"):                       # models online is now a gauge (online / total)
+        assert f'hudGauge("{gauge}")' in summary, gauge
+    assert 'g.models.set(total ? online / total : null, total ? `${online}/${total}` : "—"' in summary
+    assert 'g.cpu.set(null, "—", "no data")' in summary            # unknown: a dash, never an invented value
+    assert "claude ? ro(" in summary                               # optional rows are left out, never printed as "null"
 
 
 def test_suggestions_are_the_capability_aware_help_examples(dash):

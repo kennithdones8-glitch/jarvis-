@@ -1623,18 +1623,81 @@ function renderSuggestions(d) {
   } }, h("small", {}, mode === "do" ? "Do" : mode === "research" ? "Research" : "Ask"), text)));
 }
 
+// ---- Systems panel as an Iron Man-style HUD module: radial gauges, a response-time trace, compact rows ----------
+// Every figure is real (telemetry, model availability, the audit log, the budget); unknown values show "—" and no arc.
+// Built once and updated in place, so the rings keep turning smoothly between polls.
+const SVGNS = "http://www.w3.org/2000/svg";
+const sv = (tag, attrs = {}, ...kids) => { const el = document.createElementNS(SVGNS, tag);
+  for (const [k, v] of Object.entries(attrs)) el.setAttribute(k, v); kids.forEach((k) => el.append(k)); return el; };
+const ARC = 2 * Math.PI * 44, SWEEP = ARC * 0.75;   // a 270-degree gauge on r = 44
+function hudGauge(label) {
+  const ticks = sv("g", { class: "g-ticks" });
+  for (let i = 0; i < 60; i++) {
+    const a = (i / 60) * Math.PI * 2, long = i % 5 === 0, r0 = long ? 50 : 53;
+    ticks.append(sv("line", { x1: 60 + Math.cos(a) * r0, y1: 60 + Math.sin(a) * r0, x2: 60 + Math.cos(a) * 57, y2: 60 + Math.sin(a) * 57, class: long ? "t-major" : "t-minor" }));
+  }
+  const value = sv("circle", { cx: 60, cy: 60, r: 44, class: "g-value", "stroke-dasharray": `0 ${ARC}`, transform: "rotate(135 60 60)" });
+  const num = sv("text", { x: 60, y: 62, class: "g-num", "text-anchor": "middle" }, "—");
+  const unit = sv("text", { x: 60, y: 78, class: "g-unit", "text-anchor": "middle" }, "");
+  const svg = sv("svg", { viewBox: "0 0 120 120", class: "g-svg", "aria-hidden": "true" },
+    sv("g", { class: "g-spin" }, ticks),
+    sv("circle", { cx: 60, cy: 60, r: 44, class: "g-track", "stroke-dasharray": `${SWEEP} ${ARC}`, transform: "rotate(135 60 60)" }),
+    value,
+    sv("g", { class: "g-spin-rev" }, sv("circle", { cx: 60, cy: 60, r: 35, class: "g-inner" })),
+    num, unit);
+  const wrap = h("div", { class: "hud-gauge" }, svg, h("span", { class: "g-label" }, label));
+  wrap.set = (ratio, text, unitText, cls) => {
+    const known = ratio !== null && ratio !== undefined && Number.isFinite(ratio);
+    value.setAttribute("stroke-dasharray", `${known ? SWEEP * Math.max(0, Math.min(1, ratio)) : 0} ${ARC}`);
+    num.textContent = text; unit.textContent = unitText || "";
+    wrap.className = `hud-gauge${cls ? ` ${cls}` : ""}${known ? "" : " unknown"}`;
+    wrap.setAttribute("aria-label", `${label}: ${text}${unitText ? ` ${unitText}` : ""}`);
+  };
+  return wrap;
+}
+// recent model response times, from the audit log (oldest first)
+function responseTimes(d) {
+  const out = [];
+  for (const e of [...(d.audit || [])].reverse()) {
+    const m = e.event === "egress.received" ? /in ([\d.]+)s/.exec(e.detail || "") : e.event === "model.local_call" ? /, ([\d.]+)s\)/.exec(e.detail || "") : null;
+    if (m) out.push({ s: Number(m[1]), local: e.event === "model.local_call" });
+  }
+  return out.slice(-18);
+}
 function renderSummary(d) {
-  // The numbers that used to be the stats row, plus health, in one place on Home; full detail is in Systems.
+  const box = $("#summary");
+  if (!box.hud) {
+    const g = { cpu: hudGauge("CPU"), mem: hudGauge("Memory"), models: hudGauge("Models") };
+    const trace = sv("svg", { viewBox: "0 0 180 36", class: "trace-svg", preserveAspectRatio: "none", "aria-hidden": "true" });
+    const traceVal = h("b", {}, "—");
+    const rows = h("div", { class: "hud-rows" });
+    box.replaceChildren(h("div", { class: "hud-gauges" }, g.cpu, g.mem, g.models),
+      h("div", { class: "hud-trace" }, h("div", { class: "trace-h" }, h("span", {}, "Model response"), traceVal), trace), rows);
+    box.hud = { g, trace, traceVal, rows };
+  }
+  const { g, trace, traceVal, rows } = box.hud;
+  const t = d.telemetry || {};
   const m = d.models || { providers: [], budget: {} };
   const online = m.providers.reduce((n, p) => n + p.available.length, 0);
   const total = m.providers.reduce((n, p) => n + p.configured.length, 0);
-  const active = d.tasks.filter((t) => ACTIVE.includes(t.state)).length;
+  if (t.cpu && t.cpu.available) g.cpu.set(Math.min(1, t.cpu.load_per_core / 1.5), String(t.cpu.load_per_core), "per core", t.cpu.load_per_core > 1.5 ? "bad" : "");
+  else g.cpu.set(null, "—", "no data");
+  if (t.memory && t.memory.available) g.mem.set(t.memory.used_pct / 100, `${Math.round(t.memory.used_pct)}%`, "used", t.memory.used_pct > 90 ? "bad" : "");
+  else g.mem.set(null, "—", "no data");
+  g.models.set(total ? online / total : null, total ? `${online}/${total}` : "—", "online", total && !online ? "bad" : "");
+  // the response-time trace: one bar per recent model call (taller = slower), local calls in silver
+  const times = responseTimes(d);
+  const max = Math.max(1, ...times.map((x) => x.s));
+  trace.replaceChildren(sv("line", { x1: 0, y1: 35.5, x2: 180, y2: 35.5, class: "trace-base" }),
+    ...times.map((x, i) => { const hgt = Math.max(2, (x.s / max) * 32), w = 180 / 18;
+      return sv("rect", { x: i * w + 1.5, y: 35 - hgt, width: w - 3, height: hgt, class: x.local ? "tr-local" : "tr-cloud" }); }));
+  traceVal.textContent = times.length ? `${times[times.length - 1].s.toFixed(1)} s` : "no calls yet";
+  const active = d.tasks.filter((x) => ACTIVE.includes(x.state)).length;
   const claude = (m.cloud_usage || []).find((u) => u.provider === "claude");
   const ro = (label, value, cls, ratio) => h("div", { class: "ro" }, h("span", {}, label), h("b", { class: cls || null }, value), meter(ratio));
-  fill($("#summary"),
+  rows.replaceChildren(
     ro("Health", !d.health ? "Checking…" : d.health.ok ? "✓ Healthy" : `⚠ ${plural(d.health.items.filter((i) => !i.ok).length, "problem")}`,
        d.health && !d.health.ok ? "bad" : d.health ? "ok" : null),
-    ro("Models online", `${online} of ${total}`, total && !online ? "bad" : null, total ? online / total : null),
     ro("Missions active", String(active)),
     claude ? ro("Claude", claude.limited_until ? `resets ${clock(claude.limited_until)}` : `${claude.calls} calls · 5h`) : null,
     ro("Spent this month", `$${(m.budget.spent_this_month_usd || 0).toFixed(2)} of $${(m.budget.monthly_limit_usd || 0).toFixed(2)}`, null,
@@ -1823,6 +1886,7 @@ document.addEventListener("DOMContentLoaded", () => {
   tick(); setInterval(tick, 1000);
   setMode("ask");
   applyDisplay(loadDisplay());
+  initParallax();
   document.addEventListener("keydown", onShortcut);
   $("#displaybtn").addEventListener("click", showDisplaySettings);
   $("#keysbtn").addEventListener("click", showShortcuts);
@@ -2104,6 +2168,18 @@ function renderProjControls() {
     h("ul", { class: "pp-mods" }, mods.filter((m) => MODULE_LABEL[m.name]).map((m) =>
       h("li", { class: m.on ? "ok" : "no" }, `${m.on ? "✓" : "·"} ${MODULE_LABEL[m.name]}${m.on ? "" : ` (stage ${m.tier})`}`))),
     h("p", { class: "hl-sub" }, "Modules follow the displayed evolution stage. Settings here change only the look on this device; they never change what JARVIS can do."));
+}
+
+// 3D depth: the side columns lean toward the projection; the mouse adds a slight parallax (Normal effects only)
+function initParallax() {
+  const hud = document.querySelector(".hud");
+  if (!hud || !window.matchMedia) return;
+  let raf = 0, px = 0, py = 0;
+  window.addEventListener("pointermove", (e) => {
+    if (document.documentElement.dataset.fx !== "full" || matchMedia("(prefers-reduced-motion: reduce)").matches || innerWidth < 1200) return;
+    px = (e.clientX / innerWidth - 0.5) * 2; py = (e.clientY / innerHeight - 0.5) * 2;
+    if (!raf) raf = requestAnimationFrame(() => { raf = 0; hud.style.setProperty("--px", px.toFixed(3)); hud.style.setProperty("--py", py.toFixed(3)); });
+  }, { passive: true });
 }
 
 function renderWall(d) {

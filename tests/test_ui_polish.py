@@ -62,3 +62,15 @@ def test_ui_meters_show_only_real_ratios_and_the_glass_respects_effects_settings
     assert ':root[data-fx="reduced"] .panel, :root[data-fx="off"] .panel { backdrop-filter: none;' in css
     assert ".cmdbar { position: sticky; bottom: 14px;" in css and ".hud > .center > .matters { order: -1; }" in css
     assert ".cc-sys[open] { grid-column: 1 / -1;" in css
+
+
+def test_hud_module_gauges_are_real_and_depth_never_breaks_the_focus_view():
+    from pathlib import Path
+    static = Path(__file__).resolve().parents[1] / "src" / "jarvis" / "server" / "static"
+    js, css = (static / "app.js").read_text(), (static / "app.css").read_text()
+    assert ".hud { perspective" not in css                                       # would re-anchor the fixed focus projection
+    assert "transform: perspective(1800px) rotateY(calc(-8deg" in css
+    assert ':root[data-fx="reduced"] :is(.g-spin, .g-spin-rev), :root[data-fx="off"] :is(.g-spin, .g-spin-rev) { animation: none; }' in css
+    assert 'document.documentElement.dataset.fx !== "full" || matchMedia("(prefers-reduced-motion: reduce)").matches' in js   # parallax: Normal only
+    times = js.split("function responseTimes(d) {")[1].split("\n}\n")[0]
+    assert 'e.event === "egress.received"' in times and 'e.event === "model.local_call"' in times   # real calls from the audit log
