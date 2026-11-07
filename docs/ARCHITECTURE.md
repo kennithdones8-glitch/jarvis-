@@ -236,6 +236,23 @@ prefer="quality")` and up to 2000 tokens, falling back to the best available mod
   counts only), missions, security, communications, research, personal operations, diagnostics (incl. the
   evolution record).
 
+## 3D holographic core and cinematic environment (theme v3)
+
+- `static/avatar3d.js` (ES module) draws the core with Three.js r160 (vendored, SHA-256 pinned by a test): shapes
+  built in code (no downloaded model), each a named, replaceable part (pad, torso, helmet, face, visor, ears,
+  circuits, plates, pauldrons, gorget, fins, halo) with a hologram shader (rim light, scan lines, rising light band,
+  energy pulses, materialisation edge, fade into the projector beam, floor reflection). The reactor (`#core`) stays
+  as the chest core, so its states and tests are unchanged.
+- `avatar.js` loads it only when WebGL works and falls back to the 2D core on any failure or a lost GPU context.
+  States and the evolution tier go to whichever renderer is active; evolution still comes only from the server.
+- Display → Effects: **Normal** (≤30 fps, 24 on phones, only while on screen and visible), **Low performance**
+  (redrawn only when the state changes; background still), **Reduced motion** (nothing moves; also forced by the
+  system setting). Pixel ratio is capped at 1.5.
+- Environment (`.env` in `index.html`): perspective grid floor, light pools and drifting dust — transform and
+  opacity animations only, stopped in Low performance and Reduced motion.
+- Palette: deep black, metallic gold `--gold`, champagne `--champagne`, warm white `--warm-white`; amber only for
+  activity and warnings; cyan only for listening/speaking.
+
 ## Benchmark and release gate (`src/jarvis/bench/`, `src/jarvis/gate.py`, v0.17)
 
 `jarvis bench` runs fixed tasks (`bench/tasks/*.toml`) through the real chat, research and plan→task→approval

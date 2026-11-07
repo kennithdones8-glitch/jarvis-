@@ -144,6 +144,30 @@
     document.addEventListener("visibilitychange", loop);
     if (window.matchMedia) window.matchMedia("(prefers-reduced-motion: reduce)").addEventListener?.("change", loop);
     loop();
+    tryThree();
+  }
+
+  // ---- 3D renderer (avatar3d.js, Three.js) --------------------------------------------------------------------
+  // Used when WebGL works; the 2D core above stays underneath as the fallback (no WebGL, a lost GPU context, or
+  // a failed load). Same states, same tier, same rules.
+  function webgl() {
+    try { const c = document.createElement("canvas"); return !!(c.getContext("webgl2") || c.getContext("webgl")); }
+    catch (e) { return false; }
+  }
+  async function tryThree() {
+    if (av.three || av.trying || !webgl()) return;
+    av.trying = true;
+    try {
+      const mod = await import("/static/avatar3d.js");
+      const three = mod.create(av.wrap, { state: av.state, tier: av.tier, mode: fxLevel() });
+      if (!three) return;
+      av.three = three;
+      three.onLost = () => { av.wrap.classList.remove("has-3d"); try { three.dispose(); } catch (e) { /* gone */ } av.three = null; loop(); };
+      av.wrap.classList.add("has-3d");
+      loop();
+    } catch (e) {
+      /* stay with the 2D core */
+    } finally { av.trying = false; }
   }
 
   function applyTier(tier, animate) {
@@ -166,6 +190,7 @@
     const up = tier > av.tier;
     av.tier = tier;
     applyTier(tier, up);
+    if (av.three) av.three.setTier(tier);
   }
 
   function setState(state) {
@@ -173,6 +198,7 @@
     if (!av.svg || state === av.state) return;
     av.state = state;
     av.svg.dataset.state = state;
+    if (av.three) av.three.setState(state);
     av.color = getComputedStyle(av.svg).getPropertyValue("--av-rgb").trim() || av.color;
     if (state === "completed") burst();
     loop();
@@ -186,7 +212,7 @@
   }
 
   // ---- energy motes (canvas) -----------------------------------------------------------------------------------
-  function running() { return av.canvas && av.visible && !document.hidden && fxLevel() === "full"; }
+  function running() { return av.canvas && !av.three && av.visible && !document.hidden && fxLevel() === "full"; }
 
   function size() {
     const r = av.canvas.getBoundingClientRect();
@@ -240,11 +266,13 @@
   }
 
   function loop() {
+    if (av.three && av.lastMode !== fxLevel()) { av.lastMode = fxLevel(); av.three.setMode(av.lastMode); }
     if (running()) { if (!av.raf) av.raf = requestAnimationFrame(frame); }
     else { if (av.raf) cancelAnimationFrame(av.raf); av.raf = 0; clear(); }
   }
 
   window.JarvisAvatar = { mount, setState, setTier, registerPart, refresh: loop, STATES,
                           get state() { return av.state; }, get tier() { return av.tier; },
-                          get animating() { return av.raf !== 0; } };
+                          get animating() { return av.raf !== 0 || !!(av.three && av.three.animating); },
+                          get renderer() { return av.three ? "3d" : "2d"; } };
 })();

@@ -1013,9 +1013,11 @@ class Dashboard:
     def _get(self, h: BaseHTTPRequestHandler, url, *, device: dict | None) -> None:
         if url.path in ("/static/app.js", "/static/app.css", "/static/phone.js", "/static/qrcode.js",
                         "/static/bench.js", "/static/bench.css", "/static/trust.js", "/static/proposals.js",
-                        "/static/avatar.js", "/static/avatar.css"):
+                        "/static/avatar.js", "/static/avatar.css", "/static/avatar3d.js"):
             ctype = "text/javascript" if url.path.endswith(".js") else "text/css"
             return self._send(h, 200, (STATIC / url.path.rsplit("/", 1)[1]).read_bytes(), f"{ctype}; charset=utf-8")
+        if url.path == "/static/vendor/three.module.min.js":  # Three.js r160, served from this Mac (MIT)
+            return self._send(h, 200, (STATIC / "vendor" / "three.module.min.js").read_bytes(), "text/javascript; charset=utf-8")
         if m := re.fullmatch(r"/static/fonts/(rajdhani-[567]00\.woff2)", url.path):
             return self._send(h, 200, (STATIC / "fonts" / m.group(1)).read_bytes(), "font/woff2",
                               {"Cache-Control": "max-age=86400"})

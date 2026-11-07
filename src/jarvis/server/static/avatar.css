@@ -11,8 +11,8 @@
 .core-wrap.has-avatar #core { position: absolute; z-index: 1; width: 26%; height: auto; aspect-ratio: 1; left: 37%; top: 51.5%; }
 
 /* ---- colour: amber by default, a tint per state ---- */
-.core-wrap.has-avatar { --hue: #ffb347; --hue-hi: #ffe9b8; } /* the chest core is amber at rest; per-state colours still apply */
-.avatar { --av-rgb: 242, 184, 75; --av: rgb(var(--av-rgb)); --av-hi: #ffe9b8; color: var(--av);
+.core-wrap.has-avatar { --hue: #f2d9a0; --hue-hi: #fffaf0; } /* the chest core is amber at rest; per-state colours still apply */
+.avatar { --av-rgb: 236, 208, 146; --av: rgb(var(--av-rgb)); --av-hi: #fffaf0; color: var(--av);
   transform-box: view-box; animation: av-float 7s ease-in-out infinite; will-change: transform;
   filter: drop-shadow(0 0 4px rgba(var(--av-rgb), .55)) drop-shadow(0 0 16px rgba(var(--av-rgb), .22)); }
 .avatar[data-state="listening"] { --av-rgb: 95, 214, 255; --av-hi: #e6fbff; }
@@ -140,3 +140,8 @@ body[data-activity="voice"] .hud > .center > :is(.matters, .suggest, .hint, .sys
   26% { opacity: 1; } 31% { opacity: .6; } 36%, 100% { opacity: 1; } }
 :root[data-fx="off"] .avatar { filter: drop-shadow(0 0 4px rgba(var(--av-rgb), .45)); }
 :root[data-fx="off"] .avatar-lines { display: none; }
+
+/* ---- 3D core (avatar3d.js): the 2D layers step aside; the reactor (#core) stays as the chest core ---- */
+.core-wrap.has-avatar .avatar3d { position: absolute; inset: 0; width: 100%; height: 100%; z-index: 0; pointer-events: none; }
+.core-wrap.has-3d .avatar, .core-wrap.has-3d .avatar-fx, .core-wrap.has-3d .avatar-lines { display: none; }
+.core-wrap.has-3d #core { filter: drop-shadow(0 0 10px rgba(255, 246, 224, .55)); }

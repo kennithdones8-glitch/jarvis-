@@ -1,5 +1,17 @@
 # Changelog
 
+## Unreleased — Cinematic core: 3D hologram, gold-white environment
+
+- **3D holographic core** (Three.js r160, served from the Mac, pinned by hash): translucent gold-white figure with
+  rim light, scan lines, energy pulses along its circuits, a beam and rising dust from the projector, a floor
+  reflection, orbit rings, and a materialisation from the pad upward. Every part is replaceable; armour, circuits,
+  pauldrons, fins and halo appear only as verified milestones unlock (same rules as before). Falls back to the 2D
+  core without WebGL.
+- **Gold-white palette**: deep black, metallic gold, champagne and warm white; amber for activity and warnings.
+  Metallic-edged glass panels; sections materialise when shown.
+- **Living environment** (owner-approved): a gliding perspective grid floor, breathing light and drifting dust.
+- **Display → Effects** is now Normal / Low performance / Reduced motion.
+
 ## Unreleased — Dashboard theme v2: holographic command deck
 
 - The hologram stands on a projector pad in a beam of light, its torso dissolving into the beam; orbit rings pass in

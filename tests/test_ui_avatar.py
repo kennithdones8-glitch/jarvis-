@@ -120,7 +120,7 @@ def test_comfort_and_performance_switches():
     for kf in re.findall(r"@keyframes [\w-]+ \{(.*?)\}\n", AVCSS, re.S):
         props = set(re.findall(r"([a-z-]+):", kf))
         assert props <= {"transform", "opacity", "stroke-dashoffset"}, props
-    assert 'fx: [["full", "Full"], ["reduced", "Reduced"], ["off", "Off (lowest power)"]]' in JS
+    assert 'fx: [["full", "Normal"], ["reduced", "Low performance"], ["off", "Reduced motion"]]' in JS
 
 
 def test_adaptive_layout_follows_real_activity():
@@ -152,3 +152,51 @@ def test_phone_layout_rules():
     assert ".cmd .intel-modes, .cmd .intel-modes:not([hidden]) { display: none; }" in phone  # no extra row
     assert ".sys-chip { grid-template-columns: auto 1fr; padding: 6px; }" in phone
     assert "min-height: 44px" in css.split(".sys-chip {")[1].split("}")[0]
+
+
+# ---- 3D core (Three.js) -----------------------------------------------------------------------------------------
+import hashlib  # noqa: E402
+
+AV3 = (STATIC / "avatar3d.js").read_text()
+THREE_SHA256 = "3e690ac7d180b0aadf0891bea39eec643e29e2d3e75c99b18689518665f69ba6"  # three@0.160.0 build/three.module.min.js
+
+
+def test_three_is_the_exact_pinned_build_and_served_from_this_mac(dash):
+    path = STATIC / "vendor" / "three.module.min.js"
+    assert hashlib.sha256(path.read_bytes()).hexdigest() == THREE_SHA256
+    assert "MIT License" in (STATIC / "vendor" / "three.LICENSE.txt").read_text()
+    d, _, _ = dash
+    status, headers, body = call(d, "/static/vendor/three.module.min.js")
+    assert status == 200 and headers["Content-Type"].startswith("text/javascript") and hashlib.sha256(body).hexdigest() == THREE_SHA256
+    assert call(d, "/static/vendor/three.LICENSE.txt")[0] == 404  # only the one file is served
+    assert call(d, "/static/avatar3d.js")[0] == 200
+    csp = call(d, "/")[1]["Content-Security-Policy"]
+    assert "script-src 'self'" in csp and "connect-src 'self'" in csp and "unsafe" not in csp  # unchanged
+
+
+def test_3d_core_is_decoration_only_and_local():
+    assert 'import * as THREE from "/static/vendor/three.module.min.js";' in AV3
+    for forbidden in ("fetch(", "XMLHttpRequest", "localStorage", "innerHTML", "eval(", "http://", "https://", "Loader("):
+        assert forbidden not in AV3, forbidden
+    assert set(re.findall(r"^\s+(\w+):\s+\{ tint:", AV3, re.M)) == set(json.loads(re.search(r"const STATES = (\[.*?\]);", AV, re.S).group(1)))
+
+
+def test_3d_core_falls_back_to_2d_and_respects_the_modes():
+    assert 'import("/static/avatar3d.js")' in AV and "if (!three) return;" in AV  # failure leaves the 2D core
+    assert 'av.wrap.classList.remove("has-3d")' in AV  # a lost GPU context goes back to 2D
+    assert "av.three.setMode(av.lastMode)" in AV and "av.three.setState(state)" in AV and "av.three.setTier(tier)" in AV
+    # Normal: capped frame rate; other modes draw only when something changes; nothing while hidden or off screen
+    assert "1000 / 30" in AV3 and "1000 / 24" in AV3 and 'const moving = mode === "full";' in AV3
+    assert "if (!visible || document.hidden) return;" in AV3 and "IntersectionObserver" in AV3
+    assert "Math.min(1.5, window.devicePixelRatio || 1)" in AV3
+    css = (STATIC / "avatar.css").read_text()
+    assert ".core-wrap.has-3d .avatar, .core-wrap.has-3d .avatar-fx, .core-wrap.has-3d .avatar-lines { display: none; }" in css
+
+
+def test_background_motion_stops_when_asked():
+    css = (STATIC / "app.css").read_text()
+    assert ':root[data-fx="reduced"] .env *, :root[data-fx="off"] .env * { animation: none !important; }' in css
+    assert "@media (prefers-reduced-motion: reduce) { .env * { animation: none !important; } .env-dust { display: none; } }" in css
+    env = css.split("Theme v3")[1]
+    for kf in re.findall(r"@keyframes env-[\w-]+ \{(.*?)\} \}", env, re.S):
+        assert set(re.findall(r"([a-z-]+):", kf)) <= {"transform", "opacity"}

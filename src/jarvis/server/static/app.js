@@ -1392,7 +1392,7 @@ const isPhone = () => window.matchMedia("(max-width: 760px), (pointer: coarse)")
 const DISPLAY_KEY = "jarvis-display";
 const DISPLAY = { text: [["normal", "Normal"], ["large", "Large"], ["larger", "Larger"]],
                   density: [["comfortable", "Comfortable"], ["compact", "Compact"]],
-                  fx: [["full", "Full"], ["reduced", "Reduced"], ["off", "Off (lowest power)"]] };
+                  fx: [["full", "Normal"], ["reduced", "Low performance"], ["off", "Reduced motion"]] };
 function loadDisplay() {
   let d = {};
   try { d = JSON.parse(localStorage.getItem(DISPLAY_KEY) || "{}") || {}; } catch (e) { d = {}; }
@@ -1423,7 +1423,7 @@ function showDisplaySettings() {
     h("h3", { class: "sys-part" }, "Text size"), choose("text"),
     h("h3", { class: "sys-part" }, "Density"), choose("density"),
     h("h3", { class: "sys-part" }, "Effects"),
-    h("p", { class: "hl-sub" }, "The holographic core's motion and particles. Reduced keeps it still apart from state changes; Off uses the least power. Chat is never slowed by it."),
+    h("p", { class: "hl-sub" }, "Normal: the full 3D hologram and a gently moving environment. Low performance: the hologram is redrawn only when JARVIS's state changes, and the background is still. Reduced motion: nothing moves (also follows your system setting). Chat is never slowed by any of them."),
     choose("fx"),
     h("div", { class: "row mt" }, h("button", { class: "btn", type: "button", onclick: () => { dlg.close(); dlg.remove(); } }, "Done")));
   dlg.addEventListener("close", () => dlg.remove());
