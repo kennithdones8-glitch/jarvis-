@@ -1,5 +1,16 @@
 # Changelog
 
+## Unreleased — Avatar 3.5.2: a refined face
+
+- The face is reworked to read as an elegant sculpted mask rather than a crude one: almond-shaped eyes with lifted
+  outer corners, a slimmer nose with a soft tip, higher cheekbones with soft hollows, a cleaner jaw and chin, and a
+  fine drawn mouth line in place of sculpted lips (which broke up at this mesh resolution).
+- Lit as a form: soft wrap light and an even fill on the face, with the hologram rim softened there so small
+  features no longer get cartoon outlines; no panel grid across the face.
+- Fixed a dark patch under the nose (the helmet plate behind the head showed through; plates now draw before the
+  glowing body), a line down the forehead (the rear crest seam showing through), and a streak from the inner spine
+  reaching into the head. The helmet now sweeps behind the face instead of capping the forehead.
+
 ## Unreleased — Avatar 3.5.1: the eyes, made visible
 
 - Glances now move the eye glow with the head (the shift was too small to see); a horizontal scan line with a moving

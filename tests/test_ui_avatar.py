@@ -234,8 +234,12 @@ HTML = (STATIC / "index.html").read_text()
 def test_the_face_is_sculpted_light_with_eyes_driven_by_real_signals():
     # owner's choice (Avatar 3.4): a subtle sculpted face, like a statue of light; no moving mouth
     assert "function face(d, x, ax, y, z) {" in AV3 and "if (y > 4.38 && z > 0.0) d = face(d, x, ax, y, z);" in AV3
-    for feature in ("eye sockets", "brow ridge", "nose bridge", "cheekbones", "upper lip", "lower lip", "chin", "jaw line"):
+    for feature in ("eye sockets", "brow ridge", "nose bridge", "nose tip", "cheekbones", "chin", "jaw line"):
         assert f"// {feature}" in AV3, feature
+    assert "a fine, slightly smiling mouth line" in AV3                                    # drawn, not sculpted (cleaner at this resolution)
+    assert "fres *= 1.0 - 0.7 * faceZone;" in AV3                                          # no cartoon rings around the features
+    assert "(1.0 - faceZone);   // no panel grid across the face" in AV3
+    assert "mesh.renderOrder = -1;" in AV3                                                 # plates never darken a face in front of them
     assert "meshFigure(phone ? 0.018 : 0.013, [-0.34, 4.3, -0.44]" in AV3                  # the head is meshed finer
     assert "FACE.uEyeOpen.value = shut * narrow;" in AV3                                    # blinks and narrowing come from the state
     assert 'FACE.uEyeScan.value += ((state === "researching" || state === "verifying" ? 1 : 0)' in AV3
@@ -349,7 +353,7 @@ def test_figure_is_a_light_body_with_teal_hands_and_sparkles_kept_out_of_the_ref
 
 
 def test_figure_has_glowing_suit_contours_that_grow_with_the_stage():
-    assert "float anat(vec3 p)" in AV3 and "float c = anat(vObj) * uContour;" in AV3
+    assert "float anat(vec3 p)" in AV3 and "float c = anat(vObj) * uContour * (gl_FrontFacing ? 1.0 : 0.15);" in AV3
     assert "contour: 1, detail: 0.75, head: true" in AV3                      # only the figure carries the seams
     assert "figureMat.uniforms.uContour.value = [0.75, 0.9, 1.05, 1.2][tier - 1]" in AV3
     assert "smoothstep(0.12, 0.02, p.z));           // crest over the head (not the face)" in AV3

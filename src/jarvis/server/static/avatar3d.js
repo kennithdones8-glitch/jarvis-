@@ -133,6 +133,9 @@ void main() {
   if (h > uReveal) discard;
   float facing = abs(dot(normalize(vNormal), normalize(vView)));
   float fres = pow(1.0 - facing, 2.2);
+  // on the face, outlines around small features read as cartoon rings: soften the rim there and light the form instead
+  float faceZone = uDetail > 0.0 ? smoothstep(4.34, 4.44, vObj.y) * smoothstep(4.97, 4.88, vObj.y) * smoothstep(0.08, 0.18, vObj.z) : 0.0;
+  fres *= 1.0 - 0.7 * faceZone;
   float scan = mix(0.8, 1.0, 0.5 + 0.5 * sin(h * 70.0 - uTime * uScan * 5.0));
   float band = exp(-pow((fract(h * 0.16 - uTime * 0.05 * uScan) - 0.5) * 12.0, 2.0));
   float distort = 0.94 + 0.06 * sin(h * 9.0 + uTime * 2.3) * step(0.985, hash(floor(uTime * 3.0) + floor(h * 6.0)));
@@ -146,12 +149,12 @@ void main() {
     float major = tri(p, wt, 1.2);
     float fine = tri(p * 3.0, wt, 0.8) * 0.35;
     float run = exp(-pow((fract(vWorld.y * 0.45 - uTime * 0.12 * (0.6 + abs(uFlow))) - 0.5) * 18.0, 2.0));
-    float lines = (major + fine) * uPanel;
+    float lines = (major + fine) * uPanel * (1.0 - faceZone);   // no panel grid across the face
     col += mix(uTint * 0.9, vec3(1.0, 0.97, 0.9), run) * lines * (0.7 + 1.6 * run);
     a += lines * (0.22 + 0.5 * run) * uOpacity;
   }
   if (uContour > 0.0) {
-    float c = anat(vObj) * uContour;
+    float c = anat(vObj) * uContour * (gl_FrontFacing ? 1.0 : 0.15);   // seams on the far side barely show through
     float run = exp(-pow((fract(vObj.y * 0.3 - uTime * 0.18 * (0.6 + abs(uFlow))) - 0.5) * 10.0, 2.0));   // energy rising along the seams
     col += mix(mix(uTint, vec3(1.0, 0.96, 0.9), 0.35), vec3(1.0, 0.98, 0.94), run) * c * (0.65 + 1.5 * run);
     a += c * (0.28 + 0.5 * run) * uOpacity;
@@ -177,11 +180,20 @@ void main() {
     a += ve * (0.15 + 0.5 * vp) * uOpacity;
     // the face: glowing eyes (open/blink, glance, scan light while researching) and a light pulse on each spoken word
     float facem = smoothstep(4.4, 4.45, p.y) * smoothstep(4.95, 4.85, p.y) * smoothstep(0.12, 0.22, p.z);
-    vec2 eo = vec2((ax - 0.072 - uEyeLook * sign(p.x)) / 0.03, (p.y - 4.735) / (0.014 * max(uEyeOpen, 0.08)));
+    float ex = ax - 0.075 - uEyeLook * sign(p.x);
+    float ey = (p.y - 4.737 - ex * 0.16) / max(1.0 - pow(ex / 0.042, 2.0) * 0.75, 0.15);   // almond shape, outer corners lifted
+    vec2 eo = vec2(ex / 0.04, ey / (0.0105 * max(uEyeOpen, 0.08)));
     float eye = exp(-dot(eo, eo) * 1.4) * smoothstep(0.2, 0.25, p.z) * min(uEye, 2.0) * step(0.02, uEyeOpen);
     float scanx = sin(uTime * 2.4) * 0.11;
     float escan = exp(-pow((p.x - scanx) / 0.014, 2.0)) * exp(-pow((p.y - 4.735) / 0.03, 2.0)) * smoothstep(0.2, 0.25, p.z) * uEyeScan;
     escan += exp(-pow((p.y - 4.735) / 0.006, 2.0)) * step(abs(p.x), 0.12) * smoothstep(0.2, 0.25, p.z) * uEyeScan * 0.35;   // the scan line it travels on
+    float headm = smoothstep(4.36, 4.46, p.y);   // soft key light from upper left on the head: the face reads as a form
+    float key = dot(normalize(vObjN), normalize(vec3(-0.3, 0.35, 0.88))) * 0.5 + 0.5;   // wrap light: soft, no black pockets
+    col *= mix(1.0, 0.7 + 0.5 * key, headm * 0.8);
+    float mx = p.x / 0.036, mouth = (1.0 - smoothstep(0.0012, 0.0012 + 1.5 * fwidth(p.y), abs(p.y - 4.545 + 0.006 * mx * mx)))
+      * smoothstep(1.0, 0.6, abs(mx)) * smoothstep(0.2, 0.24, p.z);   // a fine, slightly smiling mouth line
+    col *= 1.0 - 0.55 * mouth;
+    col += mix(uTint, vec3(1.0, 0.95, 0.88), 0.3) * faceZone * (0.32 + 0.5 * pow(key, 3.0)); a += faceZone * (0.24 + 0.25 * pow(key, 3.0)) * uOpacity;   // even fill: no dark pockets where the face meets the view head-on
     col += mix(uTint, vec3(1.0, 0.98, 0.95), (0.25 + 0.35 * exp(-dot(eo, eo) * 4.0)) * uEyeHot) * eye * 2.2 + mix(uTint, vec3(1.0), 0.5) * escan * 2.6 + uTint * facem * uSpeech * 0.45;
     a += (eye * 0.7 + escan * 0.5 + facem * uSpeech * 0.15) * uOpacity;
     // glowing soles
@@ -382,17 +394,16 @@ function sdLimb(px, py, pz, ax, ay, az, bx, by, bz, ra, rb) {   // a capsule who
 }
 // The face, sculpted subtly like a statue of light (owner's choice): brow, eye sockets, cheekbones, nose, lips, chin.
 function face(d, x, ax, y, z) {
-  d = smax(d, -sdEll(ax, y, z, 0.072, 4.735, 0.3, 0.05, 0.03, 0.045), 0.025);                 // eye sockets
-  d = smin(d, sdLimb(ax, y, z, 0.015, 4.78, 0.272, 0.12, 4.775, 0.235, 0.016, 0.014), 0.03);   // brow ridge
-  d = smin(d, sdLimb(x, y, z, 0, 4.74, 0.28, 0, 4.615, 0.31, 0.012, 0.02), 0.025);             // nose bridge
-  d = smin(d, sdEll(x, y, z, 0, 4.612, 0.302, 0.026, 0.02, 0.02), 0.02);                       // nose tip
-  d = smin(d, sdEll(ax, y, z, 0.022, 4.6, 0.285, 0.014, 0.012, 0.012), 0.015);                 // nostril wings
-  d = smin(d, sdEll(ax, y, z, 0.105, 4.665, 0.215, 0.055, 0.03, 0.045), 0.04);                 // cheekbones
-  d = smin(d, sdEll(x, y, z, 0, 4.548, 0.272, 0.042, 0.012, 0.016), 0.015);                    // upper lip
-  d = smin(d, sdEll(x, y, z, 0, 4.522, 0.268, 0.036, 0.013, 0.016), 0.015);                    // lower lip
-  d = smax(d, -sdEll(x, y, z, 0, 4.536, 0.29, 0.04, 0.0035, 0.02), 0.006);                    // the line between the lips
-  d = smin(d, sdEll(x, y, z, 0, 4.445, 0.225, 0.05, 0.035, 0.04), 0.04);                       // chin
-  d = smin(d, sdLimb(ax, y, z, 0.15, 4.6, 0.04, 0.06, 4.45, 0.19, 0.03, 0.025), 0.06);         // jaw line
+  d = smax(d, -sdEll(ax, y, z, 0.075, 4.738, 0.3, 0.056, 0.028, 0.045), 0.03);                // eye sockets
+  d = smin(d, sdLimb(ax, y, z, 0.018, 4.782, 0.27, 0.125, 4.785, 0.232, 0.013, 0.011), 0.035); // brow ridge
+  d = smin(d, sdLimb(x, y, z, 0, 4.748, 0.278, 0, 4.632, 0.3, 0.009, 0.015), 0.03);            // nose bridge (slim)
+  d = smin(d, sdEll(x, y, z, 0, 4.626, 0.29, 0.02, 0.02, 0.014), 0.05);                        // nose tip (soft, blends into the lip)
+  d = smin(d, sdEll(x, y, z, 0, 4.585, 0.272, 0.022, 0.03, 0.012), 0.04);                       // philtrum: fills under the nose
+  d = smin(d, sdEll(ax, y, z, 0.118, 4.682, 0.205, 0.06, 0.026, 0.045), 0.045);                // cheekbones (high)
+  d = smax(d, -sdEll(ax, y, z, 0.105, 4.6, 0.262, 0.042, 0.04, 0.025), 0.05);                  // soft hollows under them
+  // the mouth is a fine line drawn in the shader (sculpted lips this small break up at this mesh resolution)
+  d = smin(d, sdEll(x, y, z, 0, 4.455, 0.2, 0.045, 0.034, 0.04), 0.06);                        // chin
+  d = smin(d, sdLimb(ax, y, z, 0.14, 4.6, 0.04, 0.05, 4.457, 0.183, 0.024, 0.02), 0.07);       // jaw line
   return d;
 }
 export function sdHuman(x, y, z) {
@@ -687,7 +698,7 @@ export function create(wrap, opts = {}) {
   let innerMat = null;
   part("inner", 1, (add) => {
     const V = (x, y, z) => new THREE.Vector3(x, y, z), paths = [];
-    paths.push([V(0, 2.55, -0.1), V(0, 3.0, -0.12), V(0, 3.6, -0.1), V(0, 4.15, -0.06), V(0, 4.42, -0.02)]);   // spine
+    paths.push([V(0, 2.55, -0.1), V(0, 3.0, -0.12), V(0, 3.6, -0.1), V(0, 4.08, -0.07), V(0, 4.22, -0.06)]);   // spine (ends at the neck: nothing shows through the face)
     for (const y of [3.95, 3.82, 3.68, 3.54, 3.4]) for (const sg of [-1, 1]) {                                 // ribs
       const w = 0.42 - (3.95 - y) * 0.25;
       paths.push([V(0, y, -0.12), V(sg * w * 0.75, y + 0.01, -0.1), V(sg * w, y - 0.05, 0.02)]);
@@ -792,7 +803,7 @@ export function create(wrap, opts = {}) {
         : Math.min(y - 2.42, 2.94 - y - 0.8 * Math.abs(z), Math.abs(x) - (0.79 + 0.08 * (3.04 - y)) + 0.05) })),
     ...[1, -1].map((sg) => ({ name: "shin", order: 0.65, dir: [0, 0, 1], m: (x, y, z) => { const ax = Math.abs(x);
       return sg * x <= 0 ? -1 : Math.min(y - 0.52, 1.26 - y - 1.3 * Math.abs(ax - 0.255), z - 0.0, (0.1 - 0.04 * (1.2 - y)) - Math.abs(ax - 0.255)); } })),
-    { name: "helmet", order: 0.85, dir: [0, 0.4, -1], m: (x, y, z) => Math.min(y - 4.47, y - (4.8 - 1.2 * (0.1 - z))) },   // crown, sides and back; face open
+    { name: "helmet", order: 0.85, dir: [0, 0.4, -1], m: (x, y, z) => Math.min(y - 4.47, -z - 0.03 + 0.25 * Math.max(0, y - 4.95)) },   // swept back behind the face
   ];
   const plateUni = { uOpen: { value: 0 }, uSeam: { value: 0.25 } };
   part("armour", 1, (add, reveal) => {
@@ -823,7 +834,7 @@ export function create(wrap, opts = {}) {
       const mat = new THREE.ShaderMaterial({ vertexShader: PLATE_VERT, fragmentShader: PLATE_FRAG, transparent: true, depthWrite: true,
         uniforms: { ...U, uHeadOn: { value: 1 }, uInflate: { value: 0 }, uReveal: reveal, uOpacity: { value: 1 }, ...plateUni },
         extensions: { derivatives: true } });
-      const mesh = add(new THREE.Mesh(g, mat)); mesh.renderOrder = 5;   // drawn over the light body: it shows in the gaps
+      const mesh = add(new THREE.Mesh(g, mat)); mesh.renderOrder = -1;   // drawn first: the plates hide the glow behind them, never glow in front
       metals.push({ mesh, order: pl.order, dir: d });
     }
   });
