@@ -248,6 +248,7 @@ function renderHead(d) {
   renderAvTask(d);
   if (window.JarvisAvatar && d && d.telemetry) JarvisAvatar.setAura(auraValues(d));
   renderWall(d);
+  renderPageHud(d);
   if (window.JarvisAvatar && d) JarvisAvatar.setPanels(panelItems(d));
   const wrap = $(".core-wrap");
   if (d && d.evolution && wrap) wrap.title = `Core evolution: ${d.evolution.name} · ${d.evolution.verified} of ${d.evolution.total} milestones verified (details in Command center → Diagnostics)`;
@@ -1715,7 +1716,7 @@ function renderSummary(d) {
   const max = Math.max(1, ...times.map((x) => x.s));
   trace.replaceChildren(sv("line", { x1: 0, y1: 35.5, x2: 180, y2: 35.5, class: "trace-base" }),
     ...times.map((x, i) => { const hgt = Math.max(2, (x.s / max) * 32), w = 180 / 18;
-      return sv("rect", { x: i * w + 1.5, y: 35 - hgt, width: w - 3, height: hgt, class: x.local ? "tr-local" : "tr-cloud" }); }));
+      return sv("rect", { x: (18 - times.length + i) * w + 1.5, y: 35 - hgt, width: w - 3, height: hgt, class: x.local ? "tr-local" : "tr-cloud" }); }));
   traceVal.textContent = times.length ? `${times[times.length - 1].s.toFixed(1)} s` : "no calls yet";
   const active = d.tasks.filter((x) => ACTIVE.includes(x.state)).length;
   const claude = (m.cloud_usage || []).find((u) => u.provider === "claude");
@@ -1764,6 +1765,7 @@ function setView(view) {
   if (!VIEWS.includes(view)) view = "home";
   const changed = document.body.dataset.view !== view;
   document.body.dataset.view = view;
+  if (ui.data) renderPageHud(ui.data);
   document.querySelectorAll("#sidenav a[data-view]").forEach((a) => {
     if (a.dataset.view === view) a.setAttribute("aria-current", "page"); else a.removeAttribute("aria-current");
   });
@@ -2205,6 +2207,58 @@ function initParallax() {
     px = (e.clientX / innerWidth - 0.5) * 2; py = (e.clientY / innerHeight - 0.5) * 2;
     if (!raf) raf = requestAnimationFrame(() => { raf = 0; hud.style.setProperty("--px", px.toFixed(3)); hud.style.setProperty("--py", py.toFixed(3)); });
   }, { passive: true });
+}
+
+// ---- section pages: a HUD header (title, code, real stats). Gauges only where a real ratio exists. -------------
+const PAGES = { command: ["Command center", "CMD"], missions: ["Missions", "MSN"], decisions: ["Decisions", "DCN"],
+                memory: ["Memory", "MEM"], systems: ["Systems", "SYS"], workspace: ["Workspace", "WRK"] };
+function statTile(label, value, sub, cls) {
+  return h("div", { class: `ph-stat${cls ? ` ${cls}` : ""}` }, h("b", {}, value), h("span", {}, label), sub ? h("small", {}, sub) : null);
+}
+function renderPageHud(d) {
+  const view = document.body.dataset.view, box = $("#pagehud");
+  if (!box) return;
+  if (!PAGES[view] || !d) { box.hidden = true; return; }
+  box.hidden = false;
+  if (box.dataset.view !== view || !box.hud) {
+    const gauges = h("div", { class: "page-gauges" });
+    box.replaceChildren(h("div", { class: "page-title" }, h("small", {}, `JARVIS · ${PAGES[view][1]}`), h("h1", {}, PAGES[view][0])),
+      h("div", { class: "page-stats" }), gauges);
+    box.dataset.view = view; box.hud = { gauges, g: null };
+  }
+  const stats = box.querySelector(".page-stats");
+  const tasks = d.tasks || [];
+  const n = (pred) => tasks.filter(pred).length;
+  let tiles = [], wantGauges = false;
+  if (view === "missions") {
+    tiles = [statTile("Active", String(n((t) => ACTIVE.includes(t.state) && t.state !== "queued"))), statTile("Queued", String(n((t) => t.state === "queued"))),
+             statTile("Need you", String(n((t) => NEEDS.includes(t.state))), null, n((t) => NEEDS.includes(t.state)) ? "warn" : ""),
+             statTile("Completed", String(n((t) => t.state === "completed"))), statTile("Failed", String(n((t) => t.state === "failed")), null, n((t) => t.state === "failed") ? "bad" : "")];
+  } else if (view === "decisions") {
+    const high = d.approvals.filter((a) => riskOf(a).level === "high" || riskOf(a).level === "data").length;
+    tiles = [statTile("Waiting", String(d.approvals.length), null, d.approvals.length ? "warn" : ""), statTile("High risk or data out", String(high), null, high ? "bad" : "")];
+  } else if (view === "memory") {
+    const m = d.memory || {};
+    tiles = [statTile("Memories", String(m.memories ?? "—")), statTile("To confirm", String(m.unconfirmed ?? "—"), "noticed, not stated by you"),
+             statTile("Records", String(m.records ?? "—")), statTile("Memory", m.enabled === false ? "Off" : "On", null, m.enabled === false ? "warn" : "")];
+  } else if (view === "systems" || view === "command") {
+    const list = systems(d), bad = list.filter((x) => x.status === "bad").length;
+    tiles = [statTile("Systems OK", `${list.length - bad}/${list.length}`, null, bad ? "warn" : ""), statTile("Need attention", String(bad), null, bad ? "bad" : "")];
+    wantGauges = true;
+  } else if (view === "workspace") {
+    tiles = [statTile("Projects", String((d.projects || []).length))];
+  }
+  stats.replaceChildren(...tiles);
+  const { gauges } = box.hud;
+  gauges.hidden = !wantGauges;
+  if (wantGauges) {
+    if (!box.hud.g) { box.hud.g = { cpu: hudGauge("CPU"), mem: hudGauge("Memory"), checks: hudGauge("Checks") }; gauges.replaceChildren(box.hud.g.cpu, box.hud.g.mem, box.hud.g.checks); }
+    const g = box.hud.g, t = d.telemetry || {}, items = (d.health && d.health.items) || [];
+    if (t.cpu && t.cpu.available) g.cpu.set(Math.min(1, t.cpu.load_per_core / 1.5), String(t.cpu.load_per_core), "per core", t.cpu.load_per_core > 1.5 ? "bad" : ""); else g.cpu.set(null, "—", "no data");
+    if (t.memory && t.memory.available) g.mem.set(t.memory.used_pct / 100, `${Math.round(t.memory.used_pct)}%`, "used", t.memory.used_pct > 90 ? "bad" : ""); else g.mem.set(null, "—", "no data");
+    const ok = items.filter((i) => i.ok).length;
+    g.checks.set(items.length ? ok / items.length : null, items.length ? `${ok}/${items.length}` : "—", "passing", items.length && ok < items.length ? "bad" : "");
+  }
 }
 
 function renderWall(d) {

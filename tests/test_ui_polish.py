@@ -86,3 +86,15 @@ def test_hud_activity_missions_and_decisions_show_only_real_values():
     assert 'x.state === "done" || x.state === "skipped"' in ring and "if (!n) return null;" in ring   # real steps, no fake progress
     assert 'a.created_at ? h("span", { class: "d-wait" }, `waiting ${since(a.created_at)}`) : null' in js   # no invented deadline
     assert ':root[data-fx="off"] :is(#recent li.new, .sys-chip .sc-dot::after, .sys-chip::before, .decision .d-ring)' in css
+
+
+def test_section_pages_have_a_hud_header_with_real_numbers_only():
+    from pathlib import Path
+    static = Path(__file__).resolve().parents[1] / "src" / "jarvis" / "server" / "static"
+    js, css = (static / "app.js").read_text(), (static / "app.css").read_text()
+    hud = js.split("function renderPageHud(d) {")[1].split("\nfunction renderWall")[0]
+    assert "d.approvals" in hud and "d.memory" in hud and "systems(d)" in hud and "d.telemetry" in hud   # real sources only
+    assert 'g.checks.set(items.length ? ok / items.length : null' in hud                                  # unknown: no arc
+    assert '<header id="pagehud" class="page-hud" hidden></header>' in (static / "index.html").read_text()
+    assert '.decision-panel, .decision { --arc: #ffd98f;' in css                                         # decisions in gold
+    assert "x: (18 - times.length + i) * w + 1.5" in js                                                  # trace fills from the right

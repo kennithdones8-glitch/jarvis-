@@ -1505,3 +1505,33 @@ body[data-view="workspace"] .sysbar { display: none; }
 .recent-panel .ph { flex-wrap: wrap; }
 .recent-panel .recent-pulse { order: 3; flex-basis: 100%; margin: 8px 0 0; justify-content: space-between; }
 .recent-panel .pulse-svg { width: 150px; height: 16px; }
+
+
+/* ---- section pages: HUD header, full use of the width ----------------------------------------------------------- */
+.page-hud { display: grid; grid-template-columns: auto 1fr auto; gap: 18px 28px; align-items: center; max-width: 1180px; margin: 6px auto 18px;
+  padding: 16px 22px; border-radius: 18px; border: 1px solid rgba(255, 238, 205, .14); position: relative;
+  background: linear-gradient(165deg, rgba(48, 38, 22, .5), rgba(14, 11, 8, .55));
+  backdrop-filter: blur(18px) saturate(1.25); -webkit-backdrop-filter: blur(18px) saturate(1.25);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .07), 0 0 26px -16px rgba(242, 196, 109, .4); }
+.page-hud[hidden], body[data-view="home"] .page-hud { display: none; }
+.page-hud::after { content: ""; position: absolute; left: 22px; right: 22px; bottom: 8px; height: 6px; pointer-events: none;
+  background: repeating-linear-gradient(90deg, rgba(255, 217, 143, .35) 0 1px, transparent 1px 12px); opacity: .5; }
+.page-title small { display: block; font: 600 12px var(--display); letter-spacing: .3em; color: var(--silver); }
+.page-title h1 { margin: 2px 0 0; font: 600 34px var(--display); letter-spacing: .14em; text-transform: uppercase; color: var(--gold-hi);
+  text-shadow: 0 0 18px rgba(242, 196, 109, .35); }
+.page-stats { display: flex; flex-wrap: wrap; gap: 10px; }
+.ph-stat { min-width: 110px; padding: 8px 14px; border-radius: 12px; border: 1px solid var(--silver-line); background: rgba(8, 6, 3, .4); display: grid; }
+.ph-stat b { font: 600 26px var(--display); color: var(--text); line-height: 1.1; }
+.ph-stat span { font: 600 12px var(--display); letter-spacing: .18em; text-transform: uppercase; color: var(--gold); }
+.ph-stat small { font-size: 12px; color: var(--muted); }
+.ph-stat.warn { border-color: rgba(255, 179, 71, .5); } .ph-stat.warn b { color: #ffb347; }
+.ph-stat.bad { border-color: rgba(255, 90, 80, .5); } .ph-stat.bad b { color: #ff6b5e; }
+.page-gauges { display: flex; gap: 8px; } .page-gauges[hidden] { display: none; }
+.page-gauges .hud-gauge { width: 104px; }
+body:not([data-view="home"]) .hud .panel { max-width: 1180px; }
+@media (max-width: 900px) { .page-hud { grid-template-columns: 1fr; } .page-title h1 { font-size: 26px; } .page-gauges .hud-gauge { width: 88px; } }
+
+/* ---- Decisions in gold (owner's palette: gold, silver, green, red) ------------------------------------------------- */
+.decision-panel, .decision { --arc: #ffd98f; --arc-hi: #fff1cf; --arc-dim: rgba(255, 217, 143, .13); }
+/* the 3D lean belongs to Home only; section pages sit flat and centred */
+body:not([data-view="home"]) :is(.rail-left, .rail-right) { transform: none; transition: none; }

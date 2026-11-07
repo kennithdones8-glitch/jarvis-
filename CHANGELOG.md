@@ -1,5 +1,15 @@
 # Changelog
 
+## Unreleased — HUD on every section page
+
+- **Section pages** (Command center, Missions, Decisions, Memory, Systems, Workspace) open with a HUD header: a large
+  title with a section code, a scale line, and real stat tiles (missions active / queued / needing you / completed /
+  failed; decisions waiting and how many are high-risk or send data out; memories, to confirm, records, memory on/off;
+  systems OK and needing attention). Command center and Systems add live gauges for CPU, memory and health checks
+  passing. Unknown values show "—". Pages use the full 1180 px width and sit flat (the 3D lean is Home only).
+- **Decisions are gold** instead of cyan (the owner's palette: gold, silver, green, red).
+- The model response trace fills from the right, so the newest call is always at the right edge.
+
 ## Unreleased — HUD: activity, system readouts, missions and decisions
 
 - **Recent activity**: an icon ring per kind of event (problems in red, model events in silver), an **activity pulse**
