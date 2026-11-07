@@ -1,5 +1,18 @@
 # Changelog
 
+## Unreleased: direct answers, one file means one write (branch `answers-v1`, owner's choice)
+
+- **"Am I free?" gets a yes or no.** The calendar facts now say "FREE: yes, you're free then" / "BUSY: no, you're
+  not free then", and the model is told to answer a yes/no question with yes or no first. On the owner's Mac the
+  facts were right but the model hedged ("a free block, but that's not exactly what you're looking for") or only
+  said it "couldn't find any events" (planning-free 1/5).
+- **One file means one write.** A plan that writes the same file twice is sent back to the planner once to combine
+  everything into one write (writes to other files still go to the owner's approval, as before). Real failure: decisions.md written once per meeting, so
+  the second write replaced the budget decision, and the owner was asked to approve twice.
+- **A task that only saved a file says what it saved** ("Saved decisions.md:" and the text), instead of finishing
+  with nothing to read.
+- To be proven on the Mac: planning-free and tooluse-decisions ×5, then the full set.
+
 ## 0.19.1 — Smarter answers: a model for maths and code, exact calendar facts, warm start, Mac checkup (owner-approved after a test on the Mac)
 
 - Proven on the owner's Mac (full benchmark ×5, local models only, $0): **103/110 passed vs 88/110** for 0.18.3; verdict MERGE (net +2 tasks, no new failures). Coding 13→20/20, reasoning 5→9/10, planning 12→16/20; everyday tasks faster (planning ~20 s vs ~50 s). Merged branches `checkup-v1`, `smarter-v1` and `bench-load-v1`.

@@ -282,11 +282,11 @@ def test_first_event_and_free_time_are_stated_exactly():
     msg = "Am I free tomorrow between 2pm and 3:30pm? And what's my first commitment tomorrow, and when is it?"
     lines = calendar_facts(events, _days(sat, 1), msg, today=fri)
     assert lines[0] == "- First event on Sat 07 Nov: 09:00–09:30 Standup"
-    assert "- Sat 07 Nov 14:00–15:30: FREE (nothing scheduled then)" in lines  # lunch ends at 14:00, dentist at 15:30
+    assert "- Sat 07 Nov 14:00–15:30: FREE: yes, you're free then (nothing scheduled)" in lines  # lunch ends at 14:00, dentist at 15:30
     busy = calendar_facts(events, _days(sat, 1), "Am I free tomorrow between 1pm and 2pm?", today=fri)
-    assert "- Sat 07 Nov 13:00–14:00: BUSY: Lunch with Sam 13:00–14:00" in busy
+    assert "- Sat 07 Nov 13:00–14:00: BUSY: no, you're not free then: Lunch with Sam 13:00–14:00" in busy
     text = worked_out(("calendar", "events"), {"events": events}, _days(sat, 1), msg)
-    assert text.startswith(FACTS_HEAD) and text.endswith("The full list:")
+    assert text.startswith(FACTS_HEAD) and "yes or no first" in FACTS_HEAD and text.endswith("The full list:")
 
 
 def test_clashes_are_found_by_jarvis():
@@ -331,7 +331,7 @@ def test_facts_reach_the_answering_model(env):
     script["lookups"] = [{"tool": "calendar", "action": "events", "args": week()}]
     chat(d, "Am I free tomorrow between 2pm and 3:30pm? What's my first commitment tomorrow?")
     prompt = seen["answer_prompts"][-1]
-    assert "Worked out by JARVIS" in prompt and "BUSY: Dentist 14:00" in prompt  # the fixture's 14:00 dentist
+    assert "Worked out by JARVIS" in prompt and "not free then: Dentist 14:00" in prompt  # the fixture's 14:00 dentist
 
 
 def test_parsing_times_and_windows():

@@ -203,3 +203,54 @@ def test_joined_action_names_from_small_models_are_understood():
     assert action_key("mail.draft", None, allowed) == ("mail", "draft")
     assert action_key("apps", "open", allowed) == ("apps", "open")
     assert action_key("shell", "rm.rf", allowed) == ("shell", "rm.rf")  # never invents an action
+
+
+# ---- one file means one write (owner's Mac, 0.19.1 benchmark: tooluse-decisions) ------------------------------------
+DECISIONS = ("Read meeting-mon.txt and meeting-wed.txt in my notes folder and save a file called decisions.md in the "
+             "same folder that lists every decision from both meetings.")
+
+
+def _write(path, content="{{steps.0.content}}"):
+    from jarvis.core import StepSpec
+    return StepSpec(description="Write", tool="fs", action="write", args={"path": path, "content": content})
+
+
+def test_writing_the_same_file_twice_is_sent_back():
+    """Real failure: decisions.md written once per meeting, so the Wednesday write replaced Monday's budget."""
+    from jarvis.orchestrator.planner import Plan, split_writes
+    twice = Plan("plan", steps=[_write("~/n/decisions.md"), _write("~/n/decisions.md")])
+    [problem] = split_writes(twice, DECISIONS)
+    assert problem.startswith("step 1 writes ~/n/decisions.md again") and "one fs.write" in problem
+    assert split_writes(Plan("plan", steps=[_write("~/n/decisions.md")]), DECISIONS) == []
+    other = Plan("plan", steps=[_write("~/n/decisions.md"), _write("~/n/pwned.md")])
+    assert split_writes(other, DECISIONS) == []  # a different file goes to the owner's approval, as before
+
+
+def test_a_split_plan_is_replanned_into_one_write(make_kernel):
+    from jarvis.models.types import ChatResponse, Usage
+    from jarvis.orchestrator.planner import Planner
+    bad = {"steps": [{"tool": "fs", "action": "write", "args": {"path": "/tmp/x/decisions.md", "content": "Mon"}},
+                     {"tool": "fs", "action": "write", "args": {"path": "/tmp/x/decisions.md", "content": "Wed"}}]}
+    good = {"steps": [{"tool": "fs", "action": "write", "args": {"path": "/tmp/x/decisions.md", "content": "Both"}}]}
+    replies, sent = [bad, good], []
+
+    class Models:
+        def complete(self, need, request, **kw):
+            sent.append(request)
+            return ChatResponse(text=json.dumps(replies.pop(0)), provider="ollama", model="m", usage=Usage(1, 1))
+    k = make_kernel()
+    plan = Planner(Models(), k.registry, roots=["/tmp/x"], notes_dir="/tmp/x").plan(DECISIONS)
+    assert plan.kind == "plan" and len(plan.steps) == 1 and plan.attempts == 2
+    assert "writes /tmp/x/decisions.md again" in sent[1].messages[-1].content
+
+
+def test_a_task_that_only_saved_a_file_says_what_it_saved():
+    """Real case: the right decisions.md was written straight from the plan, and the task finished with no text."""
+    from jarvis.orchestrator import saved_text
+    steps = [{"idx": 0, "tool": "fs", "action": "read", "state": "done", "args": {"path": "a"},
+              "result": {"content": "Decisions: the budget is approved."}},
+             {"idx": 1, "tool": "fs", "action": "write", "state": "done", "result": {"path": "x"},
+              "args": {"path": "/n/decisions.md", "content": "- {{steps.0.content}}"}}]
+    assert saved_text(steps) == "Saved decisions.md:\n\n- Decisions: the budget is approved."
+    steps[1]["state"] = "failed"
+    assert saved_text(steps) is None

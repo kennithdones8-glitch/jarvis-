@@ -94,6 +94,10 @@ class Orchestrator:
         steps = self.kernel.tasks.steps(task_id)
         answer = next((s["result"]["text"] for s in reversed(steps)
                        if s["tool"] == "llm" and s["state"] == StepState.DONE and s["result"]), None)
+        if answer is None:
+            # No writing step (the plan put the text straight into the file): say what was saved, rather than
+            # finishing with nothing to read. Real case: tooluse-decisions run 4 wrote the right file, empty answer.
+            answer = saved_text(steps)
         return {
             "task_id": task_id, "state": task["state"], "goal": task["goal"], "error": task["error"],
             "next_action": task["next_action"],
@@ -102,6 +106,21 @@ class Orchestrator:
             "evidence": (task["result"] or {}).get("evidence"),
             "final_text": answer,
         }
+
+
+def saved_text(steps: list[dict[str, Any]], limit: int = 4000) -> str | None:
+    """"Saved <file>:" and what the last finished fs.write saved (its arguments, references filled in)."""
+    for s in reversed(steps):
+        if (s["tool"], s["action"]) == ("fs", "write") and s["state"] == StepState.DONE:
+            try:
+                args = resolve_step_args(s, steps)
+            except Exception:
+                return None
+            content, path = args.get("content"), args.get("path")
+            if isinstance(content, str) and content.strip() and isinstance(path, str):
+                return f"Saved {Path(path).name}:\n\n{content.strip()[:limit]}"
+            return None
+    return None
 
 
 __all__ = ["Orchestrator", "Plan", "writes_verified"]

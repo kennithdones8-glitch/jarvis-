@@ -353,7 +353,8 @@ def describe(key: tuple[str, str], args: dict) -> str:
 # On the owner's Mac the small model read correct calendar data wrongly (called a 13:00 lunch the first commitment
 # when a 09:00 standup was listed, missed an obvious clash, listed a reminder due in 9 days as "within 7"). These
 # are exact questions with exact answers, so JARVIS works them out here and hands the model the result.
-FACTS_HEAD = "Worked out by JARVIS from the data below (exact; answer from these lines):"
+FACTS_HEAD = ("Worked out by JARVIS from the data below (exact; answer from these lines, and answer a yes/no "
+              "question with yes or no first):")
 _T = r"(\d{1,2})(?:[:.](\d{2}))?\s*(a\.?m\.?|p\.?m\.?)?|noon|midday"
 WINDOW = re.compile(rf"(?:between|from)?\s*\b(?P<a>{_T})\s*(?:and|to|until|till|-|–)\s*(?P<b>{_T})(?![\w:])", re.I)
 SPAN_DAYS = re.compile(r"\b(?:next|coming|following)\s+(\d{1,2}|two|three|four|five|six|seven|ten|fourteen)\s+days?\b"
@@ -441,8 +442,10 @@ def calendar_facts(events: list[dict], args: dict, message: str, today: date | N
         we = datetime(day.year, day.month, day.day, *window[1]).astimezone()
         busy = [(s, t, n) for s, t, n in timed if s < we and t > ws]
         span = f"{day:%a %d %b} {_hm(ws)}–{_hm(we)}"
-        lines.append(f"- {span}: FREE (nothing scheduled then)" if not busy else
-                     f"- {span}: BUSY: " + "; ".join(f"{n} {_hm(s)}–{_hm(t)}" for s, t, n in busy))
+        # Stated as the answer itself: on the owner's Mac the model saw "FREE" and still hedged ("a free block, but
+        # that's not exactly what you're looking for") or never said yes (0.19.1 benchmark, planning-free 1/5).
+        lines.append(f"- {span}: FREE: yes, you're free then (nothing scheduled)" if not busy else
+                     f"- {span}: BUSY: no, you're not free then: " + "; ".join(f"{n} {_hm(s)}–{_hm(t)}" for s, t, n in busy))
     clashes = [(a, b) for i, a in enumerate(timed[:200]) for b in timed[i + 1:200] if b[0] < a[1]]
     if clashes:
         lines += [f"- CLASH on {a[0]:%a %d %b}: {a[2]} {_hm(a[0])}–{_hm(a[1])} overlaps {b[2]} {_hm(b[0])}–{_hm(b[1])}"

@@ -134,6 +134,23 @@ def unrequested(plan: Plan, request: str) -> list[str]:
             and not OPEN_WORDS.search(request)]
 
 
+def split_writes(plan: Plan, request: str) -> list[str]:
+    """Plans that save one thing in pieces. Real failure (owner's Mac, 0.19.1): asked to "save a file called
+    decisions.md that lists every decision from both meetings", the 7B wrote decisions.md twice, once per meeting,
+    so the second write replaced the first and the budget decision was lost (and the owner was asked twice)."""
+    writes = [(i, st.args.get("path")) for i, st in enumerate(plan.steps) if (st.tool, st.action) == ("fs", "write")]
+    problems, seen = [], {}
+    for i, path in writes:
+        if isinstance(path, str) and path in seen:
+            problems.append(f"step {i} writes {path} again (step {seen[path]} already writes it; the second would "
+                            "replace the first): combine everything with one llm.compose step, then one fs.write")
+        elif isinstance(path, str):
+            seen[path] = i
+    # Only the same file twice is sent back. Writes to other files go to the owner's approval as usual: that is
+    # where a planted "also write pwned.md" is refused, and the owner should see it, not have it silently replanned.
+    return problems
+
+
 def available_actions(registry: ToolRegistry) -> list[tuple[str, str]]:
     return [key for key in ACTION_DOCS if registry.action(*key) is not None]
 
@@ -291,7 +308,7 @@ class Planner:
                                      temperature=0.0, json_mode=True), purpose="plan a task", task_id=task_id)
             try:
                 plan = validate(parse_json_output(r.text), self.registry)
-                if plan.kind == "plan" and (extra := unrequested(plan, request)):
+                if plan.kind == "plan" and (extra := unrequested(plan, request) + split_writes(plan, request)):
                     raise PlanError(extra)
                 plan.model, plan.attempts = f"{r.provider}/{r.model}", attempt
                 if plan.kind == "plan" and (missing := self.missing_inputs(plan)):
