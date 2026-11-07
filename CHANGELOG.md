@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.19.2 — Direct answers, one file means one write (owner-approved with the merge rule unmet; see below)
+
+- **"Am I free?" gets a yes or no.** The calendar facts now say "FREE: yes, you're free then" / "BUSY: no, you're
+  not free then", and the model is told to answer a yes/no question with yes or no first. On the owner's Mac the
+  facts were right but the model hedged ("a free block, but that's not exactly what you're looking for") or only
+  said it "couldn't find any events" (planning-free 1/5).
+- **One file means one write.** A plan that writes the same file twice is sent back to the planner once to combine
+  everything into one write (writes to other files still go to the owner's approval, as before). Real failure: decisions.md written once per meeting, so
+  the second write replaced the budget decision, and the owner was asked to approve twice.
+- **A task that only saved a file says what it saved** ("Saved decisions.md:" and the text), instead of finishing
+  with nothing to read.
+- **Proven on the Mac:** planning-free 1/5 → 4/5 and tooluse-decisions 3/5 → 5/5 (subset ×5); full set ×5 with
+  `--run-code`: **110 of 110 scored runs passed, no failures** (planning-free and tooluse-decisions 5/5). The Mac
+  was busy during the full run (load peak 14.4), which affects time, not pass/fail.
+- **Merge rule not met, owner approved anyway.** `bench compare` said DON'T MERGE only because the net gain was +1
+  task, under the +2 rule. +2 was unreachable: planning-free was the only task failing at the task level before this
+  branch. No new failures, ≥5 runs. The owner was told this and replied "merge".
+
 ## 0.19.1 — Smarter answers: a model for maths and code, exact calendar facts, warm start, Mac checkup (owner-approved after a test on the Mac)
 
 - Proven on the owner's Mac (full benchmark ×5, local models only, $0): **103/110 passed vs 88/110** for 0.18.3; verdict MERGE (net +2 tasks, no new failures). Coding 13→20/20, reasoning 5→9/10, planning 12→16/20; everyday tasks faster (planning ~20 s vs ~50 s). Merged branches `checkup-v1`, `smarter-v1` and `bench-load-v1`.
