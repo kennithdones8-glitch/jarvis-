@@ -22,24 +22,24 @@ const RED = new THREE.Color("#ff5a52"), DIM = new THREE.Color("#9d8e76");
 // streams · sweep: vertical scan ring · discharge: reactor arcs · beat: seconds between energy pulses (0 = none) ·
 // head: how the head moves · flicker: diagnostic flicker. Only real signals select a state (see app.js).
 const LOOKS = {
-  unknown:       { tint: "#cbbd9f", eyes: 0.35, rim: 0.8, scan: 0.6, flow: 0.1, ring: 0.05, beam: 0.4, reactor: 0.35, neural: 0.05, data: 0, sweep: 0, discharge: 0, beat: 0, head: "still", flicker: 0 },
-  idle:          { tint: "#f3e3bd", eyes: 0.75, rim: 1.0, scan: 1.0, flow: 0.3, ring: 0.12, beam: 0.65, reactor: 0.55, neural: 0.12, data: 0, sweep: 0, discharge: 0, beat: 0, head: "aware", flicker: 0 },
-  listening:     { tint: "#fff6e6", eyes: 1.3, rim: 1.25, scan: 1.2, flow: 0.5, ring: 0.3, beam: 0.85, reactor: 0.75, neural: 0.25, data: 0, sweep: 0, discharge: 0, beat: 0, head: "attend", flicker: 0 },
-  understanding: { tint: "#fff3d6", eyes: 1.0, rim: 1.2, scan: 2.6, flow: -0.8, ring: 0.45, beam: 0.85, reactor: 0.8, neural: 0.7, data: 0, sweep: 0.6, discharge: 0, beat: 0, head: "think", flicker: 0 },
-  reasoning:     { tint: "#fff0cc", eyes: 1.1, rim: 1.3, scan: 1.6, flow: -1.3, ring: 0.7, beam: 0.9, reactor: 1.0, neural: 1.0, data: 0, sweep: 0.5, discharge: 0.25, beat: 0, head: "think", flicker: 0 },
-  planning:      { tint: "#f6e2b0", eyes: 1.0, rim: 1.25, scan: 1.8, flow: -1.0, ring: 0.9, beam: 0.9, reactor: 0.95, neural: 0.9, data: 0, sweep: 0.4, discharge: 0.2, beat: 0, head: "think", flicker: 0 },
-  researching:   { tint: "#f4ecd8", eyes: 1.05, rim: 1.25, scan: 2.4, flow: 0.8, ring: 0.8, beam: 0.95, reactor: 0.9, neural: 0.6, data: 1.0, sweep: 0.9, discharge: 0, beat: 0, head: "scan", flicker: 0 },
-  writing:       { tint: "#fff6e2", eyes: 1.45, rim: 1.3, scan: 1.4, flow: 1.4, ring: 0.55, beam: 1.0, reactor: 1.0, neural: 0.5, data: 0, sweep: 0, discharge: 0, beat: 0, head: "aware", flicker: 0 },
-  speaking:      { tint: "#fff6e2", eyes: 1.5, rim: 1.3, scan: 1.2, flow: 1.0, ring: 0.4, beam: 0.95, reactor: 0.9, neural: 0.35, data: 0, sweep: 0, discharge: 0, beat: 0, head: "speak", flicker: 0 },
-  coding:        { tint: "#ffd98a", eyes: 1.35, rim: 1.35, scan: 1.8, flow: 2.4, ring: 0.7, beam: 1.0, reactor: 1.1, neural: 0.7, data: 0, sweep: 0.3, discharge: 0.2, beat: 0, head: "think", flicker: 0 },
-  verifying:     { tint: "#f3f0e6", eyes: 1.1, rim: 1.2, scan: 3.6, flow: 0.9, ring: 0.5, beam: 0.95, reactor: 0.9, neural: 0.5, data: 0, sweep: 1.0, discharge: 0, beat: 0, head: "scan", flicker: 0 },
-  executing:     { tint: "#f8dda0", eyes: 1.2, rim: 1.35, scan: 1.8, flow: 1.8, ring: 1.2, beam: 1.05, reactor: 1.35, neural: 0.6, data: 0, sweep: 0.3, discharge: 0.55, beat: 1.8, head: "aware", flicker: 0 },
-  approval:      { tint: "#f2a33a", eyes: 1.05, rim: 1.3, scan: 1.0, flow: 0.4, ring: 0.2, beam: 0.85, reactor: 0.85, neural: 0.2, data: 0, sweep: 0, discharge: 0, beat: 2.8, head: "attend", flicker: 0 },
-  warning:       { tint: "#f5d49a", eyes: 0.9, rim: 1.15, scan: 1.8, flow: 0.3, ring: 0.15, beam: 0.75, reactor: 0.7, neural: 0.15, data: 0, sweep: 0.55, discharge: 0, beat: 0, head: "aware", flicker: 0 },
-  completed:     { tint: "#ffe7ad", eyes: 1.8, rim: 1.7, scan: 1.0, flow: 1.0, ring: 0.6, beam: 1.2, reactor: 1.6, neural: 0.6, data: 0, sweep: 0, discharge: 0, beat: 0, head: "aware", flicker: 0 },
-  error:         { tint: "#ff5a52", eyes: 0.55, rim: 1.1, scan: 0.8, flow: 0.0, ring: 0.0, beam: 0.45, reactor: 0.5, neural: 0.05, data: 0, sweep: 0.7, discharge: 0, beat: 0, head: "still", flicker: 0.45 },
-  recovery:      { tint: "#f6e6c2", eyes: 0.8, rim: 1.0, scan: 1.5, flow: 0.5, ring: 0.25, beam: 0.7, reactor: 0.6, neural: 0.3, data: 0, sweep: 0.5, discharge: 0, beat: 0, head: "aware", flicker: 0.08 },
-  halted:        { tint: "#b9a78a", eyes: 0.4, rim: 0.85, scan: 0.4, flow: 0.0, ring: 0.0, beam: 0.35, reactor: 0.3, neural: 0.0, data: 0, sweep: 0, discharge: 0, beat: 0, head: "still", flicker: 0 },
+  unknown:       { tint: "#cbbd9f", rpat: "calm", eyes: 0.35, rim: 0.8, scan: 0.6, flow: 0.1, ring: 0.05, beam: 0.4, reactor: 0.35, neural: 0.05, data: 0, sweep: 0, discharge: 0, beat: 0, head: "still", flicker: 0 },
+  idle:          { tint: "#f3e3bd", rpat: "calm", eyes: 0.75, rim: 1.0, scan: 1.0, flow: 0.3, ring: 0.12, beam: 0.65, reactor: 0.55, neural: 0.12, data: 0, sweep: 0, discharge: 0, beat: 0, head: "aware", flicker: 0 },
+  listening:     { tint: "#fff6e6", rpat: "calm", eyes: 1.3, rim: 1.25, scan: 1.2, flow: 0.5, ring: 0.3, beam: 0.85, reactor: 0.75, neural: 0.25, data: 0, sweep: 0, discharge: 0, beat: 0, head: "attend", flicker: 0 },
+  understanding: { tint: "#fff3d6", rpat: "spin", eyes: 1.0, rim: 1.2, scan: 2.6, flow: -0.8, ring: 0.45, beam: 0.85, reactor: 0.8, neural: 0.7, data: 0, sweep: 0.6, discharge: 0, beat: 0, head: "think", flicker: 0 },
+  reasoning:     { tint: "#fff0cc", rpat: "spin", eyes: 1.1, rim: 1.3, scan: 1.6, flow: -1.3, ring: 0.7, beam: 0.9, reactor: 1.0, neural: 1.0, data: 0, sweep: 0.5, discharge: 0.25, beat: 0, head: "think", flicker: 0 },
+  planning:      { tint: "#f6e2b0", rpat: "spin", eyes: 1.0, rim: 1.25, scan: 1.8, flow: -1.0, ring: 0.9, beam: 0.9, reactor: 0.95, neural: 0.9, data: 0, sweep: 0.4, discharge: 0.2, beat: 0, head: "think", flicker: 0 },
+  researching:   { tint: "#f4ecd8", rpat: "scan", eyes: 1.05, rim: 1.25, scan: 2.4, flow: 0.8, ring: 0.8, beam: 0.95, reactor: 0.9, neural: 0.6, data: 1.0, sweep: 0.9, discharge: 0, beat: 0, head: "scan", flicker: 0 },
+  writing:       { tint: "#fff6e2", rpat: "beat", eyes: 1.45, rim: 1.3, scan: 1.4, flow: 1.4, ring: 0.55, beam: 1.0, reactor: 1.0, neural: 0.5, data: 0, sweep: 0, discharge: 0, beat: 0, head: "aware", flicker: 0 },
+  speaking:      { tint: "#fff6e2", rpat: "beat", eyes: 1.5, rim: 1.3, scan: 1.2, flow: 1.0, ring: 0.4, beam: 0.95, reactor: 0.9, neural: 0.35, data: 0, sweep: 0, discharge: 0, beat: 0, head: "speak", flicker: 0 },
+  coding:        { tint: "#ffd98a", rpat: "surge", eyes: 1.35, rim: 1.35, scan: 1.8, flow: 2.4, ring: 0.7, beam: 1.0, reactor: 1.1, neural: 0.7, data: 0, sweep: 0.3, discharge: 0.2, beat: 0, head: "think", flicker: 0 },
+  verifying:     { tint: "#f3f0e6", rpat: "scan", eyes: 1.1, rim: 1.2, scan: 3.6, flow: 0.9, ring: 0.5, beam: 0.95, reactor: 0.9, neural: 0.5, data: 0, sweep: 1.0, discharge: 0, beat: 0, head: "scan", flicker: 0 },
+  executing:     { tint: "#f8dda0", rpat: "surge", eyes: 1.2, rim: 1.35, scan: 1.8, flow: 1.8, ring: 1.2, beam: 1.05, reactor: 1.35, neural: 0.6, data: 0, sweep: 0.3, discharge: 0.55, beat: 1.8, head: "aware", flicker: 0 },
+  approval:      { tint: "#f2a33a", rpat: "beat", eyes: 1.05, rim: 1.3, scan: 1.0, flow: 0.4, ring: 0.2, beam: 0.85, reactor: 0.85, neural: 0.2, data: 0, sweep: 0, discharge: 0, beat: 2.8, head: "attend", flicker: 0 },
+  warning:       { tint: "#f5d49a", rpat: "scan", eyes: 0.9, rim: 1.15, scan: 1.8, flow: 0.3, ring: 0.15, beam: 0.75, reactor: 0.7, neural: 0.15, data: 0, sweep: 0.55, discharge: 0, beat: 0, head: "aware", flicker: 0 },
+  completed:     { tint: "#ffe7ad", rpat: "surge", eyes: 1.8, rim: 1.7, scan: 1.0, flow: 1.0, ring: 0.6, beam: 1.2, reactor: 1.6, neural: 0.6, data: 0, sweep: 0, discharge: 0, beat: 0, head: "aware", flicker: 0 },
+  error:         { tint: "#ff5a52", rpat: "stutter", eyes: 0.55, rim: 1.1, scan: 0.8, flow: 0.0, ring: 0.0, beam: 0.45, reactor: 0.5, neural: 0.05, data: 0, sweep: 0.7, discharge: 0, beat: 0, head: "still", flicker: 0.45 },
+  recovery:      { tint: "#f6e6c2", rpat: "calm", eyes: 0.8, rim: 1.0, scan: 1.5, flow: 0.5, ring: 0.25, beam: 0.7, reactor: 0.6, neural: 0.3, data: 0, sweep: 0.5, discharge: 0, beat: 0, head: "aware", flicker: 0.08 },
+  halted:        { tint: "#b9a78a", rpat: "still", eyes: 0.4, rim: 0.85, scan: 0.4, flow: 0.0, ring: 0.0, beam: 0.35, reactor: 0.3, neural: 0.0, data: 0, sweep: 0, discharge: 0, beat: 0, head: "still", flicker: 0 },
 };
 const NUMERIC = ["eyes", "rim", "scan", "flow", "ring", "beam", "reactor", "neural", "data", "sweep", "discharge", "flicker"];
 
@@ -314,6 +314,18 @@ export function create(wrap, opts = {}) {
       led.position.copy(onChest(0.78 * s, 2.15 - i * 0.12, 0.05)); led.rotation.y = 0.5 * s;
     }
   });
+  const joints = [];
+  part("mechanics_body", 1, (add) => {
+    for (const s of [-1, 1]) {
+      for (let i = 0; i < 3; i++) {   // side vents
+        const v = add(new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.02, 0.02), holo({ opacity: 1, rim: 1.2, core: 0.5, self: REACTOR })));
+        v.position.copy(onChest(1.02 * s, 1.95 - i * 0.08, 0.02)); v.rotation.y = 0.8 * s;
+      }
+      const cable = new THREE.CatmullRomCurve3([new THREE.Vector3(0.18 * s, 3.08, 0.12), new THREE.Vector3(0.3 * s, 2.92, 0.22),
+                                                new THREE.Vector3(0.48 * s, 2.82, 0.2)]);
+      add(new THREE.Mesh(new THREE.TubeGeometry(cable, 16, 0.014, 5, false), holo({ opacity: 1, rim: 1.4, flow: true, core: 0.3 })));
+    }
+  });
   part("pauldrons", 1, (add) => {
     for (const s of [-1, 1]) for (let i = 0; i < 3; i++) {   // layered shoulder lames
       const r = 0.66 - i * 0.08;
@@ -339,7 +351,11 @@ export function create(wrap, opts = {}) {
       const path = new THREE.CatmullRomCurve3([[1.42, 2.5], [1.58, 2.1], [1.68, 1.6], [1.7, 1.15]].map(([x, y]) => new THREE.Vector3(x * s, y, 0.3)));
       add(new THREE.Mesh(new THREE.TubeGeometry(path, 30, 0.01, 4, false), holo({ opacity: 0.9, rim: 1, flow: true, core: 0.3, fadeLow: 0.6 })), inner);
       const piston = add(new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.035, 0.34, 8), holo({ opacity: 1, rim: 1.5, core: 0.25 })), inner);
-      piston.position.set(1.18 * s, 2.42, 0.25); piston.rotation.z = 0.7 * s;
+      piston.position.set(1.18 * s, 2.42, 0.25); piston.rotation.z = 0.7 * s; joints.push({ obj: piston, kind: "piston" });
+      for (const [y, r, x] of [[2.45, 0.24, 1.47], [1.2, 0.2, 1.66]]) {   // shoulder and elbow joint rings
+        const j = add(new THREE.Mesh(new THREE.TorusGeometry(r, 0.014, 4, 40), holo({ opacity: 1, rim: 1.6, core: 0.35 })), inner);
+        j.position.set(x * s, y, 0.18); j.rotation.y = Math.PI / 2 + 0.3 * s; joints.push({ obj: j, kind: "ring" });
+      }
     }
   });
 
@@ -350,9 +366,19 @@ export function create(wrap, opts = {}) {
     const shell = add(new THREE.Mesh(geo, holo({ opacity: 0.8, rim: 1.2 })), head);
     shell.scale.set(0.92, 1, 0.98);
     edged(add, geo, shell, 0.16, head);
-    const crestGeo = new THREE.TorusGeometry(0.8, 0.045, 4, 56, 2.7).rotateZ(0.25);   // knight crest blade
-    const crest = add(new THREE.Mesh(crestGeo, holo({ opacity: 1, rim: 1.7, core: 0.25 })), head);
-    crest.rotation.y = Math.PI / 2; crest.position.y = 3.98; crest.scale.set(1, 1, 0.45);
+    const crestGeo = new THREE.TorusGeometry(0.86, 0.055, 4, 64, 2.75).rotateZ(0.22);   // knight crest blade, taller
+    const crest = add(new THREE.Mesh(crestGeo, holo({ opacity: 1, rim: 1.8, core: 0.25 })), head);
+    crest.rotation.y = Math.PI / 2; crest.position.y = 3.96; crest.scale.set(1, 1, 0.4);
+    const fore = plate(shapeOf([[-0.3, 0], [0.3, 0], [0.22, 0.26], [0, 0.34], [-0.22, 0.26]]), 0.04);   // forehead plate
+    const fp = add(new THREE.Mesh(fore, holo({ opacity: 1, rim: 1.6, core: 0.08 })), head);
+    fp.position.set(0, 4.12, 0.58); fp.rotation.x = -0.45;
+    edged(add, fore, fp, 0.38, head);
+    for (const sd of [-1, 1]) {   // temple plates
+      const tg = plate(shapeOf([[0, 0.18], [0.24, 0.12], [0.22, -0.16], [0, -0.1]]), 0.035);
+      const tp = add(new THREE.Mesh(tg, holo({ opacity: 1, rim: 1.6, core: 0.08 })), head);
+      tp.position.set(0.5 * sd, 4.05, 0.42); tp.scale.x = sd; tp.rotation.set(0, 0.95 * sd, 0.1 * sd);
+      edged(add, tg, tp, 0.36, head);
+    }
     for (const s of [-1, 1]) {   // swept side guards with sensor discs
       const g = plate(shapeOf([[-0.22, 0.12], [0.1, 0.16], [0.16, -0.08], [0.02, -0.34], [-0.2, -0.26]]), 0.035);
       const m = add(new THREE.Mesh(g, holo({ opacity: 1, rim: 1.5, core: 0.08 })), head);
@@ -382,14 +408,19 @@ export function create(wrap, opts = {}) {
     edged(add, chinGeo, chin, 0.4, head);
   });
   // optical sensors: lens rings with a glowing iris (no human eyes, no mouth); brighter when attending or speaking
-  const eyeGlows = [];
+  const eyeGlows = [], irises = [], sparks = [];
   part("sensors", 1, (add) => {
     for (const s of [-1, 1]) {
       const at = new THREE.Vector3(0.24 * s, 3.92, 0.73);
+      const hex = add(lines(new THREE.CylinderGeometry(0.12, 0.12, 0.01, 6).rotateX(Math.PI / 2), 0.55, 1), head);   // sensor housing
+      hex.position.copy(at); hex.rotation.y = 0.32 * s; hex.scale.y = 0.62;
+      const spark = add(new THREE.Mesh(new THREE.SphereGeometry(0.012, 6, 4), holo({ opacity: 2, core: 2, self: EYE })), head);
+      spark.userData = { at, s }; sparks.push(spark);
       const ring = add(new THREE.Mesh(new THREE.TorusGeometry(0.085, 0.012, 6, 28), holo({ opacity: 1.4, rim: 2, core: 0.8, self: EYE })), head);
       ring.position.copy(at); ring.rotation.y = 0.32 * s; ring.scale.y = 0.55;
       const iris = add(new THREE.Mesh(new THREE.CircleGeometry(0.05, 20), holo({ opacity: 2.2, rim: 0.5, core: 2.2, self: EYE })), head);
       iris.position.copy(at).add(new THREE.Vector3(0, 0, 0.005)); iris.rotation.y = 0.32 * s; iris.scale.y = 0.55;
+      iris.userData.at = iris.position.clone(); irises.push(iris);
       const glow = add(new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTexture(), color: WHITE, transparent: true, opacity: 0.5,
         blending: THREE.AdditiveBlending, depthWrite: false })), head);
       glow.position.copy(at).add(new THREE.Vector3(0, 0, 0.12)); glow.scale.set(0.45, 0.26, 1);
@@ -422,6 +453,15 @@ export function create(wrap, opts = {}) {
       const blade = add(new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.025, 0.01), holo({ opacity: 1, rim: 1, core: 0.7, self: REACTOR })), reactor);
       blade.userData.angle = (i / 3) * Math.PI * 2;
       reactorRings.push({ obj: blade, speed: -1.1, orbit: 0.5 });
+    }
+  });
+  const spokes = new THREE.Group(); reactor.add(spokes);
+  part("reactorcore", 1, (add) => {
+    const hex = add(lines(new THREE.CylinderGeometry(0.52, 0.52, 0.01, 6).rotateX(Math.PI / 2), 0.5, 1), spokes);
+    hex.rotation.z = Math.PI / 6;
+    for (let i = 0; i < 6; i++) {
+      const sp = add(new THREE.Mesh(new THREE.BoxGeometry(0.008, 0.16, 0.008), holo({ opacity: 1, core: 0.8, self: REACTOR })), spokes);
+      const a = (i / 6) * Math.PI * 2; sp.position.set(Math.cos(a) * 0.43, Math.sin(a) * 0.43, 0); sp.rotation.z = a - Math.PI / 2;
     }
   });
   part("reactor2", 3, (add) => {   // stage 3: an outer counter-rotating ring with segments
@@ -495,14 +535,14 @@ export function create(wrap, opts = {}) {
   // neural lattice behind the figure: more nodes and links light up at higher verified stages
   const net = (() => {
     const r = rng(7), nodes = [], stages = [];
-    for (let i = 0; i < 46; i++) {
+    for (let i = 0; i < 70; i++) {
       const th = -1.25 + r() * 2.5, ph = -0.55 + r() * 1.4;
       nodes.push(new THREE.Vector3(Math.sin(th) * 2.05 * Math.cos(ph), 2.9 + Math.sin(ph) * 2.0, -1.4 - Math.cos(th) * 1.2));
-      stages.push(i < 20 ? 1 : i < 34 ? 3 : 4);
+      stages.push(i < 28 ? 1 : i < 50 ? 3 : 4);
     }
     const pos = [], aT = [], aPhase = [], aStage = [];
     for (let i = 0; i < nodes.length; i++) for (let j = i + 1; j < nodes.length; j++) {
-      if (nodes[i].distanceTo(nodes[j]) > 1.05) continue;
+      if (nodes[i].distanceTo(nodes[j]) > 0.95) continue;
       pos.push(...nodes[i].toArray(), ...nodes[j].toArray()); aT.push(0, 1);
       const ph = r(); aPhase.push(ph, ph); const st = Math.max(stages[i], stages[j]); aStage.push(st, st);
     }
@@ -524,6 +564,32 @@ export function create(wrap, opts = {}) {
     const g = new THREE.Group(); g.add(linesObj, pts); figure.add(g);
     return { g, uni };
   })();
+
+  // light shafts behind the figure, a polar floor grid and a soft glow at the base (static geometry, cheap)
+  const shafts = [];
+  for (const [x, w, o] of [[-1.35, 0.5, 0.55], [0, 0.8, 0.4], [1.35, 0.5, 0.55]]) {
+    const m = new THREE.Mesh(new THREE.PlaneGeometry(w, 5.6), new THREE.ShaderMaterial({ vertexShader: BEAM_VERT, transparent: true,
+      depthWrite: false, blending: THREE.AdditiveBlending, uniforms: { uTint: U.uTint, uTime: U.uTime, uBeam: { value: o }, uPhase: { value: x } },
+      fragmentShader: `uniform vec3 uTint; uniform float uTime, uBeam, uPhase; varying vec2 vUv;
+        void main() { float edge = smoothstep(0.0, 0.5, vUv.x) * smoothstep(1.0, 0.5, vUv.x);
+          float a = edge * smoothstep(0.0, 0.35, vUv.y) * (1.0 - vUv.y) * 0.07 * uBeam * (0.75 + 0.25 * sin(uTime * 0.35 + uPhase * 2.0));
+          gl_FragColor = vec4(uTint, a); }` }));
+    m.position.set(x * SCALE, BASE_Y + 2.8 * SCALE, -2.6); m.scale.setScalar(SCALE); scene.add(m); shafts.push(m);
+  }
+  const grid = new THREE.LineSegments((() => {
+    const pts = [];
+    for (let r = 1.6; r <= 3.4; r += 0.45) for (let i = 0; i < 64; i++) {
+      const a = (i / 64) * Math.PI * 2, b = ((i + 1) / 64) * Math.PI * 2;
+      pts.push(Math.cos(a) * r, 0, Math.sin(a) * r, Math.cos(b) * r, 0, Math.sin(b) * r);
+    }
+    for (let i = 0; i < 24; i++) { const a = (i / 24) * Math.PI * 2; pts.push(Math.cos(a) * 1.6, 0, Math.sin(a) * 1.6, Math.cos(a) * 3.4, 0, Math.sin(a) * 3.4); }
+    return new THREE.BufferGeometry().setAttribute("position", new THREE.Float32BufferAttribute(pts, 3));
+  })(), new THREE.LineBasicMaterial({ color: CHAMPAGNE, transparent: true, opacity: 0.09, blending: THREE.AdditiveBlending, depthWrite: false }));
+  grid.position.y = BASE_Y + 0.02; grid.scale.setScalar(SCALE); scene.add(grid);
+  spinners.push({ obj: grid, speed: 0.02, axis: "y" });
+  const baseGlow = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTexture(), color: CHAMPAGNE, transparent: true, opacity: 0.35,
+    blending: THREE.AdditiveBlending, depthWrite: false }));
+  baseGlow.position.set(0, BASE_Y + 0.15, 0.2); baseGlow.scale.set(5, 1.1, 1); scene.add(baseGlow);
 
   // projector beam, rising dust, research data streams, vertical scan ring, energy pulses
   const beamMat = new THREE.ShaderMaterial({ vertexShader: BEAM_VERT, fragmentShader: BEAM_FRAG, transparent: true, depthWrite: false,
@@ -565,6 +631,9 @@ export function create(wrap, opts = {}) {
   const targetTint = new THREE.Color(LOOKS.idle.tint);
   let t = 0, last = 0, raf = 0, visible = true, flash = 0, settling = 2.5, speech = 0, beatAt = 0, arcAt = 0;
   const headTarget = new THREE.Euler(), headCur = new THREE.Euler();
+  // idle liveliness: occasional glances (toward the message box or the side panels) and sensor "shutter blinks"
+  const GLANCES = [[0.13, 0], [0.02, -0.26], [0.02, 0.26], [-0.05, -0.12], [0.08, 0.14]];
+  let glance = null, glanceAt = 6, blinkAt = 4, blink = 0;
 
   function setState(s) {
     if (!LOOKS[s] || s === state) return;
@@ -617,6 +686,7 @@ export function create(wrap, opts = {}) {
     else if (h === "scan") headTarget.set(0.02, Math.sin(t * 0.55) * 0.16, 0);         // looking across sources
     else if (h === "speak") headTarget.set(0.03 + speech * 0.03, Math.sin(t * 0.5) * 0.05, 0);
     else if (h === "still") headTarget.set(0.05, 0, 0);
+    else if (glance) headTarget.set(glance[0], glance[1], 0);                          // a glance at something
     else headTarget.set(Math.sin(t * 0.31) * 0.02, Math.sin(t * 0.23) * 0.07, 0);     // awareness
   }
 
@@ -688,7 +758,34 @@ export function create(wrap, opts = {}) {
     for (const l of arcs) { l.visible = discharging && l.userData.on; l.material.opacity = cur.discharge * 0.8 * intensity; }
     if (moving) {
       // breathing body, head and arm motion, rotating rings
-      body.scale.y = 1 + Math.sin(t * 1.1) * 0.004; body.position.y = 2.0 * (1 - body.scale.y);
+      body.scale.y = 1 + Math.sin(t * 1.1) * 0.008; body.position.y = 2.0 * (1 - body.scale.y);
+      if (target.head === "aware") {
+        if (t > glanceAt) {
+          if (glance) { glance = null; glanceAt = t + 6 + Math.random() * 5; }
+          else { glance = GLANCES[Math.floor(Math.random() * GLANCES.length)]; glanceAt = t + 1.6 + Math.random(); }
+        }
+      } else glance = null;
+      if (t > blinkAt) { blink = 1; blinkAt = t + 6 + Math.random() * 6; }
+      blink = Math.max(0, blink - dt * 5);
+      const shut = target.head === "still" ? 1 : 1 - Math.sin(blink * Math.PI) * 0.85;
+      const narrow = state === "warning" || state === "error" ? 0.6 : 1;
+      const look = state === "researching" || state === "verifying" ? Math.sin(t * 2.2) * 0.022 : glance ? glance[1] * 0.05 : 0;
+      irises.forEach((ir, i) => { ir.scale.y = 0.55 * shut * narrow; ir.position.x = ir.userData.at.x + look;
+        const pulse = state === "reasoning" || state === "understanding" ? 0.85 + 0.15 * Math.sin(t * 3 + i) : 1; ir.scale.x = pulse; });
+      sparks.forEach((sp, i) => { const a = t * (1.5 + cur.scan * 0.4) + i * Math.PI; const { at, s: sd } = sp.userData;
+        sp.position.set(at.x + Math.cos(a) * 0.1, at.y + Math.sin(a) * 0.06, at.z + 0.01); sp.visible = sd !== 0; });
+      const busy = state === "executing" || state === "coding" ? 1 : 0.2;
+      for (const j of joints) {
+        if (j.kind === "ring") j.obj.rotation.z += dt * (0.3 + busy * 2.5);
+        else j.obj.scale.y = 1 + Math.sin(t * (1 + busy * 3)) * 0.12 * busy;
+      }
+      // the reactor's own pattern per state
+      const rp = target.rpat;
+      const spin = rp === "spin" ? 2.4 : rp === "surge" ? 1.8 : rp === "scan" ? 1.2 : rp === "stutter" ? (Math.sin(t * 9) > 0.6 ? 2 : 0) : rp === "still" ? 0 : 0.6;
+      spokes.rotation.z += dt * spin * 0.5 * (rp === "spin" ? -1 : 1);
+      const beatK = rp === "beat" ? 1 + Math.max(0, Math.sin(t * 5)) * 0.06 + speech * 0.08 : rp === "surge" ? 1 + Math.sin(t * 8) * 0.03 : 1;
+      reactor.scale.setScalar(beatK);
+      if (rp === "scan") reactorRings[2] && (reactorRings[2].obj.rotation.z = Math.sin(t * 1.4) * 1.6);
       headMotion();
       for (const ax of ["x", "y", "z"]) headCur[ax] += (headTarget[ax] - headCur[ax]) * (1 - Math.exp(-dt * 2.5));
       headPivot.rotation.copy(headCur);
@@ -699,7 +796,7 @@ export function create(wrap, opts = {}) {
       for (const rr of reactorRings) {
         if (rr.orbit) { rr.obj.userData.angle += dt * rr.speed * (0.4 + cur.reactor); const a = rr.obj.userData.angle;
           rr.obj.position.set(Math.cos(a) * rr.orbit, Math.sin(a) * rr.orbit, 0); rr.obj.rotation.z = a; }
-        else rr.obj.rotation.z += dt * rr.speed * (0.4 + cur.reactor);
+        else if (!(target.rpat === "scan" && rr === reactorRings[2])) rr.obj.rotation.z += dt * rr.speed * (0.4 + cur.reactor) * (target.rpat === "spin" ? 2.2 : target.rpat === "still" ? 0 : 1);
       }
       visorScan.position.y = 3.9 + Math.sin(t * (0.6 + cur.scan * 0.3)) * 0.14;
       visorScan.visible = parts.faceplate.objs[0].visible;
@@ -708,7 +805,8 @@ export function create(wrap, opts = {}) {
     renderer.info.reset();
     renderer.clear();
     renderer.render(scene, camera);
-    const hidden = [beam, dust, data, sweep, net.g, orbits, reactor, ...pulses.map((p) => p.m), ...eyeGlows, ...parts.pad.objs];
+    // the head reflects ~4 units below the floor, where the reflection has faded to nothing: skip it
+    const hidden = [beam, dust, data, sweep, net.g, orbits, reactor, grid, baseGlow, headPivot, ...shafts, ...pulses.map((p) => p.m), ...eyeGlows, ...parts.pad.objs];
     const was = hidden.map((o) => o.visible);
     hidden.forEach((o) => { o.visible = false; });
     for (const m of lineMats) m.visible = false;

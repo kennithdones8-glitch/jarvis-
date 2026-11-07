@@ -280,3 +280,14 @@ def test_projection_intensity_and_displayed_stage_are_per_device_settings():
     assert "root.dataset.projection = d.projection;" in JS
     assert 'const INTENSITY = { subtle: 0.75, standard: 1, vivid: 1.3 };' in AV
     assert 'localStorage.setItem(EVO_CAP_KEY, String(v))' in JS and "[1, 2, 3, 4].filter((n) => n <= evo.tier)" in JS
+
+
+def test_idle_liveliness_is_limited_to_rest_and_never_fakes_activity():
+    # glances happen only in the resting "aware" look, and stop the moment real work starts
+    assert 'if (target.head === "aware") {' in AV3 and "} else glance = null;" in AV3
+    assert "glanceAt = t + 6 + Math.random() * 5" in AV3          # every ~6–11 s, held ~1.6–2.6 s
+    assert 'const shut = target.head === "still" ? 1 :' in AV3     # halted/unknown/error: no blinking
+    # every state has a reactor pattern, from a fixed set
+    pats = set(re.findall(r'rpat: "(\w+)"', AV3))
+    assert pats <= {"calm", "spin", "scan", "beat", "surge", "stutter", "still"}
+    assert len(re.findall(r'rpat: "\w+"', AV3)) == len(json.loads(re.search(r"const STATES = (\[.*?\]);", AV, re.S).group(1)))

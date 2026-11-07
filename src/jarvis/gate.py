@@ -136,7 +136,11 @@ SECURITY: dict[str, tuple[str, list[str]]] = {
         "test_ui_avatar::evolution_comes_from_the_server_only",
         "test_ui_avatar::speech_pulses_come_only_from_real_word_boundaries",
         "test_telemetry_evolution::a_lost_capability_holds_for_seven_days_then_stops_counting",
-        "test_telemetry_evolution::stage_changes_and_definition_versions_are_audited"]),
+        "test_telemetry_evolution::stage_changes_and_definition_versions_are_audited",
+        "test_telemetry_evolution::benchmark_milestone_needs_a_real_passing_run",
+        "test_telemetry_evolution::doctor_and_mac_check_count_only_when_they_passed_recently",
+        "test_telemetry_evolution::reliability_needs_thirty_quiet_days",
+        "test_ui_avatar::idle_liveliness_is_limited_to_rest_and_never_fakes_activity"]),
     "Emergency stop (protected)": ("One stop halts everything, including work in progress", [
         "test_gateway::emergency_stop_blocks_everything", "test_tasks::emergency_stop_pauses_then_requires_explicit_resume",
         "test_stop::stop_kills_running_claude_and_its_children", "test_models::emergency_stop_blocks_model_calls",

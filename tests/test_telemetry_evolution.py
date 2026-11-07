@@ -96,11 +96,11 @@ def test_tiers_follow_verified_milestones_only(make_kernel):
     k = make_kernel()
     r = evolution.evaluate(k, facts())
     assert (r["tier"], r["name"], r["verified"]) == (1, "Initial Projection", 1)  # only "Core online"
-    assert r["next"] == {"tier": 2, "name": "Advanced Projection", "needs": 3}
-    r = evolution.evaluate(k, facts(providers=LOCAL, confirmed_memories=1, completed_tasks=1))
-    assert (r["tier"], r["name"], r["verified"]) == (2, "Advanced Projection", 4)
+    assert r["next"] == {"tier": 2, "name": "Advanced Projection", "needs": 4}
+    r = evolution.evaluate(k, facts(providers=LOCAL, confirmed_memories=1, completed_tasks=1, touch_id=True))
+    assert (r["tier"], r["name"], r["verified"]) == (2, "Advanced Projection", 5)
     assert r["version"] == evolution.DEFINITION_VERSION and r["stages"][3] == "Evolved Intelligence"
-    assert {m["id"] for m in r["milestones"] if m["verified"]} == {"core_online", "local_mind", "memory", "first_mission"}
+    assert {m["id"] for m in r["milestones"] if m["verified"]} == {"core_online", "local_mind", "memory", "first_mission", "touch_id"}
 
 
 def test_first_verification_is_recorded_once_with_no_content(make_kernel):
@@ -133,13 +133,13 @@ def test_stage_changes_and_definition_versions_are_audited(make_kernel):
     k = make_kernel()
     t0 = datetime(2026, 11, 1, tzinfo=timezone.utc)
     evolution.evaluate(k, facts(), now=t0)
-    evolution.evaluate(k, facts(providers=LOCAL, confirmed_memories=1, completed_tasks=1), now=t0 + timedelta(minutes=1))
+    evolution.evaluate(k, facts(providers=LOCAL, confirmed_memories=1, completed_tasks=1, touch_id=True), now=t0 + timedelta(minutes=1))
     tiers = [e["payload"] for e in k.audit.entries(limit=100) if e["event"] == "evolution.tier"]
-    assert tiers == [{"frm": 1, "to": 2, "verified": 4}]
+    assert tiers == [{"frm": 1, "to": 2, "verified": 5}]
     with k.db.tx() as c:
         c.execute("UPDATE meta SET value = '1' WHERE key = ?", (evolution.VERSION_KEY,))
     evolution.evaluate(k, facts(), now=t0 + timedelta(minutes=2))
-    assert [e["payload"] for e in k.audit.entries(limit=100) if e["event"] == "evolution.definitions"] == [{"frm": "1", "to": "2"}]
+    assert [e["payload"] for e in k.audit.entries(limit=100) if e["event"] == "evolution.definitions"] == [{"frm": "1", "to": str(evolution.DEFINITION_VERSION)}]
 
 
 def test_last_verified_is_not_rewritten_every_minute(make_kernel):
@@ -165,7 +165,7 @@ def test_activity_alone_earns_nothing(make_kernel):
                                 touch_id=False)["confirmed_memories"] == 1
 
 
-@pytest.mark.parametrize("count,tier", [(0, 1), (3, 1), (4, 2), (6, 2), (7, 3), (9, 3), (10, 4), (12, 4)])
+@pytest.mark.parametrize("count,tier", [(0, 1), (4, 1), (5, 2), (9, 2), (10, 3), (14, 3), (15, 4), (19, 4)])
 def test_tier_thresholds(count, tier):
     assert evolution.tier_for(count)[0] == tier
 
@@ -188,3 +188,80 @@ def test_evolution_events_are_worded(dash):
     assert describe_event("evolution.milestone", {"milestone": "local_mind"}) == \
         "Core evolution: verified “Local intelligence”"
     assert "tier 1 → 2" in describe_event("evolution.tier", {"frm": 1, "to": 2, "verified": 4})
+
+
+# ---- milestones from real runs (definitions v3) ----------------------------------------------------------------------
+def _kernel_facts(k, **over):
+    f = evolution.facts_from(k, health=over.pop("health", {"ok": True, "items": []}), providers=[], capabilities={},
+                             voice_ready=False, paired_phones=0, touch_id=False)
+    f.update(over)
+    return f
+
+
+def _ids(r, key="verified"):
+    return {m["id"] for m in r["milestones"] if m[key]}
+
+
+def test_missions_count_only_completed_verified_tasks(make_kernel):
+    k = make_kernel()
+    r = evolution.evaluate(k, facts(completed_tasks=24))
+    assert {"missions_5"} <= _ids(r) and "missions_25" not in _ids(r) and "missions_100" not in _ids(r)
+    assert {"missions_5", "missions_25"} <= _ids(evolution.evaluate(k, facts(completed_tasks=25)))
+
+
+def test_benchmark_milestone_needs_a_real_passing_run(make_kernel):
+    k = make_kernel()
+    assert "bench_pass" not in _ids(evolution.evaluate(k, _kernel_facts(k)))   # no run, nothing earned
+    run = k.home / "bench-results" / "20261101-120000-local"
+    run.mkdir(parents=True)
+
+    def save(passed, total):
+        results = [{"id": f"t{i}", "status": "pass" if i < passed else "fail"} for i in range(total)]
+        (run / "results.json").write_text(json.dumps({"meta": {"run_id": run.name, "started": "2026-11-01T12:00:00"}, "results": results}))
+    save(17, 22)
+    assert "bench_pass" not in _ids(evolution.evaluate(k, _kernel_facts(k)))   # 77% is below the bar
+    save(18, 22)
+    assert "bench_pass" in _ids(evolution.evaluate(k, _kernel_facts(k)))
+
+
+def test_doctor_and_mac_check_count_only_when_they_passed_recently(make_kernel):
+    from datetime import datetime, timedelta, timezone
+    k = make_kernel()
+    assert not {"doctor_green", "mac_check"} & _ids(evolution.evaluate(k, _kernel_facts(k)))
+    evolution.record_check(k, "doctor", True)
+    evolution.record_check(k, "mac_check", False)
+    r = evolution.evaluate(k, _kernel_facts(k))
+    assert "doctor_green" in _ids(r) and "mac_check" not in _ids(r)
+    evolution.record_check(k, "doctor", True, now=datetime.now(timezone.utc) - timedelta(days=31))   # stale run
+    assert "doctor_green" not in _ids(evolution.evaluate(k, _kernel_facts(k)))
+    assert [e["payload"] for e in k.audit.entries(limit=50) if e["event"] == "evolution.check"][:2] == [
+        {"check": "doctor", "ok": True}, {"check": "mac_check", "ok": False}]
+
+
+def test_reliability_needs_thirty_quiet_days(make_kernel):
+    from datetime import datetime, timedelta, timezone
+    k = make_kernel()
+    now = datetime.now(timezone.utc)
+    assert evolution._reliable(k, {"ok": True}, now + timedelta(days=40)) is False   # no history at all: can't be reliable
+    k.audit.record("dashboard.started")                                               # the installation's first record
+    assert evolution._reliable(k, {"ok": True}, now) is False                         # too young
+    later = now + timedelta(days=31)
+    assert evolution._reliable(k, {"ok": True}, later) is True
+    assert evolution._reliable(k, {"ok": False}, later) is False                      # unhealthy now
+    evolution.record_check(k, "drill", False, now=later - timedelta(days=2))
+    assert evolution._reliable(k, {"ok": True}, later) is False                       # a recent failed drill
+    k.audit.record("health.changed", ok=False, problems=["Backups"])
+    assert evolution._reliable(k, {"ok": True}, now + timedelta(days=20)) is False
+
+
+def test_cli_records_real_doctor_runs(tmp_path, monkeypatch):
+    from jarvis.cli import main
+    from jarvis.core import Kernel
+    home = tmp_path / "h"
+    assert main(["--home", str(home), "init"]) == 0
+    main(["--home", str(home), "doctor", "--no-voice-test"])
+    k = Kernel(home)
+    try:
+        assert evolution._check(k, "doctor") is not None   # recorded (pass or fail, whichever was true)
+    finally:
+        k.close()

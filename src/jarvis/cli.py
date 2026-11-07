@@ -245,7 +245,11 @@ def main(argv: list[str] | None = None) -> int:
             print("Running recovery drills on a throwaway JARVIS (your real data is not touched)…", file=sys.stderr)
             results = drill.run(args.only or None)
             print(drill.as_json(results) if args.json else drill.report(results))
-            return 0 if results and all(r.passed for r in results) else 1
+            ok = bool(results) and all(r.passed for r in results)
+            if not args.only:   # a full run counts toward the projection's reliability milestone
+                from .evolution import record_check
+                record_check(kernel, "drill", ok)
+            return 0 if ok else 1
         elif args.cmd == "gate":
             from . import gate
 
@@ -256,12 +260,16 @@ def main(argv: list[str] | None = None) -> int:
         elif args.cmd == "bench":
             return _bench(kernel, args)
         elif args.cmd == "mac":
-            return _mac_check()
+            return _mac_check(kernel=kernel)
         elif args.cmd == "doctor":
             from .doctor import FAIL, Doctor, as_json, report
 
             results = Doctor(kernel, port=args.port, voice_test=not args.no_voice_test).run()
             print(as_json(results) if args.json else report(results))
+            from .doctor import OK, SKIP
+            from .evolution import record_check
+            # "all green": nothing warns or fails (checks for features you haven't set up are skipped, not failed)
+            record_check(kernel, "doctor", bool(results) and all(c.status in (OK, SKIP) for c in results))
             return 1 if any(c.status == FAIL for c in results) else 0
         elif args.cmd == "briefing":
             from .proactive import briefing_text, build_briefing
@@ -880,7 +888,7 @@ def _bench(kernel: Kernel, args) -> int:
         return 1
 
 
-def _mac_check(runner=None) -> int:
+def _mac_check(runner=None, kernel=None) -> int:
     """Read from each Mac app once through the same code JARVIS uses, so macOS can ask its one-time permission
     question while you're at Terminal. Reads only; nothing is added or changed."""
     from datetime import datetime, timedelta
@@ -916,6 +924,9 @@ def _mac_check(runner=None) -> int:
             print(f"✗ {label:<10} {exc}")
     print("\nMail drafts and opening apps ask for permission the first time you approve one." if not failed else
           "\nFix the ✗ lines (System Settings → Privacy & Security → Automation), then run this again.")
+    if kernel is not None and runner is None:   # a real run on this Mac counts toward the projection's milestones
+        from .evolution import record_check
+        record_check(kernel, "mac_check", not failed)
     return 1 if failed else 0
 
 

@@ -1,5 +1,20 @@
 # Changelog
 
+## Unreleased — Avatar 2.1: livelier projection, more ways to evolve
+
+- **More alive at rest** (owner's choice): glances toward the message box or the side panels every ~6–11 s,
+  mechanical sensor blinks, sparks circling the optical sensors, deeper breathing. Only in the resting look; any
+  real activity takes over at once.
+- **Helm**: taller crest, forehead and temple plates, hexagonal sensor housings; sensors sweep while researching,
+  pulse while reasoning and narrow on warnings.
+- **Reactor**: hex frame and spokes; a distinct pattern per state (calm, counter-spin, scan, beat, surge, stutter).
+- **Body**: shoulder and elbow joint rings and actuators that work while executing, neck cables, side vents.
+- **Environment**: denser neural lattice, light shafts, a polar floor grid and a base glow (all behind the figure).
+- **New milestones** (definitions v3, 19 in all): benchmark pass (≥80% of scored tasks), 5 / 25 / 100 verified
+  missions, `jarvis doctor` all green and `jarvis mac check` passed (within 30 days), 30 days reliable (no health
+  failure or failed recovery drill). `jarvis doctor`, `jarvis mac check` and `jarvis drill` now record their
+  outcome for this. Stage thresholds: 5 / 10 / 15 milestones.
+
 ## Unreleased — Avatar 2.0: living intelligence projection
 
 - **Faceless helm** with optical sensors, layered visor, internal gear rings and a visor scan line (no mouth).

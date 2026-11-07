@@ -119,6 +119,7 @@ def describe_event(event: str, p: dict[str, Any], *, task_id: str | None = None,
         "chat.answer_check": lambda: ("Answer checked: fine" if not p.get("problems") else
                                       f"Answer checked: {p.get('problems')} problem(s){', retried' if p.get('retried') else ''}"),
         "evolution.milestone": lambda: f"Core evolution: verified “{_milestone_title(p.get('milestone'))}”",
+        "evolution.check": lambda: f"Recorded `jarvis {str(p.get('check', '')).replace('_', ' ')}`: {'passed' if p.get('ok') else 'did not pass'}",
         "evolution.definitions": lambda: f"Projection milestones updated: definitions v{p.get('frm')} → v{p.get('to')}",
         "evolution.tier": lambda: f"Core evolution: tier {p.get('frm')} → {p.get('to')} ({p.get('verified')} milestones verified)",
         "chat.mode_fallback": lambda: f"{str(p.get('mode', '')).capitalize()} mode: answered with {p.get('model')} instead",

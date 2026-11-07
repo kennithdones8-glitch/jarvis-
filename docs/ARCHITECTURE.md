@@ -272,7 +272,7 @@ prefer="quality")` and up to 2000 tokens, falling back to the best available mod
   systems, evolution); hovering a satellite shows that system's live status and clicking opens it; Esc or Exit
   closes; the top bar (Emergency stop) stays above. A small task hologram beside the projection shows the real
   current step, research, or replying model. Display → Projection intensity (Subtle / Standard / Vivid).
-- **Evolution v2** (`evolution.py`): stages Initial Projection → Advanced Projection → Intelligence Projection →
+- **Evolution v3** (`evolution.py`, 19 milestones incl. benchmark pass, 5/25/100 verified missions, recent green `jarvis doctor` and `jarvis mac check`, 30 days reliable; those CLI commands record their outcome via `record_check`). Stages Initial Projection → Advanced Projection → Intelligence Projection →
   Evolved Intelligence; a milestone counts while it verifies and for 7 days after it last verified; first/last
   verification, stage changes and definitions version (`DEFINITION_VERSION`) are stored and audited. A device may
   show a lower stage (Evolution record), never a higher one.
