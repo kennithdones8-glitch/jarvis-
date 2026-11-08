@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased: memory check for benchmark runs (branch `bench-memory-v1`, owner's choice)
+
+- **Swap is recorded and warned about.** The owner's Mac has 32 GB soldered to the board (no upgrade possible), and
+  the checkup found 4.9 GB of swap in use. Before a `bench run`, JARVIS reads the swap in use (macOS only, one
+  read-only `sysctl` call); above 2 GB it prints a warning and runs anyway. The report adds "Swap in use: start ·
+  most · end", with a ⚠ when memory was short, and `bench compare` notes such runs like busy ones ("compare pass
+  rates, not times"). Pass/fail scoring is unchanged; runs recorded earlier simply have no swap line.
+
 ## 0.19.3 — A harder benchmark, and fixes for what it found (owner-approved after a test on the Mac)
 
 **Proven on the Mac (bench home, local models, ×5):** the new hard set went from 7 to 9 of 17 tasks passing (20261107-141713-local → 20261107-163941-local, verdict MERGE, no new failures; planning-slot 1→5/5 is a clear change). Core + extended: 108 of 110 runs, all 22 scored tasks still passing (20261108-014415-local). The Mac was busy in all three runs (time only). Merged exactly the tested commit (a5569e0); later work on `smarter-v2` (G–J) and `compute-v1` (F) is not in this release. Also: a lookup test used a fixed date and failed from 8 November; it now uses today's date (test only). The briefing test could clash with the dashboard's real-clock background loop after 08:00; it now stops that loop first (test only).

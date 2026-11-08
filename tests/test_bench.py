@@ -482,4 +482,57 @@ def test_compare_notes_a_busy_run(tmp_path):
     data["meta"]["load_start"] = {"load": 3.4, "cores": 4}
     (b / "results.json").write_text(json.dumps(data))
     text = as_text(compare(load(a), load(b)))
-    assert "the Mac was busy during 2-b" in text and "1-a" not in text.split("Note:")[1]
+    assert "the Mac was busy or short of memory during 2-b" in text and "1-a" not in text.split("Note:")[1]
+
+
+# ---- memory: swap in use before and during a run (owner's choice: the 32 GB Mac can't take more memory) -----------
+def test_heavy_swap_is_warned_about_but_never_stops_the_run(config, tmp_path, monkeypatch):
+    import jarvis.bench.runner as runner
+    swaps = iter([4.9, 6.2] + [5.0] * 50)
+    monkeypatch.setattr(runner, "swap_gb", lambda: next(swaps))
+    said = []
+    run_dir = run_suite(load_tasks()[:1], real_config=config(oracle), out_dir=tmp_path / "out", progress=said.append)
+    assert said[0].startswith("⚠ This Mac is already using 4.9 GB of swap") and "Running anyway" in said[0]
+    data = json.loads((run_dir / "results.json").read_text())
+    assert data["meta"]["swap_start"] == 4.9 and data["meta"]["swap_peak"] == 6.2
+    monkeypatch.setattr(runner, "swap_gb", lambda: 0.0)
+    quiet = json.loads((run_suite(load_tasks()[:1], real_config=config(oracle), out_dir=tmp_path / "q")
+                        / "results.json").read_text())
+    assert [r["status"] for r in data["results"]] == [r["status"] for r in quiet["results"]]  # scoring unchanged
+    report = (run_dir / "report.md").read_text()
+    assert "Swap in use: start 4.9 GB · most 6.2 GB · end 5.0 GB" in report and "memory was short" in report
+
+
+def test_little_swap_no_warning_and_other_systems_unchanged(config, tmp_path, monkeypatch):
+    import jarvis.bench.runner as runner
+    from jarvis.bench.runner import swap_line
+    monkeypatch.setattr(runner, "swap_gb", lambda: 0.3)
+    said = []
+    run_dir = run_suite(load_tasks()[:1], real_config=config(oracle), out_dir=tmp_path / "out", progress=said.append)
+    assert not any("swap" in x for x in said)
+    report = (run_dir / "report.md").read_text()
+    assert "Swap in use: start 0.3 GB" in report and "memory was short" not in report
+    assert swap_line({}) == ""  # not a Mac, or a run recorded before this: no line
+    monkeypatch.undo()
+    monkeypatch.setattr(runner.sys, "platform", "linux")
+    assert runner.swap_gb() is None  # only read on a Mac
+
+
+def test_swap_is_read_from_sysctl(monkeypatch):
+    import jarvis.bench.runner as runner
+    monkeypatch.setattr(runner.sys, "platform", "darwin")
+    out = "total = 6144.00M  used = 5017.60M  free = 1126.40M  (encrypted)"
+    monkeypatch.setattr(runner.subprocess, "run", lambda *a, **k: type("R", (), {"stdout": out})())
+    assert runner.swap_gb() == 4.9
+    monkeypatch.setattr(runner.subprocess, "run", lambda *a, **k: (_ for _ in ()).throw(OSError("no sysctl")))
+    assert runner.swap_gb() is None
+
+
+def test_compare_notes_a_run_short_of_memory(tmp_path):
+    from jarvis.bench.compare import as_text, compare, load
+    a = _run(tmp_path, "1-a", {"x": "ppppp"}, repeat=5)
+    b = _run(tmp_path, "2-b", {"x": "ppppp"}, repeat=5)
+    data = json.loads((b / "results.json").read_text())
+    data["meta"]["swap_peak"] = 5.5
+    (b / "results.json").write_text(json.dumps(data))
+    assert "short of memory during 2-b" in as_text(compare(load(a), load(b)))

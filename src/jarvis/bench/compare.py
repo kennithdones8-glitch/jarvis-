@@ -205,11 +205,12 @@ def as_text(c: Comparison) -> str:
     pa = sum(r["now"] for r in c.rows)
     lines += ["", f"Tasks passing (more than half their runs): {pb} → {pa} of {len(c.rows)}  (net {c.net:+d})",
               f"Claude calls: {c.claude[0]} → {c.claude[1]}"]
-    from .runner import busy
+    from .runner import busy, swapped
     slow = [m.get("run_id") for m in (c.befores or [c.before]) + (c.afters or [c.after])
-            if any(busy(m.get(k)) for k in ("load_start", "load_peak", "load_end"))]
+            if any(busy(m.get(k)) for k in ("load_start", "load_peak", "load_end")) or swapped(m)]
     if slow:
-        lines.append(f"Note: the Mac was busy during {', '.join(map(str, slow))}: compare pass rates, not times.")
+        lines.append(f"Note: the Mac was busy or short of memory during {', '.join(map(str, slow))}: compare pass "
+                     "rates, not times.")
     if c.left_out:
         lines += ["Left out:"] + [f"  - {x}" for x in c.left_out]
     if c.violations:

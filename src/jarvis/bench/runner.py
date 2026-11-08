@@ -20,6 +20,7 @@ import platform
 import re
 import shutil
 import subprocess
+import sys
 import tempfile
 import time
 import tomllib
@@ -292,6 +293,28 @@ def busy(load: dict | None) -> bool:
     return bool(load) and load["load"] / load["cores"] > 0.5
 
 
+# Swap in use above this means the models no longer fit in memory alongside everything else: answers slow down a lot
+# and timings stop being comparable (owner's Mac, 32 GB: 4.9 GB of swap with Chrome open and the 14B loaded).
+HEAVY_SWAP_GB = 2.0
+
+
+def swap_gb() -> float | None:
+    """Swap in use on this Mac, in GB (None elsewhere or if it can't be read). Read-only: one sysctl call."""
+    if sys.platform != "darwin":
+        return None
+    try:
+        out = subprocess.run(["/usr/sbin/sysctl", "-n", "vm.swapusage"], capture_output=True, text=True,
+                             timeout=5).stdout
+    except (OSError, subprocess.SubprocessError):
+        return None
+    m = re.search(r"used = ([\d.]+)M", out)
+    return round(float(m.group(1)) / 1024, 1) if m else None
+
+
+def heavy_swap(gb: float | None) -> bool:
+    return gb is not None and gb > HEAVY_SWAP_GB
+
+
 def run_suite(tasks: list[Task], *, real_config: Path, out_dir: Path, models: str = "local", repeat: int = 1,
               run_code: bool = False, mac_factory=FixtureMac, progress: Callable[[str], None] = lambda s: None,
               coding_self_test: bool = False) -> Path:
@@ -304,9 +327,14 @@ def run_suite(tasks: list[Task], *, real_config: Path, out_dir: Path, models: st
     meta = {"run_id": run_id, "started": datetime.now().astimezone().isoformat(), "jarvis_version": __version__,
             "git_commit": git_commit(), "models": models, "repeat": repeat, "run_code": run_code,
             "platform": f"{platform.system()} {platform.release()} {platform.machine()}", "tasks": {},
-            "coding_self_test": coding_self_test, "load_start": mac_load()}
+            "coding_self_test": coding_self_test, "load_start": mac_load(), "swap_start": swap_gb()}
+    if heavy_swap(meta["swap_start"]):  # a warning only: the run goes ahead, pass/fail still counts
+        progress(f"⚠ This Mac is already using {meta['swap_start']:.1f} GB of swap (memory spilled to disk). Answers "
+                 "will be slower and times less comparable. Quitting apps you aren't using (e.g. the browser) helps. "
+                 "Running anyway.")
     results = []
     peak = meta["load_start"]
+    swap_peak = meta["swap_start"]
     for task in tasks:
         meta["tasks"][task.id] = task.sha256
         for n in range(repeat):
@@ -325,8 +353,12 @@ def run_suite(tasks: list[Task], *, real_config: Path, out_dir: Path, models: st
             now = mac_load()
             if now and (not peak or now["load"] > peak["load"]):
                 peak = now
+            sw = swap_gb()
+            if sw is not None and (swap_peak is None or sw > swap_peak):
+                swap_peak = sw
     meta["finished"] = datetime.now().astimezone().isoformat()
     meta["load_peak"], meta["load_end"] = peak, mac_load()
+    meta["swap_peak"], meta["swap_end"] = swap_peak, swap_gb()
     (run_dir / "results.json").write_text(json.dumps({"meta": meta, "results": results}, indent=2, default=str))
     (run_dir / "report.md").write_text(report(meta, results))
     return run_dir
@@ -345,6 +377,23 @@ def load_line(meta: dict) -> str:
     if any(busy(x) for x in (start, peak, end)):
         line += " · ⚠ the Mac was busy with other work: answers were slower than usual (pass/fail still counts)"
     return line
+
+
+def swap_line(meta: dict) -> str:
+    """Swap in use during the run (Macs only; runs before this was recorded have none)."""
+    start, peak = meta.get("swap_start"), meta.get("swap_peak")
+    if start is None and peak is None:
+        return ""
+    line = "Swap in use: " + " · ".join(f"{k} {v:.1f} GB" for k, v in
+                                        (("start", start), ("most", peak), ("end", meta.get("swap_end"))) if v is not None)
+    if swapped(meta):
+        line += (" · ⚠ memory was short (models spilled to disk): answers were slower than usual (pass/fail still "
+                 "counts). Quit apps you aren't using before the next run")
+    return line
+
+
+def swapped(meta: dict) -> bool:
+    return any(heavy_swap(meta.get(k)) for k in ("swap_start", "swap_peak", "swap_end"))
 
 
 def failures_at_a_glance(results: list[dict]) -> list[str]:
@@ -407,7 +456,7 @@ def report(meta: dict, results: list[dict]) -> str:
     cost = sum(r.get("usage", {}).get("cost_usd", 0) for r in results)
     secs = sum(r.get("seconds", 0) for r in results)
     lines += ["", f"Claude calls: {claude} · local model calls: {local} · cost: ${cost:.2f} · total time: {secs / 60:.1f} min"]
-    lines += [load_line(meta), ""] if load_line(meta) else [""]
+    lines += [x for x in (load_line(meta), swap_line(meta)) if x] + [""]
     lines += failures_at_a_glance(results)
     lines += [EVERY_RUN, ""]
     for r in results:
