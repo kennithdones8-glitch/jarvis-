@@ -165,3 +165,18 @@ def test_discovery_counts_only_local_models_for_the_local_model_suggestion(make_
     k = make_kernel()
     one_local = analysis.discover(k, {"models_available": ["llama"]})
     assert next(x for x in one_local if x["key"] == "local-models")["available"] is False   # cloud models don't count
+
+
+def test_answers_you_rated_come_back_for_similar_questions_locally(make_kernel):
+    from jarvis.learn import recall
+    k = make_kernel()
+    good = k.memory.learn_from("s", "How do I convert a HEIC photo to JPEG on my Mac?", "Open it in Preview, File → Export, choose JPEG.", background=False)
+    bad = k.memory.learn_from("s", "Best way to convert HEIC photo files to JPEG on Mac?", "Install a paid converter app.", background=False)
+    learn.add_feedback(k, target="reply", ref=good, rating=1)
+    learn.add_feedback(k, target="reply", ref=bad, rating=-1)
+    msg, n = recall.context_message(k, "How can I convert a HEIC photo into JPEG on my Mac")
+    assert n == 2 and "rated HELPFUL" in msg.content and "Preview" in msg.content and "NOT HELPFUL" in msg.content
+    assert msg.category.value == "conversation"                                  # same privacy rules as chat history
+    assert recall.context_message(k, "What's the weather in Leeds tomorrow")[1] == 0   # unrelated: nothing recalled
+    k.forget("HEIC", by="t", dry_run=False)                                      # forgotten exchanges never come back
+    assert recall.context_message(k, "How can I convert a HEIC photo into JPEG on my Mac")[1] == 0

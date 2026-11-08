@@ -292,22 +292,23 @@ class MemoryStore:
         m = REMEMBER.match(message)
         return m.group("fact").strip() if m else None
 
-    def learn_from(self, session: str, user_text: str, reply: str, *, background: bool = True) -> None:
+    def learn_from(self, session: str, user_text: str, reply: str, *, background: bool = True) -> str | None:
         """Archive the exchange, store any explicit "remember…" fact, and (optionally) let the LOCAL model
         notice facts you stated. Extraction never uses a cloud model."""
         rid = self.add_record(session, "user", user_text)
         self.add_record(session, "assistant", reply)
         if rid is None:
-            return
+            return None
         fact = self.explicit_request(user_text)
         if fact:
             self.remember(fact, origin="explicit", source_record=rid)
-            return
+            return rid
         if self.settings.extract and self.models is not None:
             if background:
                 threading.Thread(target=self._extract_quietly, args=(user_text, rid), daemon=True).start()
             else:
                 self._extract(user_text, rid)
+        return rid   # the exchange's id: your rating of this answer is stored against it
 
     def _extract_quietly(self, text: str, record_id: str) -> None:
         # Best-effort background learning: it must never crash the app (e.g. JARVIS shutting down mid-way).

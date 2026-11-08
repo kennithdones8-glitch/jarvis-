@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased — smarter answers from your ratings
+
+- Your 👍/👎 now improves later answers: for a question similar to an earlier one (half of the meaningful words in
+  common), the answer you rated helpful joins the prompt as a reference, and one you rated unhelpful as an approach
+  not to repeat (at most one of each). Read from the conversation records on this Mac, so memory settings, exclusions
+  and `forget` apply; it joins as conversation, so the usual privacy rules decide whether a cloud model may see it.
+  The reply says "learned from an earlier answer you rated" when it happened (`learn.recalled` in the audit log).
+- Ratings are now stored against the exchange's own record id.
+
 ## Unreleased — faster avatar loading
 
 - The figure's meshes (body, head, hands, wireframe) are built in a background module worker

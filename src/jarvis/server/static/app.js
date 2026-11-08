@@ -507,10 +507,11 @@ async function sendChat(payload, endpoint = "/api/chat") {
              `${r.verified_sources}/${r.sources.length} sources verified`].join(" · ") });
     else if (r.error) ui.convo.push({ ...base, text: r.partial ? `${r.partial}\n\n— ${r.error}` : r.error, error: true, activity: r.activity });
     else ui.convo.push({ ...base, text: r.text, checked: r.checked || [], plan: r.offer_plan ? payload.message : null, activity: r.activity,
-      ref: `${ui.session}:${Date.now()}`, rmodel: r.location === "local" ? `local/${String(r.model).split("/").pop()}` : r.model, rmode: r.mode,
+      ref: r.record || `${ui.session}:${Date.now()}`, rmodel: r.location === "local" ? `local/${String(r.model).split("/").pop()}` : r.model, rmode: r.mode,
       meta: [r.model.split("/").pop(), r.location === "cloud" ? "cloud" : null, r.mode && r.mode !== "balanced" ? INTEL_LABEL[r.mode] : null,
       r.first ? `first words ${r.first.toFixed(2)}s` : null, `${r.seconds}s`,
-      r.memories_used ? `used ${plural(r.memories_used, "memory").replace("memorys", "memories")}` : null, r.note].filter(Boolean).join(" · ") });
+      r.memories_used ? `used ${plural(r.memories_used, "memory").replace("memorys", "memories")}` : null,
+      r.past ? "learned from an earlier answer you rated" : null, r.note].filter(Boolean).join(" · ") });
   } catch (e) {
     ui.convo.push({ ...base, text: `Request failed: ${e.message}`, error: true });
   } finally {

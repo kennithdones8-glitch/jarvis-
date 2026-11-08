@@ -655,8 +655,12 @@ class Dashboard:
                 turns += 1
         if found.context:
             msgs.append(found.context)
+        from ..learn import recall
+        past, past_n = recall.context_message(self.kernel, message)   # answers you rated, for a similar question
+        if past:
+            msgs.append(past)
         msgs.append(Message("user", message, Category.CONVERSATION))
-        stage({"stage": "context", "memories": len(recalled), "turns": turns})
+        stage({"stage": "context", "memories": len(recalled), "turns": turns, "past": past_n})
         max_tokens = INTELLIGENCE[mode]["max_tokens"]
         mode_note = None
         try:
@@ -722,8 +726,8 @@ class Dashboard:
         except ApprovalRequired as exc:
             appr = self.kernel.approvals.get(exc.approval_id)
             return {"needs_approval": True, "approval_id": exc.approval_id, "summary": appr["summary"]}
-        memory.learn_from(session, message, r.text)
-        return {"code_test": code_test, "text": r.text, "model": f"{r.provider}/{r.model}", "seconds": round(time.time() - started, 1),
+        record = memory.learn_from(session, message, r.text)
+        return {"record": record, "past": past_n, "code_test": code_test, "text": r.text, "model": f"{r.provider}/{r.model}", "seconds": round(time.time() - started, 1),
                 "tokens": r.usage.output_tokens, "note": r.note, "memories_used": len(recalled),
                 "checked": found.checked, "offer_plan": found.change, "grounded": grounded,
                 "lookup_notes": found.why + found.notes, "mode": mode,
