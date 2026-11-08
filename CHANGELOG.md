@@ -1,5 +1,19 @@
 # Changelog
 
+## Unreleased — Tier 6: change trials
+
+- **Change trials** (`jarvis/learn/trial.py`): name a branch or commit and JARVIS checks it and your current code out
+  into two throwaway git worktrees under its data folder, runs the full test suite (results read from pytest's JUnit
+  report) and the linter in each, and records an experiment: tests newly failing, newly passing, lint, commits and
+  timings, with a recommendation. The worktrees are removed afterwards. A trial where the tests didn't run counts as
+  proving nothing. It never switches, merges, commits, pushes or edits the running code, installs anything, or calls
+  a model. Branch names are validated (no options, spaces or path tricks).
+- Needs **autonomy tier 6**, which can only be switched on from the Mac's terminal; pausing experiments stops trials.
+- **New terminal commands**: `jarvis autonomy [show | enable N | disable N | pause WHAT | resume WHAT]`,
+  `jarvis lessons`, `jarvis trial REF [--baseline REF]`. The Evolution center's lab has a "Run change trial" box.
+- Verified: a candidate that breaks a test is caught as "newly failing" and nothing is merged (tested on a throwaway
+  repository); on this repository a trial of the previous commit ran 679 vs 669 tests with no regressions.
+
 ## Unreleased — E.V.O.L.V.E. visual and integration (phases F and G)
 
 - **Projection Director** (`avatar3d-projections.js`): eight data-driven projections built in the existing scene and

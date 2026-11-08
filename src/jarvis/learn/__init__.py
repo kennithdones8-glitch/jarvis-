@@ -35,7 +35,8 @@ TIERS = {
     3: ("Analyze", "Find weaknesses, compare models (tournament) and spot opportunities."),
     4: ("Experiment", "Run approved kinds of experiments in throwaway sandboxes or on recorded data."),
     5: ("Propose", "Turn findings into improvement proposals for you to approve or reject."),
-    6: ("Approved execution", "Carry out changes you approved one by one. Not built: changes go through proposals."),
+    6: ("Approved execution", "Try a change you name (a branch or commit) in a throwaway copy of JARVIS: run every test and the "
+                              "linter there and compare with your current code. Never merges, pushes or changes the running code."),
     7: ("Verified operation", "Routine operations within explicit limits. Not built: nothing runs on its own."),
 }
 DEFAULT_TIERS = {1: True, 2: True, 3: True, 4: True, 5: True, 6: False, 7: False}
@@ -66,7 +67,8 @@ class Autonomy:
                             "learn": self.allowed(2, "learning", tiers, pauses, stopped),
                             "analyze": self.allowed(3, "learning", tiers, pauses, stopped),
                             "experiment": self.allowed(4, "experiments", tiers, pauses, stopped),
-                            "propose": self.allowed(5, "initiative", tiers, pauses, stopped)}}
+                            "propose": self.allowed(5, "initiative", tiers, pauses, stopped),
+                            "execute": self.allowed(6, "experiments", tiers, pauses, stopped)}}
 
     @staticmethod
     def allowed(tier: int, pause: str | None, tiers: dict, pauses: dict, stopped: bool) -> bool:

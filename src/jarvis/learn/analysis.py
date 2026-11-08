@@ -79,6 +79,8 @@ KINDS = {
     "drill": "Recovery drills: break a throwaway JARVIS on purpose and check it recovers (a temporary folder; your "
              "data is never touched).",
     "bench_compare": "Benchmark comparison: compare your two latest benchmark runs (results already on disk).",
+    "trial": "Change trial (tier 6): run the full test suite and linter on a branch or commit in a throwaway copy of "
+             "JARVIS and compare with your current code. Never merges or pushes.",
 }
 
 
@@ -100,14 +102,27 @@ class Lab:
         rows = self.db.query("SELECT * FROM experiments ORDER BY created_at DESC LIMIT 50")
         return [{**dict(r), "results": json.loads(r["results"]) if r["results"] else None} for r in rows]
 
-    def start(self, kind: str, *, by: str, background: bool = True) -> str:
+    def start(self, kind: str, *, by: str, background: bool = True, ref: str | None = None, baseline: str = "HEAD") -> str:
         if kind not in KINDS:
             raise LabError("unknown experiment kind")
         if not Autonomy(self.kernel).can("experiment"):
             raise LabError("experiments are paused or not allowed (autonomy settings or the emergency stop)")
+        if kind == "trial":
+            from . import trial
+            if not Autonomy(self.kernel).can("execute"):
+                raise LabError("change trials need autonomy tier 6, which can only be switched on from the Mac's terminal "
+                               "(`jarvis autonomy enable 6`)")
+            if why := trial.available():
+                raise LabError(why)
+            try:
+                trial.resolve(ref or "")
+                trial.resolve(baseline)
+            except trial.TrialError as exc:
+                raise LabError(str(exc)) from None
+            self._args = (ref, baseline)
         if self.db.one("SELECT COUNT(*) FROM experiments WHERE state = 'running'")[0]:
             raise LabError("one experiment at a time: another one is running")
-        spec = self._spec(kind)
+        spec = self._spec(kind, getattr(self, "_args", None))
         eid = new_id("exp")
         now = now_iso()
         with self.db.tx() as c:
@@ -116,12 +131,19 @@ class Lab:
                                                                    spec["criteria"], spec["environment"], now, now))
         self.kernel.audit.record("lab.started", actor=by, experiment=eid, kind=kind)
         if background:
-            threading.Thread(target=self._run, args=(eid, kind), name=f"jarvis-lab-{eid}", daemon=True).start()
+            threading.Thread(target=self._run, args=(eid, kind, getattr(self, "_args", None)), name=f"jarvis-lab-{eid}", daemon=True).start()
         else:
-            self._run(eid, kind)
+            self._run(eid, kind, getattr(self, "_args", None))
         return eid
 
-    def _spec(self, kind: str) -> dict[str, str]:
+    def _spec(self, kind: str, args: tuple | None = None) -> dict[str, str]:
+        if kind == "trial":
+            ref, base = args
+            return {"objective": f"Find out whether {ref} is safe to merge.",
+                    "hypothesis": f"{ref} passes every test that passes on {base}, and the linter stays clean.",
+                    "baseline": f"{base} (committed code; uncommitted edits are not included)",
+                    "criteria": "No test newly failing, no errors, linter clean.",
+                    "environment": "Two throwaway git worktrees under JARVIS's data folder, removed afterwards."}
         if kind == "replay":
             return {"objective": "Find which model gives the most reliable chat answers on your own recorded questions.",
                     "hypothesis": "One available model passes the answer check clearly more often than the others.",
@@ -141,8 +163,12 @@ class Lab:
                       (state, json.dumps(results, default=str)[:20000], recommendation, now_iso(), eid))
         self.kernel.audit.record("lab.finished", experiment=eid, state=state)
 
-    def _run(self, eid: str, kind: str) -> None:
+    def _run(self, eid: str, kind: str, args: tuple | None = None) -> None:
         try:
+            if kind == "trial":
+                from . import trial
+                r = trial.run(args[0], args[1], work=Path(self.kernel.home) / "trials")
+                return self._finish(eid, "done" if r["ok"] else "failed", r, trial.recommendation(r))
             if kind == "replay":
                 from . import Pipeline
                 Pipeline(self.kernel).ingest()   # bring outcomes up to date with the audit log first

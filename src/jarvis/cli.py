@@ -120,6 +120,13 @@ def main(argv: list[str] | None = None) -> int:
     p = sub.add_parser("proposals", help="improvements JARVIS suggests from its own record (propose-only: you decide)")
     p.add_argument("op", nargs="?", default="list", choices=["list", "refresh", "show", "approve", "reject", "done", "brief"])
     p.add_argument("id", nargs="?")
+    p = sub.add_parser("autonomy", help="what JARVIS may do on its own: show | enable N | disable N | pause WHAT | resume WHAT")
+    p.add_argument("op", nargs="?", default="show", choices=["show", "enable", "disable", "pause", "resume"])
+    p.add_argument("what", nargs="?")
+    p = sub.add_parser("lessons", help="what JARVIS has learned from its own record, with evidence")
+    p = sub.add_parser("trial", help="tier 6: test a branch or commit in a throwaway copy and compare (never merges)")
+    p.add_argument("ref")
+    p.add_argument("--baseline", default="HEAD")
     p = sub.add_parser("gate", help="release gate: full tests, linter, and every security item (run from the repo)")
     p.add_argument("--json", action="store_true")
     p = sub.add_parser("bench", help="benchmark: list | run [IDS] | baseline | score-baseline FILE | report RUN_DIR | "
@@ -234,6 +241,8 @@ def main(argv: list[str] | None = None) -> int:
             print(json.dumps(c.as_dict(), indent=2) if args.json else trust.as_text(c))
         elif args.cmd == "proposals":
             return _proposals(kernel, args)
+        elif args.cmd in ("autonomy", "lessons", "trial"):
+            return _learn_cli(kernel, args)
         elif args.cmd == "trace":
             from . import flight
 
@@ -768,6 +777,51 @@ listening on 127.0.0.1 only.""")
         if started:
             voice.process.stop()
     return 0
+
+
+def _learn_cli(kernel: Kernel, args) -> int:
+    from . import learn
+    from .learn import Autonomy, AutonomyError, analysis
+
+    if args.cmd == "lessons":
+        rows = learn.lessons(kernel)
+        for les in rows:
+            print(f"[{les['kind']:<10}] {les['confidence']:.0%}  {les['statement']}")
+        if not rows:
+            print("No lessons yet: they appear once JARVIS has enough evidence.")
+        return 0
+    a = Autonomy(kernel)
+    if args.cmd == "autonomy":
+        try:
+            if args.op in ("enable", "disable"):
+                a.set_tier(int(args.what or 0), args.op == "enable", by="user:cli", from_dashboard=False)
+            elif args.op in ("pause", "resume"):
+                a.set_pause(str(args.what), args.op == "pause", by="user:cli")
+        except (AutonomyError, ValueError) as exc:
+            print(f"error: {exc}", file=sys.stderr)
+            return 1
+        st = a.state()
+        for t in st["tiers"]:
+            print(f"{'on ' if t['on'] else 'off'}  tier {t['tier']} · {t['name']}: {t['about']}")
+        print("paused: " + (", ".join(k for k, v in st["paused"].items() if v) or "nothing")
+              + ("  ·  EMERGENCY STOP ON" if st["stopped"] else ""))
+        return 0
+    try:
+        eid = analysis.Lab(kernel).start("trial", by="user:cli", background=False, ref=args.ref, baseline=args.baseline)
+    except analysis.LabError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 1
+    e = next(x for x in analysis.Lab(kernel).list() if x["id"] == eid)
+    r = e["results"] or {}
+    if "candidate" in r:
+        for side in ("baseline", "candidate"):
+            s = r[side]
+            print(f"{side:<9} {s['ref']} ({s['sha']}): {s['tests']['passed']} passed, {s['tests']['failed']} failed, "
+                  f"lint {s['lint'] or 'not run'}, {s['seconds']} s")
+        for name in r["newly_failing"]:
+            print(f"  newly failing: {name}")
+    print(e["recommendation"])
+    return 0 if e["state"] == "done" else 1
 
 
 def _proposals(kernel: Kernel, args) -> int:

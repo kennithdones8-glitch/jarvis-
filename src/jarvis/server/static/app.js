@@ -1837,7 +1837,14 @@ async function loadEvolution() {
         h("tbody", {}, tour.profiles.map(prof))) : h("p", { class: "empty" }, "No answers or benchmark runs recorded yet."),
       tour.recommendation ? h("p", { class: "exp-rec" }, tour.recommendation.text) : null),
     h("section", { class: "evo-sec" }, h("h3", { class: "sys-part" }, "Simulation lab"),
-      h("div", { class: "row" }, Object.entries(data.kinds).map(([kind, about]) => h("button", { class: "btn btn-sm", type: "button", title: about,
+      h("form", { class: "row trial-form", onsubmit: async (e) => { e.preventDefault();
+          const ref = e.target.querySelector("input").value.trim();
+          try { await api("/api/experiments", { kind: "trial", ref }); setTimeout(loadEvolution, 400); } catch (err) { note(err.message); } } },
+        h("label", { class: "sr", for: "trialref" }, "Branch or commit to try"),
+        h("input", { id: "trialref", type: "text", placeholder: a.allowed.execute ? "Branch or commit to try (e.g. my-fix)" : "Change trials need tier 6 (Mac terminal: jarvis autonomy enable 6)",
+                     disabled: !a.allowed.execute, maxlength: "120", autocomplete: "off" }),
+        h("button", { class: "btn btn-sm", type: "submit", disabled: !a.allowed.execute || s.experiments_running > 0 }, "Run change trial")),
+      h("div", { class: "row" }, Object.entries(data.kinds).filter(([kind]) => kind !== "trial").map(([kind, about]) => h("button", { class: "btn btn-sm", type: "button", title: about,
         disabled: !a.allowed.experiment || s.experiments_running > 0,
         onclick: async () => { try { await api("/api/experiments", { kind }); setTimeout(loadEvolution, 400); } catch (e) { note(e.message); } } },
         { replay: "Run routing replay", drill: "Run recovery drills", bench_compare: "Compare benchmarks" }[kind] || kind))),

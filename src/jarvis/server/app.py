@@ -1338,7 +1338,9 @@ class Dashboard:
         if path == "/api/experiments":
             from ..learn import analysis
             try:
-                return {"id": analysis.Lab(k).start(text("kind", 40), by=actor)}
+                kind = text("kind", 40)
+                return {"id": analysis.Lab(k).start(kind, by=actor, ref=body.get("ref") if isinstance(body.get("ref"), str) else None,
+                                                    baseline=body.get("baseline") if isinstance(body.get("baseline"), str) else "HEAD")}
             except analysis.LabError as exc:
                 raise HttpError(409, str(exc)) from None
         if path == "/api/route":   # which kind of message: rules, then a model on this Mac (never the cloud)
