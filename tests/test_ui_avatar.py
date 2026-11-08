@@ -251,7 +251,7 @@ def test_the_head_is_a_faceless_helmet_with_sensors_driven_by_real_signals():
     assert "meshFigure(phone ? 0.018 : 0.013, [-0.34, 4.3, -0.44]" in AV3                  # the head is meshed finer
     assert "FACE.uEyeOpen.value = shut * narrow;" in AV3                                    # shutter (blinks, narrowing) from the state
     assert 'FACE.uEyeScan.value += ((state === "researching" || state === "verifying" ? 1 : 0)' in AV3   # internal scanner
-    assert "FACE.uSpeech.value = Math.min(1, speech);" in AV3                               # light pulse from real word boundaries only
+    assert "FACE.uSpeech.value = Math.min(1, Math.max(speech, voice * 0.8));" in AV3                               # light pulse from real word boundaries only
 
 
 def test_every_state_has_a_3d_look_with_the_engine_parameters():

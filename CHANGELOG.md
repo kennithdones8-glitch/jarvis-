@@ -1,5 +1,17 @@
 # Changelog
 
+## Unreleased — Avatar 2.5, phase 5: voice-reactive reactor and optional sound
+
+- **Your voice moves the reactor**: while the microphone records, its measured level (RMS from an analyser on the
+  same stream, about 20 times a second) brightens the reactor and the helmet sensors. Not played back, not stored,
+  not sent; it stops with the recording. Reduced motion: no voice motion. JARVIS's own spoken replies still pulse on
+  the word boundaries the browser reports (browsers don't expose the speech audio, so there is no amplitude to use).
+- **Sound** (Projection controls → Sound, off by default, this device only, not part of presets): a very quiet low hum
+  and short tones for real events (completed, a decision needed, a refusal, an error, the emergency stop, a lesson
+  learned). Generated in the browser with Web Audio: no audio files, nothing licensed or downloaded. It fades out
+  and stays silent while JARVIS speaks or you record; previews never make a sound; a standing warning or decision
+  chimes at most once a minute; turning it off releases the audio device.
+
 ## Unreleased — Avatar 2.5, phase 4: recovery and performance profiles
 
 - **3D recovery**: when the browser loses the GPU context, the 2D core shows at once. If the browser restores the

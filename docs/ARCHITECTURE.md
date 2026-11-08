@@ -341,6 +341,9 @@ prefer="quality")` and up to 2000 tokens, falling back to the best available mod
   `rebuild(false)` (`dispose()` then `tryThree()` after `RETRY_WAIT[n]`, three tries; `onRebuilt(modules)` reopens
   projections). **Quality**: `setAutoQuality()` logs every change (`qualityInfo`); `lowBattery` comes from the
   Battery Status API in app.js (`watchBattery`).
+- **Voice and sound**: `startMicLevel()` (app.js) → `JarvisAvatar.voiceLevel(0..1)` → renderer `setVoice` (eased into
+  `REACTOR` and `uSpeech`). `avatar-sound.js` (`window.JarvisSound`): Web Audio hum + cues named in
+  `avatar-events.js`; `duck()` while speaking or recording; cues only from real, non-preview state changes.
 
 ## Benchmark and release gate (`src/jarvis/bench/`, `src/jarvis/gate.py`, v0.17)
 

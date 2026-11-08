@@ -388,3 +388,66 @@ def test_low_power_is_a_profile_and_auto_uses_it_only_on_a_low_battery():
     assert "lowBattery: !b.charging && b.level <= 0.2" in bat and "if (!navigator.getBattery" in bat
     assert 'setAutoQuality("lowpower", "battery low and not charging")' in AV3
     assert 'if (OPT.quality !== "auto" || quality === "lowpower") return;' in AV3      # frame timing never overrides it
+
+
+# ---- phase 5: voice-reactive reactor (real microphone level) and optional procedural sound ------------------------
+SOUND = (STATIC / "avatar-sound.js").read_text()
+FAKE_AUDIO = """
+const made = { osc: 0, closed: 0 };
+class P { constructor() { this.value = 0; } setValueAtTime() {} linearRampToValueAtTime() {} exponentialRampToValueAtTime() {}
+          setTargetAtTime(v) { this.value = v; } cancelScheduledValues() {} }
+class N { constructor() { this.gain = new P(); this.frequency = new P(); } connect() {} start() {} stop() {} }
+globalThis.AudioContext = class { constructor() { this.state = "running"; this.currentTime = 0; this.destination = {}; }
+  createGain() { return new N(); } createOscillator() { made.osc++; return new N(); } createBiquadFilter() { return new N(); }
+  resume() { return Promise.resolve(); } close() { made.closed++; return Promise.resolve(); } };
+"""
+
+
+def sound(script: str):
+    return node(f"""
+import {{ createRequire }} from "module";
+{FAKE_AUDIO}
+const S = createRequire(import.meta.url)({json.dumps(str(STATIC / "avatar-sound.js"))});
+const out = {{}};
+{script}
+console.log(JSON.stringify(out));
+""")
+
+
+def test_sound_is_off_by_default_ducks_for_speech_and_limits_repeats():
+    out = sound("""
+out.default = [S.enabled, S.cue("confirm"), made.osc];        // off: nothing created, nothing plays
+S.setEnabled(true); out.on = [S.enabled, S.running];
+out.first = S.cue("confirm"); out.again = S.cue("confirm");     // the same cue twice in a row: once
+out.unknown = S.cue("explosion");
+S.duck(true); out.ducked = S.cue("deny"); S.duck(false); out.after = S.cue("deny");
+out.attention = [S.cue("attention"), S.cue("attention")];
+S.setEnabled(false); out.off = [S.enabled, S.running, made.closed, S.cue("learn")];
+""")
+    assert out["default"] == [False, False, 0]
+    assert out["on"] == [True, True] and out["first"] is True and out["again"] is False and out["unknown"] is False
+    assert out["ducked"] is False and out["after"] is True                  # no tones while JARVIS speaks or you record
+    assert out["attention"] == [True, False]
+    assert out["off"] == [False, False, 1, False]                         # off releases the audio device
+    events_sounds = set(re.findall(r'sound: "(\w+)"', EVENTS))
+    assert events_sounds <= set(re.findall(r"^    (\w+): +\[\[", SOUND, re.M))   # every cue in the map exists
+    for forbidden in ("fetch(", "new Audio(", ".mp3", ".wav", ".ogg", "getUserMedia", "localStorage"):
+        assert forbidden not in SOUND, forbidden                          # generated here; never listens or stores
+
+
+def test_sound_setting_is_per_device_off_by_default_and_not_in_presets():
+    assert 'sound: [["off", "Off"], ["on", "On"]] };' in JS and 'diag: "off", sound: "off" };' in JS
+    assert '"sound"' not in PRESETS                                       # applying a preset never turns sound on
+    assert 'if (EV && window.JarvisSound && !smOut.preview && av.cueReady) window.JarvisSound.cue(EV.soundOf(state));' in AV
+    assert "u.onstart = () => { core.dataset.speaking = \"1\"; duckSound(); };" in JS
+
+
+def test_microphone_level_is_measured_locally_and_stops_with_the_recording():
+    mic = re.search(r"function startMicLevel\(.*?\n\}\n", JS, re.S).group(0)
+    assert "createMediaStreamSource(stream).connect(an)" in mic and "destination" not in mic   # never played back
+    assert "Math.sqrt(sum / buf.length)" in mic and "fetch(" not in mic and "api(" not in mic  # RMS, kept on the page
+    stop = re.search(r"function stopMicLevel\(.*?\n\}\n", JS, re.S).group(0)
+    assert "voice.level.ctx.close()" in stop and "JarvisAvatar.voiceLevel(0)" in stop
+    assert "async function finishRecording(type) {\n  clearInterval(voice.timer);\n  stopMicLevel();" in JS
+    assert 'const x = mode === "off" ? 0 :' in AV3                         # Reduced motion: no voice motion
+    assert "voice * 0.9" in AV3 and "voice * 0.8" in AV3                  # reactor and sensors follow it

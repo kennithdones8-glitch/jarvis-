@@ -668,7 +668,9 @@ function renderVoice(d) {
   sp.textContent = `Voice replies: ${voice.speak ? "on" : "off"}`;
 }
 
-function stopSpeaking() { if ("speechSynthesis" in window) speechSynthesis.cancel(); delete $("#core").dataset.speaking; }
+function stopSpeaking() { if ("speechSynthesis" in window) speechSynthesis.cancel(); delete $("#core").dataset.speaking; duckSound(); }
+// ambient sound (avatar-sound.js) steps aside whenever JARVIS speaks or the microphone records
+function duckSound() { if (window.JarvisSound) JarvisSound.duck(!!($("#core").dataset.speaking || $("#core").dataset.listening)); }
 
 async function localVoices() {
   let all = speechSynthesis.getVoices();
@@ -692,8 +694,8 @@ async function say(text) {
   const u = new SpeechSynthesisUtterance(text.replace(/https?:\/\/\S+/g, "a link").slice(0, 1500));
   u.voice = pick; u.lang = pick.lang;
   const core = $("#core");
-  u.onstart = () => { core.dataset.speaking = "1"; };
-  u.onend = u.onerror = () => { delete core.dataset.speaking; };
+  u.onstart = () => { core.dataset.speaking = "1"; duckSound(); };
+  u.onend = u.onerror = () => { delete core.dataset.speaking; duckSound(); };
   // The reactor pulses on each word the speech engine reports (no lip sync on a faceless helm). Browsers that
   // don't report word boundaries simply show the steady speaking look.
   u.onboundary = (e) => { if (e.name === "word" && window.JarvisAvatar) JarvisAvatar.pulse(1); };
@@ -724,9 +726,10 @@ async function toggleMic() {
   rec.ondataavailable = (e) => { if (e.data.size) voice.chunks.push(e.data); };
   rec.onstop = () => finishRecording(rec.mimeType);
   voice.rec = rec;
-  $("#core").dataset.listening = "1";
+  $("#core").dataset.listening = "1"; duckSound();
   voice.started = Date.now();
   rec.start();
+  startMicLevel(voice.stream);
   micLabel("Stop · 0s", true);
   voice.timer = setInterval(() => {
     const s = (Date.now() - voice.started) / 1000;
@@ -735,11 +738,35 @@ async function toggleMic() {
   }, 250);
 }
 
+// The reactor follows your real voice while recording: an analyser on the same microphone stream measures its level
+// (RMS, ~20 times a second). Not connected to the speakers, not stored, not sent; it stops with the recording.
+function startMicLevel(stream) {
+  stopMicLevel();
+  const AC = window.AudioContext || window.webkitAudioContext;
+  if (!AC || !window.JarvisAvatar) return;
+  try {
+    const ctx = new AC(), an = ctx.createAnalyser();
+    an.fftSize = 512; ctx.createMediaStreamSource(stream).connect(an);
+    const buf = new Float32Array(an.fftSize);
+    voice.level = { ctx, timer: setInterval(() => {
+      an.getFloatTimeDomainData(buf);
+      let sum = 0; for (let i = 0; i < buf.length; i++) sum += buf[i] * buf[i];
+      JarvisAvatar.voiceLevel(Math.min(1, Math.sqrt(sum / buf.length) * 5));
+    }, 50) };
+  } catch (e) { voice.level = null; }   // no analyser: the projection still shows "listening"
+}
+function stopMicLevel() {
+  if (!voice.level) return;
+  clearInterval(voice.level.timer); voice.level.ctx.close().catch(() => {}); voice.level = null;
+  if (window.JarvisAvatar) JarvisAvatar.voiceLevel(0);
+}
+
 async function finishRecording(type) {
   clearInterval(voice.timer);
+  stopMicLevel();
   voice.stream.getTracks().forEach((t) => t.stop());
   voice.rec = null;
-  delete $("#core").dataset.listening;
+  delete $("#core").dataset.listening; duckSound();
   const blob = new Blob(voice.chunks, { type });
   voice.chunks = [];
   micLabel("Listening…", false);
@@ -1546,9 +1573,10 @@ const DISPLAY = { text: [["normal", "Normal"], ["large", "Large"], ["larger", "L
                   // camera (Avatar 2.5): the resting view, how fast inspection turns, and the renderer's real numbers
                   view: [["front", "Front"], ["three", "Three-quarter"], ["close", "Close"]],
                   camspeed: [["slow", "Slow"], ["normal", "Normal"], ["fast", "Fast"]],
-                  diag: [["off", "Off"], ["on", "On"]] };
+                  diag: [["off", "Off"], ["on", "On"]],
+                  sound: [["off", "Off"], ["on", "On"]] };   // ambient sound: off unless you turn it on (not part of presets)
 const DISPLAY_DEFAULT = { text: "normal", density: "comfortable", fx: "full", projection: "standard", quality: "auto", particles: "normal",
-                          animation: "normal", reactor: "normal", orbit: "normal", env: "on", orbitals: "on", view: "front", camspeed: "normal", diag: "off" };
+                          animation: "normal", reactor: "normal", orbit: "normal", env: "on", orbitals: "on", view: "front", camspeed: "normal", diag: "off", sound: "off" };
 function loadDisplay() {
   let d = {};
   try { d = JSON.parse(localStorage.getItem(DISPLAY_KEY) || "{}") || {}; } catch (e) { d = {}; }
@@ -1568,6 +1596,7 @@ function applyDisplay(d) {
   root.dataset.fx = d.fx;
   root.dataset.projection = d.projection;
   if (window.JarvisAvatar) { JarvisAvatar.setOptions(avatarOptions(d)); JarvisAvatar.refresh(); }
+  if (window.JarvisSound && JarvisSound.enabled !== (d.sound === "on")) { JarvisSound.setEnabled(d.sound === "on"); duckSound(); }
   renderDiag();
 }
 
@@ -2172,6 +2201,8 @@ document.addEventListener("DOMContentLoaded", () => {
     JarvisAvatar.onRebuilt = (modules) => { for (const m of modules) openProjectionModule(m, { quiet: true }); };   // after a 3D rebuild
     JarvisAvatar.mount($(".core-wrap"));
     watchBattery();
+    document.addEventListener("pointerdown", () => window.JarvisSound && JarvisSound.resume());   // browsers start sound only after a tap
+    document.addEventListener("visibilitychange", () => window.JarvisSound && JarvisSound.visibility());
     ui.sysbarKey = ""; render();
   });
   $("#projexit").addEventListener("click", closeProjection);
@@ -2484,6 +2515,8 @@ function renderProjControls() {
     h("div", { class: "row" }, h("button", { class: "btn btn-sm", type: "button", disabled: three ? null : true, onclick: startInspect,
       title: three ? "Orbit, zoom and pan around the projection" : "Needs the 3D view" }, "Inspect in 360°")),
     ...choose("view", "Resting view"), ...choose("camspeed", "Inspection speed"), ...choose("diag", "Diagnostics"),
+    ...choose("sound", "Sound"),
+    h("p", { class: "hl-sub" }, "A very quiet hum and short tones for real events (a completed task, a decision, a refusal, an error). Made in the browser; it steps aside while JARVIS speaks or you record."),
     h("h3", { class: "sys-part" }, "3D view"),
     h("p", { class: "hl-sub" }, RENDER_STATUS[JarvisAvatar.status] || "3D view running."),
     h("div", { class: "row" }, h("button", { class: "btn btn-ghost btn-sm", type: "button", title: "Dispose the 3D view and build it again (open projections reopen)",

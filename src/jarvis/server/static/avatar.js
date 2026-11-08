@@ -151,6 +151,7 @@
     if (window.matchMedia) window.matchMedia("(prefers-reduced-motion: reduce)").addEventListener?.("change", loop);
     loop();
     tryThree();
+    setTimeout(() => { av.cueReady = true; }, 3000);
   }
 
   // ---- 3D renderer (avatar3d.js, Three.js) --------------------------------------------------------------------
@@ -356,6 +357,8 @@
     setTimeout(() => el.remove(), 1800);
   }
   function pulse(strength) { if (av.three) av.three.pulse(strength); }
+  // the microphone's measured level while recording (0..1), from app.js; 0 when it stops
+  function voiceLevel(v) { if (av.three) av.three.setVoice(v); }
 
   function applyTier(tier, animate) {
     for (const g of Object.values(av.layers)) {
@@ -416,6 +419,8 @@
     if (av.three) { av.three.setState(state); av.three.setPersonality(personality(state)); }
     av.color = getComputedStyle(av.svg).getPropertyValue("--av-rgb").trim() || av.color;
     if (effect(state) === "surge") { burst(); surge(); }   // the one-off for a real completion (avatar-events.js)
+    // the sound cue (only if sound is on): real states only, never a preview, and not for the state found on load
+    if (EV && window.JarvisSound && !smOut.preview && av.cueReady) window.JarvisSound.cue(EV.soundOf(state));
     loop();
   }
 
@@ -520,7 +525,7 @@
   function cameraView(name) { return av.three ? av.three.cameraView(name) : false; }
   function inspectTarget(name) { return av.three ? av.three.inspectTarget(name) : false; }
   function resetCamera() { if (av.three) av.three.resetCamera(); }
-  const api = { mount, setState, previewState, endPreview, setOptions, setPanels, showProjection, closeProjection, closeProjections, pinProjection, projectionControl, inspect, rebuild: () => rebuild(true), retry3d, onRebuilt: null, cameraView, inspectTarget, resetCamera, setTier, setSystems, setAura, setThought, systemAt, pulse, registerPart, refresh: loop, STATES, onFocus: null, onSystem: null,
+  const api = { mount, setState, previewState, endPreview, setOptions, setPanels, showProjection, closeProjection, closeProjections, pinProjection, projectionControl, inspect, rebuild: () => rebuild(true), retry3d, onRebuilt: null, cameraView, inspectTarget, resetCamera, setTier, setSystems, setAura, setThought, systemAt, pulse, voiceLevel, registerPart, refresh: loop, STATES, onFocus: null, onSystem: null,
                           get state() { return av.state; }, get profile() { return smOut.profile; }, get preview() { return smOut.preview; },
                           get lifecycle() { return smOut.lifecycle; },
                           get quality() { return av.three ? av.three.quality : null; },
@@ -530,6 +535,7 @@
                           get animating() { return av.raf !== 0 || !!(av.three && av.three.animating); },
                           get renderer() { return av.three ? "3d" : "2d"; },
                           get stats() { return av.three ? av.three.stats : null; },
+                          get voiceNow() { return av.three ? av.three.voice : null; },
                           get personality() { const p = personality(av.state); return p ? p.name : null; },
                           get camera() { return av.three ? av.three.camera : null; }, get inspecting() { return !!(av.three && av.inspecting); },
                           get views() { return av.three ? av.three.VIEWS : {}; }, get targets() { return av.three ? av.three.TARGETS : {}; },

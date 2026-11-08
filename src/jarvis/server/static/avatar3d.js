@@ -756,6 +756,13 @@ export function create(wrap, opts = {}) {
   function setIntensity(x) { intensity = Math.max(0.5, Math.min(1.5, Number(x) || 1)); settling = 1; kick(); }
   // A real speech event (a word boundary from the browser's speech engine) gives the reactor a brief pulse.
   function pulse(strength = 1) { speech = Math.min(1.5, speech + 0.6 * strength); kick(); }
+  // your voice while recording (measured microphone level 0..1): the reactor and sensors follow it (not in Reduced motion)
+  let voice = 0, voiceGoal = 0;
+  function setVoice(v) {
+    const x = mode === "off" ? 0 : Math.max(0, Math.min(1, Number(v) || 0));
+    if (Math.abs(x - voiceGoal) < 0.02 && !(x === 0 && voiceGoal !== 0)) return;
+    voiceGoal = x; kick();
+  }
   function setAura(values) {
     let changed = false;
     for (const [key, a] of Object.entries(aura)) {
@@ -912,6 +919,7 @@ export function create(wrap, opts = {}) {
     cur.tint.lerp(targetTint, k);
     flash = Math.max(0, flash - dt * 0.8);
     speech = Math.max(0, speech - dt * 3);
+    voice += (voiceGoal - voice) * (moving ? 1 - Math.exp(-dt * 14) : 1);
     let revealing = false;
     const down = demat ? new Set(figureParts()) : null;
     for (const p of Object.values(parts)) {
@@ -934,11 +942,11 @@ export function create(wrap, opts = {}) {
     U.uRimK.value = cur.rim * (1 + flash * 0.8);
     U.uGain.value = intensity * (1 + flash * 0.4);
     const eyeLevel = cur.eyes * (1 + flash * 0.6 + speech * 0.4);
-    EYE.value = eyeLevel; FACE.uSpeech.value = Math.min(1, speech);
+    EYE.value = eyeLevel * (1 + voice * 0.35); FACE.uSpeech.value = Math.min(1, Math.max(speech, voice * 0.8));
     FACE.uEyeHot.value += ((state === "error" ? 0 : 1) - FACE.uEyeHot.value) * k;   // deep red eyes only on a genuine error
     if (!moving) { FACE.uEyeOpen.value = 1; FACE.uEyeLook.value = 0; FACE.uEyeScan.value = 0; }
     const breathe = moving ? 0.92 + 0.08 * Math.sin(t * 1.3) : 1;
-    REACTOR.value = cur.reactor * breathe * (1 + speech * 0.8 + flash) * K.reactor[OPT.reactor];
+    REACTOR.value = cur.reactor * breathe * (1 + speech * 0.8 + voice * 0.9 + flash) * K.reactor[OPT.reactor];
     if (innerMat) innerMat.uniforms.uOpacity.value = 0.12 + cur.neural * 0.5 + flash * 0.3;   // the inner network brightens while thinking
     neuralX.update(cur.neural, ["executing", "coding", "verifying"].includes(state), REACTOR.value);
     const projecting = director.update(dt, moving);
@@ -1112,7 +1120,7 @@ export function create(wrap, opts = {}) {
   resize();
 
   const api = {
-    setState, setPersonality, setTier, setMode, setIntensity, setSystems, setAura, setThought, pulse, pick, setOptions, setPanels, onLost: null, onRestored: null,
+    setState, setPersonality, setVoice, setTier, setMode, setIntensity, setSystems, setAura, setThought, pulse, pick, setOptions, setPanels, onLost: null, onRestored: null,
     get qualityInfo() { return { setting: OPT.quality, current: quality, reason: OPT.quality === "auto" ? autoQ.reason : "your setting", log: autoQ.log.slice() }; },
     get context() { return { lost, losses, restores }; },
     showProjection(m, data) { const ok = director.show(m, data); kick(); return ok; }, closeProjection(m) { director.close(m); kick(); },
@@ -1133,7 +1141,7 @@ export function create(wrap, opts = {}) {
     skipBoot() { if (boot) { boot.t = BOOT_END; kick(); } }, get booting() { return !!boot; },
     get animating() { return raf !== 0; },
     get eyes() { return { hot: FACE.uEyeHot.value, level: EYE.value, open: FACE.uEyeOpen.value, look: FACE.uEyeLook.value, scan: FACE.uEyeScan.value, speech: FACE.uSpeech.value }; }, get lost() { return lost; }, get state() { return state; },
-    get personality() { return pers ? pers.name : null; },
+    get personality() { return pers ? pers.name : null; }, get voice() { return +voice.toFixed(3); },
     get stats() { return { frameMs: raf && mode === "full" ? frameAvg : 0, calls: renderer.info.render.calls, triangles: renderer.info.render.triangles, camera: camera.position.toArray().map((x) => +x.toFixed(2)) }; },
     // everything this renderer made: listeners, observers, geometries, materials, textures, render targets
     dispose() {

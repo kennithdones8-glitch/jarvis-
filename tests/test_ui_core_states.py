@@ -79,7 +79,7 @@ def test_every_state_has_a_look_and_motion_stops_when_asked():
 
 def test_listening_speaking_and_flash_follow_real_events():
     assert '$("#core").dataset.listening = "1";' in JS and 'delete $("#core").dataset.listening;' in JS
-    assert 'u.onstart = () => { core.dataset.speaking = "1"; };' in JS and "u.onend = u.onerror" in JS
+    assert 'u.onstart = () => { core.dataset.speaking = "1"; duckSound(); };' in JS and "u.onend = u.onerror" in JS
     flash = JS.split("function flashOnFinish(d) {")[1].split("\n}\n")[0]
     assert "if (!before) return;" in flash  # never on first load
     assert "setTimeout(() => { delete core.dataset.flash; }, 4000)" in flash
