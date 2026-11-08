@@ -95,7 +95,8 @@
   }
 
   const av = { svg: null, wrap: null, canvas: null, state: "idle", tier: 1, layers: {}, visible: true, raf: 0,
-               motes: [], last: 0, color: "242,184,75" };
+               motes: [], last: 0, color: "242,184,75",
+               status: "loading", attempts: 0, restoreTimer: 0, reopen: null };   // 3D status: see recovery below
 
   function fxLevel() {
     const reduced = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
@@ -172,7 +173,8 @@
     });
   }
   async function tryThree() {
-    if (av.three || av.trying || !webgl()) return;
+    if (av.three || av.trying) return;
+    if (!webgl()) { av.status = "2d"; return; }
     av.trying = true;
     try {
       const mod = await import("/static/avatar3d.js");
@@ -189,20 +191,65 @@
       const meshes = await buildMeshes();   // in the background: the page stays responsive meanwhile
       const three = mod.create(av.wrap, { state: av.state, tier: av.tier, mode: fxLevel(), intensity: intensity(), boot, onBootEnd: endBoot, options: av.options, meshes,
                                         onLifecycle: (phase) => { if (SM) show(SM.setLifecycle(phase)); } });
-      if (!three) return;
-      av.three = three;
+      if (!three) { av.status = "2d"; return; }
+      av.three = three; av.status = "3d";
       if (av.systems) three.setSystems(av.systems);
       if (av.aura) three.setAura(av.aura);
       if (av.panels) three.setPanels(av.panels);
       three.setPersonality(personality(av.state));
       if (boot) { if (SM) SM.setLifecycle("materializing"); document.body.classList.add("booting"); document.addEventListener("keydown", skip, true); document.addEventListener("pointerdown", skip, true); }
-      three.onLost = () => { av.wrap.classList.remove("has-3d"); av.wrap.classList.remove("inspecting"); av.inspecting = false; document.body.classList.remove("inspecting"); try { three.dispose(); } catch (e) { /* gone */ } av.three = null; loop(); };
+      three.onLost = () => lost(three);
+      three.onRestored = () => restored(three);
       av.wrap.classList.add("has-3d");
       loop();
+      if (av.reopen && api.onRebuilt) { const list = av.reopen; av.reopen = null; api.onRebuilt(list); }   // reopen what was open
     } catch (e) {
-      /* stay with the 2D core */
+      av.status = "unavailable";   // the renderer couldn't load (offline from JARVIS?): the 2D core stays; retried later
     } finally { av.trying = false; }
   }
+
+  // ---- recovery: a lost GPU context shows the 2D core at once. If the browser restores the context within 8 s, the
+  // same 3D projection resumes; otherwise it is disposed (every geometry, material, texture and listener) and built
+  // again, up to three times with growing waits. Rebuild (Projection controls) starts over; nothing is faked meanwhile.
+  const RESTORE_WAIT = 8000, RETRY_WAIT = [1500, 6000, 20000];
+  function lost(three) {
+    if (av.three !== three) return;
+    av.status = "lost";
+    av.wrap.classList.remove("has-3d"); av.wrap.classList.remove("inspecting"); av.inspecting = false;
+    document.body.classList.remove("inspecting");
+    loop();
+    clearTimeout(av.restoreTimer);
+    av.restoreTimer = setTimeout(() => { if (av.three === three && three.lost) rebuild(false); }, RESTORE_WAIT);
+  }
+  function restored(three) {
+    if (av.three !== three) return;
+    clearTimeout(av.restoreTimer);
+    av.status = "3d"; av.attempts = 0;
+    av.wrap.classList.add("has-3d");
+    three.setState(av.state); loop();
+  }
+  // manual: true when you asked for it (resets the retry count)
+  function rebuild(manual = true) {
+    clearTimeout(av.restoreTimer);
+    if (manual) av.attempts = 0;
+    if (av.three) {
+      const open = av.three.projections.map((p) => p.module);
+      if (open.length) av.reopen = open;
+      try { av.three.dispose(); } catch (e) { /* the context is gone already */ }
+      av.three = null;
+    }
+    av.wrap && av.wrap.classList.remove("has-3d", "inspecting"); av.inspecting = false; document.body.classList.remove("inspecting");
+    loop();
+    if (av.attempts >= RETRY_WAIT.length) { av.status = "failed"; return false; }
+    av.status = "restarting";
+    const wait = manual ? 0 : RETRY_WAIT[av.attempts];
+    av.attempts++;
+    setTimeout(() => { tryThree().then(() => { if (av.three) av.attempts = manual ? 0 : av.attempts; else if (av.status !== "2d") rebuild(false); }); }, wait);
+    return true;
+  }
+  // after JARVIS is reachable again (or the browser is back online): try the 3D renderer again if it never loaded
+  function retry3d() { if (!av.three && !av.trying && (av.status === "unavailable" || av.status === "failed")) { av.attempts = 0; tryThree(); } }
+  window.addEventListener("online", retry3d);
 
   // ---- interaction: hover a system satellite for its live status; click it to open that system; click anywhere
   // else on the projection (or press Enter) to open the projection focus view. The page decides what those do.
@@ -473,10 +520,12 @@
   function cameraView(name) { return av.three ? av.three.cameraView(name) : false; }
   function inspectTarget(name) { return av.three ? av.three.inspectTarget(name) : false; }
   function resetCamera() { if (av.three) av.three.resetCamera(); }
-  const api = { mount, setState, previewState, endPreview, setOptions, setPanels, showProjection, closeProjection, closeProjections, pinProjection, projectionControl, inspect, cameraView, inspectTarget, resetCamera, setTier, setSystems, setAura, setThought, systemAt, pulse, registerPart, refresh: loop, STATES, onFocus: null, onSystem: null,
+  const api = { mount, setState, previewState, endPreview, setOptions, setPanels, showProjection, closeProjection, closeProjections, pinProjection, projectionControl, inspect, rebuild: () => rebuild(true), retry3d, onRebuilt: null, cameraView, inspectTarget, resetCamera, setTier, setSystems, setAura, setThought, systemAt, pulse, registerPart, refresh: loop, STATES, onFocus: null, onSystem: null,
                           get state() { return av.state; }, get profile() { return smOut.profile; }, get preview() { return smOut.preview; },
                           get lifecycle() { return smOut.lifecycle; },
                           get quality() { return av.three ? av.three.quality : null; },
+                          get qualityInfo() { return av.three ? av.three.qualityInfo : null; },
+                          get status() { return av.status; }, get context() { return av.three ? av.three.context : null; },
                           get projections() { return av.three ? av.three.projections : []; }, get modules() { return av.three ? av.three.modules : []; }, get tier() { return av.tier; },
                           get animating() { return av.raf !== 0 || !!(av.three && av.three.animating); },
                           get renderer() { return av.three ? "3d" : "2d"; },

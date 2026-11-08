@@ -336,6 +336,11 @@ prefer="quality")` and up to 2000 tokens, falling back to the best available mod
   positions, scales and the camera goal (`wide`, `wideX`, `wideR`). The rig scales the widening by the canvas aspect
   (`setAspect`), so the wider focus-view canvas (`body.proj-area`) keeps the figure large. `research` data is built by
   `researchProjection()` in app.js from the last research answer in the conversation.
+- **Recovery** (`avatar.js`): `av.status` is loading / 3d / lost / restarting / 2d / unavailable / failed. Context
+  loss → `lost()` (2D core, wait `RESTORE_WAIT`); `webglcontextrestored` → `restored()` (same renderer); timeout →
+  `rebuild(false)` (`dispose()` then `tryThree()` after `RETRY_WAIT[n]`, three tries; `onRebuilt(modules)` reopens
+  projections). **Quality**: `setAutoQuality()` logs every change (`qualityInfo`); `lowBattery` comes from the
+  Battery Status API in app.js (`watchBattery`).
 
 ## Benchmark and release gate (`src/jarvis/bench/`, `src/jarvis/gate.py`, v0.17)
 

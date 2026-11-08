@@ -345,3 +345,46 @@ def test_asking_to_see_sources_opens_the_research_projection(text, module):
     from jarvis.intent import classify
     r = classify(text)
     assert r["mode"] == "show" and r["module"] == module
+
+
+# ---- phase 4: recovery, re-initialisation, adaptive quality and Low Power -----------------------------------------
+# Checked in a headless browser with WEBGL_lose_context: lost → 2D core → restored (same renderer, projections kept);
+# lost and never restored → disposed and rebuilt after 8 s; Rebuild 3D view; a stand-in battery switching Low Power.
+def test_a_lost_context_falls_back_then_restores_or_rebuilds_with_limits():
+    assert 'canvas.addEventListener("webglcontextlost", onLost);' in AV3 and 'canvas.addEventListener("webglcontextrestored", onRestored);' in AV3
+    assert "e.preventDefault(); lost = true;" in AV3                                   # lets the browser restore it
+    assert "if (!raf && visible && !document.hidden && !lost)" in AV3                 # nothing is drawn while lost
+    rec = AV.split("  // ---- recovery:")[1].split("  window.addEventListener(\"online\", retry3d);")[0]
+    assert "const RESTORE_WAIT = 8000, RETRY_WAIT = [1500, 6000, 20000];" in rec
+    assert 'av.wrap.classList.remove("has-3d")' in rec and 'av.status = "failed"; return false;' in rec   # 2D at once; gives up after three
+    assert "if (manual) av.attempts = 0;" in rec and "av.reopen = open;" in rec        # Rebuild starts over; open projections come back
+    assert "JarvisAvatar.onRebuilt = (modules) => { for (const m of modules) openProjectionModule(m, { quiet: true }); };" in JS
+    assert "JarvisAvatar.retry3d();" in JS                                             # retried when JARVIS is reachable again
+
+
+def test_rebuilding_disposes_everything_the_renderer_made():
+    disp = AV3.split("// everything this renderer made")[1].split("\n    },\n")[0]
+    for part in ("ro.disconnect()", "io.disconnect()", 'removeEventListener("visibilitychange", onVis)', 'removeEventListener("webglcontextlost", onLost)',
+                 'removeEventListener("webglcontextrestored", onRestored)', "director.closeAll()", "free(o.geometry)", "free(m)",
+                 "v.value.isTexture", "post.dispose()", "renderer.dispose()", "canvas.remove()"):
+        assert part in disp, part
+    assert "for (const x of Object.values(t)) x.dispose();" in AV3                    # bloom render targets too
+
+
+def test_auto_quality_has_hysteresis_and_reports_measured_reasons():
+    aq = AV3.split("  function autoQuality(interval) {")[1].split("\n  }\n")[0]
+    assert "if (now - autoQ.changedAt < 8000) return;" in aq                          # hold any change for 8 s
+    assert "now - autoQ.downAt > 20000" in aq and "++autoQ.good >= 2" in aq            # stepping back up waits
+    assert 'setAutoQuality(order[i - 1], "frames too slow", avg)' in aq
+    assert "avgMs: avg ? +avg.toFixed(1) : null" in AV3                               # the log holds the measured average
+    for src in (AV3, JS, AV):
+        assert "temperature" not in src.lower() and "thermal" not in src.lower()       # never claimed
+
+
+def test_low_power_is_a_profile_and_auto_uses_it_only_on_a_low_battery():
+    assert '["low", "Performance"], ["lowpower", "Low Power"]' in JS and '["high", "Quality"]' in JS
+    assert "lowpower: 0.85" in AV3 and 'quality === "lowpower" ? (phone ? 1000 / 15 : 1000 / 20)' in AV3
+    bat = re.search(r"function watchBattery\(.*?\n\}\n", JS, re.S).group(0)
+    assert "lowBattery: !b.charging && b.level <= 0.2" in bat and "if (!navigator.getBattery" in bat
+    assert 'setAutoQuality("lowpower", "battery low and not charging")' in AV3
+    assert 'if (OPT.quality !== "auto" || quality === "lowpower") return;' in AV3      # frame timing never overrides it

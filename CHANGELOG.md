@@ -1,5 +1,20 @@
 # Changelog
 
+## Unreleased — Avatar 2.5, phase 4: recovery and performance profiles
+
+- **3D recovery**: when the browser loses the GPU context, the 2D core shows at once. If the browser restores the
+  context within 8 s, the same projection resumes (open projections kept). Otherwise the 3D view is disposed (every
+  geometry, material, texture, render target, observer and listener) and built again, up to three times with
+  growing waits; open projections reopen. **Rebuild 3D view** (Projection controls) starts over at any time. If the
+  renderer couldn't load at all, it is retried when JARVIS is reachable again.
+- **Profiles**: Auto, Quality, Balanced, Performance and the new **Low Power** (lower resolution, 20 fps, 15 on a
+  phone, fewer particles, no floor reflection). Auto now has hysteresis: any change holds for at least 8 s, stepping
+  back up after a step down waits 20 s and needs two good measurements in a row. Auto switches to Low Power only when
+  the browser reports the battery at 20% or less and not charging (browsers without the Battery Status API report
+  nothing, so nothing changes there).
+- Diagnostics shows the profile and why (your setting, or Auto's reason), the last change with the measured average
+  frame time, and GPU context losses and restores. No temperatures: browsers don't report them.
+
 ## Unreleased — Avatar 2.5, phase 3: schematic controls, the projection area, research sources
 
 - Every open projection has controls: **Expand** (takes the projection area on its own; the others step aside until

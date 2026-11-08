@@ -1535,7 +1535,8 @@ const DISPLAY = { text: [["normal", "Normal"], ["large", "Large"], ["larger", "L
                   fx: [["full", "Normal"], ["reduced", "Low performance"], ["off", "Reduced motion"]],
                   projection: [["subtle", "Subtle"], ["standard", "Standard"], ["vivid", "Vivid"]],
                   // projection controls (focus view): each changes the 3D projection only, on this device
-                  quality: [["auto", "Auto"], ["high", "High"], ["balanced", "Balanced"], ["low", "Low"]],
+                  // profiles (Avatar 2.5): the stored values stay the same; "lowpower" is new
+                  quality: [["auto", "Auto"], ["high", "Quality"], ["balanced", "Balanced"], ["low", "Performance"], ["lowpower", "Low Power"]],
                   particles: [["low", "Low"], ["normal", "Normal"], ["high", "High"]],
                   animation: [["calm", "Calm"], ["normal", "Normal"], ["lively", "Lively"]],
                   reactor: [["soft", "Soft"], ["normal", "Normal"], ["bright", "Bright"]],
@@ -1631,6 +1632,21 @@ function presetSection() {
     actions, edit];
 }
 
+const QUALITY_WORD = { high: "Quality", balanced: "Balanced", low: "Performance", lowpower: "Low Power" };
+const RENDER_STATUS = { loading: "Loading the 3D view…", "2d": "2D core (no 3D on this device)", lost: "GPU context lost: showing the 2D core, waiting for the browser to restore it",
+  restarting: "Rebuilding the 3D view…", unavailable: "2D core: the 3D view couldn't load (it retries when JARVIS is reachable)",
+  failed: "2D core: the 3D view failed three times (Projection controls → Rebuild 3D view)" };
+
+// Low Power on battery: Auto switches to it only when the browser reports the battery low (20% or less) and not
+// charging. Browsers without the Battery Status API (Safari, Firefox) report nothing, so nothing changes there.
+function watchBattery() {
+  if (!navigator.getBattery || !window.JarvisAvatar) return;
+  navigator.getBattery().then((b) => {
+    const upd = () => JarvisAvatar.setOptions({ lowBattery: !b.charging && b.level <= 0.2 });
+    b.addEventListener("levelchange", upd); b.addEventListener("chargingchange", upd); upd();
+  }).catch(() => { /* not available: nothing to do */ });
+}
+
 // ---- inspection (Avatar 2.5): orbit, zoom and pan around the projection in the focus view ----------------------
 function startInspect() {
   if (!window.JarvisAvatar || JarvisAvatar.renderer !== "3d") { note("Inspection needs the 3D view (this device is showing the 2D core)."); return; }
@@ -1674,10 +1690,14 @@ function renderDiag() {
   if (!on) return;
   const draw = () => {
     if (!document.body.classList.contains("projection")) { clearInterval(ui.diagTimer); ui.diagTimer = 0; el.hidden = true; return; }
-    const s = JarvisAvatar.stats, cam = JarvisAvatar.camera;
-    const rows = JarvisAvatar.renderer !== "3d" || !s ? [["Renderer", "2D core (no 3D on this device)"]] : [
-      ["Renderer", "3D (WebGL)"], ["Quality", JarvisAvatar.quality || "—"],
-      ["Frame time", s.frameMs ? `${s.frameMs.toFixed(1)} ms (${Math.round(1000 / s.frameMs)} fps; limit ${isPhone() ? 24 : 30})` : "idle — drawn only when something changes"],
+    const s = JarvisAvatar.stats, cam = JarvisAvatar.camera, q = JarvisAvatar.qualityInfo, cx = JarvisAvatar.context;
+    const limit = q && q.current === "lowpower" ? (isPhone() ? 15 : 20) : isPhone() ? 24 : 30;
+    const t = (ms) => new Date(ms).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+    const rows = JarvisAvatar.renderer !== "3d" || !s ? [["Renderer", RENDER_STATUS[JarvisAvatar.status] || "2D core"]] : [
+      ["Renderer", "3D (WebGL)"], ["Quality", q ? `${QUALITY_WORD[q.current] || q.current} · ${q.setting === "auto" ? `Auto: ${q.reason}` : "your setting"}` : "—"],
+      ...(q && q.log.length ? [["Last change", (() => { const l = q.log[q.log.length - 1]; return `${t(l.at)} ${QUALITY_WORD[l.from] || l.from} → ${QUALITY_WORD[l.to] || l.to} (${l.why}${l.avgMs ? `, ${l.avgMs} ms avg` : ""})`; })()]] : []),
+      ["Frame time", s.frameMs ? `${s.frameMs.toFixed(1)} ms (${Math.round(1000 / s.frameMs)} fps; limit ${limit})` : "idle — drawn only when something changes"],
+      ...(cx && cx.losses ? [["GPU context", `lost ${cx.losses}×, restored ${cx.restores}×`]] : []),
       ["Draw calls", String(s.calls)], ["Triangles", s.triangles.toLocaleString()],
       ["Camera", cam ? `${cam.inspecting ? "inspecting" : "resting"} · ${cam.focus || cam.view}` : "—"]];
     el.replaceChildren(h("b", {}, "Diagnostics"), ...rows.map(([k, v]) => h("div", {}, h("span", {}, k), h("span", {}, v))));
@@ -2120,7 +2140,7 @@ function showSignIn() {
 
 async function refresh() {
   const wasOffline = ui.online === false;
-  try { ui.data = await api("/api/state"); ui.online = true; if (wasOffline) ui.reconnectedAt = Date.now(); }
+  try { ui.data = await api("/api/state"); ui.online = true; if (wasOffline) { ui.reconnectedAt = Date.now(); if (window.JarvisAvatar) JarvisAvatar.retry3d(); } }
   catch (e) {
     ui.online = false;
     if (/Touch ID sign-in required/.test(e.message)) { showSignIn(); return; }
@@ -2149,7 +2169,9 @@ document.addEventListener("DOMContentLoaded", () => {
     if (!window.JarvisAvatar) return;
     JarvisAvatar.onFocus = openProjection;
     JarvisAvatar.onSystem = (id) => { closeProjection(); ui.ccOpen = new Set([id]); ui.ccKey = ""; location.hash = "#/command"; };
+    JarvisAvatar.onRebuilt = (modules) => { for (const m of modules) openProjectionModule(m, { quiet: true }); };   // after a 3D rebuild
     JarvisAvatar.mount($(".core-wrap"));
+    watchBattery();
     ui.sysbarKey = ""; render();
   });
   $("#projexit").addEventListener("click", closeProjection);
@@ -2462,7 +2484,11 @@ function renderProjControls() {
     h("div", { class: "row" }, h("button", { class: "btn btn-sm", type: "button", disabled: three ? null : true, onclick: startInspect,
       title: three ? "Orbit, zoom and pan around the projection" : "Needs the 3D view" }, "Inspect in 360°")),
     ...choose("view", "Resting view"), ...choose("camspeed", "Inspection speed"), ...choose("diag", "Diagnostics"),
-    ...choose("projection", "Intensity"), ...choose("quality", `Quality${JarvisAvatar.quality ? ` (now ${JarvisAvatar.quality})` : ""}`),
+    h("h3", { class: "sys-part" }, "3D view"),
+    h("p", { class: "hl-sub" }, RENDER_STATUS[JarvisAvatar.status] || "3D view running."),
+    h("div", { class: "row" }, h("button", { class: "btn btn-ghost btn-sm", type: "button", title: "Dispose the 3D view and build it again (open projections reopen)",
+      onclick: () => { JarvisAvatar.rebuild(); note("Rebuilding the 3D view…"); setTimeout(renderProjControls, 1500); } }, "Rebuild 3D view")),
+    ...choose("projection", "Intensity"), ...choose("quality", `Quality${JarvisAvatar.quality ? ` (now ${QUALITY_WORD[JarvisAvatar.quality] || JarvisAvatar.quality})` : ""}`),
     ...choose("particles", "Particles"), ...choose("animation", "Animation"), ...choose("reactor", "Reactor"),
     ...choose("orbit", "Orbit speed"), ...choose("orbitals", "Orbitals"), ...choose("env", "Environment holograms"),
     ...choose("fx", "Motion"),

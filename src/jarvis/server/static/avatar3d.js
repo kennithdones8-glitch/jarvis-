@@ -101,6 +101,7 @@ export function create(wrap, opts = {}) {
           this.dims = [w1, h1, w2, h2]; comp.uniforms.uRes.value.set(w, h);
         },
         begin() { renderer.setRenderTarget(t.scene); renderer.clear(); },
+        dispose() { for (const x of Object.values(t)) x.dispose(); for (const m of [bright, blur, copy, comp]) m.dispose(); quad.geometry.dispose(); },
         end(time, gain) {
           const [w1, h1, w2, h2] = this.dims;
           bright.uniforms.tSrc.value = t.scene.texture; pass(bright, t.a1);
@@ -629,14 +630,27 @@ export function create(wrap, opts = {}) {
   // The owner's projection settings (per device) and the quality preset. Auto starts Balanced and steps down
   // when frames take too long (or up when there is room), measured in Normal mode while animating.
   const OPT = { quality: "auto", particles: "normal", animation: "normal", reactor: "normal", orbit: "normal", env: true, orbitals: true, panels: false,
-               view: "front", camspeed: "normal" };
+               view: "front", camspeed: "normal", lowBattery: false };
   const K = { particles: { low: 0.35, normal: 0.7, high: 1 }, animation: { calm: 0.6, normal: 1, lively: 1.35 },
               reactor: { soft: 0.7, normal: 1, bright: 1.3 }, orbit: { slow: 0.5, normal: 1, fast: 1.6 } };
   let quality = phone ? "low" : "balanced", panelItems = null;
-  const autoQ = { sum: 0, n: 0, at: 0, good: 0 };
+  // Auto quality with hysteresis: frame times are averaged over ~90 frames; it steps down when they average over
+  // 55 ms, and up only after two good windows in a row; any change then holds for at least 8 s, and stepping back up
+  // after a step down waits 20 s. Every change is logged with the measured average (Diagnostics shows it).
+  // Low Power: chosen by you, or by Auto when the browser reports the battery low and not charging.
+  const autoQ = { sum: 0, n: 0, good: 0, changedAt: -1e9, downAt: -1e9, reason: "starting balanced", log: [] };
+  const lean = () => quality === "low" || quality === "lowpower";
+  function setAutoQuality(to, why, avg) {
+    if (to === quality) return;
+    autoQ.log.push({ at: Date.now(), from: quality, to, why, avgMs: avg ? +avg.toFixed(1) : null }); if (autoQ.log.length > 6) autoQ.log.shift();
+    const order = ["lowpower", "low", "balanced", "high"];
+    if (order.indexOf(to) < order.indexOf(quality)) autoQ.downAt = performance.now();
+    quality = to; autoQ.changedAt = performance.now(); autoQ.reason = why; autoQ.good = 0;
+    applyQuality();
+  }
   function applyQuality() {
-    renderer.setPixelRatio(Math.min({ high: 1.5, balanced: 1.25, low: 1 }[quality], window.devicePixelRatio || 1));
-    const dens = K.particles[OPT.particles] * (quality === "low" ? 0.6 : 1);
+    renderer.setPixelRatio(Math.min({ high: 1.5, balanced: 1.25, low: 1, lowpower: 0.85 }[quality] || 1, window.devicePixelRatio || 1));
+    const dens = K.particles[OPT.particles] * (quality === "lowpower" ? 0.4 : quality === "low" ? 0.6 : 1);
     for (const pts of [shed, wisps, dust, rebuild.points, reactorX.swirl()].filter(Boolean)) {
       const n = pts.geometry.attributes.position.count; pts.geometry.setDrawRange(0, Math.max(1, Math.floor(n * dens)));
     }
@@ -649,7 +663,10 @@ export function create(wrap, opts = {}) {
     const key = JSON.stringify(OPT);
     if (key === optKey) return;   // unchanged: nothing to redraw
     optKey = key;
-    if (OPT.quality !== "auto") quality = OPT.quality;
+    if (OPT.quality !== "auto") { quality = OPT.quality; autoQ.reason = "your setting"; }
+    else if (OPT.lowBattery && quality !== "lowpower") { autoQ.reason = ""; setAutoQuality("lowpower", "battery low and not charging"); }
+    else if (!OPT.lowBattery && quality === "lowpower") setAutoQuality("balanced", "battery no longer low");
+    else if (autoQ.reason === "your setting") autoQ.reason = "measuring";
     rig.setRest(OPT.view); rig.setSpeed(OPT.camspeed);
     applyQuality(); envX.setPanels(panelItems, OPT.panels && OPT.env); kick();
   }
@@ -661,17 +678,20 @@ export function create(wrap, opts = {}) {
     if (OPT.panels && OPT.env) { envX.setPanels(items, true); kick(); }
   }
   function autoQuality(interval) {   // called once per animated frame in Normal mode
-    if (OPT.quality !== "auto") return;
+    if (OPT.quality !== "auto" || quality === "lowpower") return;   // Low Power (battery) holds until the battery recovers
     autoQ.sum += interval; autoQ.n++;
     if (autoQ.n < 90) return;
-    const avg = autoQ.sum / autoQ.n; autoQ.sum = 0; autoQ.n = 0;
+    const avg = autoQ.sum / autoQ.n, now = performance.now(); autoQ.sum = 0; autoQ.n = 0;
+    if (now - autoQ.changedAt < 8000) return;                       // hold any change for at least 8 s
     const order = ["low", "balanced", "high"], i = order.indexOf(quality);
-    if (avg > 55 && i > 0) { quality = order[i - 1]; autoQ.good = 0; applyQuality(); }        // under ~18 fps: lighter
-    else if (avg < 37 && i < 2) { if (++autoQ.good >= 2) { quality = order[i + 1]; autoQ.good = 0; applyQuality(); } }   // holding the frame cap: richer
-    else autoQ.good = 0;
+    if (avg > 55 && i > 0) setAutoQuality(order[i - 1], "frames too slow", avg);        // under ~18 fps: lighter
+    else if (avg < 37 && i < 2) {                                                       // holding the frame cap: richer
+      if (++autoQ.good >= 2 && now - autoQ.downAt > 20000) setAutoQuality(order[i + 1], "frames fast enough", avg);
+    } else autoQ.good = 0;
   }
   let target = LOOKS.idle, state = "idle", tier = 1, mode = opts.mode || "full", intensity = opts.intensity || 1;
   const targetTint = new THREE.Color(LOOKS.idle.tint);
+  let lost = false, losses = 0, restores = 0;   // GPU context loss (see below)
   let frameAvg = 0, t = 0, last = 0, raf = 0, visible = true, flash = 0, settling = 2.5, speech = 0, beatAt = 0, arcAt = 0;
   const headTarget = new THREE.Euler(), headCur = new THREE.Euler();
   // idle liveliness: occasional glances (toward the message box or the side panels) and sensor "shutter blinks"
@@ -860,8 +880,8 @@ export function create(wrap, opts = {}) {
 
   function frame(now) {
     raf = 0;
-    if (!visible || document.hidden) return;
-    const cap = phone ? 1000 / 24 : 1000 / 30;
+    if (!visible || document.hidden || lost) return;
+    const cap = quality === "lowpower" ? (phone ? 1000 / 15 : 1000 / 20) : phone ? 1000 / 24 : 1000 / 30;
     if (mode === "full" && now - last < cap) { raf = requestAnimationFrame(frame); return; }
     const dt = Math.min(0.1, last ? (now - last) / 1000 : 0.033);
     if (mode === "full" && last && !boot) autoQuality(now - last);
@@ -952,7 +972,7 @@ export function create(wrap, opts = {}) {
     }
     shed.visible = moving; wisps.visible = moving;
     if (parts.wire) for (const o of parts.wire.objs) o.visible = tier >= 2 && quality === "high";   // fine wireframe: High only
-    if (auraMesh) auraMesh.visible = quality !== "low";
+    if (auraMesh) auraMesh.visible = !lean();
     for (const a of Object.values(aura)) {
       a.value += (a.target - a.value) * (moving ? 1 - Math.exp(-dt * 2) : 1);
       a.ring.material.uniforms.uFill.value = a.value;
@@ -1045,7 +1065,7 @@ export function create(wrap, opts = {}) {
     hidden.forEach((o) => { o.visible = false; });
     for (const m of lineMats) m.visible = false;
     figure.scale.y = -SCALE; U.uReflect.value = 1;
-    if (quality !== "low") renderer.render(scene, camera);   // the floor reflection: skipped on Low
+    if (!lean()) renderer.render(scene, camera);   // the floor reflection: skipped on Performance and Low Power
     figure.scale.y = SCALE; U.uReflect.value = 0;
     hidden.forEach((o, i) => { o.visible = was[i]; });
     for (const m of lineMats) m.visible = true;
@@ -1053,7 +1073,7 @@ export function create(wrap, opts = {}) {
     settling -= dt;
     if (moving || revealing || boot || confirming || camMoving || projecting && mode === "full" || settling > 0 && mode === "full") raf = requestAnimationFrame(frame);
   }
-  function kick() { if (!raf && visible && !document.hidden) raf = requestAnimationFrame(frame); }
+  function kick() { if (!raf && visible && !document.hidden && !lost) raf = requestAnimationFrame(frame); }
 
   // picking: satellites answer hover and click; the caller decides what a click means
   const ray = new THREE.Raycaster(), ndc = new THREE.Vector2();
@@ -1080,15 +1100,21 @@ export function create(wrap, opts = {}) {
   const io = new IntersectionObserver((e) => { visible = e.some((x) => x.isIntersecting); if (visible) kick(); }); io.observe(wrap);
   const onVis = () => { last = 0; kick(); };
   document.addEventListener("visibilitychange", onVis);
-  let lost = false;
-  canvas.addEventListener("webglcontextlost", (e) => { e.preventDefault(); lost = true; api.onLost && api.onLost(); });
+  // GPU context loss: stop drawing and tell the page (it shows the 2D core). If the browser restores the context,
+  // Three.js re-uploads everything on the next draw, so the same projection simply resumes.
+  const onLost = (e) => { e.preventDefault(); lost = true; losses++; cancelAnimationFrame(raf); raf = 0; api.onLost && api.onLost(); };
+  const onRestored = () => { lost = false; restores++; last = 0; settling = 2; resize(); api.onRestored && api.onRestored(); kick(); };
+  canvas.addEventListener("webglcontextlost", onLost);
+  canvas.addEventListener("webglcontextrestored", onRestored);
 
   setState(opts.state || "idle");
   tier = 0; setTier(opts.tier || 1);
   resize();
 
   const api = {
-    setState, setPersonality, setTier, setMode, setIntensity, setSystems, setAura, setThought, pulse, pick, setOptions, setPanels, onLost: null,
+    setState, setPersonality, setTier, setMode, setIntensity, setSystems, setAura, setThought, pulse, pick, setOptions, setPanels, onLost: null, onRestored: null,
+    get qualityInfo() { return { setting: OPT.quality, current: quality, reason: OPT.quality === "auto" ? autoQ.reason : "your setting", log: autoQ.log.slice() }; },
+    get context() { return { lost, losses, restores }; },
     showProjection(m, data) { const ok = director.show(m, data); kick(); return ok; }, closeProjection(m) { director.close(m); kick(); },
     closeProjections() { director.closeAll(); }, pinProjection(m, on) { director.pin(m, on); }, rotateProjection(dx, dy) { director.rotate(dx, dy); },
     expandProjection(m) { const ok = director.expand(m); kick(); return ok; }, collapseProjection() { director.collapse(); kick(); },
@@ -1109,8 +1135,25 @@ export function create(wrap, opts = {}) {
     get eyes() { return { hot: FACE.uEyeHot.value, level: EYE.value, open: FACE.uEyeOpen.value, look: FACE.uEyeLook.value, scan: FACE.uEyeScan.value, speech: FACE.uSpeech.value }; }, get lost() { return lost; }, get state() { return state; },
     get personality() { return pers ? pers.name : null; },
     get stats() { return { frameMs: raf && mode === "full" ? frameAvg : 0, calls: renderer.info.render.calls, triangles: renderer.info.render.triangles, camera: camera.position.toArray().map((x) => +x.toFixed(2)) }; },
-    dispose() { cancelAnimationFrame(raf); ro.disconnect(); io.disconnect(); document.removeEventListener("visibilitychange", onVis);
-      renderer.dispose(); canvas.remove(); },
+    // everything this renderer made: listeners, observers, geometries, materials, textures, render targets
+    dispose() {
+      cancelAnimationFrame(raf); raf = 0; ro.disconnect(); io.disconnect(); document.removeEventListener("visibilitychange", onVis);
+      canvas.removeEventListener("webglcontextlost", onLost); canvas.removeEventListener("webglcontextrestored", onRestored);
+      director.closeAll();
+      const done = new Set();
+      const free = (x) => { if (x && x.dispose && !done.has(x)) { done.add(x); x.dispose(); } };
+      scene.traverse((o) => {
+        free(o.geometry);
+        for (const m of [].concat(o.material || [])) {
+          free(m);
+          for (const v of Object.values(m.uniforms || {})) if (v && v.value && v.value.isTexture) free(v.value);
+          for (const k of ["map", "alphaMap"]) if (m[k]) free(m[k]);
+        }
+      });
+      if (post && post.dispose) post.dispose();
+      renderer.dispose(); canvas.remove();
+      return done.size;
+    },
   };
   return api;
 }

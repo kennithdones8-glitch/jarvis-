@@ -212,12 +212,12 @@ def test_3d_core_is_decoration_only_and_local():
 
 
 def test_3d_core_falls_back_to_2d_and_respects_the_modes():
-    assert 'import("/static/avatar3d.js")' in AV and "if (!three) return;" in AV  # failure leaves the 2D core
+    assert 'import("/static/avatar3d.js")' in AV and "if (!three) { av.status = \"2d\"; return; }" in AV  # failure leaves the 2D core
     assert 'av.wrap.classList.remove("has-3d")' in AV  # a lost GPU context goes back to 2D
     assert "av.three.setMode(av.lastMode)" in AV and "av.three.setState(state)" in AV and "av.three.setTier(tier)" in AV
     # Normal: capped frame rate; other modes draw only when something changes; nothing while hidden or off screen
     assert "1000 / 30" in AV3 and "1000 / 24" in AV3 and 'const moving = mode === "full";' in AV3
-    assert "if (!visible || document.hidden) return;" in AV3 and "IntersectionObserver" in AV3
+    assert "if (!visible || document.hidden || lost) return;" in AV3 and "IntersectionObserver" in AV3
     assert "Math.min(1.5, window.devicePixelRatio || 1)" in AV3
     css = (STATIC / "avatar.css").read_text()
     assert ".core-wrap.has-3d .avatar, .core-wrap.has-3d .avatar-fx, .core-wrap.has-3d .avatar-lines { display: none; }" in css
@@ -503,7 +503,7 @@ def test_projection_controls_are_per_device_and_every_one_has_an_effect():
     for k in ("K.particles[OPT.particles]", "K.animation[OPT.animation]", "K.reactor[OPT.reactor]", "K.orbit[OPT.orbit]",
               "envX.setVisible(OPT.env, OPT.orbitals); orbits.visible = OPT.orbitals;"):
         assert k in AV3, k
-    assert 'if (quality !== "low") renderer.render(scene, camera);   // the floor reflection: skipped on Low' in AV3
+    assert 'if (!lean()) renderer.render(scene, camera);   // the floor reflection: skipped on Performance and Low Power' in AV3
     assert 'o.visible = tier >= 2 && quality === "high";' in AV3
     assert "if (avg > 55 && i > 0)" in AV3                                                  # Auto steps down when frames are slow
     assert 'content: "PREVIEW — not live"' in (STATIC / "avatar.css").read_text()            # a preview is always marked
