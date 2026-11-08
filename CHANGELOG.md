@@ -1,5 +1,31 @@
 # Changelog
 
+## Unreleased — E.V.O.L.V.E. backend: continuous intelligence (phases D and E)
+
+- **Schema v9** (one migration, nothing existing changed): `outcomes`, `lessons`, `links`, `experiments`, `feedback`,
+  `autonomy`.
+- **Learning pipeline** (`jarvis/learn`), in the dashboard's existing maintenance loop. OBSERVE: new audit entries
+  become outcomes (chat replies judged by the answer check, missions by their verifier, with time, errors and
+  recovery); LEARN: fixed rules turn outcomes, your ratings and audit counts into **lessons** with evidence, a
+  confidence that grows with observations, first/last seen, contradictions (opposite conclusions about the same
+  subject → both "hypothesis") and expiry (no new evidence in 30 days → "outdated"). No model, nothing leaves the Mac,
+  lessons hold counts and names of models/tools, never your text. You can confirm, reject or delete a lesson.
+- **Feedback**: 👍/👎 per answer (`POST /api/feedback`), the main signal about quality.
+- **Autonomy tiers 1–7** with pauses for learning, experiments and initiative; a tier works only with every tier below
+  it; the emergency stop halts all of it. Tiers 6–7 are off and can't be switched on from a browser; changing
+  autonomy is Mac-only (like device pairing).
+- **Intelligence tournament**: per-model evidence (answer-check rate, median time, your ratings, benchmark categories).
+  Its recommendation is a suggestion; routing never changes by itself, and a bigger model is not assumed better.
+- **Simulation lab**: experiments with objective, hypothesis, baseline, criteria, environment, results and
+  recommendation; three kinds only — routing replay (recorded data, no model calls), recovery drills (throwaway
+  folders) and benchmark comparison (results on disk); one at a time.
+- **Initiative**: three new proposal detectors (well-supported negative lessons, missions waiting more than 3 days,
+  modules no test names), in the existing propose-only proposals; paused with "initiative".
+- **Capability discovery** (recommendations only), **self-inspection** (modules, imports, API routes and tables read
+  from JARVIS's own source), a **knowledge graph** (memories, lessons, missions, proposals, projects; near-duplicate
+  memories and contradictions linked), and real data for eight projections (`GET /api/projection/<module>`).
+- New tests (`tests/test_learn.py`), six of them added to the release gate.
+
 ## Unreleased — HUD on every section page
 
 - **Section pages** (Command center, Missions, Decisions, Memory, Systems, Workspace) open with a HUD header: a large

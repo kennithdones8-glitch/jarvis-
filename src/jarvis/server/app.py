@@ -437,6 +437,38 @@ class Dashboard:
             self.notifier.briefing_ready()
         return True
 
+    def learn_cycle(self) -> dict[str, Any]:
+        """OBSERVE + LEARN: new audit entries become outcomes and lessons (respects autonomy and the emergency stop)."""
+        from ..learn import Pipeline
+        return Pipeline(self.kernel).run()
+
+    def _learn_cached(self) -> dict[str, Any]:
+        now = time.monotonic()
+        cached = getattr(self, "_learn_cache", None)
+        if not cached or now - cached[0] > 5:
+            try:
+                self._learn_cache = (now, self.learn_state())
+            except Exception as exc:  # noqa: BLE001 - never break the dashboard over the learning summary
+                self._learn_cache = (now, {"error": f"{type(exc).__name__}"})
+        return self._learn_cache[1]
+
+    def learn_state(self) -> dict[str, Any]:
+        from .. import learn
+        return {"summary": learn.summary(self.kernel), "autonomy": learn.Autonomy(self.kernel).state()}
+
+    def _discovery_facts(self) -> dict[str, Any]:
+        status = self._models_cache[1] or models_status(self.kernel)
+        evo = self._evolution or {}
+        verified = {m["id"] for m in evo.get("milestones", []) if m.get("verified")}
+        return {"models_available": [m for p in status["providers"] for m in p.get("available", [])],
+                "voice": "voice" in verified, "backups": "backups" in verified, "touch_id": "touch_id" in verified,
+                "iphone": "iphone" in verified}
+
+    def projection(self, module: str) -> dict[str, Any]:
+        """Real data for one projection module (read-only)."""
+        from ..learn import projections
+        return projections.data(self, module)
+
     def evolution(self) -> dict[str, Any]:
         """Which milestones are verified right now (and since when): drives the avatar's evolution tier."""
         from .. import evolution
@@ -498,6 +530,7 @@ class Dashboard:
                         self.notifier.health_changed(self._health["ok"])
                 self.maybe_briefing()
                 self._evolution = self.evolution()
+                self.learn_cycle()
             except Exception as exc:
                 if self._stop.is_set():
                     return  # shutting down: the database may already be closed
@@ -829,6 +862,7 @@ class Dashboard:
             "telemetry": self.telemetry.snapshot(),
             "evolution": self._evolution,
             "intelligence": self.intelligence(),
+            "learn": self._learn_cached(),
         }
 
     # ---- HTTP plumbing -----------------------------------------------------------------
@@ -1079,6 +1113,20 @@ class Dashboard:
                 self.proposals.refresh()
                 self._proposals_checked = time.monotonic()
             return self._json(h, 200, {"proposals": self.proposals.list()})
+        if url.path == "/api/learn":
+            from .. import learn
+            from ..learn import analysis
+            return self._json(h, 200, {**self.learn_state(), "lessons": learn.lessons(self.kernel),
+                                       "experiments": analysis.Lab(self.kernel).list(), "kinds": analysis.KINDS,
+                                       "discoveries": analysis.discover(self.kernel, self._discovery_facts())})
+        if url.path == "/api/learn/tournament":
+            from ..learn import analysis
+            return self._json(h, 200, analysis.tournament(self.kernel))
+        if m := re.fullmatch(r"/api/projection/(\w+)", url.path):
+            try:
+                return self._json(h, 200, self.projection(m.group(1)))
+            except KeyError:
+                raise HttpError(404, "no such projection") from None
         if url.path == "/api/push/key" and self.remote is not None:
             return self._json(h, 200, {"key": self.remote.push.public_key})
         raise HttpError(404, "not found")
@@ -1257,6 +1305,42 @@ class Dashboard:
             return {"ok": True}
         if path == "/api/memory/forget":
             return self.kernel.forget(text("query", 200), by=actor, dry_run=body.get("confirm") is not True)
+        if path == "/api/feedback":
+            from .. import learn
+            rating = body.get("rating")
+            if rating not in (-1, 1):
+                raise HttpError(400, "rating must be -1 or 1")
+            target = body.get("target") if body.get("target") in ("reply", "task") else "reply"
+            return {"id": learn.add_feedback(k, target=target, ref=text("ref", 120), rating=rating,
+                                             model=body.get("model") if isinstance(body.get("model"), str) else None,
+                                             mode=body.get("mode") if isinstance(body.get("mode"), str) else None,
+                                             reason=body.get("reason") if isinstance(body.get("reason"), str) else None, by=actor)}
+        if m := re.fullmatch(r"/api/lessons/(les_\w+)/(confirm|reject|delete)", path):
+            from .. import learn
+            try:
+                learn.decide_lesson(k, m.group(1), m.group(2), by=actor)
+            except KeyError:
+                raise HttpError(404, "no such lesson") from None
+            return {"ok": True}
+        if path == "/api/autonomy":
+            from ..learn import Autonomy, AutonomyError
+            a = Autonomy(k)
+            try:
+                if "tier" in body:
+                    a.set_tier(int(body["tier"]), body.get("on") is True, by=actor)
+                elif "pause" in body:
+                    a.set_pause(str(body["pause"]), body.get("paused") is True, by=actor)
+                else:
+                    raise HttpError(400, "tier or pause is required")
+            except (AutonomyError, ValueError) as exc:
+                raise HttpError(400, str(exc)) from None
+            return a.state()
+        if path == "/api/experiments":
+            from ..learn import analysis
+            try:
+                return {"id": analysis.Lab(k).start(text("kind", 40), by=actor)}
+            except analysis.LabError as exc:
+                raise HttpError(409, str(exc)) from None
         if path == "/api/route":   # which kind of message: rules, then a model on this Mac (never the cloud)
             return self.route_message(text("text", 2000))
         if path == "/api/plan":

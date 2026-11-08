@@ -187,9 +187,57 @@ def _answers(entries: list[dict]) -> list[Proposal]:
     return out
 
 
+def _lessons(kernel) -> list[Proposal]:
+    """Initiative: a well-supported negative lesson becomes something to look into (lessons hold counts, never text)."""
+    out = []
+    try:
+        rows = kernel.db.query("SELECT key, statement, evidence, confidence FROM lessons WHERE state = 'active' AND polarity < 0 "
+                               "AND kind IN ('inferred', 'confirmed') AND confidence >= 0.6")
+    except Exception:  # noqa: BLE001 - an older database without lessons
+        return out
+    for r in rows:
+        ev = json.loads(r["evidence"])
+        out.append(Proposal(key=f"lesson:{r['key']}", kind="investigate", title=r["statement"],
+                            problem="A pattern JARVIS learned from its own record, with the evidence below.",
+                            evidence=[f"{k}: {v}" for k, v in ev.items() if k != "task_ids"][:8],
+                            suggestion="Open the Evolution center for the lesson and its history; decide whether routing, a "
+                                       "setting or the code should change.",
+                            risk="Looking costs nothing; any change still goes through you.", size=int(sum(v for v in ev.values() if isinstance(v, int)))))
+    return out
+
+
+def _stuck(kernel) -> list[Proposal]:
+    """Initiative: missions waiting on you, or paused, for more than three days."""
+    cutoff = (datetime.now(timezone.utc) - timedelta(days=3)).isoformat()
+    rows = kernel.db.query("SELECT id, state FROM tasks WHERE state IN ('blocked', 'paused', 'awaiting_approval') AND updated_at < ?", (cutoff,))
+    if not rows:
+        return []
+    return [Proposal(key="stuck-missions", kind="investigate", title=f"{len(rows)} mission(s) have waited more than 3 days",
+                     problem="Unfinished missions keep their approvals and checkpoints open.",
+                     evidence=[f"{r['state']}: {r['id']}" for r in rows[:8]],
+                     suggestion="Open Missions and resume, cancel or delete each one.", risk="None until you act.", size=len(rows))]
+
+
+def _untested(kernel) -> list[Proposal]:
+    """Initiative: JARVIS modules with no test file that mentions them (read from the source, read-only)."""
+    pkg = Path(__file__).resolve().parent
+    tests = pkg.parents[1] / "tests"
+    if not tests.is_dir():
+        return []   # an installed copy without the repository: nothing to compare
+    text = "\n".join(t.read_text(encoding="utf-8", errors="replace") for t in tests.glob("test_*.py"))
+    missing = sorted(f.stem for f in pkg.glob("*.py") if f.stem not in ("__init__", "__main__") and f.stem not in text)
+    if not missing:
+        return []
+    return [Proposal(key="untested-modules", kind="code", title=f"{len(missing)} module(s) have no test that names them",
+                     problem="A module no test mentions can break without the release gate noticing.",
+                     evidence=missing[:10], suggestion="Add focused tests for these modules (a Claude Code brief can do it on a branch).",
+                     risk="Tests only; no behaviour changes.", size=len(missing))]
+
+
 def detect(kernel, *, days: int = WINDOW_DAYS) -> list[Proposal]:
     entries = _audit(kernel, days)
-    return _benchmark(kernel) + _tool_trouble(entries) + _approvals(kernel, days) + _answers(entries)
+    return (_benchmark(kernel) + _tool_trouble(entries) + _approvals(kernel, days) + _answers(entries)
+            + _lessons(kernel) + _stuck(kernel) + _untested(kernel))
 
 
 # ---- storage -----------------------------------------------------------------------------------------------------
@@ -202,6 +250,10 @@ class Proposals:
     def refresh(self) -> dict[str, int]:
         """Run the detectors; add new findings, update open ones. A rejected one returns only if its evidence at
         least doubles; a done one returns if the problem is seen again."""
+        from .learn import Autonomy
+
+        if not Autonomy(self.kernel).can("propose"):   # proposing is paused, switched off, or the emergency stop is on
+            return {"added": 0, "updated": 0, "skipped": True}
         added = updated = 0
         now = now_iso()
         for p in detect(self.kernel):

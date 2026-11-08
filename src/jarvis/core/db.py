@@ -225,6 +225,78 @@ MIGRATIONS: list[str] = [
         decided_at  TEXT
     );
     """,
+    # v9: continuous intelligence — outcomes, lessons with evidence, knowledge links, experiments, feedback, autonomy.
+    # Everything here is derived from the audit log or stated by the owner; text is short and never a transcript.
+    """
+    CREATE TABLE outcomes (
+        id          TEXT PRIMARY KEY,
+        kind        TEXT NOT NULL CHECK (kind IN ('task', 'reply')),
+        ref         TEXT NOT NULL,
+        model       TEXT,
+        verdict     TEXT NOT NULL CHECK (verdict IN ('verified', 'failed', 'unverified')),
+        evidence    TEXT NOT NULL,
+        seconds     REAL,
+        errors      INTEGER NOT NULL DEFAULT 0,
+        recovered   INTEGER NOT NULL DEFAULT 0,
+        created_at  TEXT NOT NULL,
+        UNIQUE (kind, ref)
+    );
+    CREATE INDEX outcomes_created ON outcomes(created_at);
+    CREATE TABLE lessons (
+        id          TEXT PRIMARY KEY,
+        key         TEXT NOT NULL UNIQUE,
+        subject     TEXT NOT NULL,
+        polarity    INTEGER NOT NULL DEFAULT 0,
+        statement   TEXT NOT NULL,
+        kind        TEXT NOT NULL CHECK (kind IN ('confirmed', 'user', 'inferred', 'hypothesis', 'outdated')),
+        evidence    TEXT NOT NULL,
+        confidence  REAL NOT NULL,
+        seen        INTEGER NOT NULL DEFAULT 1,
+        applied     INTEGER NOT NULL DEFAULT 0,
+        state       TEXT NOT NULL DEFAULT 'active' CHECK (state IN ('active', 'rejected')),
+        first_seen  TEXT NOT NULL,
+        last_seen   TEXT NOT NULL
+    );
+    CREATE TABLE links (
+        src         TEXT NOT NULL,
+        dst         TEXT NOT NULL,
+        rel         TEXT NOT NULL,
+        source      TEXT NOT NULL,
+        created_at  TEXT NOT NULL,
+        PRIMARY KEY (src, dst, rel)
+    );
+    CREATE INDEX links_dst ON links(dst);
+    CREATE TABLE experiments (
+        id          TEXT PRIMARY KEY,
+        kind        TEXT NOT NULL,
+        objective   TEXT NOT NULL,
+        hypothesis  TEXT NOT NULL,
+        baseline    TEXT NOT NULL,
+        criteria    TEXT NOT NULL,
+        environment TEXT NOT NULL,
+        state       TEXT NOT NULL DEFAULT 'planned' CHECK (state IN ('planned', 'running', 'done', 'failed', 'cancelled')),
+        results     TEXT,
+        recommendation TEXT,
+        created_at  TEXT NOT NULL,
+        updated_at  TEXT NOT NULL
+    );
+    CREATE TABLE feedback (
+        id          TEXT PRIMARY KEY,
+        target      TEXT NOT NULL CHECK (target IN ('reply', 'task')),
+        ref         TEXT NOT NULL,
+        model       TEXT,
+        mode        TEXT,
+        rating      INTEGER NOT NULL CHECK (rating IN (-1, 1)),
+        reason      TEXT,
+        created_at  TEXT NOT NULL
+    );
+    CREATE TABLE autonomy (
+        key         TEXT PRIMARY KEY,
+        value       TEXT NOT NULL,
+        updated_at  TEXT NOT NULL,
+        updated_by  TEXT NOT NULL
+    );
+    """,
 ]
 
 

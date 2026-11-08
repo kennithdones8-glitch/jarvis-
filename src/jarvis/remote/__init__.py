@@ -19,7 +19,7 @@ from .push import PUSH_HOSTS, Notifier, PushService
 from .webauthn import WebAuthnError
 
 # Never allowed from the phone (a stolen phone session must not be able to add devices).
-LOCAL_ONLY = (r"/api/devices/pair", r"/api/touchid/.*")
+LOCAL_ONLY = (r"/api/devices/pair", r"/api/touchid/.*", r"/api/autonomy")   # autonomy: only from the Mac
 
 
 class RemoteAccess(PasskeyRP):

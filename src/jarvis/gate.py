@@ -42,6 +42,8 @@ SECURITY: dict[str, tuple[str, list[str]]] = {
         "test_mac::note_body_is_escaped_html"]),
     "Permission bypass": ("Every change passes the permission engine and, where needed, your approval", [
         "test_settle_steps::settling_from_the_phone_is_one_tap_once_signed_in",
+        "test_learn::autonomy_tiers_pauses_and_the_emergency_stop", "test_learn::autonomy_is_mac_only",
+        "test_intent::the_dashboard_route_is_local_only_and_research_and_tasks_are_confirmed",
         "test_permissions::outside_root_denied", "test_permissions::path_traversal_denied",
         "test_permissions::symlink_escape_denied", "test_permissions::deny_beats_allow",
         "test_permissions::high_tiers_never_auto_allowed", "test_permissions::protected_paths_not_writable_but_readable",
@@ -120,6 +122,9 @@ SECURITY: dict[str, tuple[str, list[str]]] = {
         "test_telemetry_evolution::dashboard_state_carries_real_telemetry_evolution_and_model_timings"]),
     "Honest reporting": ("Failures and unverified results are reported as such", [
         "test_tasks::failed_verification_is_not_reported_as_complete", "test_tasks::rejection_fails_task_honestly",
+        "test_learn::outcomes_are_judged_by_evidence_not_by_returning",
+        "test_learn::lessons_have_evidence_confidence_and_flag_contradictions",
+        "test_learn::projection_security_never_calls_pending_authorized",
         "test_orchestrator::invalid_plan_gets_one_repair_then_fails_honestly",
         "test_persona::system_prompt_lists_real_abilities_and_known_gaps",
         "test_lookup::persona_matches_the_new_abilities",
