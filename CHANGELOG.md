@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased — faster avatar loading
+
+- The figure's meshes (body, head, hands, wireframe) are built in a background module worker
+  (`avatar3d-worker.js`), so the dashboard stays responsive while the avatar loads. Measured on the cloud test
+  machine (software rendering): the longest main-thread freeze during load fell from about 25 s to about 7 s. On a
+  real GPU both are far smaller; what remains is shader compilation and cutting the armour plates. Without worker
+  support the renderer builds the meshes itself, as before.
+
 ## Unreleased — Tier 7: autopilot (owner's choices)
 
 - **Nightly self-checks**: once a day after 03:00 local time, the routing replay, recovery drills and benchmark

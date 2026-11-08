@@ -159,6 +159,18 @@
     try { const c = document.createElement("canvas"); return !!(c.getContext("webgl2") || c.getContext("webgl")); }
     catch (e) { return false; }
   }
+  // The figure's meshes, computed in a module worker (null if workers aren't available: the renderer then builds them)
+  function buildMeshes() {
+    return new Promise((resolve) => {
+      let w;
+      try { w = new Worker("/static/avatar3d-worker.js", { type: "module" }); } catch (e) { resolve(null); return; }
+      const done = (v) => { clearTimeout(timer); try { w.terminate(); } catch (e) { /* gone */ } resolve(v); };
+      const timer = setTimeout(() => done(null), 60000);
+      w.onmessage = (e) => { av.meshMs = e.data && e.data.ms; done(e.data); };
+      w.onerror = () => done(null);
+      w.postMessage({ phone: matchMedia("(max-width: 760px)").matches });
+    });
+  }
   async function tryThree() {
     if (av.three || av.trying || !webgl()) return;
     av.trying = true;
@@ -174,7 +186,8 @@
         document.removeEventListener("keydown", skip, true); document.removeEventListener("pointerdown", skip, true);
       };
       const skip = () => { if (av.three) av.three.skipBoot(); };
-      const three = mod.create(av.wrap, { state: av.state, tier: av.tier, mode: fxLevel(), intensity: intensity(), boot, onBootEnd: endBoot, options: av.options,
+      const meshes = await buildMeshes();   // in the background: the page stays responsive meanwhile
+      const three = mod.create(av.wrap, { state: av.state, tier: av.tier, mode: fxLevel(), intensity: intensity(), boot, onBootEnd: endBoot, options: av.options, meshes,
                                         onLifecycle: (phase) => { if (SM) show(SM.setLifecycle(phase)); } });
       if (!three) return;
       av.three = three;

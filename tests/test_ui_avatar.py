@@ -196,7 +196,7 @@ def test_three_is_the_exact_pinned_build_and_served_from_this_mac(dash):
     status, headers, body = call(d, "/static/vendor/three.module.min.js")
     assert status == 200 and headers["Content-Type"].startswith("text/javascript") and hashlib.sha256(body).hexdigest() == THREE_SHA256
     assert call(d, "/static/vendor/three.LICENSE.txt")[0] == 404  # only the one file is served
-    for f in ("avatar3d.js", "avatar3d-shaders.js", "avatar3d-geometry.js", "avatar3d-reactor.js", "avatar3d-neural.js", "avatar3d-particles.js", "avatar3d-environment.js", "avatar3d-projections.js", "avatar-state.js"):
+    for f in ("avatar3d.js", "avatar3d-shaders.js", "avatar3d-geometry.js", "avatar3d-reactor.js", "avatar3d-neural.js", "avatar3d-particles.js", "avatar3d-environment.js", "avatar3d-projections.js", "avatar3d-worker.js", "avatar-state.js"):
         assert call(d, f"/static/{f}")[0] == 200
     csp = call(d, "/")[1]["Content-Security-Policy"]
     assert "script-src 'self'" in csp and "connect-src 'self'" in csp and "unsafe" not in csp  # unchanged
@@ -521,3 +521,11 @@ def test_learning_experimenting_and_analyzing_come_from_real_signals():
     assert "ui.analyzingUntil = Date.now() + 1500" in JS                                     # only while fetching projection data
     sm = (STATIC / "avatar-state.js").read_text()
     assert "MAX_MS = { success: 4000, learning: 4000 }" in sm                               # a lesson is shown briefly, never held
+
+
+def test_meshes_are_built_off_the_main_thread_with_a_fallback():
+    worker = (STATIC / "avatar3d-worker.js").read_text()
+    assert 'import { meshFigure, meshHands } from "/static/avatar3d-geometry.js";' in worker
+    assert "fetch(" not in worker and "localStorage" not in worker and "document." not in worker   # computes only
+    assert 'new Worker("/static/avatar3d-worker.js", { type: "module" })' in AV and "resolve(null)" in AV   # no worker: built inline
+    assert "const handGeo = pre ? unpack(pre.hands) : meshHands(" in AV3

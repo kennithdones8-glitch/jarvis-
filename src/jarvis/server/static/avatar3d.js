@@ -205,8 +205,14 @@ export function create(wrap, opts = {}) {
 
   // ---- body -------------------------------------------------------------------------------------------------------
   // the figure (built once), sparkles shedding from its surface, and energy lines that come with higher stages
-  const figureGeo = mergeGeos([meshFigure(phone ? 0.04 : 0.03, [-1.12, -0.05, -0.48], [1.12, 4.38, 0.48]),   // body
-                                 meshFigure(phone ? 0.018 : 0.013, [-0.34, 4.3, -0.44], [0.34, 5.15, 0.38])]);   // head and face, finer
+  // meshes built in the background worker when available (opts.meshes), otherwise here (same code, same result)
+  const pre = opts.meshes || null;
+  const unpack = (m) => { const g = new THREE.BufferGeometry();
+    for (const [name, a] of Object.entries(m.attrs)) g.setAttribute(name, new THREE.BufferAttribute(a.array, a.itemSize));
+    g.setIndex(new THREE.BufferAttribute(m.index, 1)); return g; };
+  const figureGeo = mergeGeos(pre ? [unpack(pre.body), unpack(pre.head)]
+    : [meshFigure(phone ? 0.04 : 0.03, [-1.12, -0.05, -0.48], [1.12, 4.38, 0.48]),   // body
+       meshFigure(phone ? 0.018 : 0.013, [-0.34, 4.3, -0.44], [0.34, 5.15, 0.38])]);   // head and face, finer
   const joints = [], eyeGlows = [], irises = [], sparks = [];
   let figureMat = null, auraMat = null, auraMesh = null;
   part("figure", 1, (add) => {
@@ -389,7 +395,7 @@ export function create(wrap, opts = {}) {
   ];
   const plateUni = { uOpen: { value: 0 }, uSeam: { value: 0.25 } };
   const handUni = { uCurl: { value: 0.2 }, uFlex: { value: 0 } };
-  const handGeo = meshHands(phone ? 0.009 : 0.0065);
+  const handGeo = pre ? unpack(pre.hands) : meshHands(phone ? 0.009 : 0.0065);
   part("armour", 1, (add, reveal) => {
     for (const pl of PLATES) {
       const src = pl.src === "hands" ? handGeo : figureGeo;
@@ -444,7 +450,7 @@ export function create(wrap, opts = {}) {
   });
   part("wire", 2, (add) => {   // stage 2: a fine holographic wireframe over the body
     if (phone) return;
-    const wg = meshFigure(0.075, [-1.12, -0.05, -0.48], [1.12, 4.38, 0.48]);
+    const wg = pre && pre.wire ? unpack(pre.wire) : meshFigure(0.075, [-1.12, -0.05, -0.48], [1.12, 4.38, 0.48]);
     add(new THREE.Mesh(wg, holo({ wire: true, opacity: 0.1, rim: 0.4, core: 0.22, panel: 0, head: true })));
   });
   let shieldMat = null, shieldMesh = null, shieldFlare = 0;
