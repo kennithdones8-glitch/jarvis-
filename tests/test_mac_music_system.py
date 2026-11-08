@@ -160,3 +160,11 @@ def test_direct_command_asks_then_runs_once_approved(kern, fake):
     with pytest.raises(ApprovalRequired):
         k.gateway.invoke("system", "volume", {"level": 25})                            # asking again needs a new OK
     assert len(fake.calls) == 1
+
+
+def test_command_endpoint_reports_a_refusal_plainly_and_audits_it(dash):
+    from test_dashboard import call
+    d, *_ = dash
+    status, _, body = call(d, "/api/command", {"tool": "system", "action": "shutdown", "args": {}})
+    assert status == 403 and b"Refused by your rules" in body                      # not a 500
+    assert any(e["event"] == "permission.denied" for e in d.kernel.audit.entries(limit=5))   # what the avatar shows as "disagreeing"

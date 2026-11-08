@@ -52,6 +52,7 @@ const LOOKS = {
   learning:      { tint: "#ffe6a8", rpat: "beat", eyes: 1.2, rim: 1.2, scan: 1.4, flow: -0.9, ring: 0.4, beam: 0.85, reactor: 0.85, neural: 0.95, data: 0, sweep: 0.3, discharge: 0, beat: 1.4, head: "think", flicker: 0 },
   experimenting: { tint: "#f7c96e", rpat: "spin", eyes: 1.15, rim: 1.25, scan: 2.2, flow: 0.9, ring: 0.8, beam: 0.9, reactor: 0.95, neural: 0.7, data: 0.4, sweep: 0.6, discharge: 0.2, beat: 0, head: "scan", flicker: 0 },
   analyzing:     { tint: "#fde2a8", rpat: "scan", eyes: 1.15, rim: 1.2, scan: 3.0, flow: -0.6, ring: 0.5, beam: 0.9, reactor: 0.85, neural: 0.8, data: 0.3, sweep: 0.9, discharge: 0, beat: 0, head: "scan", flicker: 0 },
+  disagreeing:   { tint: "#ffa640", rpat: "still", eyes: 1.0, rim: 1.2, scan: 0.8, flow: 0.0, ring: 0.1, beam: 0.8, reactor: 0.7, neural: 0.15, data: 0, sweep: 0, discharge: 0, beat: 0, head: "shake", flicker: 0 },
   halted:        { tint: "#a8977a", rpat: "still", eyes: 0.4, rim: 0.85, scan: 0.4, flow: 0.0, ring: 0.0, beam: 0.35, reactor: 0.3, neural: 0.0, data: 0, sweep: 0, discharge: 0, beat: 0, head: "still", flicker: 0 },
 };
 const NUMERIC = ["eyes", "rim", "scan", "flow", "ring", "beam", "reactor", "neural", "data", "sweep", "discharge", "flicker"];
@@ -676,6 +677,16 @@ export function create(wrap, opts = {}) {
   // idle liveliness: occasional glances (toward the message box or the side panels) and sensor "shutter blinks"
   const GLANCES = [[0.13, 0], [0.02, -0.26], [0.02, 0.26], [-0.05, -0.12], [0.08, 0.14]];
   let glance = null, glanceAt = 6, blinkAt = 4, blink = 0;
+  // personality (avatar-events.js): how the figure moves for the current state; null = this file's own defaults
+  let pers = null, persAt = 0;
+  function setPersonality(p) {
+    const name = p && p.name ? p.name : null;
+    if ((pers && pers.name) === name) return;
+    pers = name ? { name, head: p.head, gesture: p.gesture, glances: !!p.glances } : null; persAt = t;
+    settling = Math.max(settling, 2); kick();
+  }
+  const headMode = () => (pers ? pers.head : target.head);
+  const gestureOf = () => (pers ? pers.gesture : POSE_OF[state] || "rest");
 
   function setState(s) {
     if (!LOOKS[s] || s === state) return;
@@ -683,6 +694,7 @@ export function create(wrap, opts = {}) {
     state = s; target = LOOKS[s]; targetTint.set(target.tint);
     if (s === "completed") { flash = 1; firePulse(1.4); reactorX.confirm(); }   // the golden confirmation: a real completion only
     if (s === "error" || s === "warning") shieldFlare = 2.5;   // the shield flares on a real alert
+    if (s === "disagreeing") shieldFlare = 1.6;                 // and briefly when your rules refuse an action
     if (s === "recovery" && mode === "full") for (const p of Object.values(parts)) p.reveal.value = -1.5;   // reconstruction
     if (prev === "halted" && mode === "full") { demat = null; for (const p of Object.values(parts)) p.reveal.value = -1.5; }   // rebuilt on release
     if (s === "halted" && mode === "full") {   // the real emergency stop: the projection dematerialises from the head down
@@ -799,12 +811,13 @@ export function create(wrap, opts = {}) {
     work:    { r: [0.08, 0.95, -0.12], l: [0.08, 0.95, -0.12] }, // coding / executing: both hands up, working
     raise:   { r: [0.38, 0.3, 2.45], l: [0.03, 0.12, 0.03] },    // waiting for your approval: the right hand raised
     open:    { r: [0.24, 0.32, 0.5], l: [0.24, 0.32, 0.5] },     // completed: both hands open
+    halt:    { r: [0.3, 1.15, 0.55], l: [0.03, 0.12, 0.03] },     // refused by your rules: the right hand comes up, palm out
   };
   const POSE_OF = { speaking: "present", coding: "work", executing: "work", approval: "raise", completed: "open" };
   const armCur = { r: [0.02, 0.08, 0.02], l: [0.02, 0.08, 0.02] };
   const _e = new THREE.Euler(), _m4 = new THREE.Matrix4(), _m4b = new THREE.Matrix4();
   function armPose(k) {
-    const pose = POSES[POSE_OF[state] || "rest"], work = POSE_OF[state] === "work" && mode === "full";
+    const pose = POSES[gestureOf()] || POSES.rest, work = gestureOf() === "work" && mode === "full";
     for (const sd of ["r", "l"]) {
       const sg = sd === "r" ? 1 : -1, c = armCur[sd];
       for (let i = 0; i < 3; i++) c[i] += (pose[sd][i] - c[i]) * k;
@@ -817,12 +830,14 @@ export function create(wrap, opts = {}) {
   }
 
   function headMotion() {
-    const h = target.head;
+    const h = headMode(), since = t - persAt;
     if (h === "attend") headTarget.set(0.1, Math.sin(t * 0.4) * 0.03, 0);              // toward the message box
     else if (h === "think") headTarget.set(-0.04, Math.sin(t * 0.3) * 0.08, 0.04);     // slight tilt, slow scan
-    else if (h === "scan") headTarget.set(0.02, Math.sin(t * 0.55) * 0.16, 0);         // looking across sources
+    else if (h === "scan") headTarget.set(0.02, Math.sin(t * 0.55) * 0.16, pers && pers.name === "curious" ? 0.05 : 0);   // looking across sources, head tilted
     else if (h === "speak") headTarget.set(0.03 + speech * 0.03, Math.sin(t * 0.5) * 0.05, 0);
     else if (h === "still") headTarget.set(0.05, 0, 0);
+    else if (h === "shake") headTarget.set(-0.03, Math.sin(since * 7) * 0.11 * Math.max(0, 1 - since / 1.3), 0);   // one small shake, then holds
+    else if (h === "rise") headTarget.set(0.03 + 0.17 * Math.max(0, 1 - since / 2.4), Math.sin(t * 0.3) * 0.03, 0);   // lifts as it comes back
     else if (glance) headTarget.set(glance[0], glance[1], 0);                          // a glance at something
     else headTarget.set(Math.sin(t * 0.31) * 0.02, Math.sin(t * 0.23) * 0.07, 0);     // awareness
     if (director.active && h !== "still") headTarget.y = 0.32 + Math.sin(t * 0.4) * 0.04;   // looks toward the projection
@@ -856,8 +871,8 @@ export function create(wrap, opts = {}) {
     if (moving) t += dt;
     const k = moving ? 1 - Math.exp(-dt * 2.2) : 1;   // ~0.6–1 s blend between states
     armPose(k);
-    const CURL = { present: 0.08, work: 0.42, raise: 0.02, open: 0.0, rest: 0.2 };
-    handUni.uCurl.value += ((state === "halted" ? 0.32 : CURL[POSE_OF[state] || "rest"]) - handUni.uCurl.value) * k;
+    const CURL = { present: 0.08, work: 0.42, raise: 0.02, open: 0.0, rest: 0.2, halt: 0.0 };
+    handUni.uCurl.value += ((state === "halted" ? 0.32 : CURL[gestureOf()] ?? 0.2) - handUni.uCurl.value) * k;
     handUni.uFlex.value = moving ? 0.05 : 0;   // the fingers flex slightly (Normal mode only)
     FACE.uThink.value = cur.neural;
     // armour: seams brighten and plates vent (part slightly) only while really working; the shield after an alert
@@ -973,7 +988,7 @@ export function create(wrap, opts = {}) {
     if (moving) {
       // breathing body, head and arm motion, rotating rings
       body.scale.y = 1 + Math.sin(t * 1.1) * 0.008; body.position.y = 2.0 * (1 - body.scale.y);
-      if (target.head === "aware") {
+      if (pers ? pers.glances : target.head === "aware") {
         if (t > glanceAt) {
           if (glance) { glance = null; glanceAt = t + 6 + Math.random() * 5; }
           else { glance = GLANCES[Math.floor(Math.random() * GLANCES.length)]; glanceAt = t + 1.6 + Math.random(); }
@@ -981,7 +996,7 @@ export function create(wrap, opts = {}) {
       } else glance = null;
       if (t > blinkAt) { blink = 1; blinkAt = t + 6 + Math.random() * 6; }
       blink = Math.max(0, blink - dt * 5);
-      const shut = target.head === "still" ? 1 : 1 - Math.sin(blink * Math.PI) * 0.85;
+      const shut = headMode() === "still" ? 1 : 1 - Math.sin(blink * Math.PI) * 0.85;
       const narrow = state === "warning" || state === "error" ? 0.6 : 1;
       const look = state === "researching" || state === "verifying" ? Math.sin(t * 2.2) * 0.022 : glance ? glance[1] * 0.05 : 0;
       FACE.uEyeOpen.value = shut * narrow;
@@ -1073,7 +1088,7 @@ export function create(wrap, opts = {}) {
   resize();
 
   const api = {
-    setState, setTier, setMode, setIntensity, setSystems, setAura, setThought, pulse, pick, setOptions, setPanels, onLost: null,
+    setState, setPersonality, setTier, setMode, setIntensity, setSystems, setAura, setThought, pulse, pick, setOptions, setPanels, onLost: null,
     showProjection(m, data) { const ok = director.show(m, data); kick(); return ok; }, closeProjection(m) { director.close(m); kick(); },
     closeProjections() { director.closeAll(); }, pinProjection(m, on) { director.pin(m, on); }, rotateProjection(dx, dy) { director.rotate(dx, dy); },
     get projections() { return director.list(); },
@@ -1088,6 +1103,7 @@ export function create(wrap, opts = {}) {
     skipBoot() { if (boot) { boot.t = BOOT_END; kick(); } }, get booting() { return !!boot; },
     get animating() { return raf !== 0; },
     get eyes() { return { hot: FACE.uEyeHot.value, level: EYE.value, open: FACE.uEyeOpen.value, look: FACE.uEyeLook.value, scan: FACE.uEyeScan.value, speech: FACE.uSpeech.value }; }, get lost() { return lost; }, get state() { return state; },
+    get personality() { return pers ? pers.name : null; },
     get stats() { return { frameMs: raf && mode === "full" ? frameAvg : 0, calls: renderer.info.render.calls, triangles: renderer.info.render.triangles, camera: camera.position.toArray().map((x) => +x.toFixed(2)) }; },
     dispose() { cancelAnimationFrame(raf); ro.disconnect(); io.disconnect(); document.removeEventListener("visibilitychange", onVis);
       renderer.dispose(); canvas.remove(); },

@@ -602,6 +602,7 @@ class Dashboard:
         """Run one Music or system action through the gateway: reads run, changes ask (unless your policy allows them),
         an approved request runs when sent again. The reply is worded from the result, no model involved."""
         from ..core.tools import ApprovalRequired as Needed
+        from ..core.tools import PermissionDenied, ToolError
         tool, action, args = body.get("tool"), body.get("action"), body.get("args") or {}
         if tool not in ("music", "system") or not isinstance(action, str) or not isinstance(args, dict):
             raise HttpError(400, "only Music and system commands run this way")
@@ -613,6 +614,10 @@ class Dashboard:
             r = self.kernel.gateway.invoke(tool, action, args, summary=summary)
         except Needed as exc:
             return {"needs_approval": True, "approval_id": exc.approval_id, "summary": summary or f"{tool}.{action}"}
+        except PermissionDenied as exc:   # refused by your rules (audited as permission.denied by the gateway)
+            raise HttpError(403, f"Refused by your rules: {exc}") from None
+        except ToolError as exc:          # a bad argument or the Mac app couldn't do it: say so plainly
+            raise HttpError(400, str(exc)[:300]) from None
         return {"text": _say_mac(tool, action, args, r), "model": "mac/tools", "location": "local",
                 "seconds": round(time.time() - started, 1)}
 
@@ -1124,7 +1129,8 @@ class Dashboard:
                         "/static/avatar3d-shaders.js", "/static/avatar3d-geometry.js",
                         "/static/avatar3d-reactor.js", "/static/avatar3d-neural.js", "/static/avatar3d-particles.js",
                         "/static/avatar3d-environment.js", "/static/avatar3d-projections.js",
-                        "/static/avatar3d-worker.js", "/static/avatar3d-camera.js", "/static/avatar-presets.js"):
+                        "/static/avatar3d-worker.js", "/static/avatar3d-camera.js", "/static/avatar-presets.js",
+                        "/static/avatar-events.js"):
             ctype = "text/javascript" if url.path.endswith(".js") else "text/css"
             return self._send(h, 200, (STATIC / url.path.rsplit("/", 1)[1]).read_bytes(), f"{ctype}; charset=utf-8")
         if url.path == "/static/vendor/three.module.min.js":  # Three.js r160, served from this Mac (MIT)

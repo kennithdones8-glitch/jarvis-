@@ -189,6 +189,7 @@ function avatarState(s, d) {
   if (core.dataset.flash === "done") return "completed";              // a task just completed
   if (core.dataset.flash === "failed") return "error";                // a task just failed
   if (core.dataset.listening) return "listening";                     // the microphone is recording
+  if (refusedJustNow(d) && s.core !== "stopped" && s.core !== "offline") return "disagreeing";   // your rules refused an action
   switch (s.core) {
     case "connecting": return "unknown";                              // no data yet: neutral
     case "offline": return "error";                                   // the dashboard lost JARVIS
@@ -224,6 +225,18 @@ function avatarState(s, d) {
   if (ui.learnedAt && Date.now() - ui.learnedAt < 4000) return "learning";
   if (s.warn) return "warning";                                       // a health check is failing (standing condition)
   return "idle";
+}
+
+// A new permission.denied / egress.denied entry in the audit log since the last poll (avatar-events.js). The first
+// poll only records where the log is, so an old refusal never replays; each new one shows for about 3 s.
+function refusedJustNow(d) {
+  if (!d || !Array.isArray(d.audit) || !window.JarvisEvents) return false;
+  const newest = d.audit.length ? d.audit[0].seq : 0;
+  if (ui.auditSeen === undefined) { ui.auditSeen = newest; return false; }
+  const hit = JarvisEvents.fromAudit(d.audit, ui.auditSeen);
+  if (newest > ui.auditSeen) ui.auditSeen = newest;
+  if (hit) ui.refusedAt = Date.now();
+  return !!ui.refusedAt && Date.now() - ui.refusedAt < 3000;
 }
 
 // Only these count as critical (red): JARVIS's own records can't be trusted.
@@ -2385,7 +2398,8 @@ function renderCommand(d) {
 const AVATAR_WORDS = { unknown: "Connecting", idle: "Aware", listening: "Listening", understanding: "Understanding",
   reasoning: "Reasoning", planning: "Planning", researching: "Researching", writing: "Responding", speaking: "Speaking",
   coding: "Writing code", verifying: "Verifying", executing: "Executing", approval: "Waiting for you", warning: "Diagnostic warning",
-  completed: "Completed", error: "Error", recovery: "Recovering", halted: "Halted (emergency stop)" };
+  completed: "Completed", error: "Error", recovery: "Recovering", halted: "Halted (emergency stop)", learning: "Learning",
+  experimenting: "Experimenting", analyzing: "Analyzing", disagreeing: "Refused by your rules" };
 
 function liveWork(d) {
   if (!d) return null;
@@ -2431,7 +2445,7 @@ const MODULE_LABEL = { figure: "Light body", hands: "Articulated hands", armour:
   reactorswirl: "Reactor particles", reactor2: "Outer reactor ring", platform2: "Platform markers", orbit_low: "Lower orbital",
   orbit_diag: "Diagonal orbital", orbit_upper: "Upper orbital", orbit_sig: "Signature orbitals", chamber: "Chamber grid and boundary",
   ground: "Ground light and shadow", panels: "Floating panels", halo: "Halo", crown: "Crown", meridians: "Energy meridians", shield: "Alert shield" };
-const PREVIEW_STATES = ["idle", "listening", "reasoning", "researching", "planning", "executing", "speaking", "completed", "warning", "error", "recovery"];
+const PREVIEW_STATES = ["idle", "listening", "reasoning", "researching", "planning", "executing", "speaking", "completed", "disagreeing", "warning", "error", "recovery"];
 function renderProjControls() {
   const el = $("#projctlbody");
   if (!el || !window.JarvisAvatar) return;
@@ -2566,12 +2580,10 @@ function describeProjection(m, d) {
   if (m === "simulation") return d.experiments.length ? `${d.experiments.length} experiment(s); latest: ${d.experiments[0].state} — ${d.experiments[0].recommendation || d.experiments[0].objective}` : "No experiments yet.";
   return "";
 }
-// automatic selection in the focus view: what JARVIS is really doing picks the projection
-const AUTO_PROJECTION = { executing: "workflow", verifying: "workflow", planning: "workflow", approval: "security", halted: "security",
-  experimenting: "simulation", learning: "neural" };
+// automatic selection in the focus view: what JARVIS is really doing picks the projection (avatar-events.js)
 function autoProjection(state) {
-  if (!document.body.classList.contains("projection") || !window.JarvisAvatar) return;
-  const m = AUTO_PROJECTION[state];
+  if (!document.body.classList.contains("projection") || !window.JarvisAvatar || !window.JarvisEvents) return;
+  const m = JarvisEvents.projectionFor(state);
   if (!m || ui.autoProj === `${state}:${m}`) return;
   ui.autoProj = `${state}:${m}`;
   if (!JarvisAvatar.projections.some((p) => p.module === m)) openProjectionModule(m, { quiet: true });

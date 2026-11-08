@@ -10,10 +10,10 @@
   const NS = "http://www.w3.org/2000/svg";
   const STATES = ["idle", "listening", "understanding", "planning", "researching", "reasoning", "writing", "coding",
                   "verifying", "approval", "executing", "completed", "error",
-                  "speaking", "warning", "recovery", "halted", "unknown", "learning", "experimenting", "analyzing"];
+                  "speaking", "warning", "recovery", "halted", "unknown", "learning", "experimenting", "analyzing", "disagreeing"];
   // The 2D fallback has no separate look for the newer states; each borrows the closest existing one.
   const LOOK_2D = { speaking: "writing", warning: "approval", recovery: "verifying", halted: "idle", unknown: "idle",
-                    learning: "understanding", experimenting: "verifying", analyzing: "researching" };
+                    learning: "understanding", experimenting: "verifying", analyzing: "researching", disagreeing: "approval" };
   const ACTIVE = new Set(["understanding", "planning", "researching", "reasoning", "writing", "coding", "verifying", "executing"]);
 
   // A path drawn on both sides of the centre line (x = 200).
@@ -194,6 +194,7 @@
       if (av.systems) three.setSystems(av.systems);
       if (av.aura) three.setAura(av.aura);
       if (av.panels) three.setPanels(av.panels);
+      three.setPersonality(personality(av.state));
       if (boot) { if (SM) SM.setLifecycle("materializing"); document.body.classList.add("booting"); document.addEventListener("keydown", skip, true); document.addEventListener("pointerdown", skip, true); }
       three.onLost = () => { av.wrap.classList.remove("has-3d"); av.wrap.classList.remove("inspecting"); av.inspecting = false; document.body.classList.remove("inspecting"); try { three.dispose(); } catch (e) { /* gone */ } av.three = null; loop(); };
       av.wrap.classList.add("has-3d");
@@ -365,11 +366,20 @@
     av.state = state;
     av.svg.dataset.state = LOOK_2D[state] || state;
     av.svg.dataset.avatar = state;
-    if (av.three) av.three.setState(state);
+    if (av.three) { av.three.setState(state); av.three.setPersonality(personality(state)); }
     av.color = getComputedStyle(av.svg).getPropertyValue("--av-rgb").trim() || av.color;
-    if (state === "completed") { burst(); surge(); }
+    if (effect(state) === "surge") { burst(); surge(); }   // the one-off for a real completion (avatar-events.js)
     loop();
   }
+
+  // the central event-to-visual table (avatar-events.js); without it, the renderer's own defaults
+  const EV = window.JarvisEvents || null;
+  function personality(state) {
+    if (!EV) return null;
+    const name = EV.personalityOf(state);
+    return { name, ...EV.PERSONALITY[name] };
+  }
+  function effect(state) { return EV ? EV.effectOf(state) : (state === "completed" ? "surge" : null); }
 
   function registerPart(name, markup) {
     const g = av.layers[name];
@@ -464,6 +474,7 @@
                           get animating() { return av.raf !== 0 || !!(av.three && av.three.animating); },
                           get renderer() { return av.three ? "3d" : "2d"; },
                           get stats() { return av.three ? av.three.stats : null; },
+                          get personality() { const p = personality(av.state); return p ? p.name : null; },
                           get camera() { return av.three ? av.three.camera : null; }, get inspecting() { return !!(av.three && av.inspecting); },
                           get views() { return av.three ? av.three.VIEWS : {}; }, get targets() { return av.three ? av.three.TARGETS : {}; },
                           get eyes() { return av.three ? av.three.eyes : null; } };   // read-only: what the eyes are showing

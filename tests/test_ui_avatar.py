@@ -43,7 +43,7 @@ def test_all_thirteen_states_and_replaceable_parts():
     states = json.loads(re.search(r"const STATES = (\[.*?\]);", AV, re.S).group(1).replace("\n", " "))
     assert states == ["idle", "listening", "understanding", "planning", "researching", "reasoning", "writing", "coding",
                       "verifying", "approval", "executing", "completed", "error",
-                      "speaking", "warning", "recovery", "halted", "unknown", "learning", "experimenting", "analyzing"]
+                      "speaking", "warning", "recovery", "halted", "unknown", "learning", "experimenting", "analyzing", "disagreeing"]
     for part in ("helmet", "visor", "face"):
         assert f'["{part}", 1,' in AV, part
     assert "registerPart" in AV and "function registerPart(name, markup)" in AV
@@ -51,8 +51,10 @@ def test_all_thirteen_states_and_replaceable_parts():
 
 AVATAR_HARNESS = r"""
 const ui = { convo: [], stage: null };
+const window = {};   // no avatar-events.js here: refusals are tested in test_avatar25.py
 const core = { dataset: {} };
 const $ = () => core;
+%s
 %s
 %s
 const out = {};
@@ -104,7 +106,7 @@ def test_every_avatar_state_comes_from_a_real_signal(tmp_path):
     node = shutil.which("node")
     if not node:
         pytest.skip("node is not installed")
-    (tmp_path / "a.js").write_text(AVATAR_HARNESS % (fn(JS, "avatarState"), fn(JS, "criticalProblem")))
+    (tmp_path / "a.js").write_text(AVATAR_HARNESS % (fn(JS, "avatarState"), fn(JS, "criticalProblem"), fn(JS, "refusedJustNow")))
     got = json.loads(subprocess.run([node, str(tmp_path / "a.js")], capture_output=True, text=True, check=True).stdout)
     assert got == {
         "idle": "idle", "connecting": "unknown", "decision": "approval", "blocked": "approval", "stopped": "halted",
@@ -299,10 +301,12 @@ def test_projection_intensity_and_displayed_stage_are_per_device_settings():
 
 
 def test_idle_liveliness_is_limited_to_rest_and_never_fakes_activity():
-    # glances happen only in the resting "aware" look, and stop the moment real work starts
-    assert 'if (target.head === "aware") {' in AV3 and "} else glance = null;" in AV3
+    # glances happen only in the resting personality (avatar-events.js), and stop the moment real work starts
+    assert 'if (pers ? pers.glances : target.head === "aware") {' in AV3 and "} else glance = null;" in AV3
+    events = (STATIC / "avatar-events.js").read_text()
+    assert re.findall(r"(\w+): +\{ head: \"\w+\", gesture: \"\w+\", glances: true", events) == ["idle"]
     assert "glanceAt = t + 6 + Math.random() * 5" in AV3          # every ~6–11 s, held ~1.6–2.6 s
-    assert 'const shut = target.head === "still" ? 1 :' in AV3     # halted/unknown/error: no blinking
+    assert 'const shut = headMode() === "still" ? 1 :' in AV3      # halted/unknown/error: no blinking
     # every state has a reactor pattern, from a fixed set
     pats = set(re.findall(r'rpat: "(\w+)"', AV3))
     assert pats <= {"calm", "spin", "scan", "beat", "surge", "stutter", "still"}
@@ -347,7 +351,9 @@ def test_data_aura_shows_only_real_values():
 def test_thought_constellation_counts_real_stages_and_surge_needs_a_real_completion():
     assert "JarvisAvatar.setThought(new Set(live.activity.map((a) => a.stage)).size, true);" in JS
     assert "JarvisAvatar.setThought(0, false);" in JS
-    assert 'if (state === "completed") { burst(); surge(); }' in AV            # completed comes only from a finished task
+    assert 'if (effect(state) === "surge") { burst(); surge(); }' in AV        # completed comes only from a finished task
+    events = (STATIC / "avatar-events.js").read_text()
+    assert [ln.split(":")[0].strip() for ln in events.splitlines() if 'effect: "surge"' in ln] == ["completed"]
     surge = AV.split("  function surge() {")[1].split("\n  }\n")[0]
     assert 'if (fxLevel() !== "full" || !av.wrap) return;' in surge   # never in Low performance / Reduced motion
     assert "@media (prefers-reduced-motion: reduce) { .surge { display: none; }" in (STATIC / "avatar.css").read_text()
@@ -373,7 +379,8 @@ def test_figure_has_glowing_suit_contours_that_grow_with_the_stage():
 def test_gestures_come_only_from_real_states_and_bend_the_arms_in_the_shader():
     poses = AV3.split("const POSE_OF = ")[1].split(";")[0]
     assert poses == '{ speaking: "present", coding: "work", executing: "work", approval: "raise", completed: "open" }'
-    assert "const pose = POSES[POSE_OF[state] || \"rest\"]" in AV3                 # anything else: arms at rest
+    assert "const pose = POSES[gestureOf()] || POSES.rest" in AV3                    # anything else: arms at rest
+    assert 'const gestureOf = () => (pers ? pers.gesture : POSE_OF[state] || "rest");' in AV3   # personality first (avatar-events.js)
     assert "uniform mat3 uHead, uArmR, uArmL, uForeR, uForeL;" in AV3
     assert "vObj = position; vObjN = normal;" in AV3                               # seams and panels stay on the moving arm
     figure_code = AV3.replace((STATIC / "avatar3d-projections.js").read_text(), "")   # everything but the projections
@@ -521,7 +528,7 @@ def test_learning_experimenting_and_analyzing_come_from_real_signals():
     assert "L && L.experiments_running" in fn_state and "L.lessons_new_at !== ui.seenLessonAt" in fn_state
     assert "ui.analyzingUntil = Date.now() + 1500" in JS                                     # only while fetching projection data
     sm = (STATIC / "avatar-state.js").read_text()
-    assert "MAX_MS = { success: 4000, learning: 4000 }" in sm                               # a lesson is shown briefly, never held
+    assert "MAX_MS = { success: 4000, learning: 4000, disagreeing: 3000 }" in sm             # a lesson is shown briefly, never held
 
 
 def test_meshes_are_built_off_the_main_thread_with_a_fallback():

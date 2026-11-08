@@ -325,6 +325,12 @@ prefer="quality")` and up to 2000 tokens, falling back to the best available mod
 - **Presets** `static/avatar-presets.js` (`window.JarvisPresets`): pure functions over `{ active, custom[] }`; app.js
   stores them in `localStorage["jarvis-presets"]` and applies a preset by merging its settings into the per-device
   display settings (`jarvis-display`), the same path as every other projection control.
+- **Event-to-visual map** `static/avatar-events.js` (`window.JarvisEvents`): `MAP[state]` → personality, automatic
+  projection, effect, sound cue; `PERSONALITY[name]` → head motion, gesture, glances; `AUDIT_STATES` → the audit
+  events that show a state of their own (`permission.denied`, `egress.denied` → `disagreeing`). `avatar.js` passes
+  the personality to the renderer (`setPersonality`); `app.js` reads `projectionFor` and spots refusals with
+  `fromAudit` (newest audit seq remembered, so nothing replays). Priorities and timing stay in `avatar-state.js`
+  (disagreeing: priority 75, at most 3 s).
 
 ## Benchmark and release gate (`src/jarvis/bench/`, `src/jarvis/gate.py`, v0.17)
 

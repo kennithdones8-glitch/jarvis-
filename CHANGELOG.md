@@ -1,5 +1,21 @@
 # Changelog
 
+## Unreleased — Avatar 2.5, phase 2: one event-to-visual map and personalities
+
+- **`avatar-events.js`**: the one table that says, for every state, how the figure moves, which projection the focus
+  view opens on its own, the one-off effect (the completion surge, the shield, the rebuild) and the sound cue for
+  later. The dashboard and both renderers read it; the old per-file lists are gone.
+- **Personalities** (ways of moving, never feelings): idle, listening, curious (researching, analyzing,
+  experimenting), concentrating (understanding, reasoning, writing, coding, planning, learning), explaining
+  (speaking), executing, waiting (your decision), confirming (a real completion), recovering (lifts its head as it
+  comes back), alert, and **disagreeing**. Glances happen only at rest.
+- **Disagreeing** has one real trigger: a new `permission.denied` or `egress.denied` entry in the audit log (your
+  rules or the privacy guard refused something). It shows for about 3 s (amber, never red): one small head shake,
+  the right hand up, the shield flares. Old refusals never replay on a reload. Your own "no" to an approval is not a
+  refusal.
+- Fix: a Music or system command refused by your rules now answers "Refused by your rules: …" (403) instead of an
+  internal error; a bad argument answers with the reason (400).
+
 ## Unreleased — Avatar 2.5, phase 1: 360° inspection and projection presets
 
 - **Inspect in 360°** (focus view → Projection controls → Camera): drag or arrow keys orbit the projection, the

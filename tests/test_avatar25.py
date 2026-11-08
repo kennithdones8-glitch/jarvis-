@@ -187,3 +187,74 @@ def test_presets_and_diagnostics_change_the_look_only_and_show_measured_numbers(
     assert "frameAvg = frameAvg ? frameAvg * 0.9 + (now - last) * 0.1 : now - last;" in AV3   # measured between real frames
     assert "frameMs: raf && mode === \"full\" ? frameAvg : 0" in AV3   # no frame time claimed while idle
     assert "temperature" not in diag.lower()
+
+
+# ---- phase 2: the central event-to-visual map and personalities --------------------------------------------------
+EVENTS = (STATIC / "avatar-events.js").read_text()
+
+
+def events(script: str):
+    return node(f"""
+import {{ createRequire }} from "module";
+const require = createRequire(import.meta.url);
+const E = require({json.dumps(str(STATIC / "avatar-events.js"))}), SM = require({json.dumps(str(STATIC / "avatar-state.js"))});
+const out = {{}};
+{script}
+console.log(JSON.stringify(out));
+""")
+
+
+def test_every_state_has_one_mapping_and_every_personality_is_drawn():
+    out = events("out.map = E.MAP; out.pers = E.PERSONALITY; out.states = SM.STATES; out.proj = E.PROJECTIONS;")
+    renderer_states = json.loads(re.search(r"const STATES = (\[.*?\]);", AV, re.S).group(1).replace("\n", " "))
+    assert set(out["map"]) == set(out["states"]) == set(renderer_states)            # one table, the same states everywhere
+    for state, v in out["map"].items():
+        assert v["personality"] in out["pers"], state
+        assert v["projection"] is None or v["projection"] in out["proj"], state
+    for name, p in out["pers"].items():
+        assert f'h === "{p["head"]}"' in AV3 or p["head"] == "aware", name            # the renderer draws each head motion
+        assert f"    {p['gesture']}:" in AV3, name                                     # and each gesture
+    built = set(re.findall(r"^  (\w+)\(d, k\) \{", (STATIC / "avatar3d-projections.js").read_text(), re.M))
+    assert set(out["proj"]) <= built                                                  # automatic projections exist
+
+
+def test_personalities_never_claim_feelings_and_red_stays_for_errors():
+    out = events("out.pers = E.PERSONALITY;")
+    for name, p in out["pers"].items():
+        for word in ("happy", "sad", "angry", "upset", "annoyed", "frustrated", "feels", "excited"):
+            assert word not in p["means"].lower(), (name, word)
+    looks = re.search(r"const LOOKS = \{(.*?)\n\};", AV3, re.S).group(1)
+    disagree = re.search(r'disagreeing: +\{ tint: "(#\w+)"', looks).group(1)
+    assert disagree != "#ff4b4b" and re.findall(r'(\w+): +\{ tint: "#ff4b4b"', looks) == ["error"]   # amber, not red
+
+
+def test_disagreeing_comes_only_from_a_new_refusal_in_the_audit_log():
+    fn_ = re.search(r"function refusedJustNow\(.*?\n\}\n", JS, re.S).group(0)
+    out = events(f"""
+const ui = {{}}; const window = {{ JarvisEvents: E }}, JarvisEvents = E; let clock = 1000; const Date = {{ now: () => clock }};
+{fn_}
+const d = (rows) => ({{ audit: rows }});
+out.first = refusedJustNow(d([{{ seq: 9, event: "permission.denied" }}]));          // already in the log: not replayed
+out.other = refusedJustNow(d([{{ seq: 10, event: "task.completed" }}, {{ seq: 9, event: "permission.denied" }}]));
+out.fresh = refusedJustNow(d([{{ seq: 12, event: "egress.denied" }}, {{ seq: 11, event: "approval.rejected" }}]));
+clock += 2000; out.held = refusedJustNow(d([{{ seq: 12, event: "egress.denied" }}]));
+clock += 1500; out.ended = refusedJustNow(d([{{ seq: 12, event: "egress.denied" }}]));
+out.rejected = E.fromAudit([{{ seq: 20, event: "approval.rejected" }}], 0);          // your own "no" is not a refusal
+const m = SM.createMachine({{ now: () => clock }});
+m.input("executing"); clock += 100; out.beats = m.input("disagreeing").state;
+clock += 100; out.stop = m.input("halted").state;
+const m2 = SM.createMachine({{ now: () => clock }}); m2.input("disagreeing"); clock += 3100; out.oneShot = m2.tick().state;
+""")
+    assert out["first"] is False and out["other"] is False and out["fresh"] is True
+    assert out["held"] is True and out["ended"] is False and out["rejected"] is None
+    assert out["beats"] == "disagreeing" and out["stop"] == "halted" and out["oneShot"] == "idle"
+    assert 'if (refusedJustNow(d) && s.core !== "stopped" && s.core !== "offline") return "disagreeing";' in JS
+    assert set(re.findall(r'"([\w.]+)": "disagreeing"', EVENTS)) == {"permission.denied", "egress.denied"}
+
+
+def test_dashboard_reads_projection_effect_and_motion_from_the_map():
+    assert "const m = JarvisEvents.projectionFor(state);" in JS and "AUTO_PROJECTION" not in JS
+    assert "av.three.setPersonality(personality(state));" in AV and 'if (effect(state) === "surge")' in AV
+    html = (STATIC / "index.html").read_text()
+    assert html.index("/static/avatar-events.js") < html.index("/static/avatar.js")
+    assert "document" not in EVENTS and "fetch(" not in EVENTS and "localStorage" not in EVENTS   # data only
