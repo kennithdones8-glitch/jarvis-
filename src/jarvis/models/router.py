@@ -106,6 +106,7 @@ class ModelRouter:
         if any(p.location != "local" for p in self.local.values()):
             raise ValueError("cloud providers must be registered with the egress gate")
         self.gate = gate
+        self.adjust: dict[str, float] = {}   # tier 7: model id → small score nudge from lessons (see learn.autopilot)
 
     def route(self, need: Need, request: ChatRequest) -> Route:
         local_only = need.local_only or self.gate.sensitivity.has_local_only(request)
@@ -143,7 +144,8 @@ class ModelRouter:
                 prefer = need.prefer if need.prefer != "auto" else ("speed" if self.mode == "local_first" else "quality")
                 primary, secondary = (info.quality, info.speed) if prefer == "quality" else (info.speed, info.quality)
                 local_bonus = 100 if location == "local" and self.mode == "local_first" else 0
-                score = local_bonus + primary * 10 + secondary + (0.5 if location == "local" else 0)
+                nudge = max(-3.0, min(3.0, self.adjust.get(mid, 0.0)))   # bounded: never beats the local-first bonus
+                score = local_bonus + primary * 10 + secondary + (0.5 if location == "local" else 0) + nudge
                 ok.append(Candidate(name, mid, location, info, score))
 
         if not ok:

@@ -149,6 +149,12 @@ def build_briefing(kernel, *, health: dict[str, Any] | None = None, now: float |
     n = len(needs)
     headline = (f"{n} thing{'s' if n != 1 else ''} need{'s' if n == 1 else ''} you." if n
                 else "Nothing needs you." if not systems else "Nothing needs a decision, but check Systems.")
+    try:   # what JARVIS did on its own (tier 7) in the last day: one digest
+        from .learn import autopilot
+        if auto := autopilot.digest(kernel):
+            sections.append({"title": "Done on its own", "items": auto[:10]})
+    except Exception:  # noqa: BLE001 - an older database: no digest
+        pass
     return {"headline": headline, "since": since_iso, "generated_at": now, "sections": sections}
 
 

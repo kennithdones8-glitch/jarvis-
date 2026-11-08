@@ -1,5 +1,19 @@
 # Changelog
 
+## Unreleased — Tier 7: autopilot (owner's choices)
+
+- **Nightly self-checks**: once a day after 03:00 local time, the routing replay, recovery drills and benchmark
+  comparison run in the simulation lab by themselves (sandboxed, no model calls).
+- **Acting on its own lessons**: a strong, uncontested lesson about a model's answers (≥60% confidence) nudges how
+  routing ranks the models already allowed for a request: −3 for one that keeps failing checks, +2 for a reliable one
+  (quality counts 10 per point, so a nudge only breaks near-ties). The router still applies every privacy, budget,
+  capability and availability rule first; in local-first mode a cloud model can never overtake a local one; a nudge
+  can't make a model appear. Every nudge is logged, listed in the Evolution center with **Undo**, and never re-applied
+  for the same lesson after you undo it. The emergency stop, tier 7 off or paused experiments clear all nudges.
+- **Daily digest**: "Done on its own" in the morning briefing.
+- Turn on from the Mac's terminal: `jarvis autonomy enable 6` then `jarvis autonomy enable 7` (stays on).
+- Changes to JARVIS's own code stay propose-only.
+
 ## Unreleased — Tier 6: change trials
 
 - **Change trials** (`jarvis/learn/trial.py`): name a branch or commit and JARVIS checks it and your current code out

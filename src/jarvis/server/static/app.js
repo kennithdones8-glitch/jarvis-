@@ -1836,6 +1836,16 @@ async function loadEvolution() {
       tour.profiles.length ? h("table", { class: "tour" }, h("thead", {}, h("tr", {}, ["Model", "Checks passed", "Median", "Your ratings", "Benchmark"].map((x) => h("th", {}, x)))),
         h("tbody", {}, tour.profiles.map(prof))) : h("p", { class: "empty" }, "No answers or benchmark runs recorded yet."),
       tour.recommendation ? h("p", { class: "exp-rec" }, tour.recommendation.text) : null),
+    h("section", { class: "evo-sec" }, h("h3", { class: "sys-part" }, "Done on its own (tier 7)"),
+      h("p", { class: "hl-sub" }, a.allowed.operate ? "On: nightly self-checks after 03:00 and small routing nudges from strong lessons (only among models already allowed). Each nudge can be undone."
+        : "Off. Turn on from the Mac's terminal: jarvis autonomy enable 7 (needs tiers 1–6)."),
+      (data.adjustments || []).length ? h("ul", { class: "lessons" }, data.adjustments.map((x) => h("li", { class: x.active ? (x.bonus > 0 ? "good" : "bad") : "" },
+        h("div", { class: "l-head" }, h("span", { class: `l-kind ${x.active ? "confirmed" : "outdated"}` }, x.active ? "Active" : "Undone"),
+          h("span", {}, `${x.model} ${x.bonus > 0 ? "+" : ""}${x.bonus}`), h("span", { class: "l-when" }, since(x.at))),
+        h("small", {}, x.why),
+        x.active ? h("div", { class: "row" }, h("button", { class: "btn btn-ghost btn-xs", type: "button",
+          onclick: async () => { try { await api("/api/adjustments/undo", { lesson: x.lesson }); loadEvolution(); } catch (e) { note(e.message); } } }, "Undo")) : null)))
+        : h("p", { class: "empty" }, "Nothing adjusted yet.")),
     h("section", { class: "evo-sec" }, h("h3", { class: "sys-part" }, "Simulation lab"),
       h("form", { class: "row trial-form", onsubmit: async (e) => { e.preventDefault();
           const ref = e.target.querySelector("input").value.trim();

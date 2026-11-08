@@ -438,9 +438,14 @@ class Dashboard:
         return True
 
     def learn_cycle(self) -> dict[str, Any]:
-        """OBSERVE + LEARN: new audit entries become outcomes and lessons (respects autonomy and the emergency stop)."""
-        from ..learn import Pipeline
-        return Pipeline(self.kernel).run()
+        """OBSERVE + LEARN: new audit entries become outcomes and lessons (respects autonomy and the emergency stop);
+        then, with tier 7 on, act on strong lessons and run the nightly self-checks."""
+        from ..learn import Pipeline, autopilot
+        result = Pipeline(self.kernel).run()
+        autopilot.act_on_lessons(self.kernel)
+        autopilot.apply_to_router(self.kernel)   # also clears the nudges when tier 7 is off or the stop is on
+        autopilot.nightly(self.kernel)
+        return result
 
     def _learn_cached(self) -> dict[str, Any]:
         now = time.monotonic()
@@ -1116,7 +1121,9 @@ class Dashboard:
         if url.path == "/api/learn":
             from .. import learn
             from ..learn import analysis
+            from ..learn import autopilot
             return self._json(h, 200, {**self.learn_state(), "lessons": learn.lessons(self.kernel),
+                                       "adjustments": autopilot.adjustments(self.kernel),
                                        "experiments": analysis.Lab(self.kernel).list(), "kinds": analysis.KINDS,
                                        "discoveries": analysis.discover(self.kernel, self._discovery_facts())})
         if url.path == "/api/learn/tournament":
@@ -1335,6 +1342,10 @@ class Dashboard:
             except (AutonomyError, ValueError) as exc:
                 raise HttpError(400, str(exc)) from None
             return a.state()
+        if path == "/api/adjustments/undo":
+            from ..learn import autopilot
+            autopilot.undo(k, text("lesson", 200), by=actor)
+            return {"adjustments": autopilot.adjustments(k)}
         if path == "/api/experiments":
             from ..learn import analysis
             try:

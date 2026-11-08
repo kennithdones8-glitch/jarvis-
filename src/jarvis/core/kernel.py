@@ -72,6 +72,11 @@ class Kernel:
         from ..memory import MemoryStore, settings_from
 
         self.memory = MemoryStore(self.db, self.audit, settings_from(self.model_config.memory), self.models)
+        try:   # tier 7 routing nudges (empty unless the owner turned tier 7 on)
+            from ..learn.autopilot import apply_to_router
+            apply_to_router(self)
+        except Exception:  # noqa: BLE001 - never stop JARVIS from starting over an optional nudge
+            pass
 
     def forget(self, query: str, *, by: str, dry_run: bool = True) -> dict:
         """Everything JARVIS keeps that mentions ``query``: memories, conversation records and finished

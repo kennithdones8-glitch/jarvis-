@@ -44,6 +44,8 @@ SECURITY: dict[str, tuple[str, list[str]]] = {
         "test_settle_steps::settling_from_the_phone_is_one_tap_once_signed_in",
         "test_learn::autonomy_tiers_pauses_and_the_emergency_stop", "test_learn::autonomy_is_mac_only",
         "test_trial::trials_need_tier_6_from_the_terminal", "test_trial::refs_are_validated",
+        "test_autopilot::nothing_happens_without_tier_7",
+        "test_autopilot::nudges_reorder_allowed_models_only_and_never_beat_local_first",
         "test_intent::the_dashboard_route_is_local_only_and_research_and_tasks_are_confirmed",
         "test_permissions::outside_root_denied", "test_permissions::path_traversal_denied",
         "test_permissions::symlink_escape_denied", "test_permissions::deny_beats_allow",
