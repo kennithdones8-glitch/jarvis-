@@ -365,6 +365,12 @@ async function submitCommand(ev) {
     const r = await routeMessage(text);
     $("#send").disabled = false;
     if (r.mode === "research" || r.mode === "do") { showRouteConfirm(r); return; }
+    if (r.mode === "command" && r.tool) {   // a direct Mac command: no model, the permission engine decides
+      ui.convo.push({ role: "user", text });
+      $("#cmd").value = ""; clearDraft();
+      await sendChat({ tool: r.tool, action: r.action, args: r.args }, "/api/command");
+      return;
+    }
     if (r.mode === "show" && r.module) {   // "show me …": open the projection and say what it shows (from its data, no model)
       ui.convo.push({ role: "user", text });
       $("#cmd").value = ""; clearDraft();
@@ -529,6 +535,11 @@ async function consent(m, approve) {
   ui.convo = ui.convo.filter((x) => x !== m);
   try { await call(`/api/approvals/${m.approval_id}`, { approve }); }
   catch (e) { if (e.name === "NotAllowedError") { ui.convo.push(m); render(); return; } /* else: already decided in Decisions */ }
+  if (m.endpoint === "/api/command") {
+    if (approve) await sendChat(m.payload, m.endpoint);
+    else note("Not done — you said no.");
+    return;
+  }
   if (m.endpoint === "/api/research") {
     if (approve) await sendChat(m.payload, m.endpoint);
     else note("Not researched — web research needs to send your question to Claude.");

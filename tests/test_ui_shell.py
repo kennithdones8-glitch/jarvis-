@@ -38,7 +38,7 @@ def test_drafts_survive_and_are_cleared_when_sent(dash):
     js = call(d, "/static/app.js")[2].decode()
     assert "sessionStorage.setItem(DRAFT_KEY" in js and 'addEventListener("input", saveDraft)' in js
     submit = js.split("async function submitCommand")[1].split("\nasync function ")[0]
-    assert submit.count("clearDraft()") == 3  # every way the box is emptied after sending (task, chat, "show me …")
+    assert submit.count("clearDraft()") == 4  # every way the box is emptied after sending (task, chat, "show me …", Mac command)
 
 
 def test_every_page_has_navigation_and_a_working_emergency_stop(dash):

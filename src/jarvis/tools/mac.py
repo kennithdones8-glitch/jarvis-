@@ -1,4 +1,4 @@
-"""Mac apps: Calendar, Reminders, Notes, Mail drafts and opening apps, through macOS's own scripting
+"""Mac apps: Calendar, Reminders, Notes, Mail drafts, opening apps, Music and system status, through macOS's own scripting
 (`osascript -l JavaScript`). No extra software; macOS asks you once per app ("… wants to control Calendar").
 
 - Every call goes through the ToolGateway: reading is tier 0, anything that adds or changes something is tier 1
@@ -24,7 +24,10 @@ from ..core.permissions import Tier
 from ..core.tools import ActionSpec, CallContext, ToolError, ToolSpec
 
 MAX_RANGE_DAYS = 62
-READS = {"calendar.events", "reminders.list", "notes.search", "notes.read", "calendar.find", "reminders.find", "notes.find"}
+READS = {"calendar.events", "reminders.list", "notes.search", "notes.read", "calendar.find", "reminders.find", "notes.find",
+         "music.now", "system.status"}
+MUSIC_CONTROLS = ("play", "pause", "playpause", "next", "previous")
+FOCUS_SHORTCUTS = {"on": "JARVIS Focus On", "off": "JARVIS Focus Off"}   # made once by the owner in the Shortcuts app
 # Seconds for osascript, a little under the gateway's limit for the action, so our clearer message wins.
 TIMEOUTS = {"calendar.events": 85, "reminders.list": 85, "notes.search": 85, "apps.open": 25}
 MAX_ITEMS = 200
@@ -184,12 +187,114 @@ function main(a) {
 }
 
 
+SCRIPTS.update({
+    "music.now": """
+function main(a) {
+  const M = Application("Music");
+  if (!M.running()) return {running: false};
+  const out = {running: true, state: M.playerState(), volume: M.soundVolume()};
+  try { const t = M.currentTrack; out.track = {name: t.name(), artist: t.artist(), album: t.album(), duration: t.duration()};
+        out.position = M.playerPosition(); } catch (err) { out.track = null; }
+  return out;
+}""",
+    "music.control": """
+function main(a) {
+  const M = Application("Music");
+  ({play: () => M.play(), pause: () => M.pause(), playpause: () => M.playpause(), next: () => M.nextTrack(),
+    previous: () => M.previousTrack()})[a.action]();
+  let name = null; try { name = M.currentTrack.name(); } catch (err) { name = null; }
+  return {state: M.playerState(), track: name};
+}""",
+    "music.playlist": """
+function main(a) {
+  const M = Application("Music");
+  const p = M.playlists.byName(a.name);
+  p.play();
+  return {playing: p.name()};
+}""",
+    "music.volume": """
+function main(a) {
+  const M = Application("Music");
+  M.soundVolume = a.level;
+  return {volume: M.soundVolume()};
+}""",
+    "system.volume": """
+function main(a) {
+  const app = Application.currentApplication(); app.includeStandardAdditions = true;
+  app.setVolume(null, {outputVolume: a.level});
+  return {volume: app.getVolumeSettings().outputVolume};
+}""",
+})
+
+
 class MacError(ToolError):
     pass
 
 
+# ---- system status: macOS's own command-line tools, fixed arguments, nothing changed -------------------------
+def _cmd(argv: list[str], timeout: float = 10) -> str:
+    try:
+        r = subprocess.run(argv, capture_output=True, text=True, timeout=timeout)
+    except (FileNotFoundError, subprocess.TimeoutExpired):
+        return ""
+    return r.stdout if r.returncode == 0 else ""
+
+
+def system_status() -> dict[str, Any]:
+    import shutil as _sh
+    out: dict[str, Any] = {}
+    batt = _cmd(["pmset", "-g", "batt"])
+    if m := re.search(r"(\d+)%;\s*([\w ]+?);", batt):
+        out["battery"] = {"percent": int(m.group(1)), "state": m.group(2).strip(),
+                          "on_power": "AC Power" in batt, "remaining": (re.search(r"(\d+:\d+) remaining", batt) or [None, None])[1]}
+    elif batt:
+        out["battery"] = {"present": False, "on_power": "AC Power" in batt}   # a Mac without a battery
+    wifi = _cmd(["networksetup", "-getairportpower", "en0"])
+    if wifi:
+        out["wifi"] = {"on": wifi.strip().endswith("On")}
+    try:
+        du = _sh.disk_usage("/")
+        out["disk"] = {"free_gb": round(du.free / 1e9, 1), "total_gb": round(du.total / 1e9, 1)}
+    except OSError:
+        pass
+    if ver := _cmd(["sw_vers", "-productVersion"]).strip():
+        out["macos"] = ver
+    if boot := re.search(r"sec = (\d+)", _cmd(["sysctl", "-n", "kern.boottime"])):
+        out["uptime_hours"] = round((datetime.now(timezone.utc).timestamp() - int(boot.group(1))) / 3600, 1)
+    try:
+        vol = osascript("system.volume_get", {}, 10)
+        out["volume"] = vol.get("volume")
+    except Exception:  # noqa: BLE001 - the volume is a nice-to-have
+        pass
+    return out
+
+
+def run_focus_shortcut(which: str) -> dict[str, Any]:
+    """Do Not Disturb has no scripting command on macOS; it runs the owner's own Shortcut instead."""
+    name = FOCUS_SHORTCUTS[which]
+    names = _cmd(["shortcuts", "list"]).splitlines()
+    if name not in names:
+        raise MacError(f"To let JARVIS switch Do Not Disturb, make a Shortcut called \"{name}\" in the Shortcuts app "
+                       f"(one action: Set Focus → Do Not Disturb → {'On' if which == 'on' else 'Off'}). Then ask again.")
+    r = subprocess.run(["shortcuts", "run", name], capture_output=True, text=True, timeout=30)
+    if r.returncode != 0:
+        raise MacError(f"The Shortcut \"{name}\" didn't run: {(r.stderr or r.stdout).strip()[:160]}")
+    return {"focus": which}
+
+
+NATIVE: dict[str, Callable[[dict], Any]] = {"system.status": lambda a: system_status(),
+                                            "system.focus": lambda a: run_focus_shortcut(a["state"])}
+SCRIPTS["system.volume_get"] = """
+function main(a) {
+  const app = Application.currentApplication(); app.includeStandardAdditions = true;
+  return {volume: app.getVolumeSettings().outputVolume};
+}"""
+
+
 def osascript(name: str, args: dict[str, Any], timeout: float) -> Any:
     """Run one of SCRIPTS with JSON arguments and return its parsed JSON result."""
+    if name in NATIVE:
+        return NATIVE[name](args)
     reading = name in READS
     try:
         r = subprocess.run(["osascript", "-l", "JavaScript", "-e", PRELUDE + SCRIPTS[name], json.dumps(args)],
@@ -209,8 +314,8 @@ def osascript(name: str, args: dict[str, Any], timeout: float) -> Any:
 
 
 def _explain(name: str, stderr: str) -> MacError:
-    app = {"calendar": "Calendar", "reminders": "Reminders", "notes": "Notes", "mail": "Mail", "apps": "that app"}[
-        name.split(".")[0]]
+    app = {"calendar": "Calendar", "reminders": "Reminders", "notes": "Notes", "mail": "Mail", "apps": "that app",
+           "music": "Music", "system": "System Events"}[name.split(".")[0]]
     if "-1743" in stderr or "Not authorized" in stderr or "not allowed" in stderr.lower():
         return MacError(f"macOS hasn't allowed JARVIS to use {app}. Open System Settings → Privacy & Security → "
                         f"Automation and turn on {app} under the app that runs JARVIS (Terminal, or python/uv for the "
@@ -224,6 +329,13 @@ def _explain(name: str, stderr: str) -> MacError:
 
 
 # ---- argument checks ------------------------------------------------------------------------------------
+def _level(args: dict) -> int:
+    v = args.get("level")
+    if isinstance(v, bool) or not isinstance(v, (int, float)) or not 0 <= v <= 100:
+        raise MacError("'level' must be a number from 0 to 100")
+    return int(round(v))
+
+
 def _text(args: dict, name: str, limit: int, *, required: bool = True) -> str:
     v = args.get(name)
     if v is None and not required:
@@ -288,7 +400,7 @@ def expand(events: list[dict], start: datetime, end: datetime) -> list[dict]:
 
 
 class MacTool:
-    """Registered as five small tools (calendar, reminders, notes, mail, apps) so permissions and plans can name
+    """Registered as small tools (calendar, reminders, notes, mail, apps, music, system) so permissions and plans can name
     each app separately. ``runner(script_name, args, timeout)`` is osascript on a Mac; tests pass a stand-in."""
 
     def __init__(self, runner: Callable[[str, dict, float], Any] = osascript):
@@ -320,6 +432,17 @@ class MacTool:
             ToolSpec("apps", "Open an app on your Mac", {
                 "open": ActionSpec(change, timeout_s=30),
             }, self.handle_apps),
+            ToolSpec("music", "The Music app: what's playing; play, pause, skip, a playlist, its volume", {
+                "now": ActionSpec(read, timeout_s=30),
+                "control": ActionSpec(change, timeout_s=30),
+                "playlist": ActionSpec(change, timeout_s=30),
+                "volume": ActionSpec(change, timeout_s=30),
+            }, self.handle_music),
+            ToolSpec("system", "Your Mac: battery, Wi-Fi, disk, macOS version, uptime, volume; set the volume; Do Not Disturb via your Shortcut", {
+                "status": ActionSpec(read, timeout_s=30),
+                "volume": ActionSpec(change, timeout_s=30),
+                "focus": ActionSpec(change, timeout_s=40),
+            }, self.handle_system),
         ]
 
     # ---- handlers --------------------------------------------------------------------------------------
@@ -406,6 +529,28 @@ class MacTool:
         if not re.fullmatch(r"[\w .&+'()-]+", name):
             raise MacError("'name' must be an app name like Safari or Music")
         return self.run("apps.open", {"name": name})
+
+    def handle_music(self, action: str, args: dict, ctx: CallContext) -> Any:
+        if action == "now":
+            return self.run("music.now", {})
+        if action == "control":
+            what = _text(args, "action", 20)
+            if what not in MUSIC_CONTROLS:
+                raise MacError(f"'action' must be one of {', '.join(MUSIC_CONTROLS)}")
+            return self.run("music.control", {"action": what})
+        if action == "playlist":
+            return self.run("music.playlist", {"name": _text(args, "name", 120)})
+        return self.run("music.volume", {"level": _level(args)})
+
+    def handle_system(self, action: str, args: dict, ctx: CallContext) -> Any:
+        if action == "status":
+            return self.run("system.status", {})
+        if action == "volume":
+            return self.run("system.volume", {"level": _level(args)})
+        state = _text(args, "state", 5)
+        if state not in FOCUS_SHORTCUTS:
+            raise MacError("'state' must be on or off")
+        return self.run("system.focus", {"state": state})
 
     # ---- after a crash: did the add happen? -------------------------------------------------------------
     def _reconcile(self, app: str):

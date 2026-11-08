@@ -1,5 +1,19 @@
 # Changelog
 
+## Unreleased — Music and system abilities
+
+- **Music** (`music` tool): what's playing (read), play / pause / skip / previous, play a playlist by name, Music's own
+  volume. **System** (`system` tool): battery, power, Wi-Fi on/off, free disk, macOS version, uptime and volume
+  (read, from macOS's own tools with fixed arguments); set the Mac's volume; Do Not Disturb on/off through two
+  Shortcuts you make once ("JARVIS Focus On" / "JARVIS Focus Off": macOS has no scripting command for Focus).
+- Reads never ask. Volume and Do Not Disturb always ask. Playback asks unless your policy has the new
+  **music-controls** allow rule (added to the example policy; add it to yours to skip the question).
+- **Say it in chat**: "pause the music", "skip", "play my Focus playlist", "what's playing", "how's my battery?", "set
+  volume to 30", "turn on do not disturb". Recognised by rules and run through the permission engine directly, no
+  model; changes that need your OK show the usual approval card; the reply is worded from the result.
+- Also listed in the Trust Contract and available to the planner. Tested with a stand-in for the Mac apps; the
+  scripts themselves run only on macOS.
+
 ## Unreleased — smarter answers from your ratings
 
 - Your 👍/👎 now improves later answers: for a question similar to an earlier one (half of the meaningful words in

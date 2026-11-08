@@ -50,6 +50,13 @@ ACTION_DOCS: dict[tuple[str, str], str] = {
     ("notes", "create"): 'notes.create {"title", "body": "<text>", "folder" (optional)} -> new note in Apple Notes',
     ("mail", "draft"): 'mail.draft {"to": ["<email>"], "subject", "body"} -> saves a draft in Mail for the owner to send (never sends)',
     ("apps", "open"): 'apps.open {"name": "<app name>"} -> opens an app (only when asked to open one; to write an email use mail.draft)',
+    ("music", "now"): 'music.now {} -> {"running", "state", "track": {"name", "artist", "album"}, "volume"} (what the Music app is playing)',
+    ("music", "control"): 'music.control {"action": "play" | "pause" | "playpause" | "next" | "previous"} -> controls the Music app',
+    ("music", "playlist"): 'music.playlist {"name": "<playlist name>"} -> plays that playlist in Music',
+    ("music", "volume"): 'music.volume {"level": 0-100} -> the Music app\'s own volume',
+    ("system", "status"): 'system.status {} -> {"battery", "wifi", "disk", "macos", "uptime_hours", "volume"} (read-only)',
+    ("system", "volume"): 'system.volume {"level": 0-100} -> sets the Mac\'s output volume',
+    ("system", "focus"): 'system.focus {"state": "on" | "off"} -> Do Not Disturb, through the owner\'s "JARVIS Focus On/Off" Shortcut',
 }
 REQUIRED_ARGS: dict[tuple[str, str], dict[str, type]] = {
     ("fs", "read"): {"path": str}, ("fs", "list"): {"path": str}, ("fs", "mkdir"): {"path": str},
@@ -63,9 +70,12 @@ REQUIRED_ARGS: dict[tuple[str, str], dict[str, type]] = {
     ("notes", "search"): {"query": str}, ("notes", "read"): {"title": str},
     ("notes", "create"): {"title": str, "body": str},
     ("mail", "draft"): {"to": list, "subject": str, "body": str}, ("apps", "open"): {"name": str},
+    ("music", "now"): {}, ("music", "control"): {"action": str}, ("music", "playlist"): {"name": str},
+    ("music", "volume"): {"level": int}, ("system", "status"): {}, ("system", "volume"): {"level": int},
+    ("system", "focus"): {"state": str},
 }
 RETRIES = {"web": 3, "search": 3, "llm": 2, "fs": 2, "research": 2, "doc": 2,
-           "calendar": 2, "reminders": 2, "notes": 2, "mail": 1, "apps": 1}
+           "calendar": 2, "reminders": 2, "notes": 2, "mail": 1, "apps": 1, "music": 1, "system": 1}
 
 PLANNER_PROMPT = """\
 You are the planning component of JARVIS, a personal assistant on the owner's Mac. Turn the \

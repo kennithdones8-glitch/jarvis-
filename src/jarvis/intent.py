@@ -39,6 +39,36 @@ SHOW = (("architecture", r"architecture|code ?base|your code|source|software|str
         ("simulation", r"experiments?|simulations?|lab"))
 
 
+# Direct Mac commands (Music, system): recognised by rules and run through the permission engine, no model involved
+_LEAD2 = r"^(?:(?:hey |ok )?jarvis[,:]?\s+)?(?:please\s+|can you\s+|could you\s+)?"
+COMMANDS = (
+    (re.compile(_LEAD2 + r"(?:pause|stop)(?: the| my)? (?:music|song|track)\W*$|^pause\W*$", re.I), ("music", "control", {"action": "pause"})),
+    (re.compile(_LEAD2 + r"(?:resume|play)(?: the| some| my)? music\W*$|^(?:resume|play)\W*$", re.I), ("music", "control", {"action": "play"})),
+    (re.compile(_LEAD2 + r"(?:skip|next)(?: (?:this )?(?:song|track))?\W*$|^skip this(?: song| track)?\W*$", re.I), ("music", "control", {"action": "next"})),
+    (re.compile(_LEAD2 + r"(?:previous|go back(?: a)?)(?: song| track)?\W*$", re.I), ("music", "control", {"action": "previous"})),
+    (re.compile(_LEAD2 + r"(?:what(?:'s| is) playing|what song is (?:this|playing))\W*$", re.I), ("music", "now", {})),
+    (re.compile(_LEAD2 + r"(?:how(?:'s| is) my (?:battery|mac)|(?:battery|disk space|wi-?fi|system) status|how much (?:battery|disk space)(?: (?:do i have|is left))?)\W*$", re.I),
+     ("system", "status", {})),
+    (re.compile(_LEAD2 + r"(?:turn on|enable|start) (?:do not disturb|dnd|focus)\W*$|^dnd on\W*$", re.I), ("system", "focus", {"state": "on"})),
+    (re.compile(_LEAD2 + r"(?:turn off|disable|stop) (?:do not disturb|dnd|focus)\W*$|^dnd off\W*$", re.I), ("system", "focus", {"state": "off"})),
+)
+_PLAYLIST = re.compile(_LEAD2 + r"play (?:my |the )?(?:playlist )?[\"“]?(.{1,80}?)[\"”]?(?: playlist)?\W*$", re.I)
+_VOLUME = re.compile(_LEAD2 + r"(?:set |turn )?(?:the )?(music )?volume (?:to |at )?(\d{1,3})\s*%?\W*$", re.I)
+
+
+def mac_command(text: str) -> dict | None:
+    t = " ".join(text.split())
+    for pattern, (tool, action, args) in COMMANDS:
+        if pattern.match(t):
+            return {"tool": tool, "action": action, "args": dict(args)}
+    if m := _VOLUME.match(t):
+        level = min(100, int(m.group(2)))
+        return {"tool": "music" if m.group(1) else "system", "action": "volume", "args": {"level": level}}
+    if (m := _PLAYLIST.match(t)) and "playlist" in t.lower():
+        return {"tool": "music", "action": "playlist", "args": {"name": m.group(1).strip()}}
+    return None
+
+
 def show_target(text: str) -> str | None:
     m = _SHOW.match(" ".join(text.split()))
     if not m:
@@ -72,6 +102,8 @@ def classify(text: str, complete: Callable[[str], str] | None = None) -> dict[st
     """``complete(prompt) -> text`` is a local-only model call (the caller guarantees it never leaves the Mac).
     Any failure falls back to "ask", which takes no action and sends nothing to the web."""
     text = text[:2000]
+    if cmd := mac_command(text):
+        return {"mode": "command", **cmd, "by": "rules", "reason": "a direct Mac command"}
     if module := show_target(text):
         return {"mode": "show", "module": module, "by": "rules", "reason": "asks to see a projection"}
     mode, reason = by_rules(text)

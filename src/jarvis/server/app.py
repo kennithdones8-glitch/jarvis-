@@ -236,6 +236,37 @@ class HttpError(Exception):
         self.status = status
 
 
+def _say_mac(tool: str, action: str, args: dict[str, Any], r: Any) -> str:
+    """One plain sentence from a Music or system result."""
+    r = r if isinstance(r, dict) else {}
+    if (tool, action) == ("music", "now"):
+        if not r.get("running"):
+            return "Music isn't open."
+        t = r.get("track") or {}
+        return f"{r.get('state', '').capitalize()}: {t.get('name', 'unknown')}" + (f" by {t['artist']}" if t.get("artist") else "") + f" (volume {r.get('volume')}%)."
+    if (tool, action) == ("music", "control"):
+        return f"Music {r.get('state', 'updated')}" + (f": {r['track']}." if r.get("track") else ".")
+    if (tool, action) == ("music", "playlist"):
+        return f"Playing your playlist “{r.get('playing')}”."
+    if action == "volume":
+        return f"{'Music' if tool == 'music' else 'Mac'} volume set to {r.get('volume')}%."
+    if (tool, action) == ("system", "focus"):
+        return f"Do Not Disturb is {r.get('focus')}."
+    parts = []
+    if b := r.get("battery"):
+        parts.append(f"battery {b['percent']}% ({b['state']}{', ' + b['remaining'] + ' left' if b.get('remaining') else ''})" if "percent" in b
+                     else "no battery (on mains power)")
+    if w := r.get("wifi"):
+        parts.append(f"Wi-Fi {'on' if w['on'] else 'off'}")
+    if d := r.get("disk"):
+        parts.append(f"{d['free_gb']} GB free of {d['total_gb']} GB")
+    if r.get("volume") is not None:
+        parts.append(f"volume {r['volume']}%")
+    if r.get("macos"):
+        parts.append(f"macOS {r['macos']}")
+    return ("Your Mac: " + ", ".join(parts) + ".") if parts else "Couldn't read the Mac's status."
+
+
 class Dashboard:
     def __init__(self, kernel: Kernel, *, host: str = "127.0.0.1", port: int = 8765, token: str | None = None,
                  workers: int = 2, poll_s: float = 1.0, remote=None, local_hosts: set[str] | None = None):
@@ -566,6 +597,24 @@ class Dashboard:
             self.jobs[job_id] = job
         self._pool.submit(self._plan_job, job)
         return job_id
+
+    def mac_command(self, body: dict[str, Any]) -> dict[str, Any]:
+        """Run one Music or system action through the gateway: reads run, changes ask (unless your policy allows them),
+        an approved request runs when sent again. The reply is worded from the result, no model involved."""
+        from ..core.tools import ApprovalRequired as Needed
+        tool, action, args = body.get("tool"), body.get("action"), body.get("args") or {}
+        if tool not in ("music", "system") or not isinstance(action, str) or not isinstance(args, dict):
+            raise HttpError(400, "only Music and system commands run this way")
+        started = time.time()
+        summary = {("music", "control"): f"Music: {args.get('action')}", ("music", "playlist"): f"Music: play the playlist “{args.get('name')}”",
+                   ("music", "volume"): f"Music volume to {args.get('level')}%", ("system", "volume"): f"Mac volume to {args.get('level')}%",
+                   ("system", "focus"): f"Do Not Disturb {args.get('state')}"}.get((tool, action))
+        try:
+            r = self.kernel.gateway.invoke(tool, action, args, summary=summary)
+        except Needed as exc:
+            return {"needs_approval": True, "approval_id": exc.approval_id, "summary": summary or f"{tool}.{action}"}
+        return {"text": _say_mac(tool, action, args, r), "model": "mac/tools", "location": "local",
+                "seconds": round(time.time() - started, 1)}
 
     def route_message(self, message: str) -> dict[str, str]:
         """Ask, research or do? A suggestion for the dashboard, which confirms research and tasks with one tap.
@@ -1359,6 +1408,8 @@ class Dashboard:
                                                     baseline=body.get("baseline") if isinstance(body.get("baseline"), str) else "HEAD")}
             except analysis.LabError as exc:
                 raise HttpError(409, str(exc)) from None
+        if path == "/api/command":   # a direct Mac command (Music, system), through the permission engine
+            return self.mac_command(body)
         if path == "/api/route":   # which kind of message: rules, then a model on this Mac (never the cloud)
             return self.route_message(text("text", 2000))
         if path == "/api/plan":
