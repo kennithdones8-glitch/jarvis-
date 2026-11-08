@@ -705,7 +705,8 @@ class Dashboard:
                                         + "\nReply with the corrected answer only.", Category.CONVERSATION)]
                 # always local: the first answer was, and a retry must never become a consent question
                 r = self.kernel.models.complete(local_need, ChatRequest(tuple(retry), max_tokens=max_tokens),
-                                                purpose="dashboard chat (answer check retry)", level=found.level)
+                                                purpose="dashboard chat (answer check retry)", level=found.level,
+                                                question=message)
                 bad = unsupported_times(r.text, found.context.content, message) if checks_times else []
             self.kernel.audit.record("chat.answer_check", problems=len(problems), retried=retried,
                                      still=len(chat_problems(message, r.text, looked_up=found.context is not None, puzzle=False)))
@@ -764,7 +765,8 @@ class Dashboard:
                                     "corrected code in one Python code block.", Category.CONVERSATION)]
             # always local: the first answer was, and a fix must never become a consent question
             r2 = self.kernel.models.complete(replace(need, local_only=True, min_quality=1), ChatRequest(tuple(retry), max_tokens=900),
-                                             purpose="dashboard chat (coding self-test fix)", level=level)
+                                             purpose="dashboard chat (coding self-test fix)", level=level,
+                                             question=message)
             again = code_of(r2.text, message)
             if again:
                 second = run_cases(again[0], cases)

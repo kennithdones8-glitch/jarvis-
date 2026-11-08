@@ -51,8 +51,16 @@ Built on `harder-bench-v1`. Fixes the two gaps the hard set found, where even a 
   any new files"; also reminders, emails, events, notes).
 - **J. Nothing JARVIS listed is left out.** If an answer misses a reminder JARVIS listed as overdue or due in the
   window asked about, it gets one local retry naming what's missing.
-- To be proven on the Mac: the hard set ×5 (before = 20261107-141713-local), and core + extended ×5 for no new
-  failures.
+- **Measured on the Mac with G–J (c08983b).** Hard set 58/85 (20261108-033633-local); pooled against both earlier
+  hard runs 8 → 11 tasks, verdict MERGE (planning-today, contradiction, false-premise 0 → 5/5). But core + extended
+  (20261108-114935-local) was 104/110 with reasoning-schedule down to 1/5 (5/5 before): a new failure, so not
+  mergeable as it stood. Hence:
+- **A retry stays on the model that answered.** Every puzzle answer gets one "check your answer" retry, and the
+  model for it was chosen from the retry's own instruction text, never maths, so it skipped the 14B reasoning model.
+  With G a calendar lookup marks the answer careful, so the 7B (not the 3B) did the retry and re-solved the puzzle
+  wrongly. Retries and coding fixes are now routed by the owner's question. Also: a careful answer in hybrid routing
+  ("simple", kept here) still gets the reasoning model for maths, logic and code, instead of the 7B.
+- To be proven on the Mac: core + extended ×5 (no new failures against 20261108-014415-local), and the hard set ×5.
 
 ## Unreleased: a harder benchmark set (branch `harder-bench-v1`, owner's choice)
 

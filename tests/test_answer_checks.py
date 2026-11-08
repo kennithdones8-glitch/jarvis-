@@ -84,6 +84,19 @@ def test_a_puzzle_gets_one_self_check(chat_env):  # noqa: F811
     assert "check your answer against each condition" in last
 
 
+def test_the_self_check_is_routed_by_the_question_not_the_check(chat_env, monkeypatch):  # noqa: F811
+    d, state, _ = chat_env
+    state["answers"] = ["9:00 Ana\n10:00 Cara\n11:00 Ben\n12:00 Dev"] * 2
+    real, seen = d.kernel.models.complete, []
+
+    def spy(need, request, **kw):
+        seen.append((kw.get("purpose"), kw.get("question")))
+        return real(need, request, **kw)
+    monkeypatch.setattr(d.kernel.models, "complete", spy)
+    chat(d, SCHEDULE)
+    assert ("dashboard chat (answer check retry)", SCHEDULE) in seen  # same model choice as the first answer
+
+
 def test_ordinary_chat_costs_no_extra_call(chat_env):  # noqa: F811
     d, state, server = chat_env
     state["answers"] = ["Light bends in raindrops."]
