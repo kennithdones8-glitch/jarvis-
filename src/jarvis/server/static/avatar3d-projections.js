@@ -187,9 +187,8 @@ const BUILD = {
   },
 };
 
-export function createDirector({ scene, camera, kick }) {
+export function createDirector({ scene, kick }) {
   const active = [];   // { module, group, own, pickable, pinned, spin }
-  const camHome = { pos: camera.position.clone(), look: new THREE.Vector3(0, 2.68, 0) }, camWide = { pos: new THREE.Vector3(0.9, 2.9, 14.5), look: new THREE.Vector3(0.9, 2.7, 0) };
   let mix = 0;
   function kit(own, pickable) {
     const k = {
@@ -268,13 +267,12 @@ export function createDirector({ scene, camera, kick }) {
     pin(module, on = true) { const p = active.find((x) => x.module === module); if (p) p.pinned = on; },
     list() { return active.map((p) => ({ module: p.module, title: TITLES[p.module], pinned: p.pinned })); },
     get active() { return active.length > 0; },
-    // per frame: ease the camera wider while projections are open; projections appear, rotate slowly when moving
+    get wide() { return mix; },
+    // per frame: how far the camera rig should widen (mix, read by the rig) while projections are open; projections appear, rotate slowly when moving
     update(dt, moving) {
       const goal = active.length ? 1 : 0;
       mix += (goal - mix) * (moving ? 1 - Math.exp(-dt * 3) : 1);
       if (Math.abs(goal - mix) < 0.002) mix = goal;
-      camera.position.lerpVectors(camHome.pos, camWide.pos, mix);
-      camera.lookAt(new THREE.Vector3().lerpVectors(camHome.look, camWide.look, mix));
       for (const p of active) {
         const age = p.root.userData.born ? (performance.now() - p.root.userData.born) / 600 : 1;
         p.root.scale.setScalar((p.root.userData.s || PAIR_SCALE) * (moving ? Math.min(1, 0.3 + age) : 1));

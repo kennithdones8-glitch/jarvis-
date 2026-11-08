@@ -21,6 +21,7 @@ import { buildNeural } from "/static/avatar3d-neural.js";
 import { buildReconstruction } from "/static/avatar3d-particles.js";
 import { buildEnvironment } from "/static/avatar3d-environment.js";
 import { createDirector } from "/static/avatar3d-projections.js";
+import { createRig, VIEWS, TARGETS } from "/static/avatar3d-camera.js";
 export { sdHuman, meshFigure };
 
 const CHAMPAGNE = new THREE.Color("#f3e3bd"), WHITE = new THREE.Color("#fff8ec"), AMBER = new THREE.Color("#f2a33a");
@@ -116,9 +117,9 @@ export function create(wrap, opts = {}) {
   const scene = new THREE.Scene();
   // The figure is self-lit light (shader-only), so the scene needs no lights or environment map.
   const camera = new THREE.PerspectiveCamera(28, 20 / 27, 0.1, 60);
-  camera.position.set(0, 2.85, 11.5);
-  camera.lookAt(0, 2.68, 0);
-  const director = createDirector({ scene, camera, kick: () => kick() });   // projections share this scene and loop
+  // the camera rig: the resting view, orbit / zoom / pan while inspecting, and the wider view for projections
+  const rig = createRig(camera, { rest: opts.options && opts.options.view });
+  const director = createDirector({ scene, kick: () => kick() });   // projections share this scene and loop
 
   // ---- shared uniforms: one update per frame drives every hologram material ------------------------------------
   const U = { uHead: { value: new THREE.Matrix3() }, uArmR: { value: new THREE.Matrix3() }, uArmL: { value: new THREE.Matrix3() },
@@ -626,7 +627,8 @@ export function create(wrap, opts = {}) {
   const cur = { ...LOOKS.idle, tint: new THREE.Color(LOOKS.idle.tint) };
   // The owner's projection settings (per device) and the quality preset. Auto starts Balanced and steps down
   // when frames take too long (or up when there is room), measured in Normal mode while animating.
-  const OPT = { quality: "auto", particles: "normal", animation: "normal", reactor: "normal", orbit: "normal", env: true, orbitals: true, panels: false };
+  const OPT = { quality: "auto", particles: "normal", animation: "normal", reactor: "normal", orbit: "normal", env: true, orbitals: true, panels: false,
+               view: "front", camspeed: "normal" };
   const K = { particles: { low: 0.35, normal: 0.7, high: 1 }, animation: { calm: 0.6, normal: 1, lively: 1.35 },
               reactor: { soft: 0.7, normal: 1, bright: 1.3 }, orbit: { slow: 0.5, normal: 1, fast: 1.6 } };
   let quality = phone ? "low" : "balanced", panelItems = null;
@@ -647,6 +649,7 @@ export function create(wrap, opts = {}) {
     if (key === optKey) return;   // unchanged: nothing to redraw
     optKey = key;
     if (OPT.quality !== "auto") quality = OPT.quality;
+    rig.setRest(OPT.view); rig.setSpeed(OPT.camspeed);
     applyQuality(); envX.setPanels(panelItems, OPT.panels && OPT.env); kick();
   }
   let panelKey = "";
@@ -668,7 +671,7 @@ export function create(wrap, opts = {}) {
   }
   let target = LOOKS.idle, state = "idle", tier = 1, mode = opts.mode || "full", intensity = opts.intensity || 1;
   const targetTint = new THREE.Color(LOOKS.idle.tint);
-  let t = 0, last = 0, raf = 0, visible = true, flash = 0, settling = 2.5, speech = 0, beatAt = 0, arcAt = 0;
+  let frameAvg = 0, t = 0, last = 0, raf = 0, visible = true, flash = 0, settling = 2.5, speech = 0, beatAt = 0, arcAt = 0;
   const headTarget = new THREE.Euler(), headCur = new THREE.Euler();
   // idle liveliness: occasional glances (toward the message box or the side panels) and sensor "shutter blinks"
   const GLANCES = [[0.13, 0], [0.02, -0.26], [0.02, 0.26], [-0.05, -0.12], [0.08, 0.14]];
@@ -847,6 +850,7 @@ export function create(wrap, opts = {}) {
     if (mode === "full" && now - last < cap) { raf = requestAnimationFrame(frame); return; }
     const dt = Math.min(0.1, last ? (now - last) / 1000 : 0.033);
     if (mode === "full" && last && !boot) autoQuality(now - last);
+    if (last && now - last < 500) frameAvg = frameAvg ? frameAvg * 0.9 + (now - last) * 0.1 : now - last;   // measured, for Diagnostics
     last = now;
     const moving = mode === "full";
     if (moving) t += dt;
@@ -903,6 +907,7 @@ export function create(wrap, opts = {}) {
     if (innerMat) innerMat.uniforms.uOpacity.value = 0.12 + cur.neural * 0.5 + flash * 0.3;   // the inner network brightens while thinking
     neuralX.update(cur.neural, ["executing", "coding", "verifying"].includes(state), REACTOR.value);
     const projecting = director.update(dt, moving);
+    const camMoving = rig.update(moving ? 1 - Math.exp(-dt * 4) : 1, director.wide);
     const confirming = reactorX.update(dt * K.animation[OPT.animation], moving, target.rpat);
     envX.update(dt, moving, { ring: cur.ring, reactor: REACTOR.value, animK: K.animation[OPT.animation], orbitK: K.orbit[OPT.orbit] });
     const seams = [0.7, 1.0, 1.2, 1.35, 1.5][tier - 1] || 1;
@@ -1031,7 +1036,7 @@ export function create(wrap, opts = {}) {
     for (const m of lineMats) m.visible = true;
     if (post) post.end(t, intensity);
     settling -= dt;
-    if (moving || revealing || boot || confirming || projecting && mode === "full" || settling > 0 && mode === "full") raf = requestAnimationFrame(frame);
+    if (moving || revealing || boot || confirming || camMoving || projecting && mode === "full" || settling > 0 && mode === "full") raf = requestAnimationFrame(frame);
   }
   function kick() { if (!raf && visible && !document.hidden) raf = requestAnimationFrame(frame); }
 
@@ -1072,12 +1077,18 @@ export function create(wrap, opts = {}) {
     showProjection(m, data) { const ok = director.show(m, data); kick(); return ok; }, closeProjection(m) { director.close(m); kick(); },
     closeProjections() { director.closeAll(); }, pinProjection(m, on) { director.pin(m, on); }, rotateProjection(dx, dy) { director.rotate(dx, dy); },
     get projections() { return director.list(); },
+    // camera: inspection captures pointer input (avatar.js); views and targets only move the camera
+    inspect(on) { rig.setInspecting(on); kick(); }, cameraView(name) { const ok = rig.view(name); kick(); return ok; },
+    inspectTarget(name) { const ok = rig.inspectTarget(name); kick(); return ok; }, resetCamera() { rig.reset(); kick(); },
+    rotateCamera(dx, dy) { rig.rotate(dx, dy); kick(); }, zoomCamera(f) { rig.zoom(f); kick(); }, panCamera(dx, dy) { rig.pan(dx, dy); kick(); },
+    get camera() { return rig.state; }, VIEWS: Object.fromEntries(Object.entries(VIEWS).map(([k, v]) => [k, v.label])),
+    TARGETS: Object.fromEntries(Object.entries(TARGETS).map(([k, v]) => [k, v.label])),
     get quality() { return quality; }, get options() { return { ...OPT }; },
     get modules() { return Object.entries(parts).map(([name, p]) => ({ name, tier: p.tier, on: tier >= p.tier })); },
     skipBoot() { if (boot) { boot.t = BOOT_END; kick(); } }, get booting() { return !!boot; },
     get animating() { return raf !== 0; },
     get eyes() { return { hot: FACE.uEyeHot.value, level: EYE.value, open: FACE.uEyeOpen.value, look: FACE.uEyeLook.value, scan: FACE.uEyeScan.value, speech: FACE.uSpeech.value }; }, get lost() { return lost; }, get state() { return state; },
-    get stats() { return { calls: renderer.info.render.calls, triangles: renderer.info.render.triangles, camera: camera.position.toArray().map((x) => +x.toFixed(2)) }; },
+    get stats() { return { frameMs: raf && mode === "full" ? frameAvg : 0, calls: renderer.info.render.calls, triangles: renderer.info.render.triangles, camera: camera.position.toArray().map((x) => +x.toFixed(2)) }; },
     dispose() { cancelAnimationFrame(raf); ro.disconnect(); io.disconnect(); document.removeEventListener("visibilitychange", onVis);
       renderer.dispose(); canvas.remove(); },
   };

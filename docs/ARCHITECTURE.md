@@ -315,6 +315,17 @@ prefer="quality")` and up to 2000 tokens, falling back to the best available mod
   verification, stage changes and definitions version (`DEFINITION_VERSION`) are stored and audited. A device may
   show a lower stage (Evolution record), never a higher one.
 
+## Avatar 2.5 — living intelligence projection (in progress)
+
+- **Camera rig** `static/avatar3d-camera.js`: the camera on a sphere around a target (azimuth, elevation, distance)
+  with views (`VIEWS`) and inspection targets (`TARGETS`); goals are eased per frame (k = 1 in Low performance and
+  Reduced motion). The Projection Director no longer moves the camera: it reports how far to widen (`director.wide`)
+  and the rig applies it to the resting view only. Pointer, wheel and touch input are bound in `avatar.js` and
+  captured only while inspecting (`.core-wrap.inspecting { touch-action: none }`).
+- **Presets** `static/avatar-presets.js` (`window.JarvisPresets`): pure functions over `{ active, custom[] }`; app.js
+  stores them in `localStorage["jarvis-presets"]` and applies a preset by merging its settings into the per-device
+  display settings (`jarvis-display`), the same path as every other projection control.
+
 ## Benchmark and release gate (`src/jarvis/bench/`, `src/jarvis/gate.py`, v0.17)
 
 `jarvis bench` runs fixed tasks (`bench/tasks/*.toml`) through the real chat, research and plan→task→approval

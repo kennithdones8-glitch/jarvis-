@@ -241,3 +241,36 @@ body.booting .rail-right .panel { animation-delay: 3.45s; }
   transform: translateX(-50%); border-radius: 0; box-shadow: none; animation: none; white-space: nowrap;
   font: 600 12px var(--display, system-ui); letter-spacing: .24em; color: #1a1206; background: rgba(246, 230, 194, .92); padding: 4px 10px;
   pointer-events: none; z-index: 5; }
+
+/* ---- Avatar 2.5: inspection, presets and diagnostics ------------------------------------------------------------- */
+/* Pointer gestures are captured only while inspecting; otherwise the page scrolls over the projection as before */
+.core-wrap.inspecting { touch-action: none; cursor: grab; outline: 1px solid rgba(255, 217, 143, .28); outline-offset: 4px; }
+.core-wrap.inspecting:active { cursor: grabbing; }
+.core-wrap.inspecting .av-label { display: none; }
+body.inspecting .projbar { opacity: .35; }
+/* desktop: lift and shrink the figure a little so the inspection bar never covers it */
+body.inspecting .hud > .center > .core-wrap.has-avatar { top: calc(50% - 20px); width: min(calc((100vh - 250px) * 20 / 27), 60vw) !important; }
+.inspectbar { position: fixed; z-index: 67; left: 50%; bottom: calc(18px + env(safe-area-inset-bottom)); transform: translateX(-50%);
+  width: min(760px, calc(100vw - 32px)); padding: 10px 12px; display: grid; gap: 8px; }
+.inspectbar[hidden] { display: none; }
+.inspectbar .ib-head { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; }
+.inspectbar .ib-head b { font: 600 12px var(--display); letter-spacing: .22em; text-transform: uppercase; color: var(--gold, #f2c46d); }
+.inspectbar .ib-head small { flex: 1 1 220px; color: var(--muted, #b9aa91); font-size: 12px; }
+.inspectbar .ib-row { display: flex; gap: 6px; overflow-x: auto; padding-bottom: 2px; scrollbar-width: thin; }
+.inspectbar .ib-row .chip { flex: 0 0 auto; }
+.pp-namerow { margin-top: 6px; flex-wrap: nowrap; }
+.pp-name { flex: 1 1 auto; min-width: 0; min-height: 36px; padding: 6px 10px; font: inherit; color: inherit; background: rgba(0, 0, 0, .35);
+  border: 1px solid rgba(217, 180, 95, .3); border-radius: 10px; }
+.pp-now { margin: 2px 0 6px; }
+.pp-diag { margin-top: 12px; padding: 8px 10px; display: grid; gap: 3px; font: 12px/1.45 ui-monospace, SFMono-Regular, Menlo, monospace;
+  border-left: 2px solid rgba(143, 227, 173, .5); background: rgba(0, 0, 0, .3); }
+.pp-diag[hidden] { display: none; }
+.pp-diag b { font: 600 12px var(--display); letter-spacing: .18em; text-transform: uppercase; color: #8fe3ad; }
+.pp-diag div { display: flex; justify-content: space-between; gap: 10px; } .pp-diag div span:first-child { color: var(--muted, #b9aa91); }
+@media (max-width: 760px) {
+  /* phone: the inspection bar replaces the focus panel at the bottom so the figure stays visible */
+  body.inspecting .proj-panel { display: none; }
+  body.inspecting .hud > .center > .core-wrap.has-avatar { top: calc(50vh - 50px); width: min(70vw, calc((100vh - 360px) * 20 / 27)) !important; }
+  .core-wrap.inspecting { outline: none; }
+  .inspectbar { width: calc(100vw - 24px); }
+}

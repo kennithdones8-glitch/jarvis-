@@ -1527,9 +1527,13 @@ const DISPLAY = { text: [["normal", "Normal"], ["large", "Large"], ["larger", "L
                   reactor: [["soft", "Soft"], ["normal", "Normal"], ["bright", "Bright"]],
                   orbit: [["slow", "Slow"], ["normal", "Normal"], ["fast", "Fast"]],
                   env: [["on", "On"], ["off", "Off"]],
-                  orbitals: [["on", "On"], ["off", "Off"]] };
+                  orbitals: [["on", "On"], ["off", "Off"]],
+                  // camera (Avatar 2.5): the resting view, how fast inspection turns, and the renderer's real numbers
+                  view: [["front", "Front"], ["three", "Three-quarter"], ["close", "Close"]],
+                  camspeed: [["slow", "Slow"], ["normal", "Normal"], ["fast", "Fast"]],
+                  diag: [["off", "Off"], ["on", "On"]] };
 const DISPLAY_DEFAULT = { text: "normal", density: "comfortable", fx: "full", projection: "standard", quality: "auto", particles: "normal",
-                          animation: "normal", reactor: "normal", orbit: "normal", env: "on", orbitals: "on" };
+                          animation: "normal", reactor: "normal", orbit: "normal", env: "on", orbitals: "on", view: "front", camspeed: "normal", diag: "off" };
 function loadDisplay() {
   let d = {};
   try { d = JSON.parse(localStorage.getItem(DISPLAY_KEY) || "{}") || {}; } catch (e) { d = {}; }
@@ -1540,7 +1544,7 @@ function loadDisplay() {
 function saveDisplay(d) { try { localStorage.setItem(DISPLAY_KEY, JSON.stringify(d)); } catch (e) { /* this visit only */ } }
 function avatarOptions(d) {
   return { quality: d.quality, particles: d.particles, animation: d.animation, reactor: d.reactor, orbit: d.orbit,
-           env: d.env === "on", orbitals: d.orbitals === "on", panels: document.body.classList.contains("projection") };
+           env: d.env === "on", orbitals: d.orbitals === "on", panels: document.body.classList.contains("projection"), view: d.view, camspeed: d.camspeed };
 }
 function applyDisplay(d) {
   const root = document.documentElement;
@@ -1549,6 +1553,123 @@ function applyDisplay(d) {
   root.dataset.fx = d.fx;
   root.dataset.projection = d.projection;
   if (window.JarvisAvatar) { JarvisAvatar.setOptions(avatarOptions(d)); JarvisAvatar.refresh(); }
+  renderDiag();
+}
+
+// ---- projection presets (Avatar 2.5): named sets of the settings above, on this device only (avatar-presets.js) ----
+const PRESET_KEY = "jarvis-presets";
+const displayValid = () => Object.fromEntries(Object.entries(DISPLAY).map(([k, v]) => [k, v.map(([x]) => x)]));
+function loadPresets() {
+  if (!window.JarvisPresets) return null;
+  let raw = null;
+  try { raw = JSON.parse(localStorage.getItem(PRESET_KEY) || "null"); } catch (e) { raw = null; }
+  return JarvisPresets.normalise(raw, displayValid());
+}
+function savePresets(st) { try { localStorage.setItem(PRESET_KEY, JSON.stringify(st)); } catch (e) { /* this visit only */ } }
+function applyPreset(id) {
+  const st = loadPresets();
+  if (!st) return;
+  const r = JarvisPresets.activate(st, id);
+  if (!r.ok) { note(r.error); return; }
+  const d = { ...loadDisplay(), ...r.preset.s };
+  saveDisplay(d); savePresets(r.state); applyDisplay(d);
+  if (r.preset.enter === "focus" && !document.body.classList.contains("projection")) openProjection();
+  renderProjControls();
+}
+function presetChange(op, id, name) {   // create / rename / update / duplicate / remove; built-ins are protected in avatar-presets.js
+  const st = loadPresets();
+  if (!st) return;
+  const P = JarvisPresets, cur = loadDisplay(), v = displayValid();
+  const r = op === "create" ? P.create(st, name, cur, v) : op === "rename" ? P.rename(st, id, name) : op === "update" ? P.update(st, id, cur, v)
+    : op === "duplicate" ? P.duplicate(st, id) : P.remove(st, id);
+  if (!r.ok) { note(r.error); return; }
+  savePresets(r.state);
+  if (op === "duplicate") { const p = P.find(r.state, r.id); saveDisplay({ ...cur, ...p.s }); applyDisplay({ ...cur, ...p.s }); }
+  renderProjControls();
+}
+function presetSection() {
+  const st = loadPresets();
+  if (!st) return [];
+  const P = JarvisPresets, cur = loadDisplay(), now = P.current(st, cur);
+  const nameBox = (value, label, done) => {
+    const input = h("input", { type: "text", maxlength: String(P.MAX_NAME), value: value || "", "aria-label": label, class: "pp-name", placeholder: "Preset name" });
+    const go = () => done(input.value);
+    input.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); go(); } if (e.key === "Escape") { e.stopPropagation(); renderProjControls(); } });
+    setTimeout(() => input.focus(), 0);
+    return h("div", { class: "row pp-namerow" }, input, h("button", { class: "btn btn-sm", type: "button", onclick: go }, "Save"),
+      h("button", { class: "btn btn-ghost btn-sm", type: "button", onclick: () => renderProjControls() }, "Cancel"));
+  };
+  const actions = h("div", { class: "row", role: "group", "aria-label": "Preset actions" });
+  const edit = h("div");
+  const btn = (text, fn, title) => h("button", { class: "btn btn-ghost btn-xs", type: "button", title: title || text, onclick: fn }, text);
+  actions.append(btn("Save as new…", () => edit.replaceChildren(nameBox(now.modified ? "" : `${now.label} copy`, "Name for the new preset", (n) => presetChange("create", null, n)))),
+    btn("Duplicate", () => presetChange("duplicate", now.id), `Copy “${now.label}” as your own preset`));
+  if (!now.builtin) {
+    actions.append(btn("Rename", () => edit.replaceChildren(nameBox(now.label, `New name for ${now.label}`, (n) => presetChange("rename", now.id, n)))),
+      now.modified ? btn("Update", () => presetChange("update", now.id), `Save the current settings into “${now.label}”`) : null,
+      btn("Delete", () => ask(`Delete the preset “${now.label}”? This only removes it from this device.`, { ok: "Delete" }).then((yes) => yes && presetChange("remove", now.id))));
+  }
+  return [h("h3", { class: "sys-part" }, "Presets"),
+    h("p", { class: "hl-sub pp-now" }, now.modified ? `Custom — changed from ${now.label}` : `${now.label}: ${(P.find(st, now.id) || {}).desc || ""}`),
+    h("div", { class: "row", role: "group", "aria-label": "Presets" }, P.list(st).map((p) =>
+      h("button", { class: `chip${p.id === now.id && !now.modified ? " on" : ""}`, type: "button", "aria-pressed": String(p.id === now.id && !now.modified),
+        title: p.desc, onclick: () => applyPreset(p.id) }, p.label))),
+    actions, edit];
+}
+
+// ---- inspection (Avatar 2.5): orbit, zoom and pan around the projection in the focus view ----------------------
+function startInspect() {
+  if (!window.JarvisAvatar || JarvisAvatar.renderer !== "3d") { note("Inspection needs the 3D view (this device is showing the 2D core)."); return; }
+  if (!document.body.classList.contains("projection")) openProjection();
+  if (!JarvisAvatar.inspect(true)) return;
+  document.body.classList.add("inspecting");
+  renderInspectBar();
+  $(".core-wrap").focus();
+}
+function stopInspect() {
+  if (!document.body.classList.contains("inspecting")) return false;
+  document.body.classList.remove("inspecting");
+  if (window.JarvisAvatar) JarvisAvatar.inspect(false);
+  const bar = $("#inspectbar"); if (bar) bar.hidden = true;
+  renderProjControls();
+  return true;
+}
+function renderInspectBar() {
+  const bar = $("#inspectbar");
+  if (!bar || !window.JarvisAvatar) return;
+  const cam = JarvisAvatar.camera || {};
+  bar.hidden = false;
+  const chips = (items, on, fn, label) => h("div", { class: "ib-row", role: "group", "aria-label": label }, Object.entries(items).map(([k, text]) =>
+    h("button", { class: `chip${on === k ? " on" : ""}`, type: "button", "aria-pressed": String(on === k), onclick: () => { fn(k); renderInspectBar(); } }, text)));
+  bar.replaceChildren(
+    h("div", { class: "ib-head" }, h("b", {}, "Inspecting"),
+      h("small", {}, isPhone() ? "Drag to orbit · pinch to zoom · two fingers to pan" : "Drag or arrows to orbit · scroll or +/− to zoom · shift-drag to pan · Esc to exit"),
+      h("button", { class: "btn btn-ghost btn-sm", type: "button", onclick: () => { JarvisAvatar.resetCamera(); renderInspectBar(); } }, "Reset"),
+      h("button", { class: "btn btn-sm", type: "button", id: "inspectexit", onclick: stopInspect }, "Exit inspection")),
+    chips(JarvisAvatar.views, cam.view, (k) => JarvisAvatar.cameraView(k), "Camera views"),
+    chips(JarvisAvatar.targets, cam.focus, (k) => JarvisAvatar.inspectTarget(k), "Inspect a part"));
+}
+
+// ---- diagnostics: the renderer's own numbers (measured, never estimated), shown when the Diagnostics setting is on ----
+function renderDiag() {
+  const el = $("#avdiag");
+  if (!el) return;
+  const on = loadDisplay().diag === "on" && document.body.classList.contains("projection") && window.JarvisAvatar;
+  el.hidden = !on;
+  clearInterval(ui.diagTimer); ui.diagTimer = 0;
+  if (!on) return;
+  const draw = () => {
+    if (!document.body.classList.contains("projection")) { clearInterval(ui.diagTimer); ui.diagTimer = 0; el.hidden = true; return; }
+    const s = JarvisAvatar.stats, cam = JarvisAvatar.camera;
+    const rows = JarvisAvatar.renderer !== "3d" || !s ? [["Renderer", "2D core (no 3D on this device)"]] : [
+      ["Renderer", "3D (WebGL)"], ["Quality", JarvisAvatar.quality || "—"],
+      ["Frame time", s.frameMs ? `${s.frameMs.toFixed(1)} ms (${Math.round(1000 / s.frameMs)} fps; limit ${isPhone() ? 24 : 30})` : "idle — drawn only when something changes"],
+      ["Draw calls", String(s.calls)], ["Triangles", s.triangles.toLocaleString()],
+      ["Camera", cam ? `${cam.inspecting ? "inspecting" : "resting"} · ${cam.focus || cam.view}` : "—"]];
+    el.replaceChildren(h("b", {}, "Diagnostics"), ...rows.map(([k, v]) => h("div", {}, h("span", {}, k), h("span", {}, v))));
+  };
+  draw();
+  ui.diagTimer = setInterval(draw, 1000);
 }
 function showDisplaySettings() {
   const cur = loadDisplay();
@@ -2027,7 +2148,7 @@ document.addEventListener("DOMContentLoaded", () => {
   $("#helpbtn").addEventListener("click", showHelp);
   $("#mic").addEventListener("click", toggleMic);
   $("#speak").addEventListener("click", toggleSpeak);
-  document.addEventListener("keydown", (e) => { if (e.key === "Escape") { $("#routeconfirm").hidden = true; stopSpeaking(); stopReply(); cancelEdit(); closeProjection(); } });
+  document.addEventListener("keydown", (e) => { if (e.key === "Escape") { $("#routeconfirm").hidden = true; stopSpeaking(); stopReply(); cancelEdit(); if (!stopInspect()) closeProjection(); } });
   window.addEventListener("hashchange", () => maybeAutoBriefing(ui.data));
   $("#release").addEventListener("click", () => {
     ask("Release the emergency stop? Paused tasks stay paused until you resume them.", { ok: "Release" })
@@ -2319,7 +2440,13 @@ function renderProjControls() {
     DISPLAY[key].map(([value, text]) => h("button", { class: `chip${cur[key] === value ? " on" : ""}`, type: "button", "aria-pressed": String(cur[key] === value),
       onclick: () => { cur[key] = value; saveDisplay(cur); applyDisplay(cur); renderProjControls(); } }, text)))];
   const mods = JarvisAvatar.modules || [];
+  const three = JarvisAvatar.renderer === "3d";
   el.replaceChildren(
+    ...presetSection(),
+    h("h3", { class: "sys-part" }, "Camera"),
+    h("div", { class: "row" }, h("button", { class: "btn btn-sm", type: "button", disabled: three ? null : true, onclick: startInspect,
+      title: three ? "Orbit, zoom and pan around the projection" : "Needs the 3D view" }, "Inspect in 360°")),
+    ...choose("view", "Resting view"), ...choose("camspeed", "Inspection speed"), ...choose("diag", "Diagnostics"),
     ...choose("projection", "Intensity"), ...choose("quality", `Quality${JarvisAvatar.quality ? ` (now ${JarvisAvatar.quality})` : ""}`),
     ...choose("particles", "Particles"), ...choose("animation", "Animation"), ...choose("reactor", "Reactor"),
     ...choose("orbit", "Orbit speed"), ...choose("orbitals", "Orbitals"), ...choose("env", "Environment holograms"),
@@ -2482,10 +2609,12 @@ function openProjection() {
   if (window.JarvisAvatar) JarvisAvatar.setOptions({ panels: true });   // the floating panels appear in the focus view only
   renderProjControls();
   renderProjection(ui.data);
+  renderDiag();
   $("#projexit").focus();
 }
 function closeProjection() {
   if (!document.body.classList.contains("projection")) return;
+  stopInspect();
   document.body.classList.remove("projection");
   $("#projpanel").hidden = true; $("#projback").hidden = true;
   if (window.JarvisAvatar) { JarvisAvatar.setOptions({ panels: false }); JarvisAvatar.endPreview(); }

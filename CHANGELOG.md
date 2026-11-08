@@ -1,5 +1,24 @@
 # Changelog
 
+## Unreleased — Avatar 2.5, phase 1: 360° inspection and projection presets
+
+- **Inspect in 360°** (focus view → Projection controls → Camera): drag or arrow keys orbit the projection, the
+  wheel, a pinch or +/− zooms, shift-drag, right-drag or two fingers pan, 0 resets. Six views (Front,
+  Three-quarter, Side, Back, Above, Close) and twelve inspection targets (helmet, reactor, each hand, shoulders,
+  chest armour, back, legs, neural network, orbitals, platform, projections). **Exit inspection** or Esc returns to
+  the resting view (a second Esc closes the focus view). Gestures are captured only while inspecting, so the page
+  scrolls and the chat types exactly as before. The camera eases while moving and jumps straight to the new view in
+  Low performance and Reduced motion modes.
+- New per-device settings: **Resting view** (Front, Three-quarter, Close), **Inspection speed** and **Diagnostics**.
+  Diagnostics shows the renderer's own numbers (measured frame time, draw calls, triangles, quality, camera); no
+  frame time is claimed while nothing is animating.
+- **Projection presets**: Standard, Cinematic, Focus, Diagnostic, Immersive (opens the focus view) and Performance.
+  Save the current settings as your own preset, then rename, update, duplicate or delete it (built-ins can only be
+  applied or duplicated). Changing a setting shows "Custom — changed from …". Stored in this browser only, validated
+  on load, at most 20; they change the look on this device and never what JARVIS can do.
+- New files `avatar3d-camera.js` (the camera rig: plain maths, no imports) and `avatar-presets.js`. No new
+  dependencies.
+
 ## Unreleased — Music and system abilities
 
 - **Music** (`music` tool): what's playing (read), play / pause / skip / previous, play a playlist by name, Music's own

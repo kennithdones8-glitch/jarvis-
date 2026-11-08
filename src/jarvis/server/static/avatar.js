@@ -195,7 +195,7 @@
       if (av.aura) three.setAura(av.aura);
       if (av.panels) three.setPanels(av.panels);
       if (boot) { if (SM) SM.setLifecycle("materializing"); document.body.classList.add("booting"); document.addEventListener("keydown", skip, true); document.addEventListener("pointerdown", skip, true); }
-      three.onLost = () => { av.wrap.classList.remove("has-3d"); try { three.dispose(); } catch (e) { /* gone */ } av.three = null; loop(); };
+      three.onLost = () => { av.wrap.classList.remove("has-3d"); av.wrap.classList.remove("inspecting"); av.inspecting = false; document.body.classList.remove("inspecting"); try { three.dispose(); } catch (e) { /* gone */ } av.three = null; loop(); };
       av.wrap.classList.add("has-3d");
       loop();
     } catch (e) {
@@ -215,9 +215,46 @@
     label.className = "av-label"; label.hidden = true; label.setAttribute("role", "status");
     wrap.append(label);
     let lastMove = 0, drag = null;
-    wrap.addEventListener("pointerdown", (e) => { if (av.three && av.three.projections.length) drag = { x: e.clientX, y: e.clientY, moved: 0 }; });
-    wrap.addEventListener("pointerup", () => { setTimeout(() => { drag = null; }, 0); });
+    // Inspection (focus view): drag orbits the camera, the wheel or a pinch zooms, shift-drag / right-drag or two
+    // fingers pan. Input is captured only while inspecting, so the page scrolls and the chat types as before.
+    const touches = new Map();
+    let pinch = null;
+    const inspecting = () => !!(av.three && av.inspecting);
+    wrap.addEventListener("pointerdown", (e) => {
+      if (inspecting()) {
+        touches.set(e.pointerId, { x: e.clientX, y: e.clientY });
+        try { wrap.setPointerCapture(e.pointerId); } catch (err) { /* fine without */ }
+        drag = { x: e.clientX, y: e.clientY, moved: 0, pan: e.shiftKey || e.button === 2 };
+        if (touches.size === 2) { const [a, b] = [...touches.values()]; pinch = { d: Math.hypot(a.x - b.x, a.y - b.y), x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 }; }
+        return;
+      }
+      if (av.three && av.three.projections.length) drag = { x: e.clientX, y: e.clientY, moved: 0 };
+    });
+    const release = (e) => { touches.delete(e.pointerId); if (touches.size < 2) pinch = null; setTimeout(() => { if (!touches.size) drag = null; }, 0); };
+    wrap.addEventListener("pointerup", release);
+    wrap.addEventListener("pointercancel", release);
+    wrap.addEventListener("contextmenu", (e) => { if (inspecting()) e.preventDefault(); });   // right-drag pans
+    wrap.addEventListener("wheel", (e) => {
+      if (!inspecting()) return;   // not inspecting: the page scrolls normally
+      e.preventDefault();
+      av.three.zoomCamera(Math.exp(Math.max(-1, Math.min(1, e.deltaY / 240))));
+    }, { passive: false });
     wrap.addEventListener("pointermove", (e) => {
+      if (inspecting() && drag) {
+        if (touches.has(e.pointerId)) touches.set(e.pointerId, { x: e.clientX, y: e.clientY });
+        if (pinch && touches.size >= 2) {   // two fingers: pinch zooms, moving both pans
+          const [a, b] = [...touches.values()];
+          const d = Math.hypot(a.x - b.x, a.y - b.y), mx = (a.x + b.x) / 2, my = (a.y + b.y) / 2;
+          if (d > 0 && pinch.d > 0) av.three.zoomCamera(pinch.d / d);
+          av.three.panCamera(mx - pinch.x, my - pinch.y);
+          pinch = { d, x: mx, y: my }; drag.moved += 10;
+          return;
+        }
+        const dx = e.clientX - drag.x, dy = e.clientY - drag.y;
+        if (drag.pan || e.shiftKey) av.three.panCamera(dx, dy); else av.three.rotateCamera(dx, dy);
+        drag.moved += Math.abs(dx) + Math.abs(dy); drag.x = e.clientX; drag.y = e.clientY;
+        return;
+      }
       if (!av.three || e.timeStamp - lastMove < 60) return;
       lastMove = e.timeStamp;
       if (drag && e.buttons === 1) {   // drag rotates the newest projection
@@ -236,12 +273,21 @@
     });
     wrap.addEventListener("pointerleave", () => { label.hidden = true; wrap.classList.remove("on-system"); });
     wrap.addEventListener("click", (e) => {
+      if (inspecting()) return;             // inspecting: clicks only steer the camera
       if (drag && drag.moved > 6) return;   // that was a rotation, not a click
       const sys = av.three && av.three.pick(e.clientX, e.clientY);
       if (sys && sys.projection) return;    // pointing at a projection node only inspects it
       if (sys && api.onSystem) api.onSystem(sys.id); else if (api.onFocus) api.onFocus();
     });
     wrap.addEventListener("keydown", (e) => {
+      if (inspecting()) {   // keyboard inspection: arrows orbit, shift+arrows pan, + and - zoom, 0 resets
+        const step = { ArrowLeft: [-24, 0], ArrowRight: [24, 0], ArrowUp: [0, -24], ArrowDown: [0, 24] }[e.key];
+        if (step) { e.preventDefault(); if (e.shiftKey) av.three.panCamera(step[0], step[1]); else av.three.rotateCamera(step[0], step[1]); }
+        else if (e.key === "+" || e.key === "=") { e.preventDefault(); av.three.zoomCamera(0.85); }
+        else if (e.key === "-" || e.key === "_") { e.preventDefault(); av.three.zoomCamera(1 / 0.85); }
+        else if (e.key === "0") { e.preventDefault(); av.three.resetCamera(); }
+        return;
+      }
       if ((e.key === "Enter" || e.key === " ") && api.onFocus) { e.preventDefault(); api.onFocus(); }
     });
   }
@@ -398,7 +444,19 @@
   function closeProjection(m) { if (av.three) av.three.closeProjection(m); }
   function closeProjections() { if (av.three) av.three.closeProjections(); }
   function pinProjection(m, on) { if (av.three) av.three.pinProjection(m, on); }
-  const api = { mount, setState, previewState, endPreview, setOptions, setPanels, showProjection, closeProjection, closeProjections, pinProjection, setTier, setSystems, setAura, setThought, systemAt, pulse, registerPart, refresh: loop, STATES, onFocus: null, onSystem: null,
+  // camera and inspection (3D only): moving the camera never changes what JARVIS is doing
+  function inspect(on) {
+    if (!av.three || !av.wrap) { av.inspecting = false; return false; }
+    av.inspecting = !!on; av.three.inspect(av.inspecting);
+    av.wrap.classList.toggle("inspecting", av.inspecting);
+    av.wrap.setAttribute("aria-label", av.inspecting ? "JARVIS projection, inspecting: drag or arrow keys to orbit, scroll or + and - to zoom, shift to pan, Esc to exit"
+                                                      : "JARVIS projection: open the focus view");
+    return av.inspecting;
+  }
+  function cameraView(name) { return av.three ? av.three.cameraView(name) : false; }
+  function inspectTarget(name) { return av.three ? av.three.inspectTarget(name) : false; }
+  function resetCamera() { if (av.three) av.three.resetCamera(); }
+  const api = { mount, setState, previewState, endPreview, setOptions, setPanels, showProjection, closeProjection, closeProjections, pinProjection, inspect, cameraView, inspectTarget, resetCamera, setTier, setSystems, setAura, setThought, systemAt, pulse, registerPart, refresh: loop, STATES, onFocus: null, onSystem: null,
                           get state() { return av.state; }, get profile() { return smOut.profile; }, get preview() { return smOut.preview; },
                           get lifecycle() { return smOut.lifecycle; },
                           get quality() { return av.three ? av.three.quality : null; },
@@ -406,6 +464,8 @@
                           get animating() { return av.raf !== 0 || !!(av.three && av.three.animating); },
                           get renderer() { return av.three ? "3d" : "2d"; },
                           get stats() { return av.three ? av.three.stats : null; },
+                          get camera() { return av.three ? av.three.camera : null; }, get inspecting() { return !!(av.three && av.inspecting); },
+                          get views() { return av.three ? av.three.VIEWS : {}; }, get targets() { return av.three ? av.three.TARGETS : {}; },
                           get eyes() { return av.three ? av.three.eyes : null; } };   // read-only: what the eyes are showing
   window.JarvisAvatar = api;
 })();
