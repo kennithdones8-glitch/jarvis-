@@ -214,6 +214,14 @@ function avatarState(s, d) {
   if (ui.reconnectedAt && Date.now() - ui.reconnectedAt < 4000) return "recovery";
   if (criticalProblem(d)) return "error";                             // database or audit log failing
   if (ui.typingAt && Date.now() - ui.typingAt < 2500 && !ui.chatBusy) return "listening";   // you are typing to JARVIS
+  const L = d && d.learn && d.learn.summary;
+  if (L && L.experiments_running) return "experimenting";              // a lab experiment is really running
+  if (ui.analyzingUntil && Date.now() < ui.analyzingUntil) return "analyzing";   // JARVIS is reading its own data for a projection
+  if (L && L.lessons_new_at && L.lessons_new_at !== ui.seenLessonAt) {   // a lesson was just learned or reinforced
+    if (ui.seenLessonAt !== undefined) { ui.learnedAt = Date.now(); }
+    ui.seenLessonAt = L.lessons_new_at;
+  }
+  if (ui.learnedAt && Date.now() - ui.learnedAt < 4000) return "learning";
   if (s.warn) return "warning";                                       // a health check is failing (standing condition)
   return "idle";
 }
@@ -249,6 +257,7 @@ function renderHead(d) {
   if (window.JarvisAvatar && d && d.telemetry) JarvisAvatar.setAura(auraValues(d));
   renderWall(d);
   renderPageHud(d);
+  if (window.JarvisAvatar) { autoProjection(JarvisAvatar.state); refreshProjections(); }
   if (window.JarvisAvatar && d) JarvisAvatar.setPanels(panelItems(d));
   const wrap = $(".core-wrap");
   if (d && d.evolution && wrap) wrap.title = `Core evolution: ${d.evolution.name} · ${d.evolution.verified} of ${d.evolution.total} milestones verified (details in Command center → Diagnostics)`;
@@ -356,6 +365,14 @@ async function submitCommand(ev) {
     const r = await routeMessage(text);
     $("#send").disabled = false;
     if (r.mode === "research" || r.mode === "do") { showRouteConfirm(r); return; }
+    if (r.mode === "show" && r.module) {   // "show me …": open the projection and say what it shows (from its data, no model)
+      ui.convo.push({ role: "user", text });
+      $("#cmd").value = ""; clearDraft();
+      const data = await openProjectionModule(r.module);
+      ui.convo.push({ role: "assistant", text: data ? `${PROJ_TITLE[r.module]}: ${describeProjection(r.module, data)} ${data.basis}` :
+        `I couldn't open the ${PROJ_TITLE[r.module]} projection here.`, meta: "projection" });
+      render(); return;
+    }
   }
   ui.skipRoute = false;
   if (ui.mode === "do") {
@@ -490,6 +507,7 @@ async function sendChat(payload, endpoint = "/api/chat") {
              `${r.verified_sources}/${r.sources.length} sources verified`].join(" · ") });
     else if (r.error) ui.convo.push({ ...base, text: r.partial ? `${r.partial}\n\n— ${r.error}` : r.error, error: true, activity: r.activity });
     else ui.convo.push({ ...base, text: r.text, checked: r.checked || [], plan: r.offer_plan ? payload.message : null, activity: r.activity,
+      ref: `${ui.session}:${Date.now()}`, rmodel: r.location === "local" ? `local/${String(r.model).split("/").pop()}` : r.model, rmode: r.mode,
       meta: [r.model.split("/").pop(), r.location === "cloud" ? "cloud" : null, r.mode && r.mode !== "balanced" ? INTEL_LABEL[r.mode] : null,
       r.first ? `first words ${r.first.toFixed(2)}s` : null, `${r.seconds}s`,
       r.memories_used ? `used ${plural(r.memories_used, "memory").replace("memorys", "memories")}` : null, r.note].filter(Boolean).join(" · ") });
@@ -588,7 +606,11 @@ function renderFeed(d) {
           m.text && !(m.error && !m.stopped) ? h("button", { class: "btn btn-ghost btn-xs", type: "button", title: "Copy this answer", onclick: () => copyText(m) },
             ui.copied === m ? "Copied" : "Copy") : null,
           h("button", { class: "btn btn-ghost btn-xs", type: "button", title: "Ask again with the same message",
-                        onclick: () => regenerate(m) }, m.error ? "Retry" : "Regenerate")) : null));
+                        onclick: () => regenerate(m) }, m.error ? "Retry" : "Regenerate"),
+          m.ref ? h("span", { class: "rate", role: "group", "aria-label": "Was this helpful?" },
+            [[1, "👍", "Helpful"], [-1, "👎", "Not helpful"]].map(([v, icon, label]) =>
+              h("button", { class: `btn btn-ghost btn-xs${m.rated === v ? " on" : ""}`, type: "button", title: label, "aria-label": label,
+                            "aria-pressed": String(m.rated === v), onclick: () => rateAnswer(m, v) }, icon))) : null) : null));
   if (ui.chatBusy && !ui.convo.some((m) => m.live)) items.push(h("div", { class: "msg jarvis" }, h("span", { class: "who typing" }, "JARVIS")));
   if (d) items.push(...d.jobs.filter((j) => j.state !== "submitted").reverse().map(jobCard));
   const feed = $("#feed");
@@ -1754,9 +1776,95 @@ async function act(path, body) {
   await refresh();
 }
 
+// Your rating is the learning engine's main signal about quality (stored on this Mac; it changes nothing by itself).
+async function rateAnswer(m, rating) {
+  try {
+    await api("/api/feedback", { target: "reply", ref: m.ref, rating, model: m.rmodel || null, mode: m.rmode || null });
+    m.rated = rating; ui.lastFeed = ""; render();
+  } catch (e) { note(`Couldn't save your rating: ${e.message}`); }
+}
+
+// ---------------------------------------------------------------- Evolution center: learning, experiments, autonomy
+// Every number comes from /api/learn (outcomes, lessons, experiments, autonomy) or the tournament; nothing is estimated.
+async function loadEvolution() {
+  const el = $("#evo");
+  if (!el) return;
+  let data, tour;
+  try { [data, tour] = await Promise.all([api("/api/learn"), api("/api/learn/tournament")]); }
+  catch (e) { el.replaceChildren(h("p", { class: "empty" }, `Couldn't load: ${e.message}`)); return; }
+  ui.evo = data;
+  const s = data.summary, a = data.autonomy;
+  const pct = (x, n) => (n ? `${Math.round((100 * x) / n)}%` : "—");
+  const kindWord = { confirmed: "Confirmed by you", user: "Stated by you", inferred: "Inferred", hypothesis: "Hypothesis (contested)", outdated: "Outdated" };
+  const lessonRow = (l) => h("li", { class: `lesson ${l.kind} ${l.polarity > 0 ? "good" : l.polarity < 0 ? "bad" : ""}` },
+    h("div", { class: "l-head" }, h("span", { class: `l-kind ${l.kind}` }, kindWord[l.kind] || l.kind),
+      h("span", { class: "l-conf", title: "Confidence grows with the number of observations" }, `confidence ${Math.round(l.confidence * 100)}%`),
+      h("span", { class: "l-when" }, `first ${since(l.first_seen)} · last ${since(l.last_seen)}`)),
+    h("b", {}, l.statement),
+    h("small", { class: "l-ev" }, "Evidence: ", Object.entries(l.evidence).filter(([k]) => k !== "task_ids" && k !== "contested")
+      .map(([k, v]) => `${k.replace(/_/g, " ")} ${v}`).join(" · ") || "—"),
+    h("div", { class: "row" }, ["confirm", "reject", "delete"].map((dec) => h("button", { class: "btn btn-ghost btn-xs", type: "button",
+      onclick: async () => { try { await api(`/api/lessons/${l.id}/${dec}`, {}); loadEvolution(); } catch (e) { note(e.message); } } },
+      dec === "confirm" ? "Confirm" : dec === "reject" ? "Reject" : "Delete"))));
+  const exp = (x) => h("li", { class: `exp ${x.state}` }, h("div", { class: "l-head" }, h("span", { class: `l-kind ${x.state}` }, x.state),
+      h("span", {}, x.kind), h("span", { class: "l-when" }, since(x.created_at))),
+    h("b", {}, x.objective), h("small", {}, `Hypothesis: ${x.hypothesis} · Baseline: ${x.baseline} · Criteria: ${x.criteria} · Environment: ${x.environment}`),
+    x.recommendation ? h("p", { class: "exp-rec" }, x.recommendation) : null);
+  const tier = (t) => h("li", { class: `tier ${t.on ? "on" : ""}` },
+    h("label", {}, h("input", { type: "checkbox", checked: t.on, disabled: t.tier > 5 && !t.on,
+      onchange: async (e) => { try { await api("/api/autonomy", { tier: t.tier, on: e.target.checked }); loadEvolution(); } catch (err) { note(err.message); e.target.checked = !e.target.checked; } } }),
+      h("b", {}, `Tier ${t.tier} · ${t.name}`)), h("small", {}, t.tier > 5 && !t.on ? `${t.about} Only from the Mac's terminal.` : t.about));
+  const pause = (p) => h("button", { class: `chip${a.paused[p] ? " on" : ""}`, type: "button", "aria-pressed": String(a.paused[p]),
+    onclick: async () => { try { await api("/api/autonomy", { pause: p, paused: !a.paused[p] }); loadEvolution(); } catch (e) { note(e.message); } } },
+    `${a.paused[p] ? "Resume" : "Pause"} ${p}`);
+  const prof = (p) => h("tr", {}, h("td", {}, p.model), h("td", {}, p.replies ? `${p.verified}/${p.replies}` : "—"),
+    h("td", {}, p.median_s !== null ? `${p.median_s} s` : "—"), h("td", {}, p.helpful + p.not_helpful ? `👍 ${p.helpful} · 👎 ${p.not_helpful}` : "—"),
+    h("td", {}, Object.entries(p.bench).map(([c, b]) => `${c} ${b.passed}/${b.scored}`).join(" · ") || "—"));
+  el.replaceChildren(
+    h("section", { class: "evo-sec" }, h("h3", { class: "sys-part" }, `Last ${s.window_days} days`),
+      h("div", { class: "page-stats" },
+        statTile("Missions verified", `${s.missions.verified}/${s.missions.total}`, pct(s.missions.verified, s.missions.total)),
+        statTile("Answers passing checks", `${s.replies.verified}/${s.replies.total}`, pct(s.replies.verified, s.replies.total)),
+        statTile("Recovered", String(s.recovered), "after a problem"), statTile("Your ratings", `👍 ${s.feedback.helpful} · 👎 ${s.feedback.not_helpful}`),
+        statTile("Lessons", String(s.lessons)), statTile("Last learning cycle", s.last_cycle ? since(s.last_cycle) : "not yet")),
+      a.stopped ? h("p", { class: "warn-line" }, "The emergency stop is on: observing, learning, experiments and proposals are all halted.") : null),
+    h("section", { class: "evo-sec" }, h("h3", { class: "sys-part" }, "What JARVIS has learned"),
+      h("p", { class: "hl-sub" }, "Lessons come from fixed rules over JARVIS's own record (no model, nothing leaves the Mac). They change nothing by themselves; strong negative ones become proposals."),
+      data.lessons.length ? h("ul", { class: "lessons" }, data.lessons.map(lessonRow)) : h("p", { class: "empty" }, "No lessons yet: they appear once there's enough evidence (e.g. 5 checked answers from one model).")),
+    h("section", { class: "evo-sec" }, h("h3", { class: "sys-part" }, "Intelligence tournament"),
+      h("p", { class: "hl-sub" }, "Evidence per model: answers passing the check, median time, your ratings and benchmark categories. A suggestion never changes routing by itself."),
+      tour.profiles.length ? h("table", { class: "tour" }, h("thead", {}, h("tr", {}, ["Model", "Checks passed", "Median", "Your ratings", "Benchmark"].map((x) => h("th", {}, x)))),
+        h("tbody", {}, tour.profiles.map(prof))) : h("p", { class: "empty" }, "No answers or benchmark runs recorded yet."),
+      tour.recommendation ? h("p", { class: "exp-rec" }, tour.recommendation.text) : null),
+    h("section", { class: "evo-sec" }, h("h3", { class: "sys-part" }, "Simulation lab"),
+      h("div", { class: "row" }, Object.entries(data.kinds).map(([kind, about]) => h("button", { class: "btn btn-sm", type: "button", title: about,
+        disabled: !a.allowed.experiment || s.experiments_running > 0,
+        onclick: async () => { try { await api("/api/experiments", { kind }); setTimeout(loadEvolution, 400); } catch (e) { note(e.message); } } },
+        { replay: "Run routing replay", drill: "Run recovery drills", bench_compare: "Compare benchmarks" }[kind] || kind))),
+      h("ul", { class: "hl-sub kinds" }, Object.entries(data.kinds).map(([k, v]) => h("li", {}, h("b", {}, k), ` — ${v}`))),
+      data.experiments.length ? h("ul", { class: "lessons" }, data.experiments.map(exp)) : h("p", { class: "empty" }, "No experiments yet.")),
+    h("section", { class: "evo-sec" }, h("h3", { class: "sys-part" }, "Improvements"),
+      h("p", { class: "hl-sub" }, "Proposals are propose-only: you approve or reject each; code changes go through a reviewed branch."),
+      h("a", { class: "btn btn-sm", href: "/proposals" }, "Open proposals")),
+    h("section", { class: "evo-sec" }, h("h3", { class: "sys-part" }, "Capabilities JARVIS could use"),
+      h("ul", { class: "lessons" }, data.discoveries.map((x) => h("li", { class: `disc ${x.available ? "on" : ""}` },
+        h("div", { class: "l-head" }, h("span", { class: `l-kind ${x.available ? "confirmed" : "inferred"}` }, x.available ? "In use" : "Available"),
+          h("span", {}, `cost ${x.cost}`), h("span", {}, x.privacy)), h("b", {}, x.title), h("small", {}, x.why), x.available ? null : h("small", { class: "l-ev" }, `How: ${x.how}`))))),
+    h("section", { class: "evo-sec" }, h("h3", { class: "sys-part" }, "Autonomy"),
+      h("p", { class: "hl-sub" }, "A tier works only when every tier below it is on. External messages, spending, sensitive data, destructive actions and changes to JARVIS itself always ask you."),
+      h("ul", { class: "tiers" }, a.tiers.map(tier)), h("div", { class: "row" }, ["learning", "experiments", "initiative"].map(pause))),
+    h("section", { class: "evo-sec" }, h("h3", { class: "sys-part" }, "Projection studio"),
+      h("p", { class: "hl-sub" }, "Open a projection around the avatar (real data only; each one says where its data comes from)."),
+      h("div", { class: "row" }, PROJ_MODULES.map(([m, label]) => h("button", { class: "btn btn-sm", type: "button",
+        onclick: () => { location.hash = "#/home"; setTimeout(() => openProjectionModule(m), 300); } }, label))),
+      h("p", { class: "hl-sub" }, "Intensity, particles, animation, quality and the rest are under Projection controls in the focus view (click the avatar).")));
+}
+const PROJ_MODULES = [["workflow", "Workflow map"], ["architecture", "Software architecture"], ["neural", "Knowledge network"], ["globe", "Globe"],
+  ["data", "Data"], ["timeline", "Timeline"], ["security", "Security shield"], ["simulation", "Simulation"]];
+
 // ---------------------------------------------------------------- shell: sections, badges, sidebar, drafts
 // Sections are views of the same live page: switching never pauses, resumes or changes anything.
-const VIEWS = ["home", "command", "workspace", "missions", "decisions", "memory", "systems", "intelligence", "projects"];
+const VIEWS = ["home", "command", "workspace", "missions", "decisions", "memory", "systems", "evolution", "intelligence", "projects"];
 function viewFromHash() {
   const m = location.hash.match(/^#\/(\w+)/);
   return m && VIEWS.includes(m[1]) ? m[1] : null;
@@ -1769,7 +1877,7 @@ function setView(view) {
   document.querySelectorAll("#sidenav a[data-view]").forEach((a) => {
     if (a.dataset.view === view) a.setAttribute("aria-current", "page"); else a.removeAttribute("aria-current");
   });
-  if (changed) { window.scrollTo(0, 0); if (ui.data) renderMissions(ui.data.tasks); if (view === "intelligence") loadIntel(); if (view === "projects") loadProjects(true); if (view === "command" && ui.data) { ui.ccKey = ""; renderCommand(ui.data); } }
+  if (changed) { window.scrollTo(0, 0); if (ui.data) renderMissions(ui.data.tasks); if (view === "intelligence") loadIntel(); if (view === "evolution") loadEvolution(); if (view === "projects") loadProjects(true); if (view === "command" && ui.data) { ui.ccKey = ""; renderCommand(ui.data); } }
 }
 function badge(name, n) {
   const el = $(`#badge-${name}`);
@@ -2210,7 +2318,7 @@ function initParallax() {
 }
 
 // ---- section pages: a HUD header (title, code, real stats). Gauges only where a real ratio exists. -------------
-const PAGES = { command: ["Command center", "CMD"], missions: ["Missions", "MSN"], decisions: ["Decisions", "DCN"],
+const PAGES = { evolution: ["Evolution center", "EVO"], command: ["Command center", "CMD"], missions: ["Missions", "MSN"], decisions: ["Decisions", "DCN"],
                 memory: ["Memory", "MEM"], systems: ["Systems", "SYS"], workspace: ["Workspace", "WRK"] };
 function statTile(label, value, sub, cls) {
   return h("div", { class: `ph-stat${cls ? ` ${cls}` : ""}` }, h("b", {}, value), h("span", {}, label), sub ? h("small", {}, sub) : null);
@@ -2245,6 +2353,10 @@ function renderPageHud(d) {
     const list = systems(d), bad = list.filter((x) => x.status === "bad").length;
     tiles = [statTile("Systems OK", `${list.length - bad}/${list.length}`, null, bad ? "warn" : ""), statTile("Need attention", String(bad), null, bad ? "bad" : "")];
     wantGauges = true;
+  } else if (view === "evolution" && d.learn && d.learn.summary) {
+    const ls = d.learn.summary;
+    tiles = [statTile("Lessons", String(ls.lessons)), statTile("Missions verified", `${ls.missions.verified}/${ls.missions.total}`),
+             statTile("Answers passing", `${ls.replies.verified}/${ls.replies.total}`), statTile("Experiments running", String(ls.experiments_running))];
   } else if (view === "workspace") {
     tiles = [statTile("Projects", String((d.projects || []).length))];
   }
@@ -2259,6 +2371,59 @@ function renderPageHud(d) {
     const ok = items.filter((i) => i.ok).length;
     g.checks.set(items.length ? ok / items.length : null, items.length ? `${ok}/${items.length}` : "—", "passing", items.length && ok < items.length ? "bad" : "");
   }
+}
+
+// ---- projections ------------------------------------------------------------------------------------------------
+const PROJ_TITLE = Object.fromEntries(PROJ_MODULES);
+async function openProjectionModule(m, { quiet = false } = {}) {
+  if (!window.JarvisAvatar || !PROJ_TITLE[m]) return null;
+  ui.analyzingUntil = Date.now() + 1500; renderHead(ui.data);
+  let data;
+  try { data = await api(`/api/projection/${m}`); } catch (e) { if (!quiet) note(`Couldn't open ${PROJ_TITLE[m]}: ${e.message}`); return null; }
+  ui.analyzingUntil = 0;
+  if (!JarvisAvatar.showProjection(m, data)) { if (!quiet) note("Projections need the 3D view (this device is showing the 2D core)."); return null; }
+  ui.projData = { ...(ui.projData || {}), [m]: data };
+  renderProjBar();
+  return data;
+}
+function renderProjBar() {
+  const bar = $("#projbar");
+  if (!bar || !window.JarvisAvatar) return;
+  const list = JarvisAvatar.projections;
+  bar.hidden = !list.length;
+  bar.replaceChildren(...list.map((p) => h("div", { class: "pj" },
+    h("b", {}, p.title), h("small", {}, (ui.projData && ui.projData[p.module] && ui.projData[p.module].basis) || ""),
+    h("button", { class: `btn btn-ghost btn-xs${p.pinned ? " on" : ""}`, type: "button", "aria-pressed": String(p.pinned), title: "Keep this projection open",
+      onclick: (e) => { e.stopPropagation(); JarvisAvatar.pinProjection(p.module, !p.pinned); renderProjBar(); } }, p.pinned ? "Pinned" : "Pin"),
+    h("button", { class: "btn btn-ghost btn-xs", type: "button", "aria-label": `Close ${p.title}`,
+      onclick: (e) => { e.stopPropagation(); JarvisAvatar.closeProjection(p.module); renderProjBar(); } }, "✕"))));
+}
+// what an opened projection shows, in one sentence from its own data (no model)
+function describeProjection(m, d) {
+  if (m === "workflow") { const ms = d.nodes.filter((n) => n.kind === "mission"); return ms.length ? `${ms.length} mission(s): ${ms.filter((x) => ["running", "verifying"].includes(x.state)).length} running, ${ms.filter((x) => x.state === "queued").length} queued, ${d.nodes.filter((n) => n.kind === "approval" && n.state === "pending").length} approval(s) waiting for you.` : "No missions yet."; }
+  if (m === "architecture") return `${d.nodes.filter((n) => n.kind === "python").length} Python modules, ${d.nodes.filter((n) => n.kind === "frontend").length} dashboard scripts, ${d.routes} API routes and ${d.tables} database tables. Largest: ${d.largest.slice(0, 2).map((x) => `${x.id} (${x.lines} lines)`).join(", ")}.`;
+  if (m === "neural") { const ls = d.nodes.filter((n) => n.kind === "lesson"); return `${d.nodes.length} pieces of knowledge, ${ls.length} lesson(s) (${ls.filter((x) => x.status === "hypothesis").length} contested), ${d.edges.filter((e) => e.rel === "contradicts").length} contradiction(s).`; }
+  if (m === "globe") return d.points.length ? `${d.points.length} place(s) from your conversations; most mentioned: ${d.points[0].name}.` : "No places in your conversations yet.";
+  if (m === "data") return d.models.length ? `Answer checks per model: ${d.models.map((x) => `${x.label} ${Math.round((x.check_rate || 0) * 100)}% of ${x.n}`).join(", ")}.` : "No measured answers yet.";
+  if (m === "timeline") return `${d.events.length} dated event(s) and ${d.upcoming.length} open item(s) (no invented dates).`;
+  if (m === "security") return `${d.stop ? "The emergency stop is ON. " : ""}${d.pending.length} action(s) waiting for your approval (not authorized), ${d.denied_7d} blocked in 7 days.`;
+  if (m === "simulation") return d.experiments.length ? `${d.experiments.length} experiment(s); latest: ${d.experiments[0].state} — ${d.experiments[0].recommendation || d.experiments[0].objective}` : "No experiments yet.";
+  return "";
+}
+// automatic selection in the focus view: what JARVIS is really doing picks the projection
+const AUTO_PROJECTION = { executing: "workflow", verifying: "workflow", planning: "workflow", approval: "security", halted: "security",
+  experimenting: "simulation", learning: "neural" };
+function autoProjection(state) {
+  if (!document.body.classList.contains("projection") || !window.JarvisAvatar) return;
+  const m = AUTO_PROJECTION[state];
+  if (!m || ui.autoProj === `${state}:${m}`) return;
+  ui.autoProj = `${state}:${m}`;
+  if (!JarvisAvatar.projections.some((p) => p.module === m)) openProjectionModule(m, { quiet: true });
+}
+function refreshProjections() {   // open projections follow the live data (every ~10 s)
+  if (!window.JarvisAvatar || Date.now() - (ui.projRefreshed || 0) < 10000) return;
+  ui.projRefreshed = Date.now();
+  for (const p of JarvisAvatar.projections) openProjectionModule(p.module, { quiet: true });
 }
 
 function renderWall(d) {

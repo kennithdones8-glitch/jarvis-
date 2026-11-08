@@ -1535,3 +1535,41 @@ body:not([data-view="home"]) .hud .panel { max-width: 1180px; }
 .decision-panel, .decision { --arc: #ffd98f; --arc-hi: #fff1cf; --arc-dim: rgba(255, 217, 143, .13); }
 /* the 3D lean belongs to Home only; section pages sit flat and centred */
 body:not([data-view="home"]) :is(.rail-left, .rail-right) { transform: none; transition: none; }
+
+
+/* ---- Evolution center ---------------------------------------------------------------------------------------------- */
+body:not([data-view="evolution"]) .evo-panel { display: none; }
+body[data-view="evolution"] .hud .panel:not(.evo-panel) { display: none !important; }
+.evo-sec { margin: 6px 0 22px; }
+.lessons { list-style: none; margin: 8px 0 0; padding: 0; display: grid; gap: 8px; }
+.lessons > li { padding: 10px 12px; border-radius: 12px; border: 1px solid var(--silver-line); background: rgba(8, 6, 3, .4); display: grid; gap: 4px; }
+.lessons > li.bad { border-left: 2px solid rgba(255, 107, 94, .7); } .lessons > li.good { border-left: 2px solid rgba(143, 227, 173, .7); }
+.l-head { display: flex; flex-wrap: wrap; gap: 10px; align-items: baseline; font: 500 12px var(--display); letter-spacing: .08em; color: var(--silver); }
+.l-kind { font-weight: 600; letter-spacing: .14em; text-transform: uppercase; color: var(--gold); }
+.l-kind.hypothesis, .l-kind.failed { color: #ffb347; } .l-kind.outdated { color: var(--muted); } .l-kind.confirmed, .l-kind.done { color: #8fe3ad; }
+.l-when { margin-left: auto; }
+.l-ev, .lessons small { color: var(--muted); font-size: 13px; }
+.exp-rec { margin: 6px 0 0; padding: 8px 12px; border-radius: 10px; border: 1px solid rgba(255, 217, 143, .35); background: rgba(242, 196, 109, .06); }
+.tour { width: 100%; border-collapse: collapse; font-size: 14px; margin-top: 8px; }
+.tour th { text-align: left; font: 600 12px var(--display); letter-spacing: .16em; text-transform: uppercase; color: var(--gold); padding: 6px 8px; border-bottom: 1px solid var(--gold-line); }
+.tour td { padding: 6px 8px; border-bottom: 1px solid var(--gold-faint); }
+.tiers { list-style: none; padding: 0; margin: 8px 0; display: grid; gap: 6px; }
+.tiers li { display: grid; gap: 2px; padding: 8px 12px; border-radius: 10px; border: 1px solid var(--silver-line); }
+.tiers li.on { border-color: rgba(255, 217, 143, .4); }
+.tiers label { display: flex; gap: 10px; align-items: center; } .tiers input { width: 18px; height: 18px; accent-color: #ffd98f; }
+.tiers small { color: var(--muted); padding-left: 28px; }
+.kinds { padding-left: 18px; }
+.warn-line { color: #ffb347; }
+.rate { display: inline-flex; gap: 2px; margin-left: 6px; } .rate .btn.on { border-color: rgba(255, 217, 143, .6); background: rgba(242, 196, 109, .12); }
+
+
+/* ---- the projection caption bar: what is open, where its data comes from, pin and close ----------------------------- */
+.hud > .center > .projbar { order: 0; }
+.projbar { width: 100%; max-width: 720px; display: grid; gap: 6px; margin: 4px 0 6px; }
+.projbar[hidden] { display: none; }
+.projbar .pj { display: grid; grid-template-columns: auto 1fr auto auto; gap: 10px; align-items: center; padding: 6px 8px 6px 14px;
+  border-radius: 12px; border: 1px solid rgba(255, 217, 143, .3); background: rgba(14, 11, 8, .7); }
+.projbar .pj b { font: 600 12px var(--display); letter-spacing: .2em; text-transform: uppercase; color: var(--gold); }
+.projbar .pj small { color: var(--muted); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.projbar .btn.on { border-color: rgba(255, 217, 143, .6); }
+body.projection .projbar { position: fixed; z-index: 66; left: 20px; bottom: 20px; width: min(520px, 40vw); }

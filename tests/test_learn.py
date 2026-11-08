@@ -159,3 +159,9 @@ def test_projection_security_never_calls_pending_authorized(dash):
     d, *_ = dash
     s = json.loads(call(d, "/api/projection/security")[2])
     assert "Pending means NOT authorized" in s["basis"] and isinstance(s["pending"], list)
+
+
+def test_discovery_counts_only_local_models_for_the_local_model_suggestion(make_kernel):
+    k = make_kernel()
+    one_local = analysis.discover(k, {"models_available": ["llama"]})
+    assert next(x for x in one_local if x["key"] == "local-models")["available"] is False   # cloud models don't count

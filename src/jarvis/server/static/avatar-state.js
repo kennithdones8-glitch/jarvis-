@@ -21,15 +21,17 @@
     researching: "researching", planning: "planning", executing: "executing", verifying: "executing",
     speaking: "speaking", completed: "success", warning: "warning", error: "error", recovery: "recovering",
     approval: "approval", halted: "halted",
+    learning: "learning", experimenting: "experimenting", analyzing: "analyzing",
   };
   const STATES = Object.keys(PROFILE);
   // higher wins at once; lower waits for the current state's minimum time
   const PRIORITY = { halted: 100, error: 90, approval: 80, warning: 70, recovering: 60, success: 55, speaking: 50,
-                     executing: 45, researching: 42, thinking: 40, planning: 38, listening: 30, idle: 10, dormant: 5 };
+                     executing: 45, experimenting: 44, researching: 42, analyzing: 41, thinking: 40, planning: 38, learning: 36,
+                     listening: 30, idle: 10, dormant: 5 };
   const MIN_MS = { error: 2500, warning: 2000, success: 1200, halted: 1500 };   // others: anti-flicker minimum
   const DEFAULT_MIN_MS = 700;
-  const MAX_MS = { success: 4000 };                  // one-shot: ends on its own even if the input still says so
-  const LIVE = new Set(["thinking", "researching", "planning", "executing", "speaking", "listening"]);
+  const MAX_MS = { success: 4000, learning: 4000 };   // one-shots: a new lesson is shown briefly, never held                  // one-shot: ends on its own even if the input still says so
+  const LIVE = new Set(["thinking", "researching", "planning", "executing", "speaking", "listening", "experimenting", "analyzing"]);
   const STALE_MS = 10000, PREVIEW_MS = 10000, CRITICAL = 80;
 
   function createMachine(opts = {}) {

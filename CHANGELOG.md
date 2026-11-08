@@ -1,5 +1,28 @@
 # Changelog
 
+## Unreleased — E.V.O.L.V.E. visual and integration (phases F and G)
+
+- **Projection Director** (`avatar3d-projections.js`): eight data-driven projections built in the existing scene and
+  drawn by the existing render loop (no second renderer). Up to two at once (a pinned one stays; a data refresh
+  replaces a projection in place), the camera eases wider and the avatar turns toward them, drag rotates, pointing at
+  a node shows its label, closing disposes every geometry, material and texture. Modules: workflow map (missions,
+  steps, dependencies, approvals), software architecture (JARVIS's real modules, imports, API routes, tables),
+  knowledge network (memories, lessons, contradictions; the glow is labelled illustrative), globe (places named in
+  your conversations, matched to a built-in list; no map download, nothing looked up), data (answer checks per
+  model, verified outcomes per day, benchmark categories), timeline (real dates only; no invented forecasts),
+  security shield (what JARVIS does alone / asks / never does; pending approvals stay outside the shield, marked
+  not authorized; the emergency stop closes it), simulation (lab experiments, labelled as not real-world outcomes).
+- **Opening projections**: from what you say ("show me my architecture", "show me what you're doing", "show me
+  what you've learned", …: JARVIS opens it and describes it from its own data, no model), from Projection studio, and
+  automatically in the focus view from the real state (executing → workflow, approval or emergency stop → security,
+  experimenting → simulation, learning → knowledge). A caption bar under the avatar says where each one's data
+  comes from, with Pin and Close.
+- **Three new avatar states from real signals**: Learning (a lesson was just learned or reinforced; shown 4 s),
+  Experimenting (a lab experiment is running), Analyzing (JARVIS is reading its own data for a projection).
+- **Evolution center** (new section): last-30-day figures, lessons with evidence and confidence (confirm / reject /
+  delete), the tournament table, the simulation lab, improvements (proposals), capability discoveries, autonomy tiers
+  and pauses, and Projection studio. **👍/👎 on every answer.**
+
 ## Unreleased — E.V.O.L.V.E. backend: continuous intelligence (phases D and E)
 
 - **Schema v9** (one migration, nothing existing changed): `outcomes`, `lessons`, `links`, `experiments`, `feedback`,

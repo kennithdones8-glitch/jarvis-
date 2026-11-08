@@ -184,7 +184,7 @@ def discover(kernel, facts: dict[str, Any] | None = None) -> list[dict[str, Any]
     def add(key: str, title: str, why: str, cost: str, privacy: str, how: str, on: bool) -> None:
         out.append({"key": key, "title": title, "why": why, "cost": cost, "privacy": privacy, "how": how, "available": on})
     available = facts.get("models_available", []) if facts else []
-    add("local-models", "More local models", "A second local model makes the tournament and routing replay meaningful and keeps answers on the Mac.",
+    add("local-models", "A second local model", "A second local model makes the tournament and routing replay meaningful and keeps answers on the Mac.",
         "$0", "stays on the Mac", "Install with `ollama pull <model>` and list it under [providers.ollama] in jarvis.toml.", len(available) >= 2)
     add("voice", "Voice input", "Talk to JARVIS from the dashboard; speech is transcribed on the Mac by whisper.cpp.",
         "$0", "stays on the Mac", "`uv run jarvis voice setup` prints the steps.", bool(facts and facts.get("voice")))

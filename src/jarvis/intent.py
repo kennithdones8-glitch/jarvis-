@@ -27,6 +27,26 @@ _RESEARCH = re.compile(r"\b(?:latest|newest|breaking|current(?:ly)?|right now|to
 _ASK = re.compile(r"^(?:hi|hello|hey|thanks|thank you|good (?:morning|evening|afternoon))\b|^(?:what|why|how|who|when|where|which|is|are|"
                   r"do|does|did|can|could|should|would|explain|tell me|define|what's|whats)\b", re.I)
 
+# "show me …": which projection a request for a visual view means (checked before everything else)
+_SHOW = re.compile(r"^(?:(?:hey |ok )?jarvis[,:]?\s+)?(?:please\s+)?(?:show|display|visuali[sz]e|project|open)\s+(?:me\s+)?(?:the\s+|my\s+|your\s+)?(.+)$", re.I)
+SHOW = (("architecture", r"architecture|code ?base|your code|source|software|structure"),
+        ("workflow", r"what you(?:'re| are) doing|doing|tasks?|missions?|workflow|progress of"),
+        ("neural", r"(?:what )?you(?:'ve| have)? learn|learn|knowledge|lessons?|brain|memory graph|neural"),
+        ("globe", r"globe|map|world|places|where"),
+        ("data", r"data|stats|statistics|performance|charts?|numbers|analytics"),
+        ("timeline", r"timeline|history|milestones|roadmap|projects?"),
+        ("security", r"security|permissions?|shield|approvals?|what you can do"),
+        ("simulation", r"experiments?|simulations?|lab"))
+
+
+def show_target(text: str) -> str | None:
+    m = _SHOW.match(" ".join(text.split()))
+    if not m:
+        return None
+    rest = m.group(1).lower()
+    return next((name for name, pat in SHOW if re.search(pat, rest)), None)
+
+
 PROMPT = ("Classify the user's message for a personal assistant. Answer with exactly one word:\n"
           "ASK - a question or conversation it can answer from knowledge;\n"
           "RESEARCH - it needs current information from the web;\n"
@@ -52,6 +72,8 @@ def classify(text: str, complete: Callable[[str], str] | None = None) -> dict[st
     """``complete(prompt) -> text`` is a local-only model call (the caller guarantees it never leaves the Mac).
     Any failure falls back to "ask", which takes no action and sends nothing to the web."""
     text = text[:2000]
+    if module := show_target(text):
+        return {"mode": "show", "module": module, "by": "rules", "reason": "asks to see a projection"}
     mode, reason = by_rules(text)
     if mode:
         return {"mode": mode, "by": "rules", "reason": reason}

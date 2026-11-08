@@ -460,7 +460,7 @@ class Dashboard:
         status = self._models_cache[1] or models_status(self.kernel)
         evo = self._evolution or {}
         verified = {m["id"] for m in evo.get("milestones", []) if m.get("verified")}
-        return {"models_available": [m for p in status["providers"] for m in p.get("available", [])],
+        return {"models_available": [m for p in status["providers"] if p.get("location") == "local" for m in p.get("available", [])],
                 "voice": "voice" in verified, "backups": "backups" in verified, "touch_id": "touch_id" in verified,
                 "iphone": "iphone" in verified}
 
@@ -1065,7 +1065,7 @@ class Dashboard:
                         "/static/avatar.js", "/static/avatar.css", "/static/avatar3d.js", "/static/avatar-state.js",
                         "/static/avatar3d-shaders.js", "/static/avatar3d-geometry.js",
                         "/static/avatar3d-reactor.js", "/static/avatar3d-neural.js", "/static/avatar3d-particles.js",
-                        "/static/avatar3d-environment.js"):
+                        "/static/avatar3d-environment.js", "/static/avatar3d-projections.js"):
             ctype = "text/javascript" if url.path.endswith(".js") else "text/css"
             return self._send(h, 200, (STATIC / url.path.rsplit("/", 1)[1]).read_bytes(), f"{ctype}; charset=utf-8")
         if url.path == "/static/vendor/three.module.min.js":  # Three.js r160, served from this Mac (MIT)

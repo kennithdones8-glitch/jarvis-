@@ -65,6 +65,7 @@
   <a href="#/memory" data-view="memory" title="Memory"><span class="ni" aria-hidden="true">✦</span><span class="nl">Memory</span></a>
   <a href="#/systems" data-view="systems" title="Systems"><span class="ni" aria-hidden="true">≡</span><span class="nl">Systems</span></a>
   <div class="nav-more">
+    <a href="#/evolution" data-view="evolution" title="Evolution center: learning, experiments, autonomy"><span class="ni" aria-hidden="true">⟁</span><span class="nl">Evolution</span></a>
     <a href="#/intelligence" data-view="intelligence" title="Briefing &amp; ideas"><span class="ni" aria-hidden="true">✧</span><span class="nl">Briefing &amp; ideas</span></a>
     <a href="#/projects" data-view="projects" title="Projects for you"><span class="ni" aria-hidden="true">✚</span><span class="nl">Projects for you</span></a>
     <a href="/bench" title="Benchmarks"><span class="ni" aria-hidden="true">▥</span><span class="nl">Benchmarks</span></a>
@@ -131,6 +132,7 @@
         <circle class="heart" cx="120" cy="120" r="20"/>
       </svg>
     </div>
+    <div id="projbar" class="projbar" aria-label="Open projections" hidden></div>
     <div class="headline" role="status" aria-live="polite">
       <div id="hl-kicker" class="kicker">Status</div>
       <div id="hl-main" class="hl">Connecting…</div>
@@ -184,6 +186,10 @@
     <section class="panel context-panel" aria-labelledby="ctx-h">
       <header class="ph"><h2 id="ctx-h">Context</h2></header>
       <div id="context"></div>
+    </section>
+    <section class="panel evo-panel" aria-labelledby="evo-h">
+      <header class="ph"><h2 id="evo-h">Learning &amp; evolution</h2></header>
+      <div id="evo"></div>
     </section>
     <section class="panel intel-panel" aria-labelledby="int-h">
       <header class="ph"><h2 id="int-h">Briefing &amp; ideas</h2></header>

@@ -253,6 +253,22 @@ prefer="quality")` and up to 2000 tokens, falling back to the best available mod
 - Palette: deep black, metallic gold `--gold`, champagne `--champagne`, warm white `--warm-white`; amber only for
   activity and warnings; cyan only for listening/speaking.
 
+## E.V.O.L.V.E. — continuous intelligence and projections
+
+- **One event source**: the hash-chained audit log. `jarvis/learn` reads only new entries (cursor `learn.audit_seq`
+  in `meta`) from the dashboard's maintenance loop: OBSERVE → `outcomes` (replies by the answer check, missions by
+  their verifier), LEARN → `lessons` (fixed rules, evidence, confidence, contradictions → hypothesis, 30 days without
+  evidence → outdated). No model, nothing leaves the Mac; lessons hold counts and model/tool names only.
+- **Autonomy** (`autonomy` table): tiers 1–7 (observe, learn, analyze, experiment, propose, approved execution,
+  verified operation); a tier needs every tier below it; pauses for learning, experiments and initiative; the
+  emergency stop halts all. Tiers 6–7 are not built and can't be enabled from a browser; `/api/autonomy` is Mac-only.
+- **Analysis** (`learn/analysis.py`): tournament (per-model evidence; suggestion only), lab (replay, drill,
+  bench_compare; one at a time, isolated), discovery (recommendations only), self-inspection (own source,
+  read-only), knowledge graph. **Initiative** lives in the existing propose-only `proposals.py` detectors.
+- **Projections**: `learn/projections.py` serves real data per module (`GET /api/projection/<module>`, each with a
+  `basis` line); `static/avatar3d-projections.js` draws them in the avatar's scene. Opening: `intent.py` ("show me…"),
+  Projection studio, and the focus view's automatic selection from the real state.
+
 ## Avatar 3D — module layout and the central state machine
 
 - `static/avatar-state.js` (classic script, loaded before `avatar.js`): the **one place that decides what the

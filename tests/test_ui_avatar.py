@@ -43,7 +43,7 @@ def test_all_thirteen_states_and_replaceable_parts():
     states = json.loads(re.search(r"const STATES = (\[.*?\]);", AV, re.S).group(1).replace("\n", " "))
     assert states == ["idle", "listening", "understanding", "planning", "researching", "reasoning", "writing", "coding",
                       "verifying", "approval", "executing", "completed", "error",
-                      "speaking", "warning", "recovery", "halted", "unknown"]
+                      "speaking", "warning", "recovery", "halted", "unknown", "learning", "experimenting", "analyzing"]
     for part in ("helmet", "visor", "face"):
         assert f'["{part}", 1,' in AV, part
     assert "registerPart" in AV and "function registerPart(name, markup)" in AV
@@ -183,7 +183,8 @@ import hashlib  # noqa: E402
 
 # the 3D renderer is split into modules; checks read them as one source
 AV3 = "\n".join((STATIC / f).read_text() for f in ("avatar3d-shaders.js", "avatar3d-geometry.js", "avatar3d-reactor.js",
-                                                    "avatar3d-neural.js", "avatar3d-particles.js", "avatar3d-environment.js", "avatar3d.js"))
+                                                    "avatar3d-neural.js", "avatar3d-particles.js", "avatar3d-environment.js",
+                                                    "avatar3d-projections.js", "avatar3d.js"))
 THREE_SHA256 = "3e690ac7d180b0aadf0891bea39eec643e29e2d3e75c99b18689518665f69ba6"  # three@0.160.0 build/three.module.min.js
 
 
@@ -195,7 +196,7 @@ def test_three_is_the_exact_pinned_build_and_served_from_this_mac(dash):
     status, headers, body = call(d, "/static/vendor/three.module.min.js")
     assert status == 200 and headers["Content-Type"].startswith("text/javascript") and hashlib.sha256(body).hexdigest() == THREE_SHA256
     assert call(d, "/static/vendor/three.LICENSE.txt")[0] == 404  # only the one file is served
-    for f in ("avatar3d.js", "avatar3d-shaders.js", "avatar3d-geometry.js", "avatar3d-reactor.js", "avatar3d-neural.js", "avatar3d-particles.js", "avatar3d-environment.js", "avatar-state.js"):
+    for f in ("avatar3d.js", "avatar3d-shaders.js", "avatar3d-geometry.js", "avatar3d-reactor.js", "avatar3d-neural.js", "avatar3d-particles.js", "avatar3d-environment.js", "avatar3d-projections.js", "avatar-state.js"):
         assert call(d, f"/static/{f}")[0] == 200
     csp = call(d, "/")[1]["Content-Security-Policy"]
     assert "script-src 'self'" in csp and "connect-src 'self'" in csp and "unsafe" not in csp  # unchanged
@@ -314,7 +315,7 @@ def test_bloom_and_surface_detail_are_local_and_fail_safe():
     imports = set(re.findall(r'from "([^"]+)";', AV3))   # only Three.js (served locally) and our own modules
     assert imports <= {"/static/vendor/three.module.min.js", "/static/avatar3d-shaders.js", "/static/avatar3d-geometry.js",
                        "/static/avatar3d-reactor.js", "/static/avatar3d-neural.js", "/static/avatar3d-particles.js",
-                       "/static/avatar3d-environment.js"}
+                       "/static/avatar3d-environment.js", "/static/avatar3d-projections.js"}
     assert "import(" not in AV3
     # surfaces turned away are dimmer (depth), and armour gets panel seams; glowing parts stay smooth
     assert "a *= gl_FrontFacing ? 1.0 : 0.38;" in AV3
@@ -374,7 +375,8 @@ def test_gestures_come_only_from_real_states_and_bend_the_arms_in_the_shader():
     assert "const pose = POSES[POSE_OF[state] || \"rest\"]" in AV3                 # anything else: arms at rest
     assert "uniform mat3 uHead, uArmR, uArmL, uForeR, uForeL;" in AV3
     assert "vObj = position; vObjN = normal;" in AV3                               # seams and panels stay on the moving arm
-    assert "armPose(k);" in AV3 and "wireframe: true" not in AV3                   # no unposed overlay left behind
+    figure_code = AV3.replace((STATIC / "avatar3d-projections.js").read_text(), "")   # everything but the projections
+    assert "armPose(k);" in AV3 and "wireframe: true" not in figure_code           # no unposed overlay left behind
 
 
 def test_data_wall_shows_real_signals_only():
@@ -497,3 +499,25 @@ def test_projection_controls_are_per_device_and_every_one_has_an_effect():
     assert 'o.visible = tier >= 2 && quality === "high";' in AV3
     assert "if (avg > 55 && i > 0)" in AV3                                                  # Auto steps down when frames are slow
     assert 'content: "PREVIEW — not live"' in (STATIC / "avatar.css").read_text()            # a preview is always marked
+
+
+def test_projection_director_reuses_the_renderer_limits_and_disposes():
+    pj = (STATIC / "avatar3d-projections.js").read_text()
+    assert "WebGLRenderer" not in pj and "requestAnimationFrame" not in pj                 # same renderer, same loop
+    assert "while (active.length > SLOTS.length)" in pj                                   # at most two at once
+    assert "for (const o of p.own) if (o && o.dispose) o.dispose();" in pj               # geometry, materials, textures freed
+    assert "replaced in place" in pj                                                     # a refresh never reorders or evicts
+    assert set(re.findall(r"^  (\w+)\(d, k\) \{", pj, re.M)) == {"workflow", "architecture", "neural", "globe", "data",
+                                                                   "timeline", "security", "simulation"}
+    assert "Waiting for you (not authorized)" in pj                                       # pending approvals stay outside the shield
+    assert "...director.hidden()" in AV3                                                  # projections never appear in the reflection
+    js = (STATIC / "app.js").read_text()
+    assert "api(`/api/projection/${m}`)" in js and "describeProjection(r.module, data)" in js   # real data; described without a model
+
+
+def test_learning_experimenting_and_analyzing_come_from_real_signals():
+    fn_state = fn(JS, "avatarState")
+    assert "L && L.experiments_running" in fn_state and "L.lessons_new_at !== ui.seenLessonAt" in fn_state
+    assert "ui.analyzingUntil = Date.now() + 1500" in JS                                     # only while fetching projection data
+    sm = (STATIC / "avatar-state.js").read_text()
+    assert "MAX_MS = { success: 4000, learning: 4000 }" in sm                               # a lesson is shown briefly, never held

@@ -49,3 +49,19 @@ def test_the_dashboard_route_is_local_only_and_research_and_tasks_are_confirmed(
     assert 'if (r.mode === "research" || r.mode === "do") { showRouteConfirm(r); return; }' in js   # one tap first
     assert '"Plan it"' in js and '"Research it"' in js and '"Just answer"' in js
     assert 'role="tablist" aria-label="Mode" hidden' in (ROOT / "src/jarvis/server/static/index.html").read_text()   # buttons removed
+
+
+@pytest.mark.parametrize("text,module", [
+    ("JARVIS, show me my software architecture", "architecture"),
+    ("Show me what you're doing", "workflow"),
+    ("Show me what you've learned", "neural"),
+    ("show me the map", "globe"),
+    ("Show me the security shield", "security"),
+    ("visualize your experiments", "simulation"),
+])
+def test_show_me_opens_the_matching_projection(text, module):
+    assert intent.classify(text) == {"mode": "show", "module": module, "by": "rules", "reason": "asks to see a projection"}
+
+
+def test_show_requests_never_become_actions():
+    assert intent.classify("Show me how to bake bread")["mode"] != "do"

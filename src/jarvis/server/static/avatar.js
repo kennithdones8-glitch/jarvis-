@@ -10,9 +10,10 @@
   const NS = "http://www.w3.org/2000/svg";
   const STATES = ["idle", "listening", "understanding", "planning", "researching", "reasoning", "writing", "coding",
                   "verifying", "approval", "executing", "completed", "error",
-                  "speaking", "warning", "recovery", "halted", "unknown"];
+                  "speaking", "warning", "recovery", "halted", "unknown", "learning", "experimenting", "analyzing"];
   // The 2D fallback has no separate look for the newer states; each borrows the closest existing one.
-  const LOOK_2D = { speaking: "writing", warning: "approval", recovery: "verifying", halted: "idle", unknown: "idle" };
+  const LOOK_2D = { speaking: "writing", warning: "approval", recovery: "verifying", halted: "idle", unknown: "idle",
+                    learning: "understanding", experimenting: "verifying", analyzing: "researching" };
   const ACTIVE = new Set(["understanding", "planning", "researching", "reasoning", "writing", "coding", "verifying", "executing"]);
 
   // A path drawn on both sides of the centre line (x = 200).
@@ -200,22 +201,31 @@
     const label = document.createElement("div");
     label.className = "av-label"; label.hidden = true; label.setAttribute("role", "status");
     wrap.append(label);
-    let lastMove = 0;
+    let lastMove = 0, drag = null;
+    wrap.addEventListener("pointerdown", (e) => { if (av.three && av.three.projections.length) drag = { x: e.clientX, y: e.clientY, moved: 0 }; });
+    wrap.addEventListener("pointerup", () => { setTimeout(() => { drag = null; }, 0); });
     wrap.addEventListener("pointermove", (e) => {
       if (!av.three || e.timeStamp - lastMove < 60) return;
       lastMove = e.timeStamp;
+      if (drag && e.buttons === 1) {   // drag rotates the newest projection
+        av.three.rotateProjection(e.clientX - drag.x, e.clientY - drag.y);
+        drag.moved += Math.abs(e.clientX - drag.x) + Math.abs(e.clientY - drag.y); drag.x = e.clientX; drag.y = e.clientY;
+        return;
+      }
       const sys = av.three.pick(e.clientX, e.clientY);
       wrap.classList.toggle("on-system", !!sys);
       label.hidden = !sys;
       if (sys) {
-        label.textContent = `${sys.label}: ${sys.value}`;
+        label.textContent = sys.projection ? sys.label : `${sys.label}: ${sys.value}`;
         const r = wrap.getBoundingClientRect();
         label.style.setProperty("--x", `${e.clientX - r.left}px`); label.style.setProperty("--y", `${e.clientY - r.top}px`);
       }
     });
     wrap.addEventListener("pointerleave", () => { label.hidden = true; wrap.classList.remove("on-system"); });
     wrap.addEventListener("click", (e) => {
+      if (drag && drag.moved > 6) return;   // that was a rotation, not a click
       const sys = av.three && av.three.pick(e.clientX, e.clientY);
+      if (sys && sys.projection) return;    // pointing at a projection node only inspects it
       if (sys && api.onSystem) api.onSystem(sys.id); else if (api.onFocus) api.onFocus();
     });
     wrap.addEventListener("keydown", (e) => {
@@ -370,10 +380,16 @@
     else { if (av.raf) cancelAnimationFrame(av.raf); av.raf = 0; clear(); }
   }
 
-  const api = { mount, setState, previewState, endPreview, setOptions, setPanels, setTier, setSystems, setAura, setThought, systemAt, pulse, registerPart, refresh: loop, STATES, onFocus: null, onSystem: null,
+  // projections: real data from the dashboard, drawn by the 3D renderer (nothing in 2D: the core shows no projections)
+  function showProjection(m, data) { return av.three ? av.three.showProjection(m, data) : false; }
+  function closeProjection(m) { if (av.three) av.three.closeProjection(m); }
+  function closeProjections() { if (av.three) av.three.closeProjections(); }
+  function pinProjection(m, on) { if (av.three) av.three.pinProjection(m, on); }
+  const api = { mount, setState, previewState, endPreview, setOptions, setPanels, showProjection, closeProjection, closeProjections, pinProjection, setTier, setSystems, setAura, setThought, systemAt, pulse, registerPart, refresh: loop, STATES, onFocus: null, onSystem: null,
                           get state() { return av.state; }, get profile() { return smOut.profile; }, get preview() { return smOut.preview; },
                           get lifecycle() { return smOut.lifecycle; },
-                          get quality() { return av.three ? av.three.quality : null; }, get modules() { return av.three ? av.three.modules : []; }, get tier() { return av.tier; },
+                          get quality() { return av.three ? av.three.quality : null; },
+                          get projections() { return av.three ? av.three.projections : []; }, get modules() { return av.three ? av.three.modules : []; }, get tier() { return av.tier; },
                           get animating() { return av.raf !== 0 || !!(av.three && av.three.animating); },
                           get renderer() { return av.three ? "3d" : "2d"; },
                           get stats() { return av.three ? av.three.stats : null; },

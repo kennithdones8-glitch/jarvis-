@@ -20,6 +20,7 @@ import { buildReactor } from "/static/avatar3d-reactor.js";
 import { buildNeural } from "/static/avatar3d-neural.js";
 import { buildReconstruction } from "/static/avatar3d-particles.js";
 import { buildEnvironment } from "/static/avatar3d-environment.js";
+import { createDirector } from "/static/avatar3d-projections.js";
 export { sdHuman, meshFigure };
 
 const CHAMPAGNE = new THREE.Color("#f3e3bd"), WHITE = new THREE.Color("#fff8ec"), AMBER = new THREE.Color("#f2a33a");
@@ -47,6 +48,9 @@ const LOOKS = {
   completed:     { tint: "#fff0c8", rpat: "surge", eyes: 1.8, rim: 1.7, scan: 1.0, flow: 1.0, ring: 0.6, beam: 1.2, reactor: 1.6, neural: 0.6, data: 0, sweep: 0, discharge: 0, beat: 0, head: "aware", flicker: 0 },
   error:         { tint: "#ff4b4b", rpat: "stutter", eyes: 1.1, rim: 1.1, scan: 0.8, flow: 0.0, ring: 0.0, beam: 0.45, reactor: 0.5, neural: 0.05, data: 0, sweep: 0.7, discharge: 0, beat: 0, head: "still", flicker: 0.45 },
   recovery:      { tint: "#f7d48c", rpat: "calm", eyes: 0.8, rim: 1.0, scan: 1.5, flow: 0.5, ring: 0.25, beam: 0.7, reactor: 0.6, neural: 0.3, data: 0, sweep: 0.5, discharge: 0, beat: 0, head: "aware", flicker: 0.08 },
+  learning:      { tint: "#ffe6a8", rpat: "beat", eyes: 1.2, rim: 1.2, scan: 1.4, flow: -0.9, ring: 0.4, beam: 0.85, reactor: 0.85, neural: 0.95, data: 0, sweep: 0.3, discharge: 0, beat: 1.4, head: "think", flicker: 0 },
+  experimenting: { tint: "#f7c96e", rpat: "spin", eyes: 1.15, rim: 1.25, scan: 2.2, flow: 0.9, ring: 0.8, beam: 0.9, reactor: 0.95, neural: 0.7, data: 0.4, sweep: 0.6, discharge: 0.2, beat: 0, head: "scan", flicker: 0 },
+  analyzing:     { tint: "#fde2a8", rpat: "scan", eyes: 1.15, rim: 1.2, scan: 3.0, flow: -0.6, ring: 0.5, beam: 0.9, reactor: 0.85, neural: 0.8, data: 0.3, sweep: 0.9, discharge: 0, beat: 0, head: "scan", flicker: 0 },
   halted:        { tint: "#a8977a", rpat: "still", eyes: 0.4, rim: 0.85, scan: 0.4, flow: 0.0, ring: 0.0, beam: 0.35, reactor: 0.3, neural: 0.0, data: 0, sweep: 0, discharge: 0, beat: 0, head: "still", flicker: 0 },
 };
 const NUMERIC = ["eyes", "rim", "scan", "flow", "ring", "beam", "reactor", "neural", "data", "sweep", "discharge", "flicker"];
@@ -114,6 +118,7 @@ export function create(wrap, opts = {}) {
   const camera = new THREE.PerspectiveCamera(28, 20 / 27, 0.1, 60);
   camera.position.set(0, 2.85, 11.5);
   camera.lookAt(0, 2.68, 0);
+  const director = createDirector({ scene, camera, kick: () => kick() });   // projections share this scene and loop
 
   // ---- shared uniforms: one update per frame drives every hologram material ------------------------------------
   const U = { uHead: { value: new THREE.Matrix3() }, uArmR: { value: new THREE.Matrix3() }, uArmL: { value: new THREE.Matrix3() },
@@ -811,6 +816,7 @@ export function create(wrap, opts = {}) {
     else if (h === "still") headTarget.set(0.05, 0, 0);
     else if (glance) headTarget.set(glance[0], glance[1], 0);                          // a glance at something
     else headTarget.set(Math.sin(t * 0.31) * 0.02, Math.sin(t * 0.23) * 0.07, 0);     // awareness
+    if (director.active && h !== "still") headTarget.y = 0.32 + Math.sin(t * 0.4) * 0.04;   // looks toward the projection
   }
 
   function regenerateArcs() {
@@ -890,6 +896,7 @@ export function create(wrap, opts = {}) {
     REACTOR.value = cur.reactor * breathe * (1 + speech * 0.8 + flash) * K.reactor[OPT.reactor];
     if (innerMat) innerMat.uniforms.uOpacity.value = 0.12 + cur.neural * 0.5 + flash * 0.3;   // the inner network brightens while thinking
     neuralX.update(cur.neural, ["executing", "coding", "verifying"].includes(state), REACTOR.value);
+    const projecting = director.update(dt, moving);
     const confirming = reactorX.update(dt * K.animation[OPT.animation], moving, target.rpat);
     envX.update(dt, moving, { ring: cur.ring, reactor: REACTOR.value, animK: K.animation[OPT.animation], orbitK: K.orbit[OPT.orbit] });
     const seams = [0.7, 1.0, 1.2, 1.35, 1.5][tier - 1] || 1;
@@ -1006,7 +1013,7 @@ export function create(wrap, opts = {}) {
     if (post) post.begin(); else renderer.clear();
     renderer.render(scene, camera);
     // the head reflects ~4 units below the floor, where the reflection has faded to nothing: skip it
-    const hidden = [beam, dust, data, sweep, net.g, orbits, reactor, grid, baseGlow, headPivot, thought, shed, wisps, scanRing, rebuild.points, ...envX.hidden(), ...soleGlows, ...reactorX.hidden(), ...(shieldMesh ? [shieldMesh] : []), ...(auraMesh ? [auraMesh] : []), ...metals.map((m) => m.mesh),
+    const hidden = [beam, dust, data, sweep, net.g, orbits, reactor, grid, baseGlow, headPivot, thought, shed, wisps, scanRing, rebuild.points, ...envX.hidden(), ...director.hidden(), ...soleGlows, ...reactorX.hidden(), ...(shieldMesh ? [shieldMesh] : []), ...(auraMesh ? [auraMesh] : []), ...metals.map((m) => m.mesh),
       ...Object.values(aura).map((a) => a.ring), ...shafts, ...pulses.map((p) => p.m), ...eyeGlows, ...parts.pad.objs];
     const was = hidden.map((o) => o.visible);
     hidden.forEach((o) => { o.visible = false; });
@@ -1018,7 +1025,7 @@ export function create(wrap, opts = {}) {
     for (const m of lineMats) m.visible = true;
     if (post) post.end(t, intensity);
     settling -= dt;
-    if (moving || revealing || boot || confirming || settling > 0 && mode === "full") raf = requestAnimationFrame(frame);
+    if (moving || revealing || boot || confirming || projecting && mode === "full" || settling > 0 && mode === "full") raf = requestAnimationFrame(frame);
   }
   function kick() { if (!raf && visible && !document.hidden) raf = requestAnimationFrame(frame); }
 
@@ -1030,7 +1037,9 @@ export function create(wrap, opts = {}) {
     figure.updateMatrixWorld(true);   // the reflection pass leaves the figure's matrices mirrored until the next frame
     ray.setFromCamera(ndc, camera);
     const hit = ray.intersectObjects(hitTargets, false).find((h) => h.object.parent.visible);
-    return hit ? systems[hit.object.userData.index] || null : null;
+    if (hit) return systems[hit.object.userData.index] || null;
+    const label = director.pick(ray);
+    return label ? { projection: true, label, value: "" } : null;
   }
 
   function resize() {
@@ -1054,12 +1063,15 @@ export function create(wrap, opts = {}) {
 
   const api = {
     setState, setTier, setMode, setIntensity, setSystems, setAura, setThought, pulse, pick, setOptions, setPanels, onLost: null,
+    showProjection(m, data) { const ok = director.show(m, data); kick(); return ok; }, closeProjection(m) { director.close(m); kick(); },
+    closeProjections() { director.closeAll(); }, pinProjection(m, on) { director.pin(m, on); }, rotateProjection(dx, dy) { director.rotate(dx, dy); },
+    get projections() { return director.list(); },
     get quality() { return quality; }, get options() { return { ...OPT }; },
     get modules() { return Object.entries(parts).map(([name, p]) => ({ name, tier: p.tier, on: tier >= p.tier })); },
     skipBoot() { if (boot) { boot.t = BOOT_END; kick(); } }, get booting() { return !!boot; },
     get animating() { return raf !== 0; },
     get eyes() { return { hot: FACE.uEyeHot.value, level: EYE.value, open: FACE.uEyeOpen.value, look: FACE.uEyeLook.value, scan: FACE.uEyeScan.value, speech: FACE.uSpeech.value }; }, get lost() { return lost; }, get state() { return state; },
-    get stats() { return { calls: renderer.info.render.calls, triangles: renderer.info.render.triangles }; },
+    get stats() { return { calls: renderer.info.render.calls, triangles: renderer.info.render.triangles, camera: camera.position.toArray().map((x) => +x.toFixed(2)) }; },
     dispose() { cancelAnimationFrame(raf); ro.disconnect(); io.disconnect(); document.removeEventListener("visibilitychange", onVis);
       renderer.dispose(); canvas.remove(); },
   };
