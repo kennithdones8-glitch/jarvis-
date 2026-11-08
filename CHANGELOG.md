@@ -1,5 +1,18 @@
 # Changelog
 
+## Unreleased: work it out with code (branch `compute-v1`, on top of `smarter-v2`; owner's choice: F)
+
+- **F. Maths, dates and puzzles are worked out by a program.** Off unless you turn it on (`[coding] compute = true`;
+  benchmark: `--compute`). For a question that needs working out and isn't a request for code, in Balanced or Deep,
+  when the answer stays on this Mac, the local model writes a short program; JARVIS checks it (only maths/date/logic
+  modules; no files, network, os, subprocess, open/exec/eval/__import__, no double-underscore names) and runs it in
+  the same macOS sandbox as the coding self-test (no network, no writes outside a temp folder, no reading your home
+  folder, no other programs, 10 s). The answer is written from what it printed, and says so. Never in Quick, never
+  when the answer may go to Claude, never without the sandbox. Release-gate tests for each of those.
+- **"What time does it arrive?" and "on which weekday…?" with numbers now count as maths**, so the 14B answers them
+  (only ever a choice between local models). The hard set's journey and weekday tasks weren't reaching it.
+- To be proven on the Mac: the hard set ×5 with `--compute` (before = smarter-v2's run).
+
 ## Unreleased: fixes for what the hard set found (branch `smarter-v2`, owner's choice: fixes 1, 2A and A–J)
 
 Built on `harder-bench-v1`. Fixes the two gaps the hard set found, where even a perfect model failed.

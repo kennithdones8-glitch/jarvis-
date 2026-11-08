@@ -40,6 +40,7 @@ from ..core.approvals import ApprovalStateError
 from ..core.killswitch import EmergencyStop
 from ..core.tasks import InvalidTransition, TaskState
 from ..core.tools import ApprovalRequired
+from ..compute import NOTE as COMPUTE_NOTE, PROGRAM_PROMPT, Computed, program_of, result_message_text, run_program, wants_compute
 from ..codecheck import MAX_CASES, TEST_PROMPT, SandboxUnavailable, code_of, parse_cases, run_cases, wants_code
 from ..orchestrator.answer_checks import chat_problems, facts_left_out
 from ..orchestrator.lookup import FACTS_HEAD, lenient_json
@@ -584,6 +585,24 @@ class Dashboard:
         return job["task_id"]
 
     # ---- chat --------------------------------------------------------------------------
+    def _compute(self, message: str, stage) -> "Computed":
+        """F: the local model writes a short program for a maths/date/logic question; it is vetted and run in the
+        sandbox (see jarvis.compute). Always local; never raises."""
+        stage({"stage": "computing"})
+        try:
+            r = self.kernel.models.complete(
+                Need("chat", prefer="quality", local_only=True),
+                ChatRequest((Message("system", PROGRAM_PROMPT, Category.SYSTEM_PROMPT),
+                             Message("user", message, Category.CONVERSATION, local_only=True)),
+                            max_tokens=700, temperature=0.0), purpose="chat: work it out with code")
+            code = program_of(r.text)
+            computed = run_program(code) if code else Computed(error="no program in the reply")
+        except Exception as exc:  # no local model, emergency stop...: answer the usual way
+            computed = Computed(error=f"{type(exc).__name__}"[:80])
+        self.kernel.audit.record("chat.computed", ok=computed.ok, error=(computed.error or "")[:160],
+                                 output_chars=len(computed.output or ""))
+        return computed
+
     def chat(self, message: str, history: list[dict[str, str]], *, local_only: bool = False,
              session: str = "dashboard", on_token=None, mode: str = "balanced", on_event=None) -> dict[str, Any]:
         """``mode`` (see ``INTELLIGENCE``): quick = fastest local model, no pre-call unless a lookup could help;
@@ -626,6 +645,13 @@ class Dashboard:
                 turns += 1
         if found.context:
             msgs.append(found.context)
+        computed = None
+        if (self.kernel.model_config.coding.get("compute") and mode in ("balanced", "deep") and stays_here
+                and wants_compute(message)):
+            computed = self._compute(message, stage)
+            if computed.ok:
+                msgs.append(Message("system", result_message_text(computed), Category.CONVERSATION, local_only=True))
+                careful = True
         msgs.append(Message("user", message, Category.CONVERSATION))
         stage({"stage": "context", "memories": len(recalled), "turns": turns})
         max_tokens = INTELLIGENCE[mode]["max_tokens"]
@@ -656,6 +682,8 @@ class Dashboard:
                 self.kernel.audit.record("chat.mode_fallback", mode=mode, model=f"{r.provider}/{r.model}")
             if mode_note:
                 r = replace(r, note=((r.note + " ") if r.note else "") + mode_note)
+            if computed is not None and computed.ok:
+                r = replace(r, note=((r.note + " ") if r.note else "") + COMPUTE_NOTE)
             # Retries and fixes are local-only at any quality: they must never become a consent question.
             local_need = replace(need, local_only=True, min_quality=1)
             grounded, retried = None, False
