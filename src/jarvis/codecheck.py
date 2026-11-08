@@ -156,3 +156,78 @@ def run_cases(code: str, cases: list[dict[str, str]]) -> TestRun:
     run = TestRun(cases=len(results), passed=sum(1 for x in results if x["ok"]))
     run.failures = [f"{x['call']} should be {x['want']}, got {x['got']}" for x in results if not x["ok"]]
     return run
+
+
+# ---- K: check the code against the examples in the request (owner's choice, opt-in) --------------------------------
+# Real failures (hard set): "treat missing parts as 0 (so "1.0" equals "1")" and the model's code returned 1. The
+# self-test above didn't help: the model wrote its own cases and repeated its own misreading. Here the model only
+# *copies* examples out of the request, and JARVIS keeps a case only if every value in it is written in the request.
+EXAMPLES_PROMPT = """\
+Copy the concrete examples out of the owner's request as test cases for the Python function `{name}`. Reply with \
+JSON only.
+
+Only examples the request itself states (e.g. "so "aaabcc" becomes "a3bc2"", ""1.0" equals "1"", "f(3) is 9"). \
+Don't invent any. Each case is a Python call of `{name}` and the expected result as a Python literal. If the request \
+gives no concrete examples, reply with an empty list.
+
+JSON format: {{"cases": [{{"call": "{name}(...)", "expected": "..."}}]}}"""
+
+
+def _values(node) -> list | None:
+    """Every literal value in an expression, or None if it holds anything but literals (names, maths, calls)."""
+    import ast
+    if isinstance(node, ast.Constant):
+        return [node.value]
+    if isinstance(node, ast.UnaryOp) and isinstance(node.op, ast.USub) and isinstance(node.operand, ast.Constant) \
+            and isinstance(node.operand.value, (int, float)):
+        return [-node.operand.value]
+    if isinstance(node, (ast.List, ast.Tuple, ast.Set)):
+        out = []
+        for e in node.elts:
+            v = _values(e)
+            if v is None:
+                return None
+            out += v
+        return out
+    if isinstance(node, ast.Dict):
+        out = []
+        for e in list(node.keys) + list(node.values):
+            v = _values(e) if e is not None else None
+            if v is None:
+                return None
+            out += v
+        return out
+    return None
+
+
+def _written_in(value, question: str) -> bool:
+    if isinstance(value, bool) or value is None:
+        return re.search(rf"\b{value}\b", question, re.I) is not None
+    if isinstance(value, str):
+        return value in question if value else ('""' in question or "''" in question)
+    if isinstance(value, (int, float)):
+        text = repr(value) if isinstance(value, float) else str(value)
+        return re.search(rf"(?<![\d.]){re.escape(text)}(?![\d])", question) is not None
+    return False
+
+
+def from_request(cases: list[dict[str, str]], name: str, question: str) -> list[dict[str, str]]:
+    """Only the cases whose call is a plain call of ``name`` with literal arguments, and whose every argument and
+    expected value is written in the request. A case the model made up, or worked out itself, is dropped."""
+    import ast
+    kept = []
+    for c in cases:
+        try:
+            call = ast.parse(c["call"], mode="eval").body
+            expected = ast.parse(c["expected"], mode="eval").body
+        except SyntaxError:
+            continue
+        if not (isinstance(call, ast.Call) and isinstance(call.func, ast.Name) and call.func.id == name):
+            continue
+        parts = [_values(a) for a in call.args] + [_values(k.value) for k in call.keywords] + [_values(expected)]
+        if any(p is None for p in parts):
+            continue
+        values = [v for p in parts for v in p]
+        if values and all(_written_in(v, question) for v in values):
+            kept.append(c)
+    return kept

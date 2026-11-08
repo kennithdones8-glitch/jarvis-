@@ -40,7 +40,7 @@ from ..core.approvals import ApprovalStateError
 from ..core.killswitch import EmergencyStop
 from ..core.tasks import InvalidTransition, TaskState
 from ..core.tools import ApprovalRequired
-from ..codecheck import MAX_CASES, TEST_PROMPT, SandboxUnavailable, code_of, parse_cases, run_cases, wants_code
+from ..codecheck import EXAMPLES_PROMPT, MAX_CASES, TEST_PROMPT, from_request, SandboxUnavailable, code_of, parse_cases, run_cases, wants_code
 from ..orchestrator.answer_checks import chat_problems, facts_left_out
 from ..orchestrator.lookup import FACTS_HEAD, lenient_json
 from ..orchestrator.grounding import applies, unsupported_times
@@ -688,10 +688,13 @@ class Dashboard:
                     r = replace(r, note=((r.note + " ") if r.note else "")
                                 + f"⚠ Unverified: mentions {', '.join(bad)}, not found in your calendar or reminders.")
             code_test = None
-            if (self.kernel.model_config.coding.get("self_test") and r.provider in self.kernel.models.router.local
+            coding = self.kernel.model_config.coding
+            if ((coding.get("examples") or coding.get("self_test")) and r.provider in self.kernel.models.router.local
                     and wants_code(message) and code_of(r.text)):
                 stage({"stage": "checking", "code_test": True})
-                r, code_test = self._self_test(message, msgs, r, local_need, found.level)
+                # K (examples) takes precedence: tests copied from the request beat tests the model writes itself
+                r, code_test = self._self_test(message, msgs, r, local_need, found.level,
+                                               examples=bool(coding.get("examples")))
         except NoModelAvailable as exc:
             return {"error": f"No model available: {exc}", "reasons": exc.reasons}
         except ApprovalRequired as exc:
@@ -704,11 +707,12 @@ class Dashboard:
                 "lookup_notes": found.why + found.notes, "mode": mode,
                 "location": "local" if r.provider in self.kernel.models.router.local else "cloud"}
 
-    def _self_test(self, message: str, msgs: list, r, need, level) -> tuple[Any, dict | None]:
+    def _self_test(self, message: str, msgs: list, r, need, level, *, examples: bool = False) -> tuple[Any, dict | None]:
         """Coding self-test (opt-in): local tests from the request alone, run in the sandbox, one fix if any fail.
-        Returns the answer to show and a summary (counts only); never raises."""
+        With ``examples`` (K) the tests are the request's own examples, kept only if every value in them is written
+        in the request. Returns the answer to show and a summary (counts only); never raises."""
         code, name = code_of(r.text, message)
-        prompt = TEST_PROMPT.format(name=name, max=MAX_CASES)
+        prompt = (EXAMPLES_PROMPT.format(name=name) if examples else TEST_PROMPT.format(name=name, max=MAX_CASES))
         try:
             t = self.kernel.models.complete(
                 Need("json", prefer="auto", local_only=True),
@@ -716,12 +720,14 @@ class Dashboard:
                              Message("user", message, Category.CONVERSATION, local_only=True)),
                             max_tokens=500, temperature=0.0, json_mode=True), purpose="coding self-test cases")
             cases = parse_cases(lenient_json(t.text), name)
+            if examples:
+                cases = from_request(cases, name, message)
         except Exception as exc:  # no local model, bad JSON…: show the answer untested, and say so
             self.kernel.audit.record("chat.code_test", ran=False, reason=type(exc).__name__)
             return r, {"ran": False, "reason": "couldn't write test cases"}
         if not cases:
             self.kernel.audit.record("chat.code_test", ran=False, reason="no usable cases")
-            return r, {"ran": False, "reason": "no usable test cases"}
+            return r, {"ran": False, "reason": "no examples in the request" if examples else "no usable test cases"}
         try:
             first = run_cases(code, cases)
         except SandboxUnavailable as exc:
@@ -730,10 +736,13 @@ class Dashboard:
         best, best_run, fixed = r, first, False
         if not first.all_passed:
             retry = msgs + [Message("assistant", r.text, Category.CONVERSATION),
-                            Message("user", "JARVIS ran your code on test cases written from my request:\n"
-                                    + first.describe()[:1500] + "\nFix the code if it is wrong. If a case contradicts "
-                                    "my request, keep the code right and say which case. Reply with the complete "
-                                    "corrected code in one Python code block.", Category.CONVERSATION)]
+                            Message("user", ("JARVIS ran your code on the examples in my request, and it doesn't "
+                                    "match them:\n" if examples else "JARVIS ran your code on test cases written from "
+                                    "my request:\n") + first.describe()[:1500] + ("\nThese examples are exactly what I "
+                                    "asked for: fix the code so it gives these results. " if examples else
+                                    "\nFix the code if it is wrong. If a case contradicts my request, keep the code "
+                                    "right and say which case. ") + "Reply with the complete corrected code in one "
+                                    "Python code block.", Category.CONVERSATION)]
             # always local: the first answer was, and a fix must never become a consent question
             r2 = self.kernel.models.complete(replace(need, local_only=True, min_quality=1), ChatRequest(tuple(retry), max_tokens=900),
                                              purpose="dashboard chat (coding self-test fix)", level=level)
@@ -744,9 +753,11 @@ class Dashboard:
                     best, best_run, fixed = r2, second, True
         self.kernel.audit.record("chat.code_test", ran=True, cases=best_run.cases, passed=best_run.passed,
                                  first_passed=first.passed, fixed=fixed, error=best_run.error is not None)
-        summary = {"ran": True, "cases": best_run.cases, "passed": best_run.passed, "fixed": fixed,
+        summary = {"ran": True, "source": "request" if examples else "model", "cases": best_run.cases,
+                   "passed": best_run.passed, "fixed": fixed,
                    "error": best_run.error}
-        note = (f"🧪 Tested on {best_run.cases} case(s) JARVIS wrote: {best_run.passed} passed"
+        what = "example(s) from your request" if examples else "case(s) JARVIS wrote"
+        note = (f"🧪 Tested on {best_run.cases} {what}: {best_run.passed} passed"
                 + (" (after one fix)" if fixed else "") + (f"; it failed to run: {best_run.error}" if best_run.error else ""))
         return replace(best, note=((best.note + " ") if best.note else "") + note), summary
 

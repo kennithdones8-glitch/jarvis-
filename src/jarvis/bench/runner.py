@@ -112,7 +112,7 @@ def _drop_sections(text: str, names: tuple[str, ...]) -> str:
     return "\n".join(out) + "\n"
 
 
-def bench_config(real_config: Path, models: str, *, coding_self_test: bool = False) -> str:
+def bench_config(real_config: Path, models: str, *, coding_self_test: bool = False, examples: bool = False) -> str:
     """Your model settings for a benchmark run: providers, routing and privacy rules kept; phone access, voice,
     backups and the briefing schedule dropped; Claude switched off for ``local``."""
     from ..models.config import parse_model_config
@@ -122,8 +122,9 @@ def bench_config(real_config: Path, models: str, *, coding_self_test: bool = Fal
     if models == "local":
         text = re.sub(r"(\[providers\.claude\][^\[]*?enabled\s*=\s*)true", r"\1false", text, count=1)
         text = re.sub(r'(\[routing\][^\[]*?mode\s*=\s*)"[^"]*"', r'\1"local_first"', text, count=1)
-    if coding_self_test:
-        text = _drop_sections(text, ("coding",)) + "\n[coding]\nself_test = true\n"
+    if coding_self_test or examples:
+        text = (_drop_sections(text, ("coding",)) + "\n[coding]\n" + ("self_test = true\n" if coding_self_test else "")
+                + ("examples = true\n" if examples else ""))
     cfg = parse_model_config(tomllib.loads(text))
     if cfg.monthly_limit_usd != 0:
         raise BenchError("the benchmark only runs with a $0 budget (your jarvis.toml allows spending)")
@@ -294,17 +295,17 @@ def busy(load: dict | None) -> bool:
 
 def run_suite(tasks: list[Task], *, real_config: Path, out_dir: Path, models: str = "local", repeat: int = 1,
               run_code: bool = False, mac_factory=FixtureMac, progress: Callable[[str], None] = lambda s: None,
-              coding_self_test: bool = False) -> Path:
+              coding_self_test: bool = False, examples: bool = False) -> Path:
     if models not in ("local", "hybrid"):
         raise BenchError("models must be 'local' or 'hybrid'")
-    config_text = bench_config(real_config, models, coding_self_test=coding_self_test)
+    config_text = bench_config(real_config, models, coding_self_test=coding_self_test, examples=examples)
     run_id = datetime.now().strftime("%Y%m%d-%H%M%S") + f"-{models}"
     run_dir = out_dir / run_id
     run_dir.mkdir(parents=True)
     meta = {"run_id": run_id, "started": datetime.now().astimezone().isoformat(), "jarvis_version": __version__,
             "git_commit": git_commit(), "models": models, "repeat": repeat, "run_code": run_code,
             "platform": f"{platform.system()} {platform.release()} {platform.machine()}", "tasks": {},
-            "coding_self_test": coding_self_test, "load_start": mac_load()}
+            "coding_self_test": coding_self_test, "examples": examples, "load_start": mac_load()}
     results = []
     peak = meta["load_start"]
     for task in tasks:

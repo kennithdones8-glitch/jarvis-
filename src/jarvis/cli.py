@@ -133,6 +133,8 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--b1", action="store_true", help="baseline with the same information JARVIS gets")
     p.add_argument("--coding-self-test", action="store_true",
                    help="run with the coding self-test on (code runs only inside the macOS sandbox)")
+    p.add_argument("--examples", action="store_true",
+                   help="run with K on: coding answers checked against the request's own examples (macOS sandbox)")
     p.add_argument("--set", choices=["core", "extended", "hard", "all"], default="core",
                    help="core: the 12 compared with the Claude app (default); extended: 12 more; all: both; hard: 17 held-out harder tasks")
     p.add_argument("--before", nargs="+", metavar="DIR", help="compare: one or more runs pooled as 'before'")
@@ -880,7 +882,7 @@ def _bench(kernel: Kernel, args) -> int:
                   "settings and permissions are untouched.\n")
         run_dir = run_suite(tasks, real_config=kernel.config_path, out_dir=out, models=args.models,
                             repeat=max(1, args.repeat), run_code=args.run_code, progress=print,
-                            coding_self_test=args.coding_self_test)
+                            coding_self_test=args.coding_self_test, examples=args.examples)
         print(f"\nReport: {run_dir / 'report.md'}")
         print(summary_part((run_dir / "report.md").read_text()))
         return 0

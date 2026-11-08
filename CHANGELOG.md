@@ -1,5 +1,21 @@
 # Changelog
 
+## Unreleased: K, test the code on the request's own examples (branch `examples-v1`, off by default)
+
+Built on `smarter-v2`. Turn on with `[coding] examples = true`, or `--examples` on `jarvis bench run`.
+- **Why.** In the hard set the coding self-test didn't help: the model wrote its own test cases and repeated its own
+  misreading ("treat missing parts as 0, so "1.0" equals "1"" and the code still returned 1).
+- **What.** When a coding answer comes from the Mac's own model, JARVIS has the model *copy* the concrete examples
+  out of the request (never the answer's code). It keeps a case only if it calls the named function with plain
+  literals and every value in it is written in the request; invented or worked-out cases are dropped. The code
+  runs on the kept examples in the same sandbox as the self-test, and gets one local fix if any fail; the better
+  answer is kept. The note says "Tested on N example(s) from your request".
+- **If both are on**, the request's examples are used instead of the model's own cases. No examples in the
+  request means no test ("no examples in the request"), and no extra fix call.
+- **Privacy and safety unchanged.** Copying and fixing are local-only; nothing runs without the macOS sandbox. New
+  Privacy gate tests: `examples_are_off_by_default`, `examples_never_run_without_a_sandbox`.
+- **Not measured yet.** Needs a Mac run on the hard and hard2 sets with `--examples`.
+
 ## Unreleased: fixes for what the hard set found (branch `smarter-v2`, owner's choice: fixes 1, 2A and A–J)
 
 Built on `harder-bench-v1`. Fixes the two gaps the hard set found, where even a perfect model failed.

@@ -73,15 +73,15 @@ def coding_env(make_kernel, tmp_path, unsandboxed):
         system = body["messages"][0]["content"]
         if "lookup step of JARVIS" in system:
             return json.dumps({"lookups": [], "change": False})
-        if "You write test cases" in system:
+        if "You write test cases" in system or "Copy the concrete examples" in system:
             state["prompts"].append(json.dumps(body["messages"]))
             return json.dumps(state["cases"])
         return state["answers"].pop(0) if state["answers"] else "OK"
     server.reply = reply
 
-    def make(self_test=True):
-        (tmp_path / "jarvis.toml").write_text(CFG.format(url=server.url) + ("\n[coding]\nself_test = true\n"
-                                                                             if self_test else ""))
+    def make(self_test=True, examples=False):
+        extra = ("self_test = true\n" if self_test else "") + ("examples = true\n" if examples else "")
+        (tmp_path / "jarvis.toml").write_text(CFG.format(url=server.url) + (f"\n[coding]\n{extra}" if extra else ""))
         k = make_kernel(config_path=tmp_path / "jarvis.toml")
         d = Dashboard(k, port=0, token="test-token", poll_s=0.05)
         d.start()
@@ -103,7 +103,7 @@ def test_a_failing_answer_is_fixed_once_and_the_fix_is_kept(coding_env):
     d = make()
     state["answers"] = [BUGGY, FIXED]
     r = chat(d, DURATION)
-    assert r["text"] == FIXED and r["code_test"] == {"ran": True, "cases": 3, "passed": 3, "fixed": True, "error": None}
+    assert r["text"] == FIXED and r["code_test"] == {"ran": True, "source": "model", "cases": 3, "passed": 3, "fixed": True, "error": None}
     assert "Tested on 3 case(s)" in r["note"] and "after one fix" in r["note"]
     assert "def seconds" not in state["prompts"][0]  # the test writer never sees the answer's code
     ev = [e["payload"] for e in d.kernel.audit.entries() if e["event"] == "chat.code_test"][-1]
@@ -180,3 +180,92 @@ def test_the_fix_is_always_local(coding_env, monkeypatch):
     monkeypatch.setattr(d.kernel.models, "complete", spy)
     chat(d, DURATION)
     assert ("dashboard chat (coding self-test fix)", True) in seen
+
+
+# ---- K: the examples written in the request ---------------------------------------------------------------------
+VERSIONS = ('Write a Python function `compare_versions(a, b)` that compares version strings and returns 1, -1 or 0. '
+            'Treat missing parts as 0, so compare_versions("1.0", "1") returns 0, and compare_versions("1.10", "1.9") '
+            "returns 1. Reply with the function in one Python code block.")
+V_BUGGY = "```python\ndef compare_versions(a, b):\n    return (a > b) - (a < b)\n```"
+V_FIXED = ("```python\ndef compare_versions(a, b):\n    x = [int(p) for p in a.split('.')]\n"
+           "    y = [int(p) for p in b.split('.')]\n    n = max(len(x), len(y))\n"
+           "    x += [0] * (n - len(x))\n    y += [0] * (n - len(y))\n    return (x > y) - (x < y)\n```")
+V_CASES = {"cases": [{"call": 'compare_versions("1.0", "1")', "expected": "0"},
+                     {"call": 'compare_versions("1.10", "1.9")', "expected": "1"},
+                     {"call": 'compare_versions("2.0", "3.0")', "expected": "-1"}]}  # made up: not in the request
+
+
+def test_only_cases_written_in_the_request_are_kept():
+    from jarvis.codecheck import from_request
+    raw = V_CASES["cases"] + [
+        {"call": "compare_versions(a, b)", "expected": "0"},                 # not literal
+        {"call": 'other("1.0", "1")', "expected": "0"},                      # wrong function
+        {"call": 'compare_versions("1.0", "1")', "expected": "1 - 1"},       # worked out, not copied
+        {"call": 'compare_versions("1.10", "1.9")', "expected": "7"},        # value not in the request
+        {"call": "compare_versions(", "expected": "0"}]                      # broken
+    assert from_request(raw, "compare_versions", VERSIONS) == V_CASES["cases"][:2]
+    rle = 'Write `compress(s)` so "aaabcc" becomes "a3bc2"; an empty string "" stays empty.'
+    assert from_request([{"call": "compress('aaabcc')", "expected": "'a3bc2'"},
+                         {"call": "compress('')", "expected": "''"},
+                         {"call": "compress('zz')", "expected": "'z2'"}], "compress", rle) == [
+        {"call": "compress('aaabcc')", "expected": "'a3bc2'"}, {"call": "compress('')", "expected": "''"}]
+    assert from_request([{"call": "f(10)", "expected": "1"}], "f", "f(110) is 1") == []  # 10 is only part of 110
+
+
+def test_examples_from_the_request_drive_one_fix(coding_env):
+    make, state, _ = coding_env
+    d = make(self_test=False, examples=True)
+    state["cases"], state["answers"] = V_CASES, [V_BUGGY, V_FIXED]
+    r = chat(d, VERSIONS)
+    assert r["text"] == V_FIXED
+    assert r["code_test"] == {"ran": True, "source": "request", "cases": 2, "passed": 2, "fixed": True, "error": None}
+    assert "Tested on 2 example(s) from your request" in r["note"] and "after one fix" in r["note"]
+    assert "def compare_versions" not in state["prompts"][0]  # the copier never sees the answer's code
+
+
+def test_examples_win_over_the_self_test_when_both_are_on(coding_env):
+    make, state, _ = coding_env
+    d = make(self_test=True, examples=True)
+    state["cases"], state["answers"] = V_CASES, [V_FIXED]
+    r = chat(d, VERSIONS)
+    assert r["code_test"]["source"] == "request" and r["code_test"]["cases"] == 2
+
+
+def test_no_examples_in_the_request_means_no_test(coding_env):
+    make, state, server = coding_env
+    d = make(self_test=False, examples=True)
+    state["cases"], state["answers"] = CASES, [BUGGY]  # the copier "invents" cases; none are written in DURATION
+    before = len(server.received)
+    r = chat(d, DURATION.replace('"1h 30m", "45s", "2h5m10s" or "90m"', "hours, minutes and seconds"))
+    assert r["text"] == BUGGY and r["code_test"] == {"ran": False, "reason": "no examples in the request"}
+    assert len(server.received) - before == 2  # the answer and the copy call; no fix
+
+
+def test_examples_are_off_by_default(coding_env):
+    make, state, _ = coding_env
+    d = make(self_test=False)
+    state["cases"], state["answers"] = V_CASES, [V_BUGGY]
+    r = chat(d, VERSIONS)
+    assert r["text"] == V_BUGGY and r["code_test"] is None and state["prompts"] == []
+
+
+def test_examples_never_run_without_a_sandbox(coding_env, monkeypatch):
+    make, state, _ = coding_env
+    monkeypatch.setattr(codecheck.sys, "platform", "linux")
+    monkeypatch.setattr(codecheck, "ALLOW_UNSANDBOXED", False)
+    d = make(self_test=False, examples=True)
+    state["cases"], state["answers"] = V_CASES, [V_BUGGY]
+    r = chat(d, VERSIONS)
+    assert r["text"] == V_BUGGY and r["code_test"]["ran"] is False
+
+
+def test_examples_config_and_bench_switch(tmp_path):
+    from jarvis.bench.runner import bench_config
+    from jarvis.models.config import ConfigError, parse_model_config
+    assert parse_model_config({"coding": {"examples": True}}).coding == {"examples": True}
+    with pytest.raises(ConfigError):
+        parse_model_config({"coding": {"examples": "on"}})
+    real = tmp_path / "jarvis.toml"
+    real.write_text("")
+    assert "examples = true" in bench_config(real, "local", examples=True)
+    assert "examples = true" not in bench_config(real, "local")
