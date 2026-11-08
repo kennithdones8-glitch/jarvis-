@@ -1,0 +1,21 @@
+id = "hard2-memory-address"
+set = "hard2"
+category = "memory"
+title = "The current address, not the old one or the office"
+mode = "chat"
+time_limit_s = 300
+prompt = "What's my home address?"
+
+[setup]
+memories = [
+  "I lived at 4 Elm Road for ten years.",
+  "We moved house last spring: we now live at 12 Oak Street.",
+  "My office is at 9 Pine Avenue.",
+]
+
+[[checks]]
+type = "contains_all"
+values = ["12 oak street"]
+[[checks]]
+type = "not_contains"
+values = ["your home address is 4 elm", "you live at 4 elm", "your home address is 9 pine", "you live at 9 pine"]

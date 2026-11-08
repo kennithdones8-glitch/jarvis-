@@ -1,0 +1,14 @@
+id = "hard2-reasoning-ages"
+set = "hard2"
+category = "reasoning"
+title = "Ages, a few years on"
+mode = "chat"
+time_limit_s = 300
+prompt = """
+Mia is three times as old as Leo. In 6 years she will be twice as old as him. How old is Leo now?
+End with a line in the form "Leo: N".
+"""
+
+[[checks]]
+type = "regex"
+pattern = 'leo:\W*6\b'

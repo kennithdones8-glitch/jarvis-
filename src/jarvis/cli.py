@@ -133,8 +133,8 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--b1", action="store_true", help="baseline with the same information JARVIS gets")
     p.add_argument("--coding-self-test", action="store_true",
                    help="run with the coding self-test on (code runs only inside the macOS sandbox)")
-    p.add_argument("--set", choices=["core", "extended", "hard", "all"], default="core",
-                   help="core: the 12 compared with the Claude app (default); extended: 12 more; all: both; hard: 17 held-out harder tasks")
+    p.add_argument("--set", choices=["core", "extended", "hard", "hard2", "all"], default="core",
+                   help="core: the 12 compared with the Claude app (default); extended: 12 more; all: both; hard: 17 held-out harder tasks; hard2: 15 more, never used for tuning")
     p.add_argument("--before", nargs="+", metavar="DIR", help="compare: one or more runs pooled as 'before'")
     p.add_argument("--after", nargs="+", metavar="DIR", help="compare: one or more runs pooled as 'after'")
     p.add_argument("--rescored", action="store_true", help="compare: use runs' re-scored results where they exist")

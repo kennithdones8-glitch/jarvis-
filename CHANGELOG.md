@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased: a second held-out benchmark set (branch `hard2-bench-v1`, owner's choice)
+
+- **15 more held-out tasks** (`--set hard2`), written after fixes A–J were built from the first hard set, to check
+  the gains carry over to questions nothing was tuned on. Answers worked out by script (the race puzzle has exactly
+  one solution). Benchmark only: no change to how JARVIS answers. `--set all` is unchanged (24 tasks).
+- A perfect stand-in passes all 15 through the real harness on 0.19.3, so unlike the first hard set this one found
+  no gap where JARVIS never shows the model the facts.
+- To do on the Mac: hard2 ×5 with `--run-code` on 0.19.3 (and later on smarter-v2 and compute-v1).
+
 ## 0.19.3 — A harder benchmark, and fixes for what it found (owner-approved after a test on the Mac)
 
 **Proven on the Mac (bench home, local models, ×5):** the new hard set went from 7 to 9 of 17 tasks passing (20261107-141713-local → 20261107-163941-local, verdict MERGE, no new failures; planning-slot 1→5/5 is a clear change). Core + extended: 108 of 110 runs, all 22 scored tasks still passing (20261108-014415-local). The Mac was busy in all three runs (time only). Merged exactly the tested commit (a5569e0); later work on `smarter-v2` (G–J) and `compute-v1` (F) is not in this release. Also: a lookup test used a fixed date and failed from 8 November; it now uses today's date (test only). The briefing test could clash with the dashboard's real-clock background loop after 08:00; it now stops that loop first (test only).

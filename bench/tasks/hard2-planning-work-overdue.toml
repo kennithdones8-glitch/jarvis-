@@ -1,0 +1,22 @@
+id = "hard2-planning-work-overdue"
+set = "hard2"
+category = "planning"
+title = "Overdue, but only on one list"
+mode = "chat"
+time_limit_s = 400
+prompt = "What's overdue on my Work list?"
+
+[setup.mac]
+reminders = [
+  { title = "Send invoice to Acme", due_day = -3, due_time = "09:00", list = "Work" },
+  { title = "Submit expenses", due_day = -1, due_time = "17:00", list = "Work" },
+  { title = "Prepare slides", due_day = 2, due_time = "09:00", list = "Work" },
+  { title = "Fix the fence", due_day = -2, due_time = "10:00", list = "Home" },
+]
+
+[[checks]]
+type = "contains_all"
+values = ["invoice", "expenses"]
+[[checks]]
+type = "not_contains"
+values = ["fence", "prepare slides"]

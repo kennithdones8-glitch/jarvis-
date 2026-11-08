@@ -1,0 +1,23 @@
+id = "hard2-reasoning-race"
+set = "hard2"
+category = "reasoning"
+title = "Finishing order from four clues"
+mode = "chat"
+time_limit_s = 400
+prompt = """
+Ivy, Jon, Kai and Lou finish a race in places 1 to 4 (no ties). Jon finished straight after Ivy. Lou was not last.
+Kai finished before Ivy. Lou did not win. What was the finishing order? Finish with four lines in the form "1 Name".
+"""
+
+[[checks]]
+type = "regex"
+pattern = '(?m)^\W*1\W{0,4}kai'
+[[checks]]
+type = "regex"
+pattern = '(?m)^\W*2\W{0,4}lou'
+[[checks]]
+type = "regex"
+pattern = '(?m)^\W*3\W{0,4}ivy'
+[[checks]]
+type = "regex"
+pattern = '(?m)^\W*4\W{0,4}jon'

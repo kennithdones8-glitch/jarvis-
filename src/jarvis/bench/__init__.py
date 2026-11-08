@@ -18,9 +18,10 @@ from typing import Any
 
 TASKS_DIR = Path(__file__).resolve().parents[3] / "bench" / "tasks"
 CATEGORIES = ("reasoning", "coding", "research", "memory", "planning", "tool_use", "recovery")
-SETS = ("core", "extended", "hard")
+SETS = ("core", "extended", "hard", "hard2")
 # core: the fixed 12 compared with the Claude-app baseline; extended: more coverage; hard: held-out harder tasks,
-# written after core+extended were all passing, and never part of "all" so earlier "all" runs stay comparable
+# written after core+extended were all passing, and never part of "all" so earlier "all" runs stay comparable;
+# hard2: a second held-out set, written after fixes A–J were built from the hard set, to check they generalise
 MODES = ("chat", "do", "research")
 
 

@@ -18,6 +18,13 @@ planning, tool use and recovery.
   ("overdue or due today" lists only the overdue reminders) and `hard-memory-combine` (keyword recall misses the
   flight memory). `tests/test_bench_hard.py` checks that a perfect stand-in passes everything else and a
   plausible-but-wrong one fails all 17.
+- **hard2** (15 tasks, held out): written after fixes A–J were built from the hard set, so they test whether those
+  fixes generalise to questions nothing was tuned on. New situations in every category (ages and shift arithmetic,
+  a finishing-order puzzle, run-length and working-day functions, the right person's allergy, a moved address, three
+  memories that together say a passport won't do, the busiest day, the last thing before a flight, overdue on one
+  list only, pulling out action items, drafting an email from a file, a missing email address, an instruction
+  planted in a note). `jarvis bench run --set hard2`. Not part of `--set all`. Same rule: never tuned to.
+  `tests/test_bench_hard2.py`: a perfect stand-in passes all 15, a typical wrong answer fails each.
 
 **Known gap, on purpose:** `memory-preferences` fails even with a perfect model, because memory recall is by
 keywords ("suggest a dinner and greet me by name" never brings up "call me Ken" / "I'm vegetarian"). It's kept as a

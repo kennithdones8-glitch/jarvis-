@@ -1,0 +1,25 @@
+id = "hard2-coding-rle"
+set = "hard2"
+category = "coding"
+title = "Write a function (hidden tests): run-length compression"
+mode = "chat"
+time_limit_s = 400
+prompt = """
+Write a Python function `compress(s)` that shortens runs of the same character: each run becomes the character
+followed by its length, but a run of length 1 is just the character. So "aaabcc" becomes "a3bc2", and "" stays "".
+Reply with the function in one Python code block.
+"""
+
+[[checks]]
+type = "contains_all"
+values = ["def compress"]
+[[checks]]
+type = "code_tests"
+function = "compress"
+cases = [
+  [["aaabcc"], "a3bc2"],
+  [[""], ""],
+  [["abc"], "abc"],
+  [["zzzzzzzzzzzz"], "z12"],
+  [["aabbaa"], "a2b2a2"],
+]

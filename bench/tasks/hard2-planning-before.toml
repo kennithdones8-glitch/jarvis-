@@ -1,0 +1,22 @@
+id = "hard2-planning-before"
+set = "hard2"
+category = "planning"
+title = "The last thing before a given event"
+mode = "chat"
+time_limit_s = 400
+prompt = "What's the last thing on my calendar tomorrow before my flight?"
+
+[setup.mac]
+events = [
+  { title = "Gym", day = 1, start = "07:00", end = "08:00" },
+  { title = "Pack bags", day = 1, start = "10:00", end = "11:00" },
+  { title = "Flight to Rome", day = 1, start = "14:00", end = "16:30" },
+  { title = "Dinner in Rome", day = 1, start = "20:00", end = "21:30" },
+]
+
+[[checks]]
+type = "contains_all"
+values = ["pack bags"]
+[[checks]]
+type = "not_contains"
+values = ["last thing before your flight is gym", "last thing before your flight is dinner"]

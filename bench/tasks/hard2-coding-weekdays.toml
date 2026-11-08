@@ -1,0 +1,24 @@
+id = "hard2-coding-weekdays"
+set = "hard2"
+category = "coding"
+title = "Write a function (hidden tests): count working days"
+mode = "chat"
+time_limit_s = 400
+prompt = """
+Write a Python function `count_weekdays(start, end)` that takes two dates as "YYYY-MM-DD" strings and returns how
+many days from start to end, both included, are Monday to Friday. Reply with the function in one Python code block.
+"""
+
+[[checks]]
+type = "contains_all"
+values = ["def count_weekdays"]
+[[checks]]
+type = "code_tests"
+function = "count_weekdays"
+cases = [
+  [["2026-03-02", "2026-03-08"], 5],
+  [["2026-03-07", "2026-03-08"], 0],
+  [["2026-03-06", "2026-03-09"], 2],
+  [["2026-12-31", "2027-01-04"], 3],
+  [["2026-03-05", "2026-03-05"], 1],
+]

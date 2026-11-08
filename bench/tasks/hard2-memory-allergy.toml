@@ -1,0 +1,21 @@
+id = "hard2-memory-allergy"
+set = "hard2"
+category = "memory"
+title = "Use the right person's allergy"
+mode = "chat"
+time_limit_s = 300
+prompt = "I'm baking the cake for my nephew's birthday. Can I put peanut butter in it?"
+
+[setup]
+memories = [
+  "My nephew Sam is allergic to peanuts.",
+  "My colleague Sam loves peanut butter cookies.",
+  "My nephew's birthday party is on Saturday.",
+]
+
+[[checks]]
+type = "contains_any"
+values = ["allerg"]
+[[checks]]
+type = "regex"
+pattern = '\b(no|don.?t|do not|avoid|shouldn.?t|should not|not safe|leave (it|them|the peanut butter) out)\b'

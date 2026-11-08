@@ -1,0 +1,14 @@
+id = "hard2-reasoning-shifts"
+set = "hard2"
+category = "reasoning"
+title = "Split a day into equal shifts"
+mode = "chat"
+time_limit_s = 300
+prompt = """
+A shop opens at 8:30 and closes at 17:45. Three staff each work one shift of the same length, back to back, covering
+the whole day. At what time does the second shift start? End with the time on its own line, like 09:15.
+"""
+
+[[checks]]
+type = "regex"
+pattern = '(?m)^\W*11[:.]35\W*$'

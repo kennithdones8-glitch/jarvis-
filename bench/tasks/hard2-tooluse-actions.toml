@@ -1,0 +1,24 @@
+id = "hard2-tooluse-actions"
+set = "hard2"
+category = "tool_use"
+title = "Pull out only the action items"
+mode = "do"
+time_limit_s = 900
+prompt = "Read standup.txt in my notes folder and save actions.md in the same folder with only the action items, one per line."
+
+[setup]
+files = [
+  { path = "notes/standup.txt", content = "Standup, Tuesday\nUpdate: the beta shipped to 40 users.\nAction: Priya fixes the login bug.\nDecision: we skip the Friday release.\nAction: Tom books the user interviews.\nUpdate: two new support tickets.\nAction: Ana writes the release notes.\n" },
+]
+
+[approve]
+match = ["actions.md"]
+
+[[checks]]
+type = "file_contains_all"
+path = "notes/actions.md"
+values = ["login bug", "user interviews", "release notes"]
+[[checks]]
+type = "approvals"
+min = 1
+max = 1

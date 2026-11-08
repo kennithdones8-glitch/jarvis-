@@ -1,0 +1,21 @@
+id = "hard2-memory-passport"
+set = "hard2"
+category = "memory"
+title = "Combine three memories to spot a problem"
+mode = "chat"
+time_limit_s = 300
+prompt = "Is my passport OK for my Japan trip?"
+
+[setup]
+memories = [
+  "My passport expires on 3 March 2027.",
+  "For a trip to Japan, my passport has to be valid for the whole stay.",
+  "I'm going to Japan from 1 to 10 March 2027.",
+]
+
+[[checks]]
+type = "regex"
+pattern = '\b(no|not ok|not valid|isn.?t|won.?t|will not|renew)\b'
+[[checks]]
+type = "contains_any"
+values = ["3 march", "march 3", "expires", "expiry", "runs out"]
