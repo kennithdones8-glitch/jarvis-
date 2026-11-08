@@ -40,6 +40,11 @@ class Need:
     # Set by ModelService when the question is maths, logic or code that will be answered on this Mac: try a local
     # "reasoning" model first, if one is installed, then the usual choice.
     reasoning: bool = False
+    # The answer must read JARVIS's worked-out facts or combine several memories: where routing would pick the
+    # fastest local model ("auto" in local-first, or a "simple" chat in hybrid), pick the strongest local one
+    # instead. It never moves an answer to the cloud. Real failures (hard set, smarter-v2): the 3B dropped a
+    # reminder JARVIS had listed as due today, and couldn't link two memories that were both in front of it.
+    careful: bool = False
 
     def __post_init__(self) -> None:
         if self.capability not in CAPABILITIES:
@@ -161,7 +166,8 @@ class ModelRouter:
                 if reason:
                     rejected[key] = reason
                     continue
-                prefer = need.prefer if need.prefer != "auto" else ("speed" if self.mode == "local_first" else "quality")
+                prefer = need.prefer if need.prefer != "auto" else (
+                    "speed" if self.mode == "local_first" and not need.careful else "quality")
                 primary, secondary = (info.quality, info.speed) if prefer == "quality" else (info.speed, info.quality)
                 local_bonus = 100 if location == "local" and self.mode == "local_first" else 0
                 score = local_bonus + primary * 10 + secondary + (0.5 if location == "local" else 0)
@@ -322,7 +328,7 @@ class ModelService:
                 level = "hard"
             self.audit.record("model.triage", task_id=task_id, level=level, raw="goal reader")
         if level == "simple":
-            return replace(need, local_only=True, prefer="speed")
+            return replace(need, local_only=True, prefer="quality" if need.careful else "speed")
         if level == "medium":  # lightest cloud model that is clearly better than local (e.g. Haiku)
             return replace(need, min_quality=max(need.min_quality, 4), prefer="speed")
         return replace(need, min_quality=max(need.min_quality, 5), prefer="quality")

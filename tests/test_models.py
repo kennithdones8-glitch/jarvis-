@@ -450,3 +450,22 @@ def test_reasoning_capability_is_valid_config():
     cfg = parse_model_config({"providers": {"o": {"kind": "ollama", "models": [
         {"id": "big:14b", "capabilities": ["reasoning"], "context_tokens": 16384, "quality": 4, "speed": 1}]}}})
     assert cfg.providers[0].models["big:14b"].capabilities == frozenset({"reasoning"})
+
+
+def test_a_careful_answer_uses_the_strongest_local_model_and_never_the_cloud(model_kernel):
+    """Real failures (hard set): the 3B dropped a reminder JARVIS had listed, and couldn't link two memories in
+    front of it. Answers built on worked-out facts or several memories use the strongest local chat model."""
+    k, ollama, openai = model_kernel(local_installed=("small:3b", "mid:7b"), extra_local=MID)
+    k.models.router.mode = "local_first"
+    ask = req(SYSTEM, Message("user", "What do I need to deal with today?"))
+    assert k.models.complete(Need("chat", prefer="auto"), ask, purpose="chat").model == "small:3b"  # as before
+    assert k.models.complete(Need("chat", prefer="auto", careful=True), ask, purpose="chat").model == "mid:7b"
+    k.models.router.mode = "hybrid"
+    simple = k.models.router  # a "simple" rating keeps the answer local; careful only changes which local model
+    need = k.models._apply_hybrid(Need("chat", prefer="auto", careful=True), ask, None, "simple")
+    assert need.local_only and need.prefer == "quality" and simple.route(need, ask).candidates[0].model == "mid:7b"
+    plain = k.models._apply_hybrid(Need("chat", prefer="auto"), ask, None, "simple")
+    assert plain.prefer == "speed"
+    assert openai.received == []
+    quick = Need("chat", prefer="speed", local_only=True, keep_speed=True, careful=True)  # Quick stays quick
+    assert k.models.complete(quick, ask, purpose="chat").model == "small:3b"

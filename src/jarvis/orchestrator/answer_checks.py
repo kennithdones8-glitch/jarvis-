@@ -137,3 +137,25 @@ def left_out(instruction: str, inputs: list[str], text: str) -> list[str]:
         if key and len(key & have) * 2 < len(key):  # fewer than half of its key words: treat it as left out
             missing.append(item)
     return missing
+
+
+# ---- the facts JARVIS worked out are all in the answer (hard set, smarter-v2) -------------------------------------
+# Real failure: JARVIS listed "Due in the window you asked about (1): Call plumber" and the answer named only the two
+# overdue reminders. The reminders JARVIS listed as overdue or due in the window asked about must each be named.
+FACT_LIST = re.compile(r"^- (?:Overdue|Due in the window you asked about[^:]*?) \((\d+)\): (.+)$", re.M)
+
+
+def facts_left_out(answer: str, lookup_text: str) -> list[str]:
+    """Reminders JARVIS listed (overdue, or due in the window asked about) that the answer doesn't name."""
+    missing = []
+    low = (answer or "").lower()
+    for m in FACT_LIST.finditer(lookup_text or ""):
+        if m.group(1) == "0":
+            continue
+        for title in (t.strip() for t in m.group(2).split(", ")):
+            every = re.findall(r"[a-z0-9]+", title.lower())
+            # the words that name it ("council", "plumber"); short verbs like "pay", "buy" aren't required
+            words = [w for w in every if len(w) >= 4] or [w for w in every if len(w) >= 3]
+            if title and title.lower() not in low and not (words and all(w in low for w in words)):
+                missing.append(title)
+    return missing

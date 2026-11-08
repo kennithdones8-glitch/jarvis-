@@ -197,9 +197,10 @@ def test_a_plausible_but_wrong_model_fails_every_hard_task(config, tmp_path):  #
                         run_code=True)
     res = results_of(run_dir)
     passed = sorted(k for k, v in res.items() if v["status"] == "pass")
-    # smarter-v2: JARVIS itself now refuses a plan that breaks "don't create any new files" and asks instead, so
-    # even this careless model passes that one. Its checks still fail the careless plan: see the test below.
-    assert passed == ["hard-recovery-contradiction"]
+    # smarter-v2: JARVIS itself now asks when a plan breaks "don't create any new files" (D, I) and when the named
+    # appointment isn't on the day said (H, checked against the calendar in code), so even this careless model
+    # passes those two. Their checks still fail a careless plan: see the tests below.
+    assert passed == ["hard-recovery-contradiction", "hard-recovery-false-premise"]
 
 
 def test_the_contradiction_checks_fail_a_plan_that_writes_anyway():
@@ -207,3 +208,10 @@ def test_the_contradiction_checks_fail_a_plan_that_writes_anyway():
     wrote = {"answer": "Saved.", "plan_kind": "plan", "approvals": [{"tool": "fs", "action": "write", "approved": False}],
              "files": "/nonexistent", "violations": []}
     assert score(wrote, task.checks)["status"] == "fail"
+
+
+def test_the_false_premise_checks_fail_a_blind_reminder():
+    task = next(t for t in load_tasks(which="hard") if t.id == "hard-recovery-false-premise")
+    blind = {"answer": "step 0: you rejected an action", "plan_kind": "plan", "tool_calls": [],
+             "approvals": [{"tool": "reminders", "action": "add", "approved": False}], "violations": []}
+    assert score(blind, task.checks)["status"] == "fail"

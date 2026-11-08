@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased: fixes for what the hard set found (branch `smarter-v2`, owner's choice: fixes 1, 2A and A–E)
+## Unreleased: fixes for what the hard set found (branch `smarter-v2`, owner's choice: fixes 1, 2A and A–J)
 
 Built on `harder-bench-v1`. Fixes the two gaps the hard set found, where even a perfect model failed.
 - **"Overdue or due today" lists both.** Any time window in the question ("today", "tomorrow", "next 3 days") now
@@ -25,8 +25,21 @@ Built on `harder-bench-v1`. Fixes the two gaps the hard set found, where even a 
   appointment tomorrow") is planned with the calendar and reminders looked up first (read-only), and the planner
   is told to ask when the request doesn't match what's there. The looked-up data is private like folder contents:
   it reaches Claude only through the privacy gate, with your consent, as before.
-- To be proven on the Mac: the hard set ×5 (before = 20261107-141713-local, 7 of 17), and core + extended ×5 for no
-  new failures.
+- **Measured on the Mac with A–E** (20261107-163941-local): hard set 47/85 runs (was 38/85); planning-slot 1→5/5,
+  tooluse-urgent 3→5/5, expenses 4→5/5. Still failing, traced to the cause: the 3B answering chat in local runs,
+  the planner ignoring the "ask" rule, and a contradiction answered by quietly dropping the file. Hence G–J:
+- **G. Careful answers use the strongest local model.** When the answer must read JARVIS's worked-out facts, or the
+  question matched a memory and the rest of a small store came with it, the 7B answers instead of the 3B. Never
+  moves an answer to the cloud; Quick mode stays fast; "tell me a joke" stays on the fast model.
+- **H. A premise check in code.** "Before my dentist appointment tomorrow": JARVIS reads the calendar itself
+  (read-only, only when already allowed without asking) and, if there's no "dentist" event that day, asks before
+  planning and says where the nearest one is.
+- **I. A request that contradicts itself is asked about before planning** ("save it as summary.md, but don't create
+  any new files"; also reminders, emails, events, notes).
+- **J. Nothing JARVIS listed is left out.** If an answer misses a reminder JARVIS listed as overdue or due in the
+  window asked about, it gets one local retry naming what's missing.
+- To be proven on the Mac: the hard set ×5 (before = 20261107-141713-local), and core + extended ×5 for no new
+  failures.
 
 ## Unreleased: a harder benchmark set (branch `harder-bench-v1`, owner's choice)
 

@@ -182,3 +182,20 @@ def test_complete_lists_and_other_writing_are_left_alone():
     assert len(m.calls) == 1
     m = ScriptedModels([DROPPED], provider="claude")
     assert compose(m, "List every decision")["possibly_left_out"] and len(m.calls) == 1  # no second Claude request
+
+
+def test_reminders_jarvis_listed_must_all_be_in_the_answer():
+    """Real failure (hard set): JARVIS listed "Call plumber" as due today and the answer left it out."""
+    from datetime import datetime, timedelta
+    from jarvis.orchestrator.answer_checks import facts_left_out
+    from jarvis.orchestrator.lookup import reminder_facts
+    now = datetime(2026, 11, 7, 12, 0).astimezone()
+    at = lambda d, h=9: (datetime(2026, 11, 7, h).astimezone() + timedelta(days=d)).isoformat()  # noqa: E731
+    rem = [{"title": "Pay council tax", "due": at(-2)}, {"title": "Book MOT", "due": at(-1)},
+           {"title": "Call plumber", "due": at(0, 18)}, {"title": "Renew passport", "due": at(20)}]
+    facts = "\n".join(reminder_facts(rem, "Anything overdue or due today?", now)[0])
+    assert facts_left_out("Pay council tax and Book MOT are overdue.", facts) == ["Call plumber"]
+    assert facts_left_out("Overdue: council tax, MOT booking. Today: call the plumber.", facts) == []
+    assert facts_left_out("Pay council tax, book MOT, call plumber.", facts) == []
+    assert facts_left_out("anything", "- Overdue (0): none") == []  # nothing listed, nothing missing
+    assert facts_left_out("anything", "") == []
