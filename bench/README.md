@@ -9,6 +9,15 @@ planning, tool use and recovery.
 - **core** (12 tasks, the default): fixed, and the ones compared with the Claude-app baseline. They don't change.
 - **extended** (12 more): extra coding, research, memory, planning, tool-use and recovery coverage.
   `jarvis bench run --set extended` (or `--set all`).
+- **hard** (17 tasks, held out): written after core + extended were all passing on the owner's Mac (0.19.2, 110/110),
+  so there is room left to measure. Multi-step reasoning, a question where the obvious answer is wrong, a bug fix,
+  look-alike and twice-corrected memories, a busy week, acting on what a file says, contradictions and false
+  premises. `jarvis bench run --set hard`. **Not** part of `--set all`, so earlier "all" runs stay comparable.
+  Rule: JARVIS is never tuned to these tasks' wording; a fix has to be general, and it is checked on core + extended
+  too. Two known gaps fail even with a perfect model (JARVIS never shows it the facts): `hard-planning-today`
+  ("overdue or due today" lists only the overdue reminders) and `hard-memory-combine` (keyword recall misses the
+  flight memory). `tests/test_bench_hard.py` checks that a perfect stand-in passes everything else and a
+  plausible-but-wrong one fails all 17.
 
 **Known gap, on purpose:** `memory-preferences` fails even with a perfect model, because memory recall is by
 keywords ("suggest a dinner and greet me by name" never brings up "call me Ken" / "I'm vegetarian"). It's kept as a

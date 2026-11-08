@@ -1,0 +1,23 @@
+id = "hard-planning-today"
+set = "hard"
+category = "planning"
+title = "Overdue plus due today, nothing later"
+mode = "chat"
+time_limit_s = 400
+prompt = "What do I need to deal with today? Only things that are overdue or due today."
+
+[setup.mac]
+reminders = [
+  { title = "Pay council tax", due_day = -2, due_time = "09:00", list = "Home" },
+  { title = "Book MOT", due_day = -1, due_time = "12:00", list = "Car" },
+  { title = "Call plumber", due_day = 0, due_time = "23:30", list = "Home" },
+  { title = "Renew passport", due_day = 20, due_time = "10:00", list = "Admin" },
+  { title = "Water plants", due_day = 2, due_time = "08:00", list = "Home" },
+]
+
+[[checks]]
+type = "contains_all"
+values = ["council tax", "mot", "plumber"]
+[[checks]]
+type = "not_contains"
+values = ["renew passport", "water plants"]

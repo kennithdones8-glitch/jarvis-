@@ -1,0 +1,14 @@
+id = "hard-reasoning-weekday"
+set = "hard"
+category = "reasoning"
+title = "Date arithmetic across a month"
+mode = "chat"
+time_limit_s = 300
+prompt = """
+A club meets every 3rd day, starting on Monday 2 March 2026 (that is the 1st meeting). On which weekday and date is
+the 10th meeting? End with a line like "Tuesday 5 May".
+"""
+
+[[checks]]
+type = "regex"
+pattern = 'sunday,?\s+(the\s+)?29(th)?\s+(of\s+)?march'

@@ -185,7 +185,7 @@ def test_core_set_is_unchanged_by_the_extended_one():
     """The 12 core tasks are what the Claude-app baseline is compared on: adding extended tasks must not move them."""
     core = load_tasks()
     assert len(core) == 12 and {t.set for t in core} == {"core"}
-    assert len(load_tasks(which=None)) == 24
+    assert len(load_tasks(which="all")) == 24  # "all" means core + extended; the hard set stays separate
 
 
 def test_careless_model_fails_for_the_right_reasons(config, tmp_path):

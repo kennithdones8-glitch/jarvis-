@@ -1,0 +1,28 @@
+id = "hard-reasoning-five"
+set = "hard"
+category = "reasoning"
+title = "Constraint puzzle with five people and six rules"
+mode = "chat"
+time_limit_s = 400
+prompt = """
+Ana, Ben, Cara, Dev and Eli each get one slot: 9:00, 10:00, 11:00, 12:00 or 13:00.
+Eli's slot is straight after Ana's. Ben is neither first nor last. Cara is earlier than Dev. Dev is not last.
+Ben's slot is next to Cara's. Ana is not first.
+Who has each slot? Finish with five lines in the form "9:00 Name".
+"""
+
+[[checks]]
+type = "regex"
+pattern = '9:00\W{0,8}cara'
+[[checks]]
+type = "regex"
+pattern = '10:00\W{0,8}ben'
+[[checks]]
+type = "regex"
+pattern = '11:00\W{0,8}dev'
+[[checks]]
+type = "regex"
+pattern = '12:00\W{0,8}ana'
+[[checks]]
+type = "regex"
+pattern = '13:00\W{0,8}eli'

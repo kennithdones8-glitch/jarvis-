@@ -605,6 +605,13 @@ class Dashboard:
         recalled = memory.recall(message)
         if context := memory.context_message(recalled):
             msgs.append(context)
+        stays_here = mode == "quick" or self.kernel.models.chat_stays_local(
+            message, local_only=local_only, level=found.level if mode == "balanced" else None)
+        if stays_here and (rest := memory.everything_else(recalled)):  # small store: the rest too, never sent off
+            msgs.append(memory.context_message(rest, local_only=True, heading=(
+                "Everything else you remember about the owner, oldest first (a later fact replaces an earlier one; "
+                "use only what's relevant):")))
+            recalled = recalled + rest
         turns = 0
         for turn in history[-10:]:
             if turn.get("role") in ("user", "assistant") and isinstance(turn.get("content"), str):

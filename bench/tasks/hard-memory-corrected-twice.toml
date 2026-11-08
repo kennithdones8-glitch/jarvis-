@@ -1,0 +1,21 @@
+id = "hard-memory-corrected-twice"
+set = "hard"
+category = "memory"
+title = "A fact that changed twice"
+mode = "chat"
+time_limit_s = 300
+prompt = "Which gym do I go to?"
+
+[setup]
+memories = [
+  "I go to PureGym on the high street.",
+  "I moved from PureGym to The Gym Group in March.",
+  "I left The Gym Group in June and now go to Anytime Fitness.",
+]
+
+[[checks]]
+type = "contains_all"
+values = ["anytime fitness"]
+[[checks]]
+type = "not_contains"
+values = ["you go to puregym", "you go to the gym group", "you currently go to the gym group", "you currently go to puregym"]

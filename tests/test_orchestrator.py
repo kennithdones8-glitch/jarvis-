@@ -254,3 +254,84 @@ def test_a_task_that_only_saved_a_file_says_what_it_saved():
     assert saved_text(steps) == "Saved decisions.md:\n\n- Decisions: the budget is approved."
     steps[1]["state"] = "failed"
     assert saved_text(steps) is None
+
+
+# ---- smarter-v2: fixes found by the hard benchmark set (C, D, E). Wordings differ from the hard tasks on purpose.
+def _step(tool, action, args, desc=""):
+    from jarvis.core.tasks import StepSpec
+    return StepSpec(desc or f"{tool}.{action}", tool, action, args)
+
+
+def test_a_reference_to_an_output_a_step_never_gives_is_sent_back():
+    """Real failure: a reminder titled {{steps.1.urgent_item}} when step 1 (llm.compose) only gives "text"."""
+    from jarvis.orchestrator.planner import Plan, bad_references
+    read = _step("fs", "read", {"path": "/n/list.txt"})
+    pick = _step("llm", "compose", {"instruction": "Which item is urgent?", "inputs": ["{{steps.0.content}}"]})
+    bad = Plan("plan", steps=[read, pick, _step("reminders", "add", {"title": "{{steps.1.urgent_item}}"})])
+    [problem] = bad_references(bad, "")
+    assert "steps.1.urgent_item" in problem and "use steps.1.text" in problem
+    good = Plan("plan", steps=[read, pick, _step("reminders", "add", {"title": "{{steps.1.text}}"})])
+    assert bad_references(good, "") == []
+    ahead = Plan("plan", steps=[_step("fs", "write", {"path": "/n/a", "content": "{{steps.1.text}}"}), pick])
+    assert "isn't an earlier step" in bad_references(ahead, "")[0]
+    unknown = Plan("plan", steps=[_step("notes", "read", {"title": "x"}),
+                                  _step("fs", "write", {"path": "/n/a", "content": "{{steps.0.whatever}}"})])
+    assert bad_references(unknown, "") == []  # results not in the table are never second-guessed
+
+
+@pytest.mark.parametrize("request_, plan_actions, asks", [
+    ("Write up my notes as report.md, but please don't create any new files", [("fs", "write")], True),
+    ("Tidy the notes folder without deleting anything", [("fs", "move")], False),
+    ("Tidy the notes folder without deleting anything", [("fs", "delete")], True),
+    ("Look through my reminders but do not change anything", [("reminders", "complete")], True),
+    ("Draft a reply to Sam", [("mail", "draft")], False),
+    ("Summarise budget.txt; don't email anyone", [("mail", "draft")], True),
+    ("Summarise plan.txt as plan-summary.md", [("fs", "write")], False),
+])
+def test_a_plan_that_breaks_a_dont_in_the_request_asks_first(request_, plan_actions, asks):
+    from jarvis.orchestrator.planner import Plan, against_request
+    plan = Plan("plan", steps=[_step(t, a, {}) for t, a in plan_actions])
+    question = against_request(plan, request_)
+    assert (question is not None) == asks, request_
+    if asks:
+        assert question.startswith("You said not to") and question.rstrip().endswith("?")
+
+
+def test_a_contradiction_becomes_a_question_not_a_plan(make_kernel):
+    from jarvis.models.types import ChatResponse, Usage
+    from jarvis.orchestrator.planner import Planner
+    write = {"steps": [{"tool": "fs", "action": "write", "args": {"path": "/tmp/x/s.md", "content": "x"}}]}
+
+    class Models:
+        def complete(self, need, request, **kw):
+            return ChatResponse(text=json.dumps(write), provider="ollama", model="m", usage=Usage(1, 1))
+    plan = Planner(Models(), make_kernel().registry, roots=["/tmp/x"], notes_dir="/tmp/x").plan(
+        "Save a summary as s.md, but don't create any new files")
+    assert plan.kind == "clarify" and "You said not to create any new files" in plan.message
+
+
+def test_a_task_about_an_existing_appointment_is_planned_with_it_looked_up(orch, monkeypatch):
+    """Real failure: "one hour before my dentist appointment tomorrow" was planned blind (it was the day after)."""
+    from jarvis.models import Message
+    from jarvis.models.types import Category
+    from jarvis.orchestrator import lookup as lookup_module
+    o, script, root = orch
+    asked = []
+
+    def fake_run(self, message, *, rate=False, only=None):
+        asked.append((message, only))
+        return lookup_module.Lookup(context=Message("system", "<lookup>Dentist: Mon 11:00</lookup>", Category.FILE_CONTENT),
+                                    checked=["Calendar, Sun"])
+    monkeypatch.setattr(lookup_module.LookupService, "run", fake_run)
+    script["plans"].append({"goal": "", "question": "I can't see it tomorrow; there's one on Monday. That one?",
+                            "cannot": None, "steps": []})
+    plan = o.plan("Remind me to bring my card an hour before my dentist appointment tomorrow")
+    assert plan.kind == "clarify"
+    assert asked == [("Remind me to bring my card an hour before my dentist appointment tomorrow",
+                      {("calendar", "events"), ("reminders", "list")})]  # read-only lookups only
+    planner_saw = json.dumps(script["calls"][-1][1])
+    assert "Dentist: Mon 11:00" in planner_saw and "an appointment that isn't on the day" in planner_saw
+    assert any(e["event"] == "orchestrator.looked_first" for e in o.kernel.audit.entries(limit=20))
+    script["plans"].append(summary_plan(root, f"{root}/notes/x.md"))
+    o.plan("Add a reminder to call the dentist tomorrow at 10am")  # no existing appointment named: no lookup
+    assert len(asked) == 1

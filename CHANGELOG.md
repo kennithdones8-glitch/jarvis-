@@ -1,5 +1,45 @@
 # Changelog
 
+## 0.19.3 — A harder benchmark, and fixes for what it found (owner-approved after a test on the Mac)
+
+**Proven on the Mac (bench home, local models, ×5):** the new hard set went from 7 to 9 of 17 tasks passing (20261107-141713-local → 20261107-163941-local, verdict MERGE, no new failures; planning-slot 1→5/5 is a clear change). Core + extended: 108 of 110 runs, all 22 scored tasks still passing (20261108-014415-local). The Mac was busy in all three runs (time only). Merged exactly the tested commit (a5569e0); later work on `smarter-v2` (G–J) and `compute-v1` (F) is not in this release. Also: a lookup test used a fixed date and failed from 8 November; it now uses today's date (test only). The briefing test could clash with the dashboard's real-clock background loop after 08:00; it now stops that loop first (test only).
+
+Built on `harder-bench-v1`. Fixes the two gaps the hard set found, where even a perfect model failed.
+- **"Overdue or due today" lists both.** Any time window in the question ("today", "tomorrow", "next 3 days") now
+  wins over "overdue", and the window's list already includes what's overdue. "Overdue" on its own is unchanged.
+- **A small memory is seen whole.** With 150 memories or fewer, a chat answered on this Mac also gets every
+  memory the keyword search missed, oldest first, so "take the cat to my mum's" can use "my flight to Lisbon is on
+  14 August". Bigger stores use keyword recall as before.
+- **Privacy unchanged.** The extra memories are marked local-only: the egress gate can't send them to Claude, and
+  they're only added when the answer is sure to stay on the Mac (Quick, local routing, no Claude configured, or
+  hybrid rated "simple"). Answers that go to Claude get only the matching memories, still with consent. New
+  Privacy gate test: `the_whole_memory_never_goes_to_claude`.
+- **A. Reminders are looked up whenever the message asks what's due** ("overdue", "due", "to-dos"; not "due to").
+  The hard-set baseline showed "overdue or due today" looking at the calendar only.
+- **B. Free slots of the length you ask for are worked out exactly** ("a free 90-minute slot", "an hour", "two
+  hours"): JARVIS lists the gaps long enough, or says there are none and gives the longest. The model had called
+  11:00–13:15 free.
+- **C. A step can only use outputs earlier steps really produce.** "{{steps.1.urgent_item}}" from a writing step
+  (which only gives "text") is sent back to the planner once. Only results with a fixed shape are checked.
+- **D. A plan that breaks a "don't" in the request becomes a question.** "Save it as summary.md, but don't create
+  any new files" now asks which you meant, instead of asking you to approve the write.
+- **E. Look before acting.** A task that refers to an existing appointment, meeting, call or reminder ("my dentist
+  appointment tomorrow") is planned with the calendar and reminders looked up first (read-only), and the planner
+  is told to ask when the request doesn't match what's there. The looked-up data is private like folder contents:
+  it reaches Claude only through the privacy gate, with your consent, as before.
+
+### The hard benchmark set (from `harder-bench-v1`)
+
+- **17 held-out hard tasks** (`--set hard`): reasoning ×4, coding ×3 (one is fixing a bug), memory ×3, planning ×3,
+  tool use ×2, recovery ×2. Core + extended were all passing (110/110), so they could no longer show a gain or a
+  loss. Answers were worked out by script (the five-person puzzle has exactly one solution). Benchmark only: no
+  change to how JARVIS answers.
+- `--set all` still means core + extended (24 tasks), so earlier runs stay comparable.
+- Writing them found **two gaps in JARVIS itself**, which fail even with a perfect model: "overdue or due today"
+  leaves out the reminder due today, and keyword recall can't link "take the cat to my mum's" to the flight memory.
+  Recorded, not fixed here.
+- Baseline of 0.19.2 on the hard set: 38 of 85 runs, 7 of 17 tasks (20261107-141713-local).
+
 ## 0.19.2 — Direct answers, one file means one write (owner-approved with the merge rule unmet; see below)
 
 - **"Am I free?" gets a yes or no.** The calendar facts now say "FREE: yes, you're free then" / "BUSY: no, you're

@@ -8,6 +8,7 @@ and a deterministic verifier checks the result on disk.
 from __future__ import annotations
 
 import hashlib
+import re
 from pathlib import Path
 from typing import Any
 
@@ -19,6 +20,9 @@ from .planner import Plan, Planner, describe_args
 from .refs import resolve_step_args
 
 DEFAULT_NOTES = "~/Documents/JARVIS/Notes"
+# A task that refers to an existing appointment, meeting or reminder: planned with it looked up first.
+LOOK_FIRST = re.compile(r"\b(my|the|our)\s+(?:\w+\s+){0,3}?(appointments?|meetings?|events?|calls?|reminders?|"
+                        r"bookings?|flights?|lunch|dinner|interview)\b", re.I)
 
 
 def writes_verified(task: dict[str, Any], steps: list[dict[str, Any]]) -> Verification:
@@ -69,11 +73,30 @@ class Orchestrator:
                                notes_dir=self.notes_dir)
 
     def plan(self, request: str, *, local_only: bool = False) -> Plan:
-        plan = self.planner.plan(request, local_only=local_only)
+        facts = self.look_first(request)
+        plan = self.planner.plan(request, local_only=local_only, facts=facts)
         self.kernel.audit.record("orchestrator.planned", actor="system", kind=plan.kind, goal=plan.goal,
                                  model=plan.model, attempts=plan.attempts, message=plan.message,
                                  steps=[f"{s.tool}.{s.action} {describe_args(s.args)}" for s in plan.steps])
         return plan
+
+    def look_first(self, request: str):
+        """Look before acting: a task that refers to something already in the calendar or reminders ("my dentist
+        appointment tomorrow") is planned with that looked up, read-only, by the same lookup step chat uses. Real
+        failure (hard set, 0.19.2): a reminder "one hour before my dentist appointment tomorrow" was planned blind;
+        the appointment was the day after. Never raises: no facts just means planning as before."""
+        if not LOOK_FIRST.search(request or ""):
+            return None
+        from .lookup import LookupService  # imported here: lookup imports the planner
+        try:
+            found = LookupService(self.kernel, [str(r) for r in self.kernel.policy.roots]).run(
+                request, only={("calendar", "events"), ("reminders", "list")})
+        except Exception as exc:
+            self.kernel.audit.record("orchestrator.look_first_failed", actor="system", error=type(exc).__name__)
+            return None
+        if found.checked:
+            self.kernel.audit.record("orchestrator.looked_first", actor="system", checked=found.checked)
+        return found.context
 
     def submit(self, request: str, plan: Plan, *, actor: str = "user", runner: str = "cli") -> str:
         """``runner`` names the process that drives the task, so two processes never run the same one."""

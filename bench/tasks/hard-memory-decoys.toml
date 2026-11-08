@@ -1,0 +1,23 @@
+id = "hard-memory-decoys"
+set = "hard"
+category = "memory"
+title = "Pick the right person among similar memories"
+mode = "chat"
+time_limit_s = 300
+prompt = "When is my sister's birthday, and which city does she live in?"
+
+[setup]
+memories = [
+  "My sister Priya lives in Leeds.",
+  "My friend Priya from university lives in Bristol.",
+  "My sister's birthday is on 3 May.",
+  "Priya from work has her birthday on 12 June.",
+  "My brother Arun lives in Glasgow and his birthday is 9 October.",
+]
+
+[[checks]]
+type = "contains_all"
+values = ["3 may", "leeds"]
+[[checks]]
+type = "not_contains"
+values = ["birthday is on 12 june", "birthday is 12 june", "lives in bristol", "lives in glasgow"]

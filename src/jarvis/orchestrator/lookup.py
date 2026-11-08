@@ -94,17 +94,17 @@ class LookupService:
                 out.append((tool, action))
         return out
 
-    def run(self, message: str, *, rate: bool = False) -> Lookup:
+    def run(self, message: str, *, rate: bool = False, only: set[tuple[str, str]] | None = None) -> Lookup:
         """What to look up for ``message``, looked up. With ``rate`` (hybrid routing), the same local call also
         rates difficulty, replacing a separate triage call. Never raises: a failed lookup just isn't used."""
         cued = might_need_lookup(message)
         if not cued and not rate:
             return Lookup(change=looks_like_change(message), why=["no lookup words in the message"])
-        key = f"{rate}:{message}"
+        key = f"{rate}:{sorted(only) if only else ''}:{message}"
         hit = self._cache.get(key)
         if hit and time.monotonic() - hit[0] < CACHE_S:  # the same message re-sent after a consent question
             return hit[1]
-        actions = self.available() if cued else []
+        actions = [a for a in self.available() if only is None or a in only] if cued else []
         result = Lookup(change=looks_like_change(message))
         if not cued:
             result.why.append("no lookup words in the message")
@@ -112,6 +112,8 @@ class LookupService:
             result.why.append("no read-only lookups are available")
         if actions or rate:
             plan = self._choose(message, actions, result.why)
+            if actions:
+                plan = with_required_lookups(plan, message, actions, result.why)
             result.change = result.change or plan.get("change") is True
             if plan.get("difficulty") in ("simple", "medium", "hard"):
                 result.level = plan["difficulty"]
@@ -207,6 +209,23 @@ class LookupService:
             return None, "skipped (emergency stop is on)"
         except (ToolError, PermissionDenied, PermissionError) as exc:  # app not allowed, not found…
             return None, str(exc)[:160]
+
+
+DUE_WORDS = re.compile(r"\b(overdue|past due|due(?!\s+to\b)|reminders?|to-?dos?)\b", re.I)
+
+
+def with_required_lookups(plan: dict, message: str, actions: list[tuple[str, str]], why: list[str]) -> dict:
+    """Lookups JARVIS adds itself when the message clearly needs them. Real failure (hard set, 0.19.2): "What do I
+    need to deal with today? Only things that are overdue or due today." made the small model look at the calendar
+    only, so the answer never saw a reminder. Only read-only lookups are ever added."""
+    lookups = plan.get("lookups")
+    lookups = [x for x in lookups if isinstance(x, dict)] if isinstance(lookups, list) else []
+    if (DUE_WORDS.search(message or "") and ("reminders", "list") in actions
+            and not any(_key(x) == ("reminders", "list") for x in lookups)):
+        lookups = [{"tool": "reminders", "action": "list", "args": {}}] + lookups[:MAX_LOOKUPS - 1]
+        why.append("added a reminders lookup: the message asks what's due")
+        return {**plan, "lookups": lookups}
+    return plan
 
 
 def lenient_json(text: str) -> Any:
@@ -361,6 +380,43 @@ SPAN_DAYS = re.compile(r"\b(?:next|coming|following)\s+(\d{1,2}|two|three|four|f
                        r"|\b(this|next|the coming)\s+week\b|\bweek ahead\b|\b(within|in)\s+(?:a|one)\s+week\b", re.I)
 WORDS = {"two": 2, "three": 3, "four": 4, "five": 5, "six": 6, "seven": 7, "ten": 10, "fourteen": 14}
 OVERDUE = re.compile(r"\b(overdue|past due|late|missed)\b", re.I)
+NUMBER_WORDS = {"one": 1, "two": 2, "three": 3, "four": 4, "five": 5, "six": 6, "fifteen": 15, "twenty": 20,
+                "thirty": 30, "forty": 40, "forty-five": 45, "ninety": 90}
+DURATION = re.compile(r"\b(?:(?P<half>half an? hour)|(?P<an>an?|one)\s+(?:free\s+|spare\s+|whole\s+)?hour"
+                      r"|(?P<n>\d+(?:\.\d+)?|" + "|".join(sorted(NUMBER_WORDS, key=len, reverse=True)) + r")[\s-]*"
+                      r"(?P<unit>minutes?|mins?|hours?|hrs?)\b)", re.I)
+DAY_HOURS = ((8, 0), (20, 0))  # where to look for a free slot when the message names no time span
+
+
+def asked_minutes(message: str) -> int | None:
+    """How long a free slot the message asks for ("a free 90-minute slot", "an hour", "1.5 hours"), or None.
+    Only when the message is about finding time: "free", "slot", "fit", "gap", "time for"."""
+    if not re.search(r"\b(free|slot|fit|gap|time for|available)\b", message or "", re.I):
+        return None
+    m = DURATION.search(message or "")
+    if not m:
+        return None
+    if m.group("half"):
+        return 30
+    if m.group("an"):
+        return 60
+    word = m.group("n").lower()
+    n = float(NUMBER_WORDS[word]) if word in NUMBER_WORDS else float(word)
+    minutes = round(n * 60) if m.group("unit").lower().startswith(("h", "hr")) else round(n)
+    return minutes if 5 <= minutes <= 12 * 60 else None
+
+
+def free_gaps(timed: list[tuple[datetime, datetime, str]], start: datetime, end: datetime) -> list[tuple[datetime, datetime]]:
+    gaps, cursor = [], start
+    for s, t, _ in sorted(timed):
+        if t <= cursor or s >= end:
+            continue
+        if s > cursor:
+            gaps.append((cursor, min(s, end)))
+        cursor = max(cursor, t)
+    if cursor < end:
+        gaps.append((cursor, end))
+    return gaps
 
 
 def _clock(text: str) -> tuple[int, int, str | None] | None:
@@ -435,6 +491,28 @@ def calendar_facts(events: list[dict], args: dict, message: str, today: date | N
         lines.append(f"- First event on {d:%a %d %b}: {_hm(first[0])}–{_hm(first[1])} {first[2]}" if first
                      else f"- {d:%a %d %b}: no events with a set time")
     window = asked_window(message)
+    need = asked_minutes(message)
+    if need:
+        # "A free 90-minute slot tomorrow between 9 and 5": the whole window is busy, so FREE/BUSY would mislead;
+        # the answer is the gaps. Real failure (hard set, 0.19.2): the model called 11:00–13:15 free (it isn't).
+        named = named_days(message, today)
+        day = named[0] if named else (days[0] if days else (today or datetime.now().astimezone().date()))
+        a, b = window or DAY_HOURS
+        ws = datetime(day.year, day.month, day.day, *a).astimezone()
+        we = datetime(day.year, day.month, day.day, *b).astimezone()
+        gaps = free_gaps(timed, ws, we)
+        fits = [(s, t) for s, t in gaps if (t - s).total_seconds() >= need * 60]
+        span = f"{day:%a %d %b} {_hm(ws)}–{_hm(we)}"
+        if fits:
+            lines.append(f"- FREE SLOTS of at least {need} min, {span}: yes: "
+                         + "; ".join(f"{_hm(s)}–{_hm(t)} ({int((t - s).total_seconds() // 60)} min free)" for s, t in fits))
+        else:
+            longest = max(gaps, key=lambda g: g[1] - g[0], default=None)
+            lines.append(f"- FREE SLOTS of at least {need} min, {span}: none: no gap that long"
+                         + (f" (longest free: {_hm(longest[0])}–{_hm(longest[1])}, "
+                            f"{int((longest[1] - longest[0]).total_seconds() // 60)} min)" if longest else
+                            " (busy the whole time)"))
+        window = None
     if window:
         named = named_days(message, today)
         day = named[0] if named else (days[0] if days else (today or datetime.now().astimezone().date()))
@@ -456,9 +534,9 @@ def calendar_facts(events: list[dict], args: dict, message: str, today: date | N
 
 
 def reminder_window(message: str) -> tuple[str, int | None] | None:
-    """("overdue", None), ("within", days) or None, from words like "overdue" or "in the next 7 days"."""
-    if OVERDUE.search(message or ""):
-        return "overdue", None
+    """("overdue", None), ("within", days) or None, from words like "overdue" or "in the next 7 days".
+    A window wins over "overdue" because "within" lists the overdue ones too: "overdue or due today" must not leave
+    out what's due today."""
     m = SPAN_DAYS.search(message or "")
     if m:
         n = m.group(1)
@@ -469,6 +547,8 @@ def reminder_window(message: str) -> tuple[str, int | None] | None:
             return "within", 1
         if "today" in low or "tonight" in low:
             return "within", 0
+    if OVERDUE.search(message or ""):
+        return "overdue", None
     return None
 
 

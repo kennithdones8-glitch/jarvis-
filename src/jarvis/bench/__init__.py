@@ -18,7 +18,9 @@ from typing import Any
 
 TASKS_DIR = Path(__file__).resolve().parents[3] / "bench" / "tasks"
 CATEGORIES = ("reasoning", "coding", "research", "memory", "planning", "tool_use", "recovery")
-SETS = ("core", "extended")  # core: the fixed 12 compared with the Claude-app baseline; extended: more coverage
+SETS = ("core", "extended", "hard")
+# core: the fixed 12 compared with the Claude-app baseline; extended: more coverage; hard: held-out harder tasks,
+# written after core+extended were all passing, and never part of "all" so earlier "all" runs stay comparable
 MODES = ("chat", "do", "research")
 
 
@@ -76,10 +78,12 @@ def load_task(path: Path) -> Task:
 
 
 def load_tasks(ids: list[str] | None = None, directory: Path = TASKS_DIR, *, which: str | None = "core") -> list[Task]:
-    """``which``: "core" (default: the fixed 12), "extended", or None for all. Naming tasks by id ignores it."""
+    """``which``: "core" (default: the fixed 12), "extended", "hard", "all" (core + extended, as before the hard set
+    existed), or None for every task. Naming tasks by id ignores it."""
     tasks = [load_task(p) for p in sorted(directory.glob("*.toml"))]
     if which is not None and not ids:
-        tasks = [t for t in tasks if t.set == which]
+        wanted = ("core", "extended") if which == "all" else (which,)
+        tasks = [t for t in tasks if t.set in wanted]
     if ids:
         unknown = set(ids) - {t.id for t in tasks}
         if unknown:

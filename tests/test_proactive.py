@@ -131,6 +131,14 @@ def test_health_alert_generic_and_rate_limited(make_kernel):
 # ---- dashboard & CLI ------------------------------------------------------------------------
 def test_dashboard_announces_briefing_once(dash):
     d, *_ = dash
+    # The dashboard's background loop runs on the real clock; after the real 08:00 it can announce today's briefing
+    # first, so this test's 2 November would look "already sent" (it failed that way on 8 November). Stop the loop
+    # and clear anything it marked, so only the test's own clock is used.
+    from jarvis.proactive import META_LAST
+    d._stop.set()
+    d._maint.join(timeout=30)
+    with d.kernel.db.tx() as c:
+        c.execute("DELETE FROM meta WHERE key = ?", (META_LAST,))
     push = FakePush()
     d.notifier = Notifier(d.kernel, push, schedule=Schedule(quiet_hours=""))
     assert d.maybe_briefing(now=at(7)) is False

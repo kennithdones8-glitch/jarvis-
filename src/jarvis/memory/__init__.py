@@ -76,6 +76,9 @@ def fts_query(text: str) -> str | None:
 
 
 PROFILE_LIMIT = 8
+# With this many memories or fewer, a chat answered on this Mac sees all of them, not just the ones whose words match:
+# "take the cat to my mum's" has to find "my flight to Lisbon is on 14 August". Never sent off the Mac (local_only).
+SMALL_STORE = 150
 PROFILE = re.compile(
     r"^\s*(please\s+)?(call me|my name is|(i'?m|i am) (a|an|vegetarian|vegan|pescatarian|allergic|intolerant|from|"
     r"based|married|single|divorced|left-handed|right-handed|retired|\d+)|i prefer|i like|i love|i hate|i don'?t|i do not|i never|i always|"
@@ -266,6 +269,15 @@ class MemoryStore:
             out.setdefault(m["id"], m)
         return list(out.values())
 
+    def everything_else(self, recalled: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        """When the store is small (SMALL_STORE or fewer), every other memory, oldest first so changes read in order;
+        otherwise none. Only for answers that stay on this Mac: see ``context_message(local_only=True)``."""
+        if not self.settings.enabled or self.db.one("SELECT COUNT(*) FROM memories")[0] > SMALL_STORE:
+            return []
+        seen = {m["id"] for m in recalled}
+        rows = self.db.query("SELECT * FROM memories ORDER BY created_at, rowid")
+        return [dict(r) for r in rows if r["id"] not in seen and not self.excluded(r["text"])]
+
     def profile(self, limit: int = PROFILE_LIMIT) -> list[dict[str, Any]]:
         """Confirmed facts about you: memories marked important, or that read like a profile fact ("call me…",
         "I'm vegetarian", "I prefer…", "my sister…"). Unconfirmed guesses never count. Small and capped."""
@@ -277,15 +289,18 @@ class MemoryStore:
         return picked[:limit]
 
     @staticmethod
-    def context_message(memories: list[dict[str, Any]]) -> Message | None:
+    def context_message(memories: list[dict[str, Any]], *, heading: str | None = None,
+                        local_only: bool = False) -> Message | None:
+        """``local_only``: the message can never be sent to a cloud model (the egress gate refuses, and routing keeps
+        the whole request on this Mac)."""
         if not memories:
             return None
         lines = []
         for m in memories:
             status = "confirmed" if m["origin"] == "explicit" else "unconfirmed — noticed earlier, may be wrong"
             lines.append(f"- {m['text']} ({status}; noted {m['created_at'][:10]})")
-        return Message("system", "What you remember about the owner (use only if relevant; it may be out of date):\n"
-                       + "\n".join(lines), Category.MEMORY)
+        head = heading or "What you remember about the owner (use only if relevant; it may be out of date):"
+        return Message("system", head + "\n" + "\n".join(lines), Category.MEMORY, local_only=local_only)
 
     # ---- learning from a chat turn -----------------------------------------------------
     def explicit_request(self, message: str) -> str | None:

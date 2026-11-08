@@ -282,6 +282,15 @@ class ModelService:
         self.audit.record("model.reasoning_local", task_id=task_id)
         return replace(need, prefer="quality", reasoning=True)
 
+    def chat_stays_local(self, message: str, *, local_only: bool = False, level: str | None = None) -> bool:
+        """Whether a "balanced"/"deep" chat is sure to be answered on this Mac: asked to, no cloud model configured,
+        or hybrid routing with the goal reader's "simple" rating (the same rule ``_apply_hybrid`` applies). Used to
+        decide whether extra local-only context may be added; if it's ever wrong, that context still can't leave
+        (it is marked local_only, so routing keeps the request here)."""
+        if local_only or not self.router.gate.summaries():
+            return True
+        return self.router.mode == "hybrid" and level == "simple" and not hard_signals(message)
+
     def has_local(self, capability: str) -> bool:
         """Whether any configured local model has ``capability`` (installed or not: routing checks that)."""
         return any(capability in info.capabilities for p in self.router.local.values() for info in p.models.values())
