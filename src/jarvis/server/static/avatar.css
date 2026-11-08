@@ -267,7 +267,29 @@ body.inspecting .hud > .center > .core-wrap.has-avatar { top: calc(50% - 20px); 
 .pp-diag[hidden] { display: none; }
 .pp-diag b { font: 600 12px var(--display); letter-spacing: .18em; text-transform: uppercase; color: #8fe3ad; }
 .pp-diag div { display: flex; justify-content: space-between; gap: 10px; } .pp-diag div span:first-child { color: var(--muted, #b9aa91); }
+/* the projection area: in the focus view, open projections get a wider canvas beside the figure (desktop) */
+@media (min-width: 761px) {
+  body.projection.proj-area .hud > .center > .core-wrap.has-avatar { aspect-ratio: auto; height: calc(100vh - 150px);
+    width: min(calc(100vw - 470px), 1100px) !important; left: calc((100vw - 400px) / 2); }
+  body.projection.proj-area.inspecting .hud > .center > .core-wrap.has-avatar { height: calc(100vh - 270px); top: calc(50% - 30px); }
+}
+.projbar .pj { grid-template-columns: auto 1fr; row-gap: 4px; }
+.projbar .pj-ctl { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 4px; }
+.projbar .pj-ctl .btn { min-height: 32px; }
+.projbar .pj.min { opacity: .7; } .projbar .pj.exp { border-color: rgba(255, 217, 143, .55); }
+.projbar .pj-detail { grid-column: 1 / -1; font-size: 13px; overflow-wrap: anywhere; }
+.projbar .pj-detail p { margin: 2px 0; }
+body.projection .projbar { max-height: calc(100vh - 140px); overflow-y: auto; }
+/* focus view: one line per projection (its basis is under Details) so the list stays clear of the platform */
+body.projection .projbar .pj small { display: none; }
+body.projection .projbar .pj { grid-template-columns: auto 1fr; padding: 4px 6px 4px 12px; }
+body.projection .projbar .pj-ctl { grid-column: 2; justify-content: flex-end; }
+body.projection .projbar { width: min(560px, 42vw); }
+body.projection .projbar .pj-ctl { flex-wrap: nowrap; } body.projection .projbar .pj-ctl .btn { padding: 0 7px; letter-spacing: .12em; }
 @media (max-width: 760px) {
+  /* phone, focus view: the open projections sit above the focus panel, full width, scrolling inside */
+  body.projection .proj-panel .projbar { position: static; width: auto; max-height: none; margin: 4px 0 10px; }
+  body.projection .projbar .pj { grid-template-columns: 1fr; } body.projection .projbar .pj-ctl { grid-column: 1; justify-content: flex-start; overflow-x: auto; gap: 8px; }
   /* phone: the inspection bar replaces the focus panel at the bottom so the figure stays visible */
   body.inspecting .proj-panel { display: none; }
   body.inspecting .hud > .center > .core-wrap.has-avatar { top: calc(50vh - 50px); width: min(70vw, calc((100vh - 360px) * 20 / 27)) !important; }

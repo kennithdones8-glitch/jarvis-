@@ -331,6 +331,11 @@ prefer="quality")` and up to 2000 tokens, falling back to the best available mod
   the personality to the renderer (`setPersonality`); `app.js` reads `projectionFor` and spots refusals with
   `fromAudit` (newest audit seq remembered, so nothing replays). Priorities and timing stay in `avatar-state.js`
   (disagreeing: priority 75, at most 3 s).
+- **Projection Director** (phase 3): entries carry `side` (±1), `minimized` and the single `expanded` module;
+  `layout()` places them (two per side, overflow moves across; expanded alone at `EXPANDED`), `update()` eases
+  positions, scales and the camera goal (`wide`, `wideX`, `wideR`). The rig scales the widening by the canvas aspect
+  (`setAspect`), so the wider focus-view canvas (`body.proj-area`) keeps the figure large. `research` data is built by
+  `researchProjection()` in app.js from the last research answer in the conversation.
 
 ## Benchmark and release gate (`src/jarvis/bench/`, `src/jarvis/gate.py`, v0.17)
 

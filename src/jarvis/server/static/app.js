@@ -521,7 +521,8 @@ async function sendChat(payload, endpoint = "/api/chat") {
     if (r.stopped) ui.convo.push({ ...base, text: r.partial ? `${r.partial}\n\n— Stopped.` : "Stopped before JARVIS replied.",
       error: !r.partial, stopped: true, activity: r.activity });
     else if (r.needs_approval) ui.convo.push({ role: "assistant", consent: true, payload, endpoint, approval_id: r.approval_id, text: r.summary });
-    else if (r.answer !== undefined) ui.convo.push({ ...base, text: r.answer, sources: r.sources,
+    else if (r.answer !== undefined) ui.convo.push({ ...base, text: r.answer, sources: r.sources, question: payload.question,
+      rstats: { searches: r.searches.length, pages: r.pages_read.length },
       meta: [r.model.split("/").pop(), `${r.seconds}s`, `${r.searches.length} searches`, `${r.pages_read.length} pages read`,
              `${r.verified_sources}/${r.sources.length} sources verified`].join(" · ") });
     else if (r.error) ui.convo.push({ ...base, text: r.partial ? `${r.partial}\n\n— ${r.error}` : r.error, error: true, activity: r.activity });
@@ -2023,7 +2024,7 @@ async function loadEvolution() {
       h("p", { class: "hl-sub" }, "Intensity, particles, animation, quality and the rest are under Projection controls in the focus view (click the avatar).")));
 }
 const PROJ_MODULES = [["workflow", "Workflow map"], ["architecture", "Software architecture"], ["neural", "Knowledge network"], ["globe", "Globe"],
-  ["data", "Data"], ["timeline", "Timeline"], ["security", "Security shield"], ["simulation", "Simulation"]];
+  ["data", "Data"], ["timeline", "Timeline"], ["security", "Security shield"], ["simulation", "Simulation"], ["research", "Research sources"]];
 
 // ---------------------------------------------------------------- shell: sections, badges, sidebar, drafts
 // Sections are views of the same live page: switching never pauses, resumes or changes anything.
@@ -2549,24 +2550,52 @@ async function openProjectionModule(m, { quiet = false } = {}) {
   if (!window.JarvisAvatar || !PROJ_TITLE[m]) return null;
   ui.analyzingUntil = Date.now() + 1500; renderHead(ui.data);
   let data;
-  try { data = await api(`/api/projection/${m}`); } catch (e) { if (!quiet) note(`Couldn't open ${PROJ_TITLE[m]}: ${e.message}`); return null; }
+  if (m === "research") data = researchProjection();   // built here from this conversation's last research answer
+  else try { data = await api(`/api/projection/${m}`); } catch (e) { if (!quiet) note(`Couldn't open ${PROJ_TITLE[m]}: ${e.message}`); return null; }
   ui.analyzingUntil = 0;
   if (!JarvisAvatar.showProjection(m, data)) { if (!quiet) note("Projections need the 3D view (this device is showing the 2D core)."); return null; }
   ui.projData = { ...(ui.projData || {}), [m]: data };
   renderProjBar();
   return data;
 }
+// The last research answer in this conversation, as projection data: the question, each source's site and whether the
+// research tools really saw it. Nothing is fetched; with no research yet the projection says so.
+function researchProjection() {
+  const last = [...ui.convo].reverse().find((m) => m.role === "assistant" && m.sources && m.question);
+  if (!last) return { question: null, sources: [], searches: 0, pages: 0, basis: "No research in this conversation yet." };
+  const host = (u) => { try { return new URL(u).hostname.replace(/^www\./, ""); } catch (e) { return null; } };
+  const sources = last.sources.map((x) => ({ host: host(x.url), verified: !!x.verified })).filter((x) => x.host);
+  return { question: String(last.question).slice(0, 80), sources, searches: (last.rstats || {}).searches || 0, pages: (last.rstats || {}).pages || 0,
+           basis: "Your last research answer in this conversation (sites only; green = the research tools saw the page)." };
+}
+// Open projections, each with its panel controls. Every control changes the look only: none of them approves, runs or
+// changes anything (pending actions still need the approval card).
 function renderProjBar() {
   const bar = $("#projbar");
   if (!bar || !window.JarvisAvatar) return;
-  const list = JarvisAvatar.projections;
+  const list = JarvisAvatar.projections, focus = document.body.classList.contains("projection");
   bar.hidden = !list.length;
-  bar.replaceChildren(...list.map((p) => h("div", { class: "pj" },
-    h("b", {}, p.title), h("small", {}, (ui.projData && ui.projData[p.module] && ui.projData[p.module].basis) || ""),
-    h("button", { class: `btn btn-ghost btn-xs${p.pinned ? " on" : ""}`, type: "button", "aria-pressed": String(p.pinned), title: "Keep this projection open",
-      onclick: (e) => { e.stopPropagation(); JarvisAvatar.pinProjection(p.module, !p.pinned); renderProjBar(); } }, p.pinned ? "Pinned" : "Pin"),
-    h("button", { class: "btn btn-ghost btn-xs", type: "button", "aria-label": `Close ${p.title}`,
-      onclick: (e) => { e.stopPropagation(); JarvisAvatar.closeProjection(p.module); renderProjBar(); } }, "✕"))));
+  document.body.classList.toggle("proj-area", focus && list.some((p) => !p.minimized));   // the wider projection area
+  const ctl = (op, m, arg) => (e) => { e.stopPropagation(); JarvisAvatar.projectionControl(op, m, arg); if (op === "inspect") { document.body.classList.add("inspecting"); renderInspectBar(); } renderProjBar(); };
+  const b = (text, label, fn, on) => h("button", { class: `btn btn-ghost btn-xs${on ? " on" : ""}`, type: "button", "aria-label": label, title: label,
+    "aria-pressed": on === undefined ? null : String(!!on), onclick: fn }, text);
+  bar.replaceChildren(...list.map((p, i) => {
+    const d = ui.projData && ui.projData[p.module];
+    const open = ui.projDetail === p.module;
+    return h("div", { class: `pj${p.minimized ? " min" : ""}${p.expanded ? " exp" : ""}` },
+      h("b", {}, p.title), h("small", {}, p.minimized ? "Minimised" : (d && d.basis) || ""),
+      h("div", { class: "pj-ctl", role: "group", "aria-label": `${p.title} controls` },
+        p.minimized ? b("Restore", `Restore ${p.title}`, ctl("minimize", p.module, false))
+          : [p.expanded ? b("Collapse", `Collapse ${p.title}`, ctl("collapse")) : b("Expand", `Expand ${p.title} into the projection area`, ctl("expand", p.module)),
+             b("–", `Minimise ${p.title}`, ctl("minimize", p.module, true)),
+             !p.expanded ? b(p.side === "left" ? "▶" : "◀", `Move ${p.title} to the ${p.side === "left" ? "right" : "left"} side`, ctl("side", p.module, p.side === "left" ? "right" : "left")) : null,
+             i > 0 ? b("↑", `Move ${p.title} up`, ctl("move", p.module, -1)) : null,
+             focus ? b("Inspect", `Inspect ${p.title} up close`, ctl("inspect", p.module)) : null],
+        b("Details", `Details of ${p.title}`, (e) => { e.stopPropagation(); ui.projDetail = open ? null : p.module; renderProjBar(); }, open),
+        b(p.pinned ? "Pinned" : "Pin", "Keep this projection open", (e) => { e.stopPropagation(); JarvisAvatar.pinProjection(p.module, !p.pinned); renderProjBar(); }, p.pinned),
+        b("✕", `Close ${p.title}`, (e) => { e.stopPropagation(); JarvisAvatar.closeProjection(p.module); if (ui.projDetail === p.module) ui.projDetail = null; renderProjBar(); })),
+      open && d ? h("div", { class: "pj-detail" }, h("p", {}, describeProjection(p.module, d)), h("p", { class: "hl-sub" }, d.basis || "")) : null);
+  }));
 }
 // what an opened projection shows, in one sentence from its own data (no model)
 function describeProjection(m, d) {
@@ -2577,6 +2606,7 @@ function describeProjection(m, d) {
   if (m === "data") return d.models.length ? `Answer checks per model: ${d.models.map((x) => `${x.label} ${Math.round((x.check_rate || 0) * 100)}% of ${x.n}`).join(", ")}.` : "No measured answers yet.";
   if (m === "timeline") return `${d.events.length} dated event(s) and ${d.upcoming.length} open item(s) (no invented dates).`;
   if (m === "security") return `${d.stop ? "The emergency stop is ON. " : ""}${d.pending.length} action(s) waiting for your approval (not authorized), ${d.denied_7d} blocked in 7 days.`;
+  if (m === "research") return d.question ? `“${d.question}”: ${d.sources.length} source(s), ${d.sources.filter((x) => x.verified).length} seen by the research tools; ${d.searches} searches, ${d.pages} pages read.` : "No research in this conversation yet.";
   if (m === "simulation") return d.experiments.length ? `${d.experiments.length} experiment(s); latest: ${d.experiments[0].state} — ${d.experiments[0].recommendation || d.experiments[0].objective}` : "No experiments yet.";
   return "";
 }
@@ -2621,6 +2651,8 @@ function openProjection() {
   if (window.JarvisAvatar) JarvisAvatar.setOptions({ panels: true });   // the floating panels appear in the focus view only
   renderProjControls();
   renderProjection(ui.data);
+  if (isPhone()) $("#projpanel").insertBefore($("#projbar"), $("#projstate"));   // phone: the list scrolls inside the focus panel
+  renderProjBar();
   renderDiag();
   $("#projexit").focus();
 }
@@ -2630,6 +2662,9 @@ function closeProjection() {
   document.body.classList.remove("projection");
   $("#projpanel").hidden = true; $("#projback").hidden = true;
   if (window.JarvisAvatar) { JarvisAvatar.setOptions({ panels: false }); JarvisAvatar.endPreview(); }
+  const bar = $("#projbar"), home = $("#projbar-home");
+  if (bar && home && bar.parentElement !== home.parentElement) home.after(bar);   // back to its place on the page
+  renderProjBar();   // leaves the wider projection area
 }
 
 function renderProjection(d) {

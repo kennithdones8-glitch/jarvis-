@@ -12,9 +12,13 @@ const STATE_COLOR = { completed: GREEN, done: GREEN, verified: GREEN, approved: 
   planning: GOLD, queued: SILVER, pending: SILVER, awaiting_approval: AMBER, blocked: AMBER, paused: AMBER, failed: RED, rejected: RED,
   expired: DIM, cancelled: DIM, skipped: DIM, recovering: AMBER };
 export const TITLES = { workflow: "Workflow map", architecture: "Software architecture", neural: "Knowledge network", globe: "Globe",
-  data: "Data", timeline: "Timeline", security: "Security shield", simulation: "Simulation" };
+  data: "Data", timeline: "Timeline", security: "Security shield", simulation: "Simulation", research: "Research sources" };
+// Each side of the figure holds up to two projections (one alone gets the big slot); an expanded projection takes
+// the projection area on its own and the others step aside until it collapses. Minimised ones stay in the list.
 const SLOTS = [new THREE.Vector3(2.45, 4.25, 0.1), new THREE.Vector3(2.45, 1.75, 0.1)];
 const SINGLE = { at: new THREE.Vector3(2.4, 3.1, 0.3), scale: 0.98 }, PAIR_SCALE = 0.7;   // one projection gets the big slot
+const EXPANDED = { at: new THREE.Vector3(2.7, 3.0, 0.9), scale: 1.5 };
+const MAX_OPEN = 4;
 
 function textSprite(text, { size = 0.16, color = "#ffd98f", weight = 600, max = 30 } = {}, own) {
   const t = String(text).slice(0, max);
@@ -173,6 +177,22 @@ const BUILD = {
            new THREE.Vector3(0, 0, 0), 0.07, d.audit_ok === false ? RED : GOLD, "octa");
     return g;
   },
+  // the last research answer in this conversation: the question at the centre, its sources around it (green: the
+  // research tools really saw the page; amber: cited but not seen). Built in the browser from that answer only.
+  research(d, k) {
+    const g = new THREE.Group(), src = (d.sources || []).slice(0, 12);
+    if (!d.question) return k.empty(g, "No research in this conversation yet");
+    k.node(g, { label: `Question: ${d.question}` }, new THREE.Vector3(0, 0, 0), 0.08, GOLD, "octa");
+    if (!src.length) { k.note(g, "No sources in that answer", -0.55); return g; }
+    src.forEach((x, i) => {
+      const a = (i / src.length) * Math.PI * 2 + Math.PI / 2, r = 0.62 + (i % 2) * 0.18;
+      const p = new THREE.Vector3(Math.cos(a) * r, Math.sin(a) * r * 0.82, 0);
+      k.line(g, new THREE.Vector3(0, 0, 0), p, x.verified ? GREEN : AMBER, x.verified ? 0.55 : 0.3);
+      k.node(g, { label: `${x.host} · ${x.verified ? "seen by the research tools" : "cited, not seen by the research tools"}` }, p, 0.045, x.verified ? GREEN : AMBER);
+    });
+    k.note(g, `${d.searches} searches · ${d.pages} pages read · ${src.filter((x) => x.verified).length}/${src.length} verified`, -0.98);
+    return g;
+  },
   simulation(d, k) {
     const g = new THREE.Group(), xs = d.experiments.slice(0, 9);
     const floor = []; for (let i = -3; i <= 3; i++) floor.push([new THREE.Vector3(i * 0.28, -0.5, -0.8), new THREE.Vector3(i * 0.28, -0.5, 0.8)], [new THREE.Vector3(-0.84, -0.5, i * 0.26), new THREE.Vector3(0.84, -0.5, i * 0.26)]);
@@ -189,7 +209,7 @@ const BUILD = {
 
 export function createDirector({ scene, kick }) {
   const active = [];   // { module, group, own, pickable, pinned, spin }
-  let mix = 0;
+  let mix = 0, wx = 0.9, wr = 3, expanded = null;
   function kit(own, pickable) {
     const k = {
       own, pickable,
@@ -227,13 +247,41 @@ export function createDirector({ scene, kick }) {
     scene.remove(p.root);
     for (const o of p.own) if (o && o.dispose) o.dispose();
   }
+  // a projection glides to its new place (positions are eased in update; the first placement is immediate)
+  function place(p, at, scale) {
+    p.root.visible = true; p.root.userData.s = scale;
+    if (!p.root.userData.to) p.root.position.copy(at);
+    p.root.userData.to = at.clone();
+  }
+  const shown = () => active.filter((p) => !p.minimized && (!expanded || p.module === expanded));
   function layout() {
-    active.forEach((p, i) => {
-      const one = active.length === 1;
-      p.root.position.copy(one ? SINGLE.at : SLOTS[i]);
-      p.root.userData.s = one ? SINGLE.scale : PAIR_SCALE;
-      if (!p.root.userData.born) p.root.scale.setScalar(p.root.userData.s);
-    });
+    if (expanded && !active.some((p) => p.module === expanded && !p.minimized)) expanded = null;
+    for (const p of active) p.root.visible = false;
+    if (expanded) {
+      const p = active.find((x) => x.module === expanded);
+      place(p, EXPANDED.at, EXPANDED.scale);
+    } else {
+      for (const side of [1, -1]) {   // a side holds two: any more move to the other side (never hidden silently)
+        const here = active.filter((p) => !p.minimized && p.side === side);
+        for (const extra of here.slice(2)) extra.side = -side;
+      }
+      for (const side of [1, -1]) {
+        const here = active.filter((p) => !p.minimized && p.side === side).slice(0, 2);
+        here.forEach((p, i) => {
+          const at = (here.length === 1 ? SINGLE.at : SLOTS[i]).clone(); at.x *= side;
+          place(p, at, here.length === 1 ? SINGLE.scale : PAIR_SCALE);
+        });
+      }
+    }
+    for (const p of active) if (p.root.visible && !p.root.userData.born) p.root.scale.setScalar(p.root.userData.s);
+  }
+  // where the camera should widen to: toward the side that holds projections, further for an expanded one
+  function wideGoal() {
+    const vis = shown();
+    if (!vis.length) return { mix: 0, x: wx, r: wr };
+    if (expanded) return { mix: 1, x: 1.3, r: 5 };
+    const sides = new Set(vis.map((p) => p.side));
+    return { mix: 1, x: sides.size === 2 ? 0 : 0.9 * [...sides][0], r: sides.size === 2 ? 5.5 : 3 };
   }
   return {
     show(module, data) {
@@ -242,17 +290,18 @@ export function createDirector({ scene, kick }) {
       const own = [], pickable = [], root = new THREE.Group(), body = BUILD[module](data, kit(own, pickable));
       root.add(body); frame(root, TITLES[module], own);
       scene.add(root);
-      const entry = { module, root, body, own, pickable, pinned: false, spin: module === "globe" || module === "neural" || module === "architecture" };
+      const entry = { module, root, body, own, pickable, pinned: false, minimized: false, side: 1,
+                      spin: module === "globe" || module === "neural" || module === "architecture" };
       if (existing >= 0) {   // new data for an open projection: replaced in place (same slot, same rotation, no re-entrance)
         const old = active[existing];
-        entry.pinned = old.pinned; body.rotation.copy(old.body.rotation); root.userData.born = 0;
+        entry.pinned = old.pinned; entry.minimized = old.minimized; entry.side = old.side; body.rotation.copy(old.body.rotation); root.userData.born = 0;
         dispose(old); active[existing] = entry;
         layout(); kick();
         return true;
       }
       root.scale.setScalar(0.3); root.userData.born = performance.now();
       active.unshift(entry);
-      while (active.length > SLOTS.length) {   // the oldest unpinned one makes room
+      while (active.length > MAX_OPEN) {   // the oldest unpinned one makes room
         const i = active.map((p) => p.pinned).lastIndexOf(false);
         const [gone] = active.splice(i >= 0 ? i : active.length - 1, 1); dispose(gone);
       }
@@ -261,28 +310,59 @@ export function createDirector({ scene, kick }) {
     },
     close(module) {
       const i = active.findIndex((p) => p.module === module);
-      if (i >= 0) { dispose(active[i]); active.splice(i, 1); layout(); kick(); }
+      if (i >= 0) { if (expanded === module) expanded = null; dispose(active[i]); active.splice(i, 1); layout(); kick(); }
     },
-    closeAll() { while (active.length) dispose(active.pop()); kick(); },
+    closeAll() { while (active.length) dispose(active.pop()); expanded = null; kick(); },
     pin(module, on = true) { const p = active.find((x) => x.module === module); if (p) p.pinned = on; },
-    list() { return active.map((p) => ({ module: p.module, title: TITLES[p.module], pinned: p.pinned })); },
+    // panel controls: look only, they never change the data or what JARVIS does
+    expand(module) { const p = active.find((x) => x.module === module); if (!p) return false; p.minimized = false; expanded = module; layout(); kick(); return true; },
+    collapse() { expanded = null; layout(); kick(); },
+    minimize(module, on = true) {
+      const p = active.find((x) => x.module === module); if (!p) return false;
+      p.minimized = !!on; if (on && expanded === module) expanded = null; layout(); kick(); return true;
+    },
+    side(module, which) {   // which: "left" | "right"; a side holds two, so the oldest on that side moves over
+      const p = active.find((x) => x.module === module); if (!p) return false;
+      p.side = which === "left" ? -1 : 1; p.minimized = false;
+      const there = active.filter((x) => x !== p && !x.minimized && x.side === p.side);
+      if (there.length >= 2) there[there.length - 1].side = -p.side;
+      layout(); kick(); return true;
+    },
+    move(module, delta) {   // reorder: the slot order follows the list order
+      const i = active.findIndex((x) => x.module === module), j = i + delta;
+      if (i < 0 || j < 0 || j >= active.length) return false;
+      [active[i], active[j]] = [active[j], active[i]]; layout(); kick(); return true;
+    },
+    where(module) {   // the projection's world position and size, for inspecting it with the camera
+      const p = active.find((x) => x.module === module && x.root.visible);
+      return p ? { at: p.root.position.toArray(), scale: p.root.userData.s || 1 } : null;
+    },
+    list() { return active.map((p) => ({ module: p.module, title: TITLES[p.module], pinned: p.pinned, minimized: p.minimized,
+                                         expanded: expanded === p.module, side: p.side < 0 ? "left" : "right" })); },
+    get expanded() { return expanded; },
     get active() { return active.length > 0; },
-    get wide() { return mix; },
+    get wide() { return mix; }, get wideX() { return wx; }, get wideR() { return wr; },
     // per frame: how far the camera rig should widen (mix, read by the rig) while projections are open; projections appear, rotate slowly when moving
     update(dt, moving) {
-      const goal = active.length ? 1 : 0;
-      mix += (goal - mix) * (moving ? 1 - Math.exp(-dt * 3) : 1);
+      const w = wideGoal(), goal = w.mix, e = moving ? 1 - Math.exp(-dt * 3) : 1;
+      mix += (goal - mix) * e; wx += (w.x - wx) * e; wr += (w.r - wr) * e;
       if (Math.abs(goal - mix) < 0.002) mix = goal;
+      const shifting = Math.abs(w.x - wx) > 0.002 || Math.abs(w.r - wr) > 0.002;
+      let gliding = false;
       for (const p of active) {
         const age = p.root.userData.born ? (performance.now() - p.root.userData.born) / 600 : 1;
-        p.root.scale.setScalar((p.root.userData.s || PAIR_SCALE) * (moving ? Math.min(1, 0.3 + age) : 1));
+        const to = p.root.userData.to;
+        if (to) { p.root.position.lerp(to, e); if (p.root.position.distanceTo(to) > 0.003) gliding = true; else p.root.position.copy(to); }
+        const want = (p.root.userData.s || PAIR_SCALE) * (moving ? Math.min(1, 0.3 + age) : 1), cur = p.root.scale.x;
+        p.root.scale.setScalar(age >= 1 ? cur + (want - cur) * e : want);
+        if (Math.abs(p.root.scale.x - want) > 0.003) gliding = true;
         if (moving && p.spin) p.body.rotation[p.module === "architecture" ? "z" : "y"] += dt * (p.module === "architecture" ? 0.04 : 0.15);
       }
-      return Math.abs(goal - mix) > 0.002 || active.some((p) => p.spin);
+      return Math.abs(goal - mix) > 0.002 || shifting || gliding || shown().some((p) => p.spin);
     },
-    rotate(dx, dy) { const p = active[0]; if (p) { p.body.rotation.y += dx * 0.01; p.body.rotation.x = Math.max(-1, Math.min(1, p.body.rotation.x + dy * 0.01)); kick(); } },
+    rotate(dx, dy) { const p = shown()[0]; if (p) { p.body.rotation.y += dx * 0.01; p.body.rotation.x = Math.max(-1, Math.min(1, p.body.rotation.x + dy * 0.01)); kick(); } },
     pick(ray) {
-      const all = active.flatMap((p) => p.pickable);
+      const all = shown().flatMap((p) => p.pickable);   // hidden projections can't be picked
       const hit = ray.intersectObjects(all, false)[0];
       return hit ? hit.object.userData.label : null;
     },

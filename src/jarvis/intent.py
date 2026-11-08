@@ -29,7 +29,8 @@ _ASK = re.compile(r"^(?:hi|hello|hey|thanks|thank you|good (?:morning|evening|af
 
 # "show me …": which projection a request for a visual view means (checked before everything else)
 _SHOW = re.compile(r"^(?:(?:hey |ok )?jarvis[,:]?\s+)?(?:please\s+)?(?:show|display|visuali[sz]e|project|open)\s+(?:me\s+)?(?:the\s+|my\s+|your\s+)?(.+)$", re.I)
-SHOW = (("architecture", r"architecture|code ?base|your code|source|software|structure"),
+SHOW = (("research", r"\bsources\b|research|what you (?:found|looked up)|citations?|references"),
+        ("architecture", r"architecture|code ?base|your code|source|software|structure"),
         ("workflow", r"what you(?:'re| are) doing|doing|tasks?|missions?|workflow|progress of"),
         ("neural", r"(?:what )?you(?:'ve| have)? learn|learn|knowledge|lessons?|brain|memory graph|neural"),
         ("globe", r"globe|map|world|places|where"),

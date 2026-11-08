@@ -40,7 +40,7 @@ const clamp = (v, [lo, hi]) => Math.min(hi, Math.max(lo, v));
 export function createRig(camera, opts = {}) {
   const goal = { target: HOME.target.slice(), az: HOME.az, el: HOME.el, r: HOME.r };
   const cur = { target: HOME.target.slice(), az: HOME.az, el: HOME.el, r: HOME.r };
-  let inspecting = false, view = "front", rest = "front", focus = null, speed = 1, wide = 0;
+  let inspecting = false, view = "front", rest = "front", focus = null, speed = 1, wide = 0, wideX = 0.9, wideR = 3, aspect = 20 / 27;
 
   function set(spec) {
     const t = spec.target || HOME.target;
@@ -51,8 +51,10 @@ export function createRig(camera, opts = {}) {
   }
   function apply() {
     // while projections are open (and you are not inspecting) the resting view widens to make room for them
-    const w = inspecting ? 0 : wide;
-    const tx = cur.target[0] + 0.9 * w, ty = cur.target[1] + 0.02 * w, tz = cur.target[2], r = cur.r + 3 * w;
+    // a wide canvas (the projection area) already has room beside the figure: it pulls back far less
+    const room = Math.min(1, Math.max(0.15, (1.2 - aspect) / 0.45));
+    const w = inspecting ? 0 : wide * room;
+    const tx = cur.target[0] + wideX * w, ty = cur.target[1] + 0.02 * w, tz = cur.target[2], r = cur.r + wideR * w;
     const ce = Math.cos(cur.el);
     camera.position.set(tx + r * ce * Math.sin(cur.az), ty + r * Math.sin(cur.el), tz + r * ce * Math.cos(cur.az));
     camera.lookAt(tx, ty, tz);
@@ -61,8 +63,9 @@ export function createRig(camera, opts = {}) {
 
   const rig = {
     // per frame: k is the blend (1 = jump). Returns true while the camera is still moving.
-    update(k, wideMix = 0) {
-      wide = wideMix;
+    // wideMix 0..1, and where to (wx: sideways, wr: further back) — set by the Projection Director
+    update(k, wideMix = 0, wx = 0.9, wr = 3) {
+      wide = wideMix; wideX = wx; wideR = wr;
       let d = 0;
       for (const key of ["az", "el", "r"]) { const delta = goal[key] - cur[key]; cur[key] += delta * k; d = Math.max(d, Math.abs(delta)); }
       for (let i = 0; i < 3; i++) { const delta = goal.target[i] - cur.target[i]; cur.target[i] += delta * k; d = Math.max(d, Math.abs(delta)); }
@@ -103,12 +106,19 @@ export function createRig(camera, opts = {}) {
       set(TARGETS[name]);
       return true;
     },
+    inspectAt(name, at, size = 1) {   // a point that isn't a fixed target (an open projection)
+      if (!inspecting || !Array.isArray(at) || at.length !== 3) return false;
+      focus = name; view = "custom";
+      set({ target: [clamp(at[0], LIMITS.x), clamp(at[1], LIMITS.y), clamp(at[2], LIMITS.z)], az: Math.sign(at[0]) * 0.12, el: 0.04, r: clamp(4.2 * size, LIMITS.r) });
+      return true;
+    },
     setInspecting(on) {
       inspecting = !!on;
       if (!inspecting) { focus = null; view = rest; set(VIEWS[rest]); }   // leaving returns to the resting view
     },
     setRest(name) { if (!VIEWS[name]) return; rest = name; if (!inspecting) { view = name; set(VIEWS[name]); } },
     setSpeed(name) { speed = SPEED[name] || 1; },
+    setAspect(a) { if (a > 0) { aspect = a; apply(); } },
     reset() { focus = null; view = inspecting ? "front" : rest; set(VIEWS[view]); },
     get state() {
       return { inspecting, view, rest, focus, az: +cur.az.toFixed(3), el: +cur.el.toFixed(3), r: +cur.r.toFixed(2),

@@ -258,3 +258,90 @@ def test_dashboard_reads_projection_effect_and_motion_from_the_map():
     html = (STATIC / "index.html").read_text()
     assert html.index("/static/avatar-events.js") < html.index("/static/avatar.js")
     assert "document" not in EVENTS and "fetch(" not in EVENTS and "localStorage" not in EVENTS   # data only
+
+
+# ---- phase 3: schematic panel controls, the projection area, research sources -----------------------------------
+DIRECTOR = (STATIC / "avatar3d-projections.js").read_text()
+
+DIRECTOR_HARNESS = """
+import { register } from "node:module";
+register("data:text/javascript," + encodeURIComponent(`export async function resolve(s, c, next) {
+  if (s.startsWith("/static/")) return next(STATIC_URL + s.slice(8), c);
+  return next(s, c); }`));
+const ctx2d = { measureText: (t) => ({ width: t.length * 20 }), fillText() {}, set font(v) {}, set fillStyle(v) {}, set textBaseline(v) {} };
+globalThis.document = { createElement: () => ({ getContext: () => ctx2d, width: 0, height: 0 }) };
+globalThis.performance = globalThis.performance || { now: () => Date.now() };
+const THREE = await import("/static/vendor/three.module.min.js");
+const { createDirector } = await import("/static/avatar3d-projections.js");
+const scene = new THREE.Scene(); let kicks = 0;
+const D = createDirector({ scene, kick: () => kicks++ });
+const settle = () => { for (let i = 0; i < 300; i++) D.update(0.05, true); };
+const vis = () => D.list().filter((p) => scene.children.find((r) => r.visible && r.children[0] && p)).length;
+const shownMods = () => scene.children.filter((r) => r.visible).length;
+const empty = { nodes: [], edges: [] };
+const out = {};
+%s
+console.log(JSON.stringify(out));
+"""
+
+
+def director(script: str):
+    return node(DIRECTOR_HARNESS.replace("STATIC_URL", json.dumps((STATIC.as_uri() + "/"))) % script)
+
+
+def test_panel_controls_expand_minimise_move_and_never_hide_silently():
+    out = director("""
+for (const m of ["workflow", "security", "timeline"]) D.show(m, m === "security" ? { stop: false, pending: [], denied_7d: 0, rings: { on_its_own: 2, asks_first: 3, never: 4 }, audit_ok: true, touch_id: false } : m === "timeline" ? { events: [], upcoming: [] } : empty);
+settle(); out.three = D.list().map((p) => p.side); out.shown = shownMods();
+D.expand("security"); settle(); out.expanded = [D.expanded, shownMods(), D.wideX.toFixed(2)];
+D.collapse(); D.minimize("workflow", true); settle(); out.min = [shownMods(), D.list().find((p) => p.module === "workflow").minimized];
+D.minimize("workflow", false); D.side("security", "left"); settle(); out.sides = Object.fromEntries(D.list().map((p) => [p.module, p.side]));
+out.where = D.where("security").at[0] < 0;
+D.move("timeline", -1); out.order = D.list().map((p) => p.module);
+out.bad = [D.expand("nope"), D.side("nope", "left"), D.move("workflow", 99)];
+const before = scene.children.length; D.close("security"); out.closed = [before - scene.children.length, D.list().length];
+D.closeAll(); settle(); out.end = [scene.children.length, D.wide];
+""")
+    assert out["three"].count("right") == 2 and out["three"].count("left") == 1 and out["shown"] == 3   # the third moved over, not hidden
+    assert out["expanded"][0] == "security" and out["expanded"][1] == 1                              # alone in the projection area
+    assert out["min"] == [2, True]
+    assert out["sides"]["security"] == "left" and out["where"] is True
+    assert out["bad"] == [False, False, False]
+    assert out["closed"] == [1, 2] and out["end"] == [0, 0]                                         # disposed, camera back
+
+
+def test_research_projection_shows_the_question_and_marks_unseen_sources():
+    out = director("""
+const data = { question: "Which apps sync offline?", searches: 3, pages: 5,
+  sources: [{ host: "example.org", verified: true }, { host: "blog.example.net", verified: false }] };
+D.show("research", data); settle();
+const labels = []; scene.traverse((o) => { if (o.userData && o.userData.label) labels.push(o.userData.label); });
+out.labels = labels;
+D.show("research", { question: null, sources: [] });
+const l2 = []; scene.traverse((o) => { if (o.userData && o.userData.label) l2.push(o.userData.label); }); out.empty = l2;
+""")
+    assert "Question: Which apps sync offline?" in out["labels"]
+    assert "example.org · seen by the research tools" in out["labels"]
+    assert "blog.example.net · cited, not seen by the research tools" in out["labels"]
+    assert out["empty"] == []
+    rp = re.search(r"function researchProjection\(.*?\n\}\n", JS, re.S).group(0)
+    assert "api(" not in rp and "fetch(" not in rp                    # built from this conversation only
+    assert "new URL(u).hostname" in rp and ".slice(0, 80)" in rp       # sites only, the question shortened
+
+
+def test_panel_controls_change_the_look_only():
+    bar = re.search(r"function renderProjBar\(.*?\n\}\n", JS, re.S).group(0)
+    for forbidden in ("api(", "call(", "act(", "approve", "/api/"):
+        assert forbidden not in bar, forbidden                       # no control approves, runs or changes anything
+    ctl = AV.split("function projectionControl(")[1].split("\n  }\n")[0]
+    assert "fetch" not in ctl and "approv" not in ctl
+    assert "const all = shown().flatMap((p) => p.pickable);" in DIRECTOR   # hidden projections can't be picked
+    assert "for (const extra of here.slice(2)) extra.side = -side;" in DIRECTOR
+
+
+@pytest.mark.parametrize("text,module", [("show me the sources", "research"), ("show me what you found", "research"),
+                                         ("show me your source code", "architecture"), ("show me the architecture", "architecture")])
+def test_asking_to_see_sources_opens_the_research_projection(text, module):
+    from jarvis.intent import classify
+    r = classify(text)
+    assert r["mode"] == "show" and r["module"] == module

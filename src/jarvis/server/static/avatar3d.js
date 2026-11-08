@@ -922,7 +922,7 @@ export function create(wrap, opts = {}) {
     if (innerMat) innerMat.uniforms.uOpacity.value = 0.12 + cur.neural * 0.5 + flash * 0.3;   // the inner network brightens while thinking
     neuralX.update(cur.neural, ["executing", "coding", "verifying"].includes(state), REACTOR.value);
     const projecting = director.update(dt, moving);
-    const camMoving = rig.update(moving ? 1 - Math.exp(-dt * 4) : 1, director.wide);
+    const camMoving = rig.update(moving ? 1 - Math.exp(-dt * 4) : 1, director.wide, director.wideX, director.wideR);
     const confirming = reactorX.update(dt * K.animation[OPT.animation], moving, target.rpat);
     envX.update(dt, moving, { ring: cur.ring, reactor: REACTOR.value, animK: K.animation[OPT.animation], orbitK: K.orbit[OPT.orbit] });
     const seams = [0.7, 1.0, 1.2, 1.35, 1.5][tier - 1] || 1;
@@ -1073,7 +1073,7 @@ export function create(wrap, opts = {}) {
     if (!r.width || !r.height) return;
     renderer.setSize(r.width, r.height, false);
     if (post) { const v = renderer.getDrawingBufferSize(new THREE.Vector2()); post.size(v.x, v.y); }
-    camera.aspect = r.width / r.height; camera.updateProjectionMatrix();
+    camera.aspect = r.width / r.height; camera.updateProjectionMatrix(); rig.setAspect(camera.aspect);
     kick();
   }
   const ro = new ResizeObserver(resize); ro.observe(wrap);
@@ -1091,6 +1091,10 @@ export function create(wrap, opts = {}) {
     setState, setPersonality, setTier, setMode, setIntensity, setSystems, setAura, setThought, pulse, pick, setOptions, setPanels, onLost: null,
     showProjection(m, data) { const ok = director.show(m, data); kick(); return ok; }, closeProjection(m) { director.close(m); kick(); },
     closeProjections() { director.closeAll(); }, pinProjection(m, on) { director.pin(m, on); }, rotateProjection(dx, dy) { director.rotate(dx, dy); },
+    expandProjection(m) { const ok = director.expand(m); kick(); return ok; }, collapseProjection() { director.collapse(); kick(); },
+    minimizeProjection(m, on) { const ok = director.minimize(m, on); kick(); return ok; }, sideProjection(m, which) { const ok = director.side(m, which); kick(); return ok; },
+    moveProjection(m, delta) { const ok = director.move(m, delta); kick(); return ok; },
+    inspectProjection(m) { const w = director.where(m); const ok = !!w && rig.inspectAt(`projection:${m}`, w.at, w.scale); kick(); return ok; },
     get projections() { return director.list(); },
     // camera: inspection captures pointer input (avatar.js); views and targets only move the camera
     inspect(on) { rig.setInspecting(on); kick(); }, cameraView(name) { const ok = rig.view(name); kick(); return ok; },

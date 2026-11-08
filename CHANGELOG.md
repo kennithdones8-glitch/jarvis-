@@ -1,5 +1,19 @@
 # Changelog
 
+## Unreleased — Avatar 2.5, phase 3: schematic controls, the projection area, research sources
+
+- Every open projection has controls: **Expand** (takes the projection area on its own; the others step aside until
+  you collapse it), **Collapse**, **Minimise** / Restore, move to the **other side** of the figure, move **up** in the
+  order, **Inspect** (the camera goes up close; Esc returns), **Details** (one sentence from its own data and where
+  the data comes from), Pin and Close. Up to four at once, two per side; a third on one side moves to the other side
+  instead of disappearing. They glide to their new places. None of these controls approves, runs or changes anything.
+- **Projection area**: in the focus view on a computer, open projections widen the 3D canvas beside the figure; the
+  camera pulls back only as much as the canvas needs. On a phone the list moves into the focus panel.
+- **Research sources** projection: the question of your last research answer in this conversation at the centre and
+  each cited site around it (green: the research tools really saw the page; amber: cited but not seen), with the
+  number of searches and pages read. Built in the browser from that answer (sites only); nothing is fetched. Opens on
+  its own in the focus view while JARVIS researches, or say "show me the sources".
+
 ## Unreleased — Avatar 2.5, phase 2: one event-to-visual map and personalities
 
 - **`avatar-events.js`**: the one table that says, for every state, how the figure moves, which projection the focus

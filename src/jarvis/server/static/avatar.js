@@ -454,6 +454,13 @@
   function closeProjection(m) { if (av.three) av.three.closeProjection(m); }
   function closeProjections() { if (av.three) av.three.closeProjections(); }
   function pinProjection(m, on) { if (av.three) av.three.pinProjection(m, on); }
+  // projection panel controls (expand, collapse, minimise, side, order): the look only, never the data or an action
+  function projectionControl(op, m, arg) {
+    if (!av.three) return false;
+    const t = av.three;
+    return op === "expand" ? t.expandProjection(m) : op === "collapse" ? (t.collapseProjection(), true) : op === "minimize" ? t.minimizeProjection(m, arg !== false)
+      : op === "side" ? t.sideProjection(m, arg) : op === "move" ? t.moveProjection(m, arg) : op === "inspect" ? (inspect(true) && t.inspectProjection(m)) : false;
+  }
   // camera and inspection (3D only): moving the camera never changes what JARVIS is doing
   function inspect(on) {
     if (!av.three || !av.wrap) { av.inspecting = false; return false; }
@@ -466,7 +473,7 @@
   function cameraView(name) { return av.three ? av.three.cameraView(name) : false; }
   function inspectTarget(name) { return av.three ? av.three.inspectTarget(name) : false; }
   function resetCamera() { if (av.three) av.three.resetCamera(); }
-  const api = { mount, setState, previewState, endPreview, setOptions, setPanels, showProjection, closeProjection, closeProjections, pinProjection, inspect, cameraView, inspectTarget, resetCamera, setTier, setSystems, setAura, setThought, systemAt, pulse, registerPart, refresh: loop, STATES, onFocus: null, onSystem: null,
+  const api = { mount, setState, previewState, endPreview, setOptions, setPanels, showProjection, closeProjection, closeProjections, pinProjection, projectionControl, inspect, cameraView, inspectTarget, resetCamera, setTier, setSystems, setAura, setThought, systemAt, pulse, registerPart, refresh: loop, STATES, onFocus: null, onSystem: null,
                           get state() { return av.state; }, get profile() { return smOut.profile; }, get preview() { return smOut.preview; },
                           get lifecycle() { return smOut.lifecycle; },
                           get quality() { return av.three ? av.three.quality : null; },

@@ -512,11 +512,11 @@ def test_projection_controls_are_per_device_and_every_one_has_an_effect():
 def test_projection_director_reuses_the_renderer_limits_and_disposes():
     pj = (STATIC / "avatar3d-projections.js").read_text()
     assert "WebGLRenderer" not in pj and "requestAnimationFrame" not in pj                 # same renderer, same loop
-    assert "while (active.length > SLOTS.length)" in pj                                   # at most two at once
+    assert "while (active.length > MAX_OPEN)" in pj and "const MAX_OPEN = 4;" in pj        # at most two per side
     assert "for (const o of p.own) if (o && o.dispose) o.dispose();" in pj               # geometry, materials, textures freed
     assert "replaced in place" in pj                                                     # a refresh never reorders or evicts
     assert set(re.findall(r"^  (\w+)\(d, k\) \{", pj, re.M)) == {"workflow", "architecture", "neural", "globe", "data",
-                                                                   "timeline", "security", "simulation"}
+                                                                   "timeline", "security", "simulation", "research"}
     assert "Waiting for you (not authorized)" in pj                                       # pending approvals stay outside the shield
     assert "...director.hidden()" in AV3                                                  # projections never appear in the reflection
     js = (STATIC / "app.js").read_text()

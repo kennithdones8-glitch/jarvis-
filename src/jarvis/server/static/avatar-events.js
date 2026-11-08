@@ -34,7 +34,7 @@
     writing:       { personality: "concentrating", projection: null, effect: null, sound: null },
     coding:        { personality: "concentrating", projection: null, effect: null, sound: null },
     planning:      { personality: "concentrating", projection: "workflow", effect: null, sound: null },
-    researching:   { personality: "curious", projection: null, effect: null, sound: null },
+    researching:   { personality: "curious", projection: "research", effect: null, sound: null },
     analyzing:     { personality: "curious", projection: null, effect: null, sound: null },
     experimenting: { personality: "curious", projection: "simulation", effect: null, sound: null },
     learning:      { personality: "concentrating", projection: "neural", effect: null, sound: "learn" },
@@ -51,7 +51,7 @@
   };
   // audit-log events that briefly show a state of their own (shown once per new entry)
   const AUDIT_STATES = { "permission.denied": "disagreeing", "egress.denied": "disagreeing" };
-  const PROJECTIONS = ["architecture", "workflow", "neural", "timeline", "data", "security", "globe", "simulation"];
+  const PROJECTIONS = ["architecture", "workflow", "neural", "timeline", "data", "security", "globe", "simulation", "research"];
 
   const visual = (state) => MAP[state] || MAP.idle;
   const personalityOf = (state) => visual(state).personality;
