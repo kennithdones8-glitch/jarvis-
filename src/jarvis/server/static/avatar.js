@@ -525,7 +525,9 @@
   function cameraView(name) { return av.three ? av.three.cameraView(name) : false; }
   function inspectTarget(name) { return av.three ? av.three.inspectTarget(name) : false; }
   function resetCamera() { if (av.three) av.three.resetCamera(); }
-  const api = { mount, setState, previewState, endPreview, setOptions, setPanels, showProjection, closeProjection, closeProjections, pinProjection, projectionControl, inspect, rebuild: () => rebuild(true), retry3d, onRebuilt: null, cameraView, inspectTarget, resetCamera, setTier, setSystems, setAura, setThought, systemAt, pulse, voiceLevel, registerPart, refresh: loop, STATES, onFocus: null, onSystem: null,
+  // transformation sequences (look only; avatar3d-transform.js): name or null to close
+  function transform(name) { return av.three ? av.three.transform(name) : false; }
+  const api = { mount, setState, previewState, endPreview, setOptions, setPanels, showProjection, closeProjection, closeProjections, pinProjection, projectionControl, inspect, rebuild: () => rebuild(true), retry3d, onRebuilt: null, cameraView, inspectTarget, resetCamera, transform, setTier, setSystems, setAura, setThought, systemAt, pulse, voiceLevel, registerPart, refresh: loop, STATES, onFocus: null, onSystem: null,
                           get state() { return av.state; }, get profile() { return smOut.profile; }, get preview() { return smOut.preview; },
                           get lifecycle() { return smOut.lifecycle; },
                           get quality() { return av.three ? av.three.quality : null; },
@@ -538,7 +540,8 @@
                           get voiceNow() { return av.three ? av.three.voice : null; },
                           get personality() { const p = personality(av.state); return p ? p.name : null; },
                           get camera() { return av.three ? av.three.camera : null; }, get inspecting() { return !!(av.three && av.inspecting); },
-                          get views() { return av.three ? av.three.VIEWS : {}; }, get targets() { return av.three ? av.three.TARGETS : {}; },
+                          get views() { return av.three ? av.three.VIEWS : {}; }, get sequences() { return av.three ? av.three.SEQUENCES : {}; },
+                          get transformState() { return av.three ? av.three.transformState : null; }, get targets() { return av.three ? av.three.TARGETS : {}; },
                           get eyes() { return av.three ? av.three.eyes : null; } };   // read-only: what the eyes are showing
   window.JarvisAvatar = api;
 })();

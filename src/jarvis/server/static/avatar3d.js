@@ -22,6 +22,7 @@ import { buildReconstruction } from "/static/avatar3d-particles.js";
 import { buildEnvironment } from "/static/avatar3d-environment.js";
 import { createDirector } from "/static/avatar3d-projections.js";
 import { createRig, VIEWS, TARGETS } from "/static/avatar3d-camera.js";
+import { createSequencer, SEQUENCES, FOR_TARGET } from "/static/avatar3d-transform.js";
 export { sdHuman, meshFigure };
 
 const CHAMPAGNE = new THREE.Color("#f3e3bd"), WHITE = new THREE.Color("#fff8ec"), AMBER = new THREE.Color("#f2a33a");
@@ -433,7 +434,10 @@ export function create(wrap, opts = {}) {
         uniforms: { ...U, uHeadOn: { value: 1 }, uInflate: { value: 0 }, uReveal: reveal, uOpacity: { value: 1 }, ...plateUni, ...(F ? handUni : {}) },
         extensions: { derivatives: true } });
       const mesh = add(new THREE.Mesh(g, mat)); mesh.renderOrder = -1;   // drawn first: the plates hide the glow behind them, never glow in front
-      metals.push({ mesh, order: pl.order, dir: d });
+      g.computeBoundingBox();
+      const cx = (g.boundingBox.min.x + g.boundingBox.max.x) / 2;
+      const pivot = g.boundingBox.getCenter(new THREE.Vector3());   // plates turn about their own centre
+      metals.push({ mesh, order: pl.order, dir: d, name: pl.name, side: Math.abs(cx) < 0.05 ? 0 : Math.sign(cx), pivot });
     }
   });
   // the hands themselves (light body), and the mechanical joints: elbow and knee hubs, wrist rings
@@ -805,6 +809,32 @@ export function create(wrap, opts = {}) {
     m.from = { p: m.home.p.clone().add(dir.multiplyScalar(2.6)).add(new THREE.Vector3(0, 0.8, 1.2)),
                q: m.home.q.clone().multiply(new THREE.Quaternion().setFromEuler(new THREE.Euler((Math.random() - 0.5) * 0.3, (Math.random() - 0.5) * 0.3, (Math.random() - 0.5) * 0.3))) };
   }
+  // ---- transformation sequences: plates part, slide, turn and settle; closing plays the same steps backwards ----
+  const xform = createSequencer();
+  let xSynced = false;
+  const _q = new THREE.Quaternion(), _ax = new THREE.Vector3(), _off = new THREE.Vector3();
+  const SLIDE = { chest: [1, 0, 0], abdomen: [1, -0.4, 0], helmet: [0, 1, -0.35], upperarm: [1, 0.3, 0], forearm: [1, 0.2, 0.2], hand: [1, 0, 0],
+                  shoulder: [1, 0.8, 0], pauldron: [1, 1.2, 0] };
+  const TURN = { chest: [0, 1, 0], abdomen: [0, 1, 0], helmet: [1, 0, 0], upperarm: [0, 0, 1], forearm: [0, 0, 1], hand: [0, 0, 1], shoulder: [0, 0, 1], pauldron: [0, 0, 1] };
+  function applyTransform(xs) {
+    const s = xs.steps;
+    if (xs.name && xs.opening && s.sync > 0.5 && !xSynced) { xSynced = true; firePulse(0.6); }   // sync: one pulse as the parts align
+    if (!xs.name || xs.closing) xSynced = xs.name ? xSynced && s.sync > 0.5 : false;
+    for (const m of metals) {
+      const on = xs.name && xs.plates.includes(m.name);
+      if (!on) { if (m.xf) { m.mesh.position.copy(m.home.p); m.mesh.quaternion.copy(m.home.q); m.xf = false; } continue; }
+      m.xf = true;
+      const sg = m.side || 1, sl = SLIDE[m.name] || [0, 0, 0], tn = TURN[m.name] || [0, 1, 0];
+      const settle = (1 - s.stabilise) * s.sync * 0.012 * Math.sin(t * 18);   // a small settling shake, gone once stable
+      _off.copy(m.dir).multiplyScalar(0.012 * s.unlock + 0.15 * s.separate + settle)
+        .add(_ax.set(sl[0] * sg, sl[1], sl[2]).multiplyScalar(0.13 * s.move));
+      _q.setFromAxisAngle(_ax.set(tn[0], tn[1], tn[2]).normalize(), (m.name === "helmet" ? -0.3 : 0.24 * sg) * s.reconfigure);
+      // turn about the plate's own centre: position = home + offset + (pivot - R·pivot)
+      m.mesh.position.copy(m.home.p).add(_off).add(m.pivot).sub(_ax.copy(m.pivot).applyQuaternion(_q));
+      m.mesh.quaternion.copy(m.home.q).multiply(_q);
+    }
+  }
+
   // Startup assembly (once per session, Normal mode only): platform → hologram body → plates lock on → reactor ignites.
   let boot = opts.boot && mode === "full" ? { t: 0, fired: false } : null;
   const BOOT_END = 4.6;
@@ -897,6 +927,9 @@ export function create(wrap, opts = {}) {
     const moving = mode === "full";
     if (moving) t += dt;
     const k = moving ? 1 - Math.exp(-dt * 2.2) : 1;   // ~0.6–1 s blend between states
+    const xMoving = !boot && xform.update(dt, !moving);   // transformation sequence (avatar3d-transform.js)
+    const xs = xform.state, xStep = xs.steps;
+    const exposeR = xs.name === "reactor" ? xStep.expose : 0, exposeH = xs.name === "helmet" ? xStep.expose : 0;
     armPose(k);
     const CURL = { present: 0.08, work: 0.42, raise: 0.02, open: 0.0, rest: 0.2, halt: 0.0 };
     handUni.uCurl.value += ((state === "halted" ? 0.32 : CURL[gestureOf()] ?? 0.2) - handUni.uCurl.value) * k;
@@ -906,6 +939,7 @@ export function create(wrap, opts = {}) {
     const busyState = ["reasoning", "planning", "coding", "executing", "researching", "verifying", "writing", "understanding"].includes(state);
     const heavy = ["coding", "executing", "reasoning"].includes(state);
     plateUni.uSeam.value += ((busyState ? 1 : state === "error" ? 0.6 : 0.25) - plateUni.uSeam.value) * k;
+    if (xs.name) plateUni.uSeam.value = Math.max(plateUni.uSeam.value, 1.6 * xStep.unlock * (1 - 0.7 * xStep.separate));   // the seams flash as the plates unlock
     plateUni.uOpen.value += ((heavy && moving ? 0.045 + Math.sin(t * 1.7) * 0.008 : 0) - plateUni.uOpen.value) * k;
     if (shieldMat) {
       shieldFlare = Math.max(0, shieldFlare - dt);
@@ -942,11 +976,11 @@ export function create(wrap, opts = {}) {
     U.uRimK.value = cur.rim * (1 + flash * 0.8);
     U.uGain.value = intensity * (1 + flash * 0.4);
     const eyeLevel = cur.eyes * (1 + flash * 0.6 + speech * 0.4);
-    EYE.value = eyeLevel * (1 + voice * 0.35); FACE.uSpeech.value = Math.min(1, Math.max(speech, voice * 0.8));
+    EYE.value = eyeLevel * (1 + voice * 0.35) * (1 + 0.5 * exposeH); FACE.uSpeech.value = Math.min(1, Math.max(speech, voice * 0.8));
     FACE.uEyeHot.value += ((state === "error" ? 0 : 1) - FACE.uEyeHot.value) * k;   // deep red eyes only on a genuine error
     if (!moving) { FACE.uEyeOpen.value = 1; FACE.uEyeLook.value = 0; FACE.uEyeScan.value = 0; }
     const breathe = moving ? 0.92 + 0.08 * Math.sin(t * 1.3) : 1;
-    REACTOR.value = cur.reactor * breathe * (1 + speech * 0.8 + voice * 0.9 + flash) * K.reactor[OPT.reactor];
+    REACTOR.value = cur.reactor * breathe * (1 + speech * 0.8 + voice * 0.9 + flash) * K.reactor[OPT.reactor] * (1 + 0.6 * exposeR);
     if (innerMat) innerMat.uniforms.uOpacity.value = 0.12 + cur.neural * 0.5 + flash * 0.3;   // the inner network brightens while thinking
     neuralX.update(cur.neural, ["executing", "coding", "verifying"].includes(state), REACTOR.value);
     const projecting = director.update(dt, moving);
@@ -963,7 +997,10 @@ export function create(wrap, opts = {}) {
     data.visible = cur.data > 0.02 && moving;
     dust.material.uniforms.uSpeed.value = 1 + flash * 4 + Math.abs(cur.flow) * 0.3;
     dust.visible = moving;
-    if (boot) bootStep(dt);
+    if (boot) bootStep(dt); else applyTransform(xs);
+    if (xs.name === "reactor") reactor.position.z = 0.36 + 0.14 * exposeR;   // the core comes forward as the plates part
+    else if (reactor.position.z !== 0.36) reactor.position.z = 0.36;
+    if (!moving) reactor.scale.setScalar(REACTOR_SIZE * (1 + 0.3 * exposeR));
     if (boot) {   // order: body forms, circuitry lights, sensors wake, the reactor ignites, the orbitals synchronise
       EYE.value *= ease((boot.t - 2.0) / 0.5);
       orbits.scale.setScalar(0.4 + 0.6 * ease((boot.t - 3.4) / 0.9));
@@ -1044,7 +1081,7 @@ export function create(wrap, opts = {}) {
       const spin = rp === "spin" ? 2.4 : rp === "surge" ? 1.8 : rp === "scan" ? 1.2 : rp === "stutter" ? (Math.sin(t * 9) > 0.6 ? 2 : 0) : rp === "still" ? 0 : 0.6;
       spokes.rotation.z += dt * spin * 0.5 * (rp === "spin" ? -1 : 1);
       const beatK = rp === "beat" ? 1 + Math.max(0, Math.sin(t * 5)) * 0.06 + speech * 0.08 : rp === "surge" ? 1 + Math.sin(t * 8) * 0.03 : 1;
-      reactor.scale.setScalar(REACTOR_SIZE * beatK);
+      reactor.scale.setScalar(REACTOR_SIZE * beatK * (1 + 0.3 * exposeR));
       if (rp === "scan") reactorRings[2] && (reactorRings[2].obj.rotation.z = Math.sin(t * 1.4) * 1.6);
       headMotion();
       for (const ax of ["x", "y", "z"]) headCur[ax] += (headTarget[ax] - headCur[ax]) * (1 - Math.exp(-dt * 2.5));
@@ -1079,7 +1116,7 @@ export function create(wrap, opts = {}) {
     for (const m of lineMats) m.visible = true;
     if (post) post.end(t, intensity);
     settling -= dt;
-    if (moving || revealing || boot || confirming || camMoving || projecting && mode === "full" || settling > 0 && mode === "full") raf = requestAnimationFrame(frame);
+    if (moving || revealing || boot || confirming || camMoving || xMoving || projecting && mode === "full" || settling > 0 && mode === "full") raf = requestAnimationFrame(frame);
   }
   function kick() { if (!raf && visible && !document.hidden && !lost) raf = requestAnimationFrame(frame); }
 
@@ -1128,11 +1165,17 @@ export function create(wrap, opts = {}) {
     expandProjection(m) { const ok = director.expand(m); kick(); return ok; }, collapseProjection() { director.collapse(); kick(); },
     minimizeProjection(m, on) { const ok = director.minimize(m, on); kick(); return ok; }, sideProjection(m, which) { const ok = director.side(m, which); kick(); return ok; },
     moveProjection(m, delta) { const ok = director.move(m, delta); kick(); return ok; },
-    inspectProjection(m) { const w = director.where(m); const ok = !!w && rig.inspectAt(`projection:${m}`, w.at, w.scale); kick(); return ok; },
+    inspectProjection(m) { const w = director.where(m); const ok = !!w && rig.inspectAt(`projection:${m}`, w.at, w.scale); if (ok) xform.play(null); kick(); return ok; },
     get projections() { return director.list(); },
     // camera: inspection captures pointer input (avatar.js); views and targets only move the camera
-    inspect(on) { rig.setInspecting(on); kick(); }, cameraView(name) { const ok = rig.view(name); kick(); return ok; },
-    inspectTarget(name) { const ok = rig.inspectTarget(name); kick(); return ok; }, resetCamera() { rig.reset(); kick(); },
+    inspect(on) { rig.setInspecting(on); if (!on) xform.play(null); kick(); },
+    cameraView(name) { const ok = rig.view(name); if (ok) xform.play(null); kick(); return ok; },
+    // inspecting the reactor, helmet, hands or shoulders opens that part; any other target closes it
+    inspectTarget(name) { const ok = rig.inspectTarget(name); if (ok && !boot) xform.play(FOR_TARGET[name] || null); kick(); return ok; },
+    resetCamera() { rig.reset(); xform.play(null); kick(); },
+    transform(name) { if (boot || (name !== null && !SEQUENCES[name])) return false; const ok = xform.play(name); kick(); return ok; },
+    get transformState() { const x = xform.state; return { name: x.name, open: x.open, opening: x.opening, closing: x.closing, t: x.t }; },
+    SEQUENCES: Object.fromEntries(Object.entries(SEQUENCES).map(([k, v]) => [k, v.label])),
     rotateCamera(dx, dy) { rig.rotate(dx, dy); kick(); }, zoomCamera(f) { rig.zoom(f); kick(); }, panCamera(dx, dy) { rig.pan(dx, dy); kick(); },
     get camera() { return rig.state; }, VIEWS: Object.fromEntries(Object.entries(VIEWS).map(([k, v]) => [k, v.label])),
     TARGETS: Object.fromEntries(Object.entries(TARGETS).map(([k, v]) => [k, v.label])),

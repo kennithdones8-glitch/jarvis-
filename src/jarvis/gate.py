@@ -156,7 +156,8 @@ SECURITY: dict[str, tuple[str, list[str]]] = {
         "test_avatar25::personalities_never_claim_feelings_and_red_stays_for_errors",
         "test_avatar25::panel_controls_change_the_look_only",
         "test_avatar25::auto_quality_has_hysteresis_and_reports_measured_reasons",
-        "test_avatar25::microphone_level_is_measured_locally_and_stops_with_the_recording"]),
+        "test_avatar25::microphone_level_is_measured_locally_and_stops_with_the_recording",
+        "test_avatar25::only_you_start_a_transformation_never_a_jarvis_state"]),
     "Emergency stop (protected)": ("One stop halts everything, including work in progress", [
         "test_gateway::emergency_stop_blocks_everything", "test_tasks::emergency_stop_pauses_then_requires_explicit_resume",
         "test_stop::stop_kills_running_claude_and_its_children", "test_models::emergency_stop_blocks_model_calls",

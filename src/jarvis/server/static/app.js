@@ -1706,7 +1706,9 @@ function renderInspectBar() {
       h("button", { class: "btn btn-ghost btn-sm", type: "button", onclick: () => { JarvisAvatar.resetCamera(); renderInspectBar(); } }, "Reset"),
       h("button", { class: "btn btn-sm", type: "button", id: "inspectexit", onclick: stopInspect }, "Exit inspection")),
     chips(JarvisAvatar.views, cam.view, (k) => JarvisAvatar.cameraView(k), "Camera views"),
-    chips(JarvisAvatar.targets, cam.focus, (k) => JarvisAvatar.inspectTarget(k), "Inspect a part"));
+    chips(JarvisAvatar.targets, cam.focus, (k) => JarvisAvatar.inspectTarget(k), "Inspect a part"),
+    chips({ ...JarvisAvatar.sequences, close: "Close the armour" }, (JarvisAvatar.transformState || {}).name || "close",
+      (k) => JarvisAvatar.transform(k === "close" ? null : k), "Transform"));
 }
 
 // ---- diagnostics: the renderer's own numbers (measured, never estimated), shown when the Diagnostics setting is on ----

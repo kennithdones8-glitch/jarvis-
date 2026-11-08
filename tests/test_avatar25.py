@@ -451,3 +451,58 @@ def test_microphone_level_is_measured_locally_and_stops_with_the_recording():
     assert "async function finishRecording(type) {\n  clearInterval(voice.timer);\n  stopMicLevel();" in JS
     assert 'const x = mode === "off" ? 0 :' in AV3                         # Reduced motion: no voice motion
     assert "voice * 0.9" in AV3 and "voice * 0.8" in AV3                  # reactor and sensors follow it
+
+
+# ---- phase 6: transformation sequences ---------------------------------------------------------------------------
+XFORM = (STATIC / "avatar3d-transform.js").read_text()
+
+
+def xform(script: str):
+    return node(f"""
+import {{ createSequencer, STEPS, SEQUENCES, FOR_TARGET, LENGTH }} from {json.dumps(str(STATIC / "avatar3d-transform.js"))};
+const s = createSequencer(); const out = {{}};
+const run = (secs) => {{ let n = 0; while (n < secs / 0.05 && s.update(0.05)) n++; return n; }};
+{script}
+console.log(JSON.stringify(out));
+""")
+
+
+def test_sequences_run_the_seven_steps_in_order_and_close_in_reverse():
+    out = xform("""
+out.steps = STEPS; s.play("reactor");
+const order = []; let prev = {};
+for (let i = 0; i < 80; i++) { s.update(0.05); const st = s.state.steps;
+  for (const k of STEPS) if (st[k] > 0 && !(prev[k] > 0)) order.push(k); prev = { ...st }; }
+out.order = order; out.open = s.state.open;
+s.play(null); const closing = []; prev = s.state.steps;
+for (let i = 0; i < 80; i++) { s.update(0.05); const st = s.state.steps;
+  for (const k of STEPS) if (st[k] < 1 && prev[k] >= 1) closing.push(k); prev = { ...st }; }
+out.closing = closing; out.closed = s.state.name;
+""")
+    assert out["steps"] == ["unlock", "separate", "move", "expose", "reconfigure", "sync", "stabilise"]
+    assert out["order"] == out["steps"] and out["open"] is True
+    assert out["closing"] == list(reversed(out["steps"])) and out["closed"] is None   # reversible
+
+
+def test_switching_parts_closes_first_and_low_motion_jumps():
+    out = xform("""
+s.play("helmet"); run(5); s.play("arms"); s.update(0.05); out.mid = [s.state.name, s.state.closing];
+run(10); out.after = [s.state.name, s.state.open];
+out.bad = s.play("explode");
+const r = createSequencer(); r.play("reactor"); r.update(0.016, true); out.instant = r.state.open;
+r.play(null); r.update(0.016, true); out.instantClose = r.state.name;
+out.targets = FOR_TARGET; out.seqs = Object.keys(SEQUENCES);
+""")
+    assert out["mid"] == ["helmet", True] and out["after"] == ["arms", True] and out["bad"] is False
+    assert out["instant"] is True and out["instantClose"] is None                # Reduced motion: no animation
+    assert set(out["targets"].values()) <= set(out["seqs"])
+
+
+def test_only_you_start_a_transformation_never_a_jarvis_state():
+    assert "import " not in XFORM.split("export const STEPS")[0].replace("// ", "")   # no imports
+    calls = re.findall(r"xform\.play\(([^)]*)\)", AV3)
+    assert calls and all(c in ("null", "FOR_TARGET[name] || null", "name") for c in calls), calls
+    set_state = AV3.split("  function setState(s) {")[1].split("\n  }\n")[0]
+    assert "xform" not in set_state                                            # no state opens the armour
+    assert "if (boot) bootStep(dt); else applyTransform(xs);" in AV3          # never during the startup assembly
+    assert "(pivot - R·pivot)" in AV3                                          # plates turn about their own centre

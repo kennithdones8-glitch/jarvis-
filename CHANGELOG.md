@@ -1,5 +1,17 @@
 # Changelog
 
+## Unreleased — Avatar 2.5, phase 6: mechanical transformations
+
+- **Transformation sequences** (`avatar3d-transform.js`): a group of armour plates opens in seven steps — unlock (the
+  seams flash), separate, move, expose, reconfigure (the plates turn about their own centre), sync (one pulse as
+  the parts align) and stabilise (a small settling shake) — and closes by playing the same steps backwards.
+- Four sequences: **expose the reactor** (the chest plates part, the core comes forward, larger and brighter),
+  **open the helmet** (the shell lifts back from the sensor head), **open the arms and hands**, **open the
+  shoulders**. Inspecting the reactor, chest, helmet, a hand or the shoulders opens that part; inspecting anything
+  else, Exit or Esc closes it. The Transform row in the inspection bar opens them directly.
+- Only you start one: no JARVIS state opens the armour, so it never suggests work that isn't happening. Never
+  during the startup assembly; Low performance and Reduced motion go straight to the end without animation.
+
 ## Unreleased — Avatar 2.5, phase 5: voice-reactive reactor and optional sound
 
 - **Your voice moves the reactor**: while the microphone records, its measured level (RMS from an analyser on the

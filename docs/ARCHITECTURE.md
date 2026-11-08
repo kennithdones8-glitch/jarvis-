@@ -344,6 +344,10 @@ prefer="quality")` and up to 2000 tokens, falling back to the best available mod
 - **Voice and sound**: `startMicLevel()` (app.js) → `JarvisAvatar.voiceLevel(0..1)` → renderer `setVoice` (eased into
   `REACTOR` and `uSpeech`). `avatar-sound.js` (`window.JarvisSound`): Web Audio hum + cues named in
   `avatar-events.js`; `duck()` while speaking or recording; cues only from real, non-preview state changes.
+- **Transformations** `static/avatar3d-transform.js`: `createSequencer()` keeps one sequence's clock (`STEPS` with
+  overlapping `TIMING`, 3.1 s), plays forward to open and backward to close, and closes the open one before opening
+  another. The renderer's `applyTransform()` maps step progress to each plate's offset (its own direction plus a
+  slide) and turn about its bounding-box centre; plates are tagged by name and side when the armour is cut.
 
 ## Benchmark and release gate (`src/jarvis/bench/`, `src/jarvis/gate.py`, v0.17)
 

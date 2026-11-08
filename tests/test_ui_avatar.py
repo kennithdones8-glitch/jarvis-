@@ -198,7 +198,7 @@ def test_three_is_the_exact_pinned_build_and_served_from_this_mac(dash):
     status, headers, body = call(d, "/static/vendor/three.module.min.js")
     assert status == 200 and headers["Content-Type"].startswith("text/javascript") and hashlib.sha256(body).hexdigest() == THREE_SHA256
     assert call(d, "/static/vendor/three.LICENSE.txt")[0] == 404  # only the one file is served
-    for f in ("avatar3d.js", "avatar3d-shaders.js", "avatar3d-geometry.js", "avatar3d-reactor.js", "avatar3d-neural.js", "avatar3d-particles.js", "avatar3d-environment.js", "avatar3d-projections.js", "avatar3d-worker.js", "avatar-state.js", "avatar3d-camera.js", "avatar-presets.js"):
+    for f in ("avatar3d.js", "avatar3d-shaders.js", "avatar3d-geometry.js", "avatar3d-reactor.js", "avatar3d-neural.js", "avatar3d-particles.js", "avatar3d-environment.js", "avatar3d-projections.js", "avatar3d-worker.js", "avatar-state.js", "avatar3d-camera.js", "avatar-presets.js", "avatar-events.js", "avatar-sound.js", "avatar3d-transform.js"):
         assert call(d, f"/static/{f}")[0] == 200
     csp = call(d, "/")[1]["Content-Security-Policy"]
     assert "script-src 'self'" in csp and "connect-src 'self'" in csp and "unsafe" not in csp  # unchanged
@@ -320,7 +320,7 @@ def test_bloom_and_surface_detail_are_local_and_fail_safe():
     imports = set(re.findall(r'from "([^"]+)";', AV3))   # only Three.js (served locally) and our own modules
     assert imports <= {"/static/vendor/three.module.min.js", "/static/avatar3d-shaders.js", "/static/avatar3d-geometry.js",
                        "/static/avatar3d-reactor.js", "/static/avatar3d-neural.js", "/static/avatar3d-particles.js",
-                       "/static/avatar3d-environment.js", "/static/avatar3d-projections.js", "/static/avatar3d-camera.js"}
+                       "/static/avatar3d-environment.js", "/static/avatar3d-projections.js", "/static/avatar3d-camera.js", "/static/avatar3d-transform.js"}
     assert "import(" not in AV3
     # surfaces turned away are dimmer (depth), and armour gets panel seams; glowing parts stay smooth
     assert "a *= gl_FrontFacing ? 1.0 : 0.38;" in AV3
@@ -422,7 +422,7 @@ def test_alloy_armour_hugs_the_body_and_reacts_only_to_real_work_and_alerts():
     assert "(0.0072 - Math.abs(z - kz)) * 60); } },   // one plate per finger segment" in AV3
     assert "if (h > uReveal || vEdge < 0.0) discard;   // a smooth plate border" in AV3
     assert "const PLATE_VERT = VERT" in AV3                                                 # bends with the arms and head
-    assert "metals.push({ mesh, order: pl.order, dir: d });" in AV3                         # assembles during startup, hidden in the reflection
+    assert "metals.push({ mesh, order: pl.order, dir: d, name: pl.name," in AV3                         # assembles during startup, hidden in the reflection
     vent = AV3.split("plateUni.uOpen.value +=")[1].split(";")[0]
     assert "heavy && moving" in vent                                                        # plates part only while really working, Normal mode
     assert 'const heavy = ["coding", "executing", "reasoning"].includes(state);' in AV3
