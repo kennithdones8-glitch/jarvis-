@@ -97,6 +97,28 @@ def test_the_self_check_is_routed_by_the_question_not_the_check(chat_env, monkey
     assert ("dashboard chat (answer check retry)", SCHEDULE) in seen  # same model choice as the first answer
 
 
+def test_the_first_event_must_be_the_one_jarvis_worked_out():
+    from jarvis.orchestrator.answer_checks import first_event_left_out
+    facts = "- First event on Mon 09 Nov: 09:00–09:30 Standup\n- Mon 09 Nov 14:00–15:30: FREE: yes"
+    q = "Am I free tomorrow between 2pm and 3:30pm? And what's my first commitment tomorrow, and when is it?"
+    # the real wrong answer (7B, owner's Mac): the 13:00 lunch called the first commitment
+    assert first_event_left_out(q, "Your first commitment tomorrow is a lunch with Sam, 13:00 to 14:00.", facts) == [
+        "Standup at 09:00"]
+    assert first_event_left_out(q, "Yes, you're free. First is Standup at 9:00.", facts) == []
+    assert first_event_left_out(q, "Standup at 10:00.", facts) == ["Standup at 09:00"]  # right name, wrong time
+    assert first_event_left_out("Am I free tomorrow at 2pm?", "Lunch.", facts) == []  # didn't ask what's first
+    assert first_event_left_out(q, "Lunch.", "- Mon 09 Nov: no events with a set time") == []  # nothing worked out
+
+
+def test_a_wrong_first_commitment_is_retried_once(chat_env):  # noqa: F811
+    d, state, server = chat_env
+    state["lookups"] = [{"tool": "calendar", "action": "events", "args": state["week"]}]
+    state["answers"] = ["Your first commitment is lunch.", "Your first commitment is Standup at 09:00."]
+    r = chat(d, "What's my first commitment tomorrow, and when is it?")
+    assert r["text"] == "Your first commitment is Standup at 09:00."
+    assert "Standup at 09:00" in server.received[-1]["body"]["messages"][-1]["content"]
+
+
 def test_ordinary_chat_costs_no_extra_call(chat_env):  # noqa: F811
     d, state, server = chat_env
     state["answers"] = ["Light bends in raindrops."]

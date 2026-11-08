@@ -63,6 +63,12 @@ Built on `harder-bench-v1`. Fixes the two gaps the hard set found, where even a 
   With G a calendar lookup marks the answer careful, so the 7B (not the 3B) did the retry and re-solved the puzzle
   wrongly. Retries and coding fixes are now routed by the owner's question. Also: a careful answer in hybrid routing
   ("simple", kept here) still gets the reasoning model for maths, logic and code, instead of the 7B.
+- **Measured with the retry fix (a2a1727, 20261108-135847-local):** reasoning-schedule back to 5/5, 105/110. But
+  planning-free 1/5: the facts said "First event on Mon 09 Nov: 09:00–09:30 Standup" and the 7B (careful, G) still
+  called the 13:00 lunch the first commitment. Pooled: 9/10 with the 3B (before G), 4/10 with the 7B. Hence:
+- **The first event JARVIS worked out is checked.** When the question asks what comes first ("first commitment",
+  "earliest meeting") and JARVIS listed the first event of 1–3 days, an answer that doesn't name it with its start
+  time gets one local retry that names it. Nothing else is judged.
 - To be proven on the Mac: core + extended ×5 (no new failures against 20261108-014415-local), and the hard set ×5.
 
 ## Unreleased: a harder benchmark set (branch `harder-bench-v1`, owner's choice)

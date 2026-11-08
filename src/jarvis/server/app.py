@@ -41,7 +41,7 @@ from ..core.killswitch import EmergencyStop
 from ..core.tasks import InvalidTransition, TaskState
 from ..core.tools import ApprovalRequired
 from ..codecheck import EXAMPLES_PROMPT, MAX_CASES, TEST_PROMPT, from_request, SandboxUnavailable, code_of, parse_cases, run_cases, wants_code
-from ..orchestrator.answer_checks import chat_problems, facts_left_out
+from ..orchestrator.answer_checks import chat_problems, facts_left_out, first_event_left_out
 from ..orchestrator.lookup import FACTS_HEAD, lenient_json
 from ..orchestrator.grounding import applies, unsupported_times
 from ..models import ChatRequest, Message, Need, NoModelAvailable
@@ -667,6 +667,9 @@ class Dashboard:
             if found.context is not None and (left := facts_left_out(r.text, found.context.content)):
                 problems.append(f"your answer leaves out {', '.join(left)}, which JARVIS listed as overdue or due in "
                                 "the time asked about: include every item JARVIS listed")
+            if found.context is not None and (first := first_event_left_out(message, r.text, found.context.content)):
+                problems.append(f"the first event JARVIS worked out is {', '.join(first)} (see \"First event on\" in "
+                                "the <lookup> data): give that as the first commitment, with its time")
             # One retry with the problems pointed out, then show what's still wrong rather than hide it. Only for a
             # local answer: retrying a Claude answer would be a new request needing your consent again.
             if problems and r.provider in self.kernel.models.router.local:
