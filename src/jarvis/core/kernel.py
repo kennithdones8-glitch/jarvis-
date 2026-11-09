@@ -95,10 +95,23 @@ class Kernel:
         out = self.memory.forget(query, by=by, dry_run=dry_run)
         tasks = self.tasks.find(query)
         out["tasks"] = [{**t, "deletable": TaskState(t["state"]) in TERMINAL} for t in tasks]
+        # ratings whose comment mentions it (e.g. a rating stored before answers had record ids); the text is only
+        # returned as a count, never shown back
+        q = (query or "").strip().lower()
+        rated = [r["id"] for r in self.db.query("SELECT id, reason FROM feedback WHERE reason IS NOT NULL")
+                 if q and q in r["reason"].lower()]
+        out["ratings"] = len(rated)
         if not dry_run:
             for t in out["tasks"]:
                 if t["deletable"]:
                     self.tasks.delete(t["id"], by=by)
+            with self.db.tx() as c:
+                for t in out["tasks"]:
+                    if t["deletable"]:
+                        c.execute("DELETE FROM feedback WHERE target = 'task' AND ref = ?", (t["id"],))
+                c.executemany("DELETE FROM feedback WHERE id = ?", [(i,) for i in rated])
+            if rated:
+                self.audit.record("memory.ratings_forgotten", actor=by, count=len(rated))
             self.db.checkpoint()  # with secure_delete, no copy of the deleted text is left in the files
         return out
 

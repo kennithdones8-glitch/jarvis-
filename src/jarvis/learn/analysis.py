@@ -167,7 +167,7 @@ class Lab:
         try:
             if kind == "trial":
                 from . import trial
-                r = trial.run(args[0], args[1], work=Path(self.kernel.home) / "trials")
+                r = trial.run(args[0], args[1], work=Path(self.kernel.home) / "trials", data=Path(self.kernel.home))
                 return self._finish(eid, "done" if r["ok"] else "failed", r, trial.recommendation(r))
             if kind == "replay":
                 from . import Pipeline

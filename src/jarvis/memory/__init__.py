@@ -143,6 +143,7 @@ class MemoryStore:
                           (record_tombstone(row["content"]), now_iso()))
             c.execute("DELETE FROM records WHERE id = ?", (record_id,))
             c.execute("DELETE FROM records_fts WHERE id = ?", (record_id,))
+            c.execute("DELETE FROM feedback WHERE target = 'reply' AND ref = ?", (record_id,))   # your rating and its comment
             self.audit.record("memory.record_deleted", actor=by, record_id=record_id, derived_deleted=len(derived))
         return len(derived)
 

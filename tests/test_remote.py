@@ -23,6 +23,7 @@ from jarvis.remote.devices import DeviceError, DeviceStore
 from jarvis.remote.push import Notifier, PushService, allowed_endpoint, encrypt
 from jarvis.remote.webauthn import b64url_decode, b64url_encode
 from jarvis.server import Dashboard
+from jarvis.server.app import HttpError
 from jarvis.tools import default_registry
 
 HOST = "mac.tail1234.ts.net"
@@ -533,3 +534,18 @@ def test_deciding_on_an_idea_from_the_phone_is_one_tap(remote_dash):
     path = f"/api/proposals/{pid}/approve"
     assert phone.req(path, {})[0] == 200  # Face ID was at sign-in (owner's choice)
     assert d.proposals.list()[0]["state"] == "approved"
+
+
+def test_a_phone_can_never_start_a_change_trial(remote_dash):
+    """Change trials run code on the Mac (tier 6), so they can only be started from the Mac's own dashboard, even
+    when tier 6 is on and the phone is signed in. Other experiments stay available from the phone."""
+    from jarvis.learn import Autonomy
+    d, *_ = remote_dash
+    Autonomy(d.kernel).set_tier(6, True, by="user:cli", from_dashboard=False)
+    phone, _ = paired(d)
+    status, _, body = phone.req("/api/experiments", {"kind": "trial", "ref": "HEAD"})
+    assert status == 403 and "only be started from the Mac" in body["error"]
+    assert d.kernel.db.one("SELECT COUNT(*) FROM experiments")[0] == 0                      # nothing started
+    assert any(e["event"] == "device.denied" for e in d.kernel.audit.entries(limit=10))
+    with pytest.raises(HttpError, match="only be started from the Mac"):                    # second check, below routing
+        d._post("/api/experiments", {"kind": "trial", "ref": "HEAD"}, actor="user:phone:Test iPhone")

@@ -2,6 +2,20 @@
 
 ## Unreleased — after 0.19.3 (work branch `claude/funny-allen-ygy8kk`, not yet released)
 
+### Security: closing the autonomy gaps (Evolution 3.0, phase 1)
+
+- **Change trials (level 6) are isolated.** The branch's tests no longer run as you: no API keys, tokens, SSH agent
+  or JARVIS settings reach them; HOME and TMPDIR are throwaway folders; and on macOS they run inside the system
+  sandbox: no network except this Mac, no writes outside the trial folder, no reads of JARVIS's data, `~/.ssh`,
+  cloud credentials or Keychains. A Mac without the sandbox refuses to run trials, and if the sandbox can't start, the
+  trial reports that it proves nothing rather than running unprotected. The result records how it was isolated.
+- **Trials can only be started from the Mac.** A paired iPhone is refused (and the attempt is audited), even with
+  level 6 on.
+- **Forget removes your ratings and their comments** for what it deletes, plus any rating whose comment mentions it.
+- **A release-gate test proves every tool action goes through the permission gateway** (the one read-only exception,
+  `jarvis mac check`, is listed and checked).
+- Needs a check on the Mac: the first real trial shows whether the sandbox rules start on macOS 14.
+
 - **Merged 0.19.3 from `main`** (private data folder, the stronger and reasoning-only local models, warm start,
   `jarvis checkup`, exact calendar and reminder facts, small memory seen whole, the harder benchmark set and its plan
   checks). Nothing from either side was dropped. Two adaptations: the Ask / Research / Do classifier keeps the fastest
