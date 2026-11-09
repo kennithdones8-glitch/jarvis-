@@ -295,7 +295,7 @@ def test_every_interactive_avatar_element_does_something_real():
 
 def test_projection_intensity_and_displayed_stage_are_per_device_settings():
     assert 'projection: [["subtle", "Subtle"], ["standard", "Standard"], ["vivid", "Vivid"]]' in JS
-    assert "root.dataset.projection = d.projection;" in JS
+    assert "root.dataset.projection = e.projection;" in JS
     assert 'const INTENSITY = { subtle: 0.75, standard: 1, vivid: 1.3 };' in AV
     assert 'localStorage.setItem(EVO_CAP_KEY, String(v))' in JS and "[1, 2, 3, 4, 5].filter((n) => n <= evo.tier)" in JS
 

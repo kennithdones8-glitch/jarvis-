@@ -185,7 +185,10 @@ SECURITY: dict[str, tuple[str, list[str]]] = {
         "test_avatar25::auto_quality_has_hysteresis_and_reports_measured_reasons",
         "test_avatar25::microphone_level_is_measured_locally_and_stops_with_the_recording",
         "test_avatar25::only_you_start_a_transformation_never_a_jarvis_state",
-        "test_avatar25::hud_motion_line_explains_the_movement_and_uses_real_details_only"]),
+        "test_avatar25::hud_motion_line_explains_the_movement_and_uses_real_details_only",
+        "test_avatar25::modes_are_built_from_real_projections_and_real_states",
+        "test_avatar25::the_mode_controller_is_safe_and_changes_the_look_only",
+        "test_avatar25::the_workflow_projection_draws_only_real_dependencies"]),
     "Emergency stop (protected)": ("One stop halts everything, including work in progress", [
         "test_gateway::emergency_stop_blocks_everything", "test_tasks::emergency_stop_pauses_then_requires_explicit_resume",
         "test_stop::stop_kills_running_claude_and_its_children", "test_models::emergency_stop_blocks_model_calls",

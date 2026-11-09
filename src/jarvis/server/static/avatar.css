@@ -298,3 +298,10 @@ body.projection .projbar .pj-ctl { flex-wrap: nowrap; } body.projection .projbar
   .core-wrap.inspecting { outline: none; }
   .inspectbar { width: calc(100vw - 24px); }
 }
+
+/* working modes (focus view) */
+.pp-modes { margin-top: 10px; display: grid; gap: 6px; }
+.pp-modes .row { gap: 6px; flex-wrap: wrap; }
+.pp-mode-now { font-size: 13px; color: var(--muted, #b9aa91); overflow-wrap: anywhere; }
+.pp-mode-now b { color: var(--gold, #f2c46d); font: 600 12px var(--display); letter-spacing: .16em; text-transform: uppercase; }
+.pp-mode-now small { display: block; font-size: 12px; }

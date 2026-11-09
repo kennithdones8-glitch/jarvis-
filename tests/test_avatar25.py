@@ -173,7 +173,7 @@ def test_gestures_are_captured_only_while_inspecting():
     assert 'if (inspecting()) return;             // inspecting: clicks only steer the camera' in AV
     assert ".core-wrap.inspecting { touch-action: none;" in CSS and "touch-action: none" not in CSS.split(".core-wrap.inspecting")[0]
     assert 'if (!stopInspect()) closeProjection();' in JS   # Esc: inspection first, then the focus view
-    assert "stopInspect();\n  document.body.classList.remove(\"projection\");" in JS
+    assert "stopInspect();\n  leaveWorkMode();\n  document.body.classList.remove(\"projection\");" in JS
     for forbidden in ("fetch(", "localStorage.setItem", "innerHTML"):   # the renderer side still only shows
         assert forbidden not in AV and forbidden not in CAM and forbidden not in PRESETS, forbidden
 
@@ -544,3 +544,48 @@ def test_the_renderer_waits_for_a_size_before_drawing():
     the first frame then crashed. It now skips drawing until resize() has sized them."""
     assert "if (post && !post.dims) { settling = Math.max(settling, 1); return; }" in AV3
     assert AV3.index("if (post && !post.dims)") < AV3.index("if (post) post.begin(); else renderer.clear();")
+
+
+# ---- Evolution 3.0 phase 4: working modes and mission dependencies -------------------------------------------------
+def test_modes_are_built_from_real_projections_and_real_states():
+    out = events("out.modes = E.MODES; out.states = SM.STATES; out.proj = E.PROJECTIONS; "
+                 "out.of = Object.fromEntries(SM.STATES.map((s) => [s, E.modeFor(s)]));")
+    assert list(out["modes"]) == ["command", "engineering", "intelligence", "strategy", "system", "creative"]
+    for name, m in out["modes"].items():
+        assert set(m["projections"]) <= set(out["proj"]), name
+        assert set(m["auto"]) <= set(out["states"]), name                         # only real states select a mode
+        assert set(m["look"]) <= {"diag", "projection", "animation", "particles"}, name
+    assert out["modes"]["creative"]["auto"] == [] and "only you choose it" in out["modes"]["creative"]["means"]
+    for critical in ("error", "halted", "disagreeing", "approval"):
+        assert out["of"][critical] == "system"
+    assert out["of"]["idle"] is None and out["of"]["speaking"] is None                # no activity: no mode change
+    autos = [s for m in out["modes"].values() for s in m["auto"]]
+    assert len(autos) == len(set(autos))                                          # one mode per state
+
+
+def test_the_mode_controller_is_safe_and_changes_the_look_only():
+    ctl = JS.split("// ---- working modes (Evolution 3.0, phase 4)")[1].split("\nfunction refreshProjections")[0]
+    for forbidden in ("api(", "call(", "act(", "saveDisplay(", '"jarvis-display"'):
+        assert forbidden not in ctl, forbidden                                   # never runs anything, never saves your settings
+    assert "if (!M || !window.JarvisAvatar || ui.settingMode) return;" in ctl     # opening a projection can't re-enter
+    assert ctl.index("ui.wmode = name; ui.wmodeAt = Date.now()") < ctl.index("switchProjections(M);")
+    assert "(held || want === \"system\")" in ctl                                 # critical: at once; others: after 8 s
+    assert "MODE_HOLD_MS = 8000, MODE_RETURN_MS = 20000" in ctl
+    assert "if (JarvisAvatar.preview) return;" in JS.split("function autoProjection(state) {")[1].split("\n}\n")[0]
+    eff = re.search(r"function effectiveDisplay\(.*?\n\}\n", JS, re.S).group(0)
+    assert 'document.body.classList.contains("projection") && ui.wlook' in eff    # the focus view only
+    assert "leaveWorkMode();" in re.search(r"function closeProjection\(.*?\n\}\n", JS, re.S).group(0)
+
+
+def test_the_workflow_projection_draws_only_real_dependencies():
+    out = director("""
+const d = { nodes: [{ id: "m", kind: "mission", label: "m", state: "running" },
+  { id: "a", kind: "step", label: "a", state: "done" }, { id: "b", kind: "step", label: "b", state: "done" },
+  { id: "c", kind: "step", label: "c", state: "pending" }],
+  edges: [{ from: "m", to: "a", rel: "step" }, { from: "m", to: "b", rel: "step" }, { from: "m", to: "c", rel: "step" },
+          { from: "a", to: "c", rel: "needs" }] };
+D.show("workflow", d);
+const segs = []; scene.traverse((o) => { if (o.isLineSegments && o.geometry.attributes.position.count && Math.abs(o.material.opacity - 0.55) < 1e-6) segs.push(o.geometry.attributes.position.count / 2); });
+out.segs = segs;
+""")
+    assert out["segs"] == [2]   # one dependency (a -> c) drawn as an arc of two segments; independent steps aren't chained

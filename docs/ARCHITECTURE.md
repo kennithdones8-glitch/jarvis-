@@ -412,6 +412,15 @@ used). Tests prove each protection drill fails when its protection is disabled.
 - **Initiative feed:** `initiative.py` (`candidates`, `feed`, `dismiss`, `should_notify`); `GET /api/initiative`,
   `POST /api/initiative/dismiss`; `Notifier.poll` sends the daily generic notification after the quiet-hours check.
 
+## Working modes (work branch, Evolution 3.0 phase 4)
+
+- `avatar-events.js` `MODES` (projections, view, look, `auto` states) and `modeFor(state)`; one source of truth with
+  the rest of the event-to-visual map. `app.js`: `enterWorkMode` / `leaveWorkMode` with the focus view, `setWorkMode`
+  (re-entry guarded; the mode is recorded before projections open, because opening one re-renders the page),
+  `workModeTick` (Auto: System at once, others after `MODE_HOLD_MS`, Command after `MODE_RETURN_MS`), and
+  `effectiveDisplay` (the mode's look over your saved settings, focus view only). Preference: `localStorage
+  ["jarvis-workmode"]`.
+
 ## Service and backups
 
 `service.py` writes a per-user LaunchAgent that runs `uv run jarvis dashboard --no-open` at login and after

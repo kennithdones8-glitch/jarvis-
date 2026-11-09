@@ -2,6 +2,22 @@
 
 ## Unreleased — after 0.19.3 (work branch `claude/funny-allen-ygy8kk`, not yet released)
 
+### Working modes and mission dependency maps (Evolution 3.0, phase 4)
+
+- **Six working modes in the focus view**: Command (the overview), Engineering (software architecture + simulation,
+  three-quarter view, Diagnostics on), Intelligence (research sources + knowledge network), Strategy (workflow +
+  timeline), System (security shield + data, Diagnostics on) and Creative (globe, a calmer cinematic look). Each is a
+  set of projections, a camera view and a few look settings — workspaces, not new dashboards.
+- **Auto** (the default) follows what JARVIS is really doing: coding and experiments → Engineering; research,
+  analysis and learning → Intelligence; planning, running and verifying missions → Strategy; a decision, a refusal,
+  a warning, an error, the emergency stop or recovery → System (at once). Other changes wait until the current mode
+  has had 8 s; it returns to Command 20 s after the activity ends. Creative is never chosen automatically (nothing
+  real means "be creative"). A preview never changes the mode. Choosing a mode yourself turns Auto off.
+- Projections a mode opened close when it changes; ones you opened or pinned stay. A mode's look lasts only while
+  it does: your saved display settings never change, and leaving the focus view restores them.
+- **Mission dependencies**: the workflow projection now draws a line only where a step really waits for another (an
+  arc above the row), instead of chaining every step, so independent steps no longer look sequential.
+
 ### Connected intelligence: tournament → routing, knowledge links, one suggestions feed (Evolution 3.0, phase 3)
 
 - **The intelligence tournament informs routing** (level 7 only). When its evidence clearly separates two models

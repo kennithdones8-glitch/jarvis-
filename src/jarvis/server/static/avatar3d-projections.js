@@ -42,13 +42,22 @@ const BUILD = {
       const y = 0.7 - mi * 0.32;
       k.node(g, m, new THREE.Vector3(-0.85, y, 0), 0.06, STATE_COLOR[m.state] || GOLD, "box");
       const steps = d.edges.filter((e) => e.from === m.id && e.rel === "step").map((e) => d.nodes.find((n) => n.id === e.to)).filter(Boolean);
-      let prev = new THREE.Vector3(-0.85, y, 0);
+      // steps in order along the row; a line only where one step really waits for another ("needs" edges), drawn as
+      // an arc above the row, so steps that can run independently are not shown chained together
+      const at = new Map();
       steps.slice(0, 9).forEach((s, si) => {
         const p = new THREE.Vector3(-0.6 + si * 0.17, y, 0);
-        k.line(g, prev, p, STATE_COLOR[s.state] || SILVER, 0.5);
+        at.set(s.id, p);
         k.node(g, s, p, 0.035, STATE_COLOR[s.state] || SILVER);
-        prev = p;
       });
+      if (at.size) k.line(g, new THREE.Vector3(-0.85, y, 0), at.values().next().value, SILVER, 0.25);   // the mission to its first step
+      const arcs = [];
+      for (const e of d.edges.filter((x) => x.rel === "needs" && at.has(x.from) && at.has(x.to))) {
+        const a = at.get(e.from), b = at.get(e.to), lift = 0.05 + 0.02 * Math.min(4, Math.abs(b.x - a.x) / 0.17);
+        const mid = new THREE.Vector3((a.x + b.x) / 2, y + lift, 0.02);
+        arcs.push([a, mid], [mid, b]);
+      }
+      k.lines(g, arcs, GOLD, 0.55);
       d.edges.filter((e) => e.from === m.id && e.rel === "checkpoint").map((e) => d.nodes.find((n) => n.id === e.to)).filter(Boolean)
         .slice(0, 2).forEach((a, ai) => {
           const p = new THREE.Vector3(-0.85 + 0.12 * (ai + 1), y + 0.12, 0.05);

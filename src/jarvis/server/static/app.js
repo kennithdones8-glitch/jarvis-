@@ -1634,13 +1634,18 @@ function avatarOptions(d) {
   return { quality: d.quality, particles: d.particles, animation: d.animation, reactor: d.reactor, orbit: d.orbit,
            env: d.env === "on", orbitals: d.orbitals === "on", panels: document.body.classList.contains("projection"), view: d.view, camspeed: d.camspeed };
 }
+// The working mode's look (focus view only) on top of your saved settings; the saved settings are never changed
+function effectiveDisplay(d) {
+  return document.body.classList.contains("projection") && ui.wlook ? { ...d, ...ui.wlook } : d;
+}
 function applyDisplay(d) {
   const root = document.documentElement;
   root.dataset.text = d.text;
   root.dataset.density = d.density;
   root.dataset.fx = d.fx;
-  root.dataset.projection = d.projection;
-  if (window.JarvisAvatar) { JarvisAvatar.setOptions(avatarOptions(d)); JarvisAvatar.refresh(); }
+  const e = effectiveDisplay(d);
+  root.dataset.projection = e.projection;
+  if (window.JarvisAvatar) { JarvisAvatar.setOptions(avatarOptions(e)); JarvisAvatar.refresh(); }
   if (window.JarvisSound && JarvisSound.enabled !== (d.sound === "on")) { JarvisSound.setEnabled(d.sound === "on"); duckSound(); }
   renderDiag();
 }
@@ -1760,7 +1765,7 @@ function renderInspectBar() {
 function renderDiag() {
   const el = $("#avdiag");
   if (!el) return;
-  const on = loadDisplay().diag === "on" && document.body.classList.contains("projection") && window.JarvisAvatar;
+  const on = effectiveDisplay(loadDisplay()).diag === "on" && document.body.classList.contains("projection") && window.JarvisAvatar;
   el.hidden = !on;
   clearInterval(ui.diagTimer); ui.diagTimer = 0;
   if (!on) return;
@@ -2719,10 +2724,85 @@ function describeProjection(m, d) {
 // automatic selection in the focus view: what JARVIS is really doing picks the projection (avatar-events.js)
 function autoProjection(state) {
   if (!document.body.classList.contains("projection") || !window.JarvisAvatar || !window.JarvisEvents) return;
+  if (JarvisAvatar.preview) return;   // a preview is not real activity: it never opens projections or changes the mode
+  if (JarvisEvents.MODES) { workModeTick(state); return; }   // the working modes decide (below)
   const m = JarvisEvents.projectionFor(state);
   if (!m || ui.autoProj === `${state}:${m}`) return;
   ui.autoProj = `${state}:${m}`;
   if (!JarvisAvatar.projections.some((p) => p.module === m)) openProjectionModule(m, { quiet: true });
+}
+
+// ---- working modes (Evolution 3.0, phase 4): contextual workspaces in the focus view ---------------------------
+// A mode is a set of projections, a camera view and a few look settings (avatar-events.js MODES). On Auto the real
+// activity picks it: System at once (errors, the emergency stop, a refusal, a decision), others after the current mode
+// has had 8 s, and back to Command 20 s after the activity ends. Choosing a mode yourself turns Auto off. Projections
+// a mode opened close when it changes; ones you opened or pinned stay. Your saved display settings never change.
+const WMODE_KEY = "jarvis-workmode";
+const MODE_HOLD_MS = 8000, MODE_RETURN_MS = 20000;
+function loadWorkMode() {
+  let v = {};
+  try { v = JSON.parse(localStorage.getItem(WMODE_KEY) || "{}") || {}; } catch (e) { v = {}; }
+  const modes = (window.JarvisEvents && JarvisEvents.MODES) || {};
+  return { auto: v.auto !== false, mode: modes[v.mode] ? v.mode : "command" };
+}
+function saveWorkMode(w) { try { localStorage.setItem(WMODE_KEY, JSON.stringify(w)); } catch (e) { /* this visit only */ } }
+function setWorkMode(name, by) {
+  const M = window.JarvisEvents && JarvisEvents.MODES[name];
+  if (!M || !window.JarvisAvatar || ui.settingMode) return;
+  ui.settingMode = true;   // opening a projection re-renders the page, which runs the Auto check: never re-enter
+  ui.wmode = name; ui.wmodeAt = Date.now(); ui.wmodeWhy = by;   // recorded first, so that check sees the new mode
+  try {
+    switchProjections(M);
+  } finally { ui.settingMode = false; }
+  ui.wlook = { ...M.look, ...(M.view ? { view: M.view } : {}) };
+  applyDisplay(loadDisplay());
+  renderProjBar(); renderModeBar();
+}
+function switchProjections(M) {
+  const keep = new Set(M.projections);
+  for (const p of JarvisAvatar.projections) {
+    if ((ui.modeProj || new Set()).has(p.module) && !p.pinned && !keep.has(p.module)) JarvisAvatar.closeProjection(p.module);
+  }
+  const mine = new Set([...(ui.modeProj || [])].filter((m) => keep.has(m)));
+  for (const m of M.projections) {
+    if (!JarvisAvatar.projections.some((p) => p.module === m)) { mine.add(m); openProjectionModule(m, { quiet: true }); }
+  }
+  ui.modeProj = mine;
+}
+function workModeTick(state) {
+  const w = loadWorkMode();
+  if (!w.auto) return;
+  const want = JarvisEvents.modeFor(state), now = Date.now();
+  if (want) ui.wmodeSignalAt = now;
+  const held = now - (ui.wmodeAt || 0) > MODE_HOLD_MS;
+  if (want && want !== ui.wmode && (held || want === "system")) setWorkMode(want, state);
+  else if (!want && ui.wmode && ui.wmode !== "command" && held && now - (ui.wmodeSignalAt || 0) > MODE_RETURN_MS) setWorkMode("command", "activity ended");
+}
+function enterWorkMode() {
+  const w = loadWorkMode();
+  ui.wmodeAt = 0;
+  if (!w.auto) setWorkMode(w.mode, "you");
+  else setWorkMode((window.JarvisAvatar && JarvisEvents.modeFor(JarvisAvatar.state)) || "command", window.JarvisAvatar ? JarvisAvatar.state : "");
+}
+function leaveWorkMode() {
+  if (window.JarvisAvatar) for (const p of JarvisAvatar.projections) if ((ui.modeProj || new Set()).has(p.module) && !p.pinned) JarvisAvatar.closeProjection(p.module);
+  ui.modeProj = new Set(); ui.wlook = null; ui.wmode = null;
+  applyDisplay(loadDisplay());
+}
+function renderModeBar() {
+  const el = $("#projmodes");
+  if (!el || !window.JarvisEvents || !JarvisEvents.MODES) return;
+  const w = loadWorkMode(), M = JarvisEvents.MODES[ui.wmode] || JarvisEvents.MODES.command;
+  const chip = (label, on, fn, title) => h("button", { class: `chip${on ? " on" : ""}`, type: "button", "aria-pressed": String(on), title, onclick: fn }, label);
+  const why = !w.auto ? "you chose it" : ui.wmodeWhy === "activity ended" ? "Auto: the activity ended"
+    : `Auto: ${(AVATAR_WORDS[ui.wmodeWhy] || ui.wmodeWhy || "at rest").toLowerCase()}`;
+  el.replaceChildren(
+    h("div", { class: "row", role: "group", "aria-label": "Working mode" },
+      chip("Auto", w.auto, () => { saveWorkMode({ auto: true, mode: ui.wmode || "command" }); enterWorkMode(); }, "Follow what JARVIS is really doing"),
+      ...Object.entries(JarvisEvents.MODES).map(([k, m]) => chip(m.label, !w.auto && ui.wmode === k,
+        () => { saveWorkMode({ auto: false, mode: k }); setWorkMode(k, "you"); }, m.means))),
+    h("div", { class: "pp-mode-now" }, h("b", {}, M.label), ` — ${M.means} · ${why}`,
+      Object.keys(ui.wlook || {}).length ? h("small", {}, " (its look lasts while the mode does; your saved settings are unchanged)") : null));
 }
 function refreshProjections() {   // open projections follow the live data (every ~10 s)
   if (!window.JarvisAvatar || Date.now() - (ui.projRefreshed || 0) < 10000) return;
@@ -2757,6 +2837,7 @@ function openProjection() {
   if (window.JarvisAvatar) JarvisAvatar.setOptions({ panels: true });   // the floating panels appear in the focus view only
   renderProjControls();
   renderProjection(ui.data);
+  enterWorkMode();
   if (isPhone()) $("#projpanel").insertBefore($("#projbar"), $("#projstate"));   // phone: the list scrolls inside the focus panel
   renderProjBar();
   renderDiag();
@@ -2765,6 +2846,7 @@ function openProjection() {
 function closeProjection() {
   if (!document.body.classList.contains("projection")) return;
   stopInspect();
+  leaveWorkMode();
   document.body.classList.remove("projection");
   $("#projpanel").hidden = true; $("#projback").hidden = true;
   if (window.JarvisAvatar) { JarvisAvatar.setOptions({ panels: false }); JarvisAvatar.endPreview(); }

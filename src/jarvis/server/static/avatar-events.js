@@ -53,6 +53,26 @@
   const AUDIT_STATES = { "permission.denied": "disagreeing", "egress.denied": "disagreeing" };
   const PROJECTIONS = ["architecture", "workflow", "neural", "timeline", "data", "security", "globe", "simulation", "research"];
 
+  // Working modes (Evolution 3.0, phase 4): contextual workspaces in the focus view, not separate dashboards. Each is
+  // a set of projections, a camera view and a few look settings, applied for as long as the mode lasts (your saved
+  // display settings are never changed). "auto" states: the real activities that select the mode on Auto.
+  // Creative has none: no real signal means "being creative", so only you choose it.
+  const MODES = {
+    command:      { label: "Command", means: "the overview: what needs you and what's running", projections: [], view: null, look: {}, auto: [] },
+    engineering:  { label: "Engineering", means: "code, tests and experiments", projections: ["architecture", "simulation"], view: "three",
+                    look: { diag: "on" }, auto: ["coding", "experimenting"] },
+    intelligence: { label: "Intelligence", means: "research and what JARVIS knows", projections: ["research", "neural"], view: null, look: {},
+                    auto: ["researching", "analyzing", "learning"] },
+    strategy:     { label: "Strategy", means: "plans, missions and what comes next", projections: ["workflow", "timeline"], view: null, look: {},
+                    auto: ["planning", "executing", "verifying"] },
+    system:       { label: "System", means: "security, health and performance", projections: ["security", "data"], view: null,
+                    look: { diag: "on" }, auto: ["approval", "disagreeing", "warning", "error", "halted", "recovery"] },
+    creative:     { label: "Creative", means: "a calmer, cinematic space (only you choose it)", projections: ["globe"], view: "three",
+                    look: { projection: "vivid", animation: "calm", particles: "high" }, auto: [] },
+  };
+  const MODE_OF = {};
+  for (const [name, m] of Object.entries(MODES)) for (const st of m.auto) MODE_OF[st] = name;
+
   const visual = (state) => MAP[state] || MAP.idle;
   const personalityOf = (state) => visual(state).personality;
   // the newest audit entry (seq above `after`) that maps to a state, or null. Entries are newest first.
@@ -63,7 +83,8 @@
     }
     return null;
   }
-  const api = { PERSONALITY, MAP, AUDIT_STATES, PROJECTIONS, visual, personalityOf, fromAudit,
+  const api = { PERSONALITY, MAP, AUDIT_STATES, PROJECTIONS, MODES, visual, personalityOf, fromAudit,
+                modeFor: (state) => MODE_OF[state] || null,
                 projectionFor: (state) => visual(state).projection, effectOf: (state) => visual(state).effect,
                 soundOf: (state) => visual(state).sound };
   if (typeof module !== "undefined" && module.exports) module.exports = api;
