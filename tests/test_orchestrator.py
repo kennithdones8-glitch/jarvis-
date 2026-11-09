@@ -311,7 +311,7 @@ def test_a_contradiction_becomes_a_question_not_a_plan(make_kernel):
             return ChatResponse(text=json.dumps(write), provider="ollama", model="m", usage=Usage(1, 1))
     plan = Planner(Models(), make_kernel().registry, roots=["/tmp/x"], notes_dir="/tmp/x").plan(
         "Save a summary as s.md, but don't create any new files")
-    assert plan.kind == "clarify" and "You said not to create any new files" in plan.message
+    assert plan.kind == "clarify" and "not to create any new files" in plan.message  # caught by I (request) or D (plan)
 
 
 def test_a_task_about_an_existing_appointment_is_planned_with_it_looked_up(orch, monkeypatch):
@@ -339,3 +339,78 @@ def test_a_task_about_an_existing_appointment_is_planned_with_it_looked_up(orch,
     script["plans"].append(summary_plan(root, f"{root}/notes/x.md"))
     o.plan("Add a reminder to call the dentist tomorrow at 10am")  # no existing appointment named: no lookup
     assert len(asked) == 1
+
+
+def _event(title, day, hm):
+    from datetime import datetime, timedelta
+    d = datetime.now().astimezone().replace(hour=int(hm[:2]), minute=int(hm[3:]), second=0, microsecond=0) + timedelta(days=day)
+    return {"title": title, "start": d.isoformat(), "end": (d + timedelta(minutes=30)).isoformat()}
+
+
+def _save_plan(root):
+    return {"goal": "Save", "question": None, "cannot": None, "steps": [
+        {"description": "Save", "tool": "fs", "action": "write", "args": {"path": f"{root}/notes/x.md", "content": "x"},
+         "depends_on": []}]}
+
+
+def test_a_task_about_an_appointment_on_the_wrong_day_asks_first(orch, monkeypatch):
+    """Real failure (hard set): a reminder "before my dentist appointment tomorrow" was planned although the
+    appointment was the day after. JARVIS checks the calendar itself (read-only) and asks."""
+    o, script, root = orch
+    events = [_event("Dentist", 2, "11:00"), _event("Team lunch", 1, "12:00")]
+    monkeypatch.setattr(type(o), "_read_calendar", lambda self, a, b: events)
+    plan = o.plan("Remind me to take my insurance card to my dentist appointment tomorrow")
+    assert plan.kind == "clarify" and script["calls"] == []  # asked before any planning call
+    assert plan.message.startswith("I can't see a dentist appointment on ") and "“Dentist”" in plan.message
+    assert plan.message.endswith("Is that the one you mean?")
+    # the same wording when it IS tomorrow: planned as usual
+    events[0] = _event("Dentist check-up", 1, "11:00")
+    script["plans"].append(_save_plan(root))
+    assert o.plan("Remind me to take my insurance card to my dentist appointment tomorrow").kind == "plan"
+    # nothing like it anywhere near: ask when it is
+    plan = o.plan("Book a taxi for my physio session on Friday") if not events.clear() else None
+    assert plan.kind == "clarify" and plan.message.endswith("When is it?")
+
+
+def test_the_premise_check_never_blocks_what_it_cant_check(orch, monkeypatch):
+    o, script, root = orch
+    monkeypatch.setattr(type(o), "_read_calendar", lambda self, a, b: None)  # no calendar access
+    script["plans"].append(_save_plan(root))
+    assert o.plan("Remind me before my dentist appointment tomorrow").kind == "plan"
+    calls = []
+    monkeypatch.setattr(type(o), "_read_calendar", lambda self, a, b: calls.append(1) or [])
+    script["plans"].append(_save_plan(root))
+    assert o.plan("Summarise my meeting notes").kind == "plan"  # no day named: nothing to check
+    script["plans"].append(_save_plan(root))
+    assert o.plan("Add a reminder to call the dentist tomorrow at 10am").kind == "plan"  # no existing event named
+    assert calls == []
+    monkeypatch.undo()
+    assert o._read_calendar(None, None) is None  # the test kernel has no calendar tool: nothing is read
+
+
+@pytest.mark.parametrize("request_, asks", [
+    ("Write my notes up as weekly.md, but don't create any new files", True),
+    ("Put the totals into a new file without creating any new files", True),
+    ("Remind me to call Sam on Friday, but don't add any reminders", True),
+    ("Draft an email to jo@example.com but don't email anyone", True),
+    ("Summarise budget.txt here, but don't create any new files", False),  # no file asked for: no contradiction
+    ("Save the summary as weekly.md", False),
+    ("Tidy the notes folder without deleting anything", False),
+])
+def test_a_request_that_contradicts_itself_is_asked_about_before_planning(request_, asks):
+    from jarvis.orchestrator.planner import contradicts_itself
+    q = contradicts_itself(request_)
+    assert (q is not None) == asks, request_
+    if asks:
+        assert "Which should it be" in q
+
+
+def test_the_planner_asks_before_any_model_call_when_the_request_contradicts_itself(make_kernel):
+    from jarvis.orchestrator.planner import Planner
+
+    class Models:
+        def complete(self, *a, **kw):
+            raise AssertionError("no model call for a self-contradicting request")
+    plan = Planner(Models(), make_kernel().registry, roots=["/tmp/x"], notes_dir="/tmp/x").plan(
+        "Save a summary of plan.txt as summary.md, but don't create any new files")
+    assert plan.kind == "clarify" and "said not to create any new files" in plan.message

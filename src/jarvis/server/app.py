@@ -42,8 +42,8 @@ from ..core.tasks import InvalidTransition, TaskState
 from ..core.tools import ApprovalRequired
 from ..core.util import now_iso
 from ..codecheck import MAX_CASES, TEST_PROMPT, SandboxUnavailable, code_of, parse_cases, run_cases, wants_code
-from ..orchestrator.answer_checks import chat_problems
-from ..orchestrator.lookup import lenient_json
+from ..orchestrator.answer_checks import chat_problems, facts_left_out, first_event_left_out
+from ..orchestrator.lookup import FACTS_HEAD, lenient_json
 from ..orchestrator.grounding import applies, unsupported_times
 from ..models import ChatRequest, Message, Need, NoModelAvailable
 from ..models.types import Category
@@ -826,11 +826,18 @@ class Dashboard:
             msgs.append(context)
         stays_here = mode == "quick" or self.kernel.models.chat_stays_local(
             message, local_only=local_only, level=found.level if mode == "balanced" else None)
+        rest = []
         if stays_here and (rest := memory.everything_else(recalled)):  # small store: the rest too, never sent off
             msgs.append(memory.context_message(rest, local_only=True, heading=(
                 "Everything else you remember about the owner, oldest first (a later fact replaces an earlier one; "
                 "use only what's relevant):")))
             recalled = recalled + rest
+        # Careful (strongest local model) only when the answer has to read JARVIS's worked-out facts, or the question
+        # matched a memory and the rest of a small store came with it (combining them is the hard part). Not for
+        # every chat just because memories exist: "tell me a joke" stays on the fast model.
+        profile_ids = {m["id"] for m in memory.profile()}
+        matched = any(m["id"] not in profile_ids for m in recalled[:len(recalled) - len(rest)])
+        careful = (bool(rest) and matched) or bool(found.context and FACTS_HEAD in found.context.content)
         turns = 0
         for turn in history[-10:]:
             if turn.get("role") in ("user", "assistant") and isinstance(turn.get("content"), str):
@@ -852,7 +859,7 @@ class Dashboard:
             elif mode == "deep":
                 need = Need("chat", min_quality=5, prefer="quality", local_only=local_only)
             else:
-                need = Need("chat", prefer="auto", local_only=local_only)
+                need = Need("chat", prefer="auto", local_only=local_only, careful=careful)
             request = ChatRequest(tuple(msgs), max_tokens=max_tokens)
             try:
                 r = self.kernel.models.complete(need, request, purpose="dashboard chat", on_token=on_token,
@@ -880,6 +887,12 @@ class Dashboard:
             problems = ([f"your answer mentions {', '.join(bad)}, which isn't in the looked-up data: use only times "
                          "from the <lookup> data"] if bad else [])
             problems += chat_problems(message, r.text, looked_up=found.context is not None)
+            if found.context is not None and (left := facts_left_out(r.text, found.context.content)):
+                problems.append(f"your answer leaves out {', '.join(left)}, which JARVIS listed as overdue or due in "
+                                "the time asked about: include every item JARVIS listed")
+            if found.context is not None and (first := first_event_left_out(message, r.text, found.context.content)):
+                problems.append(f"the first event JARVIS worked out is {', '.join(first)} (see \"First event on\" in "
+                                "the <lookup> data): give that as the first commitment, with its time")
             # One retry with the problems pointed out, then show what's still wrong rather than hide it. Only for a
             # local answer: retrying a Claude answer would be a new request needing your consent again.
             if problems and r.provider in self.kernel.models.router.local:
@@ -890,7 +903,8 @@ class Dashboard:
                                         + "\nReply with the corrected answer only.", Category.CONVERSATION)]
                 # always local: the first answer was, and a retry must never become a consent question
                 r = self.kernel.models.complete(local_need, ChatRequest(tuple(retry), max_tokens=max_tokens),
-                                                purpose="dashboard chat (answer check retry)", level=found.level)
+                                                purpose="dashboard chat (answer check retry)", level=found.level,
+                                                question=message)
                 bad = unsupported_times(r.text, found.context.content, message) if checks_times else []
             self.kernel.audit.record("chat.answer_check", problems=len(problems), retried=retried,
                                      still=len(chat_problems(message, r.text, looked_up=found.context is not None, puzzle=False)))
@@ -950,7 +964,8 @@ class Dashboard:
                                     "corrected code in one Python code block.", Category.CONVERSATION)]
             # always local: the first answer was, and a fix must never become a consent question
             r2 = self.kernel.models.complete(replace(need, local_only=True, min_quality=1), ChatRequest(tuple(retry), max_tokens=900),
-                                             purpose="dashboard chat (coding self-test fix)", level=level)
+                                             purpose="dashboard chat (coding self-test fix)", level=level,
+                                             question=message)
             again = code_of(r2.text, message)
             if again:
                 second = run_cases(again[0], cases)

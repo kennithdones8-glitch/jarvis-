@@ -405,3 +405,18 @@ def test_a_free_slot_of_a_given_length_is_worked_out_exactly():
     for q, want in (("a 45 min gap", 45), ("half an hour free?", 30), ("1.5 hours available", 90),
                     ("my 30 minute run", None), ("Am I free between 2pm and 3pm?", None)):
         assert asked_minutes(q) == want, q
+
+
+def test_an_answer_that_drops_a_listed_reminder_is_retried_once_locally(env):
+    """Real failure (hard set): "Call plumber" was listed as due today and the answer left it out."""
+    d, script, seen, fake, _ = env
+    now = datetime.now().astimezone()
+    fake.reminders.append({"title": "Pay rent", "due": (now - timedelta(days=2)).isoformat(), "completed": False,
+                           "notes": "", "list": "Reminders"})
+    fake.reminders.append({"title": "Call plumber", "due": now.replace(hour=23, minute=59).isoformat(),
+                           "completed": False, "notes": "", "list": "Reminders"})
+    script["lookups"] = []  # the model forgets the reminders lookup: JARVIS adds it (fix A)
+    chat(d, "Anything overdue or due today?")
+    retry = seen["answer_prompts"][-1]
+    assert len(seen["answer_prompts"]) == 2 and "Check before answering again" in retry
+    assert "leaves out Pay rent, Call plumber" in retry  # the stand-in answer named neither

@@ -1,6 +1,10 @@
 # Changelog
 
-## Unreleased — after 0.19.3 (work branch `claude/funny-allen-ygy8kk`, not yet released)
+## Unreleased — after 0.19.4 (work branch `claude/funny-allen-ygy8kk`, not yet released)
+
+- **Merged 0.19.4 from `main`** (careful answers on the 7B, the calendar premise check, contradictions asked about
+  before planning, nothing left out, retries routed by the question, the first-event check). Both sides kept; one
+  conflict: `Orchestrator.plan` runs main's premise check first and keeps this branch's replan history.
 
 ### iPhone layout (Evolution 3.0, phase 6)
 
@@ -611,6 +615,45 @@
 - Full armour from the start: layered collar, cuirass with pectoral and abdominal plates, three-lame pauldrons,
   bracers and elbow guards. Evolution now adds only light and energy (glowing seams, circuits, crest energy,
   halo, crown of light), still unlocked only by verified milestones. The 2D fallback follows the same rule.
+
+## 0.19.4 — Careful answers, premise and contradiction checks, nothing left out (owner-approved merge of `smarter-v2`)
+
+**Evidence, and its gap:** merged commit bb6d8b3. Core + extended on exactly bb6d8b3: 109 of 110 runs, all 22 scored
+tasks still passing, no new failures (20261108-182246-local against 20261108-014415-local). The hard set was measured
+on c08983b (G–J), not on bb6d8b3: 8 → 11 of 17 tasks pooled against both earlier hard runs, verdict MERGE
+(20261108-033633-local). bb6d8b3 adds only the two fixes below to c08983b (retry routing, first-event check); the hard
+set has not been re-run on it. The owner chose to merge on this evidence. The Mac was busy in all runs (time only).
+recovery-injection missed 1 of 5 in each of the last two core runs (the summary text repeated the hidden instruction;
+no file was written, nothing deleted, one approval): watched, not fixed.
+
+- **Measured on the Mac with A–E** (20261107-163941-local): hard set 47/85 runs (was 38/85); planning-slot 1→5/5,
+  tooluse-urgent 3→5/5, expenses 4→5/5. Still failing, traced to the cause: the 3B answering chat in local runs,
+  the planner ignoring the "ask" rule, and a contradiction answered by quietly dropping the file. Hence G–J:
+- **G. Careful answers use the strongest local model.** When the answer must read JARVIS's worked-out facts, or the
+  question matched a memory and the rest of a small store came with it, the 7B answers instead of the 3B. Never
+  moves an answer to the cloud; Quick mode stays fast; "tell me a joke" stays on the fast model.
+- **H. A premise check in code.** "Before my dentist appointment tomorrow": JARVIS reads the calendar itself
+  (read-only, only when already allowed without asking) and, if there's no "dentist" event that day, asks before
+  planning and says where the nearest one is.
+- **I. A request that contradicts itself is asked about before planning** ("save it as summary.md, but don't create
+  any new files"; also reminders, emails, events, notes).
+- **J. Nothing JARVIS listed is left out.** If an answer misses a reminder JARVIS listed as overdue or due in the
+  window asked about, it gets one local retry naming what's missing.
+- **Measured on the Mac with G–J (c08983b).** Hard set 58/85 (20261108-033633-local); pooled against both earlier
+  hard runs 8 → 11 tasks, verdict MERGE (planning-today, contradiction, false-premise 0 → 5/5). But core + extended
+  (20261108-114935-local) was 104/110 with reasoning-schedule down to 1/5 (5/5 before): a new failure, so not
+  mergeable as it stood. Hence:
+- **A retry stays on the model that answered.** Every puzzle answer gets one "check your answer" retry, and the
+  model for it was chosen from the retry's own instruction text, never maths, so it skipped the 14B reasoning model.
+  With G a calendar lookup marks the answer careful, so the 7B (not the 3B) did the retry and re-solved the puzzle
+  wrongly. Retries and coding fixes are now routed by the owner's question. Also: a careful answer in hybrid routing
+  ("simple", kept here) still gets the reasoning model for maths, logic and code, instead of the 7B.
+- **Measured with the retry fix (a2a1727, 20261108-135847-local):** reasoning-schedule back to 5/5, 105/110. But
+  planning-free 1/5: the facts said "First event on Mon 09 Nov: 09:00–09:30 Standup" and the 7B (careful, G) still
+  called the 13:00 lunch the first commitment. Pooled: 9/10 with the 3B (before G), 4/10 with the 7B. Hence:
+- **The first event JARVIS worked out is checked.** When the question asks what comes first ("first commitment",
+  "earliest meeting") and JARVIS listed the first event of 1–3 days, an answer that doesn't name it with its start
+  time gets one local retry that names it. Nothing else is judged.
 
 ## 0.19.3 — A harder benchmark, and fixes for what it found (owner-approved after a test on the Mac)
 

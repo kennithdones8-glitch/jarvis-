@@ -461,3 +461,48 @@ def test_reasoning_capability_is_valid_config():
     cfg = parse_model_config({"providers": {"o": {"kind": "ollama", "models": [
         {"id": "big:14b", "capabilities": ["reasoning"], "context_tokens": 16384, "quality": 4, "speed": 1}]}}})
     assert cfg.providers[0].models["big:14b"].capabilities == frozenset({"reasoning"})
+
+
+def test_a_careful_answer_uses_the_strongest_local_model_and_never_the_cloud(model_kernel):
+    """Real failures (hard set): the 3B dropped a reminder JARVIS had listed, and couldn't link two memories in
+    front of it. Answers built on worked-out facts or several memories use the strongest local chat model."""
+    k, ollama, openai = model_kernel(local_installed=("small:3b", "mid:7b"), extra_local=MID)
+    k.models.router.mode = "local_first"
+    ask = req(SYSTEM, Message("user", "What do I need to deal with today?"))
+    assert k.models.complete(Need("chat", prefer="auto"), ask, purpose="chat").model == "small:3b"  # as before
+    assert k.models.complete(Need("chat", prefer="auto", careful=True), ask, purpose="chat").model == "mid:7b"
+    k.models.router.mode = "hybrid"
+    simple = k.models.router  # a "simple" rating keeps the answer local; careful only changes which local model
+    need = k.models._apply_hybrid(Need("chat", prefer="auto", careful=True), ask, None, "simple")
+    assert need.local_only and need.prefer == "quality" and simple.route(need, ask).candidates[0].model == "mid:7b"
+    plain = k.models._apply_hybrid(Need("chat", prefer="auto"), ask, None, "simple")
+    assert plain.prefer == "speed"
+    assert openai.received == []
+    quick = Need("chat", prefer="speed", local_only=True, keep_speed=True, careful=True)  # Quick stays quick
+    assert k.models.complete(quick, ask, purpose="chat").model == "small:3b"
+
+
+def test_a_retry_of_a_maths_question_stays_on_the_reasoning_model(model_kernel):
+    """Real failure (all set on smarter-v2): the 14B solved the schedule puzzle, then the one "check your answer"
+    retry was judged by its own instruction text, not the question, and went to the 7B, which re-solved it wrongly."""
+    k, ollama, openai = model_kernel(local_installed=("small:3b", "mid:7b", "big:14b"), extra_local=MID + BIG)
+    retry = req(SYSTEM, Message("user", FLOUR), Message("assistant", "100 g"),
+                Message("user", "Check before answering again:\n- check each condition\nReply with the corrected answer only."))
+    careful = Need("chat", prefer="auto", local_only=True, min_quality=1, careful=True)
+    assert k.models.complete(careful, retry, purpose="retry").model == "mid:7b"  # judged by the instruction: the bug
+    assert k.models.complete(careful, retry, purpose="retry", question=FLOUR).model == "big:14b"
+    assert k.models.complete(careful, retry, purpose="retry", question="What should I cook?").model == "mid:7b"
+    assert openai.received == []
+
+
+def test_a_careful_answer_in_hybrid_still_gets_the_reasoning_model(model_kernel):
+    k, ollama, openai = model_kernel(local_installed=("small:3b", "mid:7b", "big:14b"), extra_local=MID + BIG)
+    k.models.router.mode = "hybrid"
+    careful = Need("chat", prefer="auto", careful=True)  # hybrid rates it "simple": kept here, strongest local model
+    r = k.models.complete(careful, req(SYSTEM, Message("user", FLOUR)), purpose="chat", level="simple")
+    assert r.model == "big:14b"
+    r = k.models.complete(careful, req(SYSTEM, Message("user", "What should I cook tonight?")), purpose="chat",
+                          level="simple")
+    assert r.model == "mid:7b"
+    deep = Need("chat", prefer="quality", local_only=True)  # Deep-style "quality" without careful: unchanged
+    assert k.models.complete(deep, req(SYSTEM, Message("user", "What should I cook tonight?")), purpose="c").model == "mid:7b"

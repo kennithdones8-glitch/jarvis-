@@ -391,3 +391,21 @@ def test_a_big_memory_falls_back_to_keyword_recall(brain, fake_claude, monkeypat
     _two_memories(k)
     d.chat(CAT_Q, [])
     assert "Lisbon" not in json.dumps(local.received[-1]["body"]["messages"])
+
+
+def test_answers_that_combine_memories_are_marked_careful(brain, fake_claude, monkeypatch):
+    k, local, d = brain("local_first", claude=False)
+    _two_memories(k)
+    needs = []
+    real = k.models.complete
+
+    def spy(need, request, **kw):
+        needs.append(need)
+        return real(need, request, **kw)
+    monkeypatch.setattr(k.models, "complete", spy)
+    d.chat(CAT_Q, [])
+    assert [n.careful for n in needs if n.capability == "chat"][-1] is True
+    needs.clear()
+    d.chat("Tell me a joke", [])  # matches no memory and nothing is worked out: the fast model, as before
+    chat = [n for n in needs if n.capability == "chat"]
+    assert chat and chat[-1].careful is False

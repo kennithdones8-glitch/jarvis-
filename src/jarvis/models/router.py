@@ -40,6 +40,11 @@ class Need:
     # Set by ModelService when the question is maths, logic or code that will be answered on this Mac: try a local
     # "reasoning" model first, if one is installed, then the usual choice.
     reasoning: bool = False
+    # The answer must read JARVIS's worked-out facts or combine several memories: where routing would pick the
+    # fastest local model ("auto" in local-first, or a "simple" chat in hybrid), pick the strongest local one
+    # instead. It never moves an answer to the cloud. Real failures (hard set, smarter-v2): the 3B dropped a
+    # reminder JARVIS had listed as due today, and couldn't link two memories that were both in front of it.
+    careful: bool = False
 
     def __post_init__(self) -> None:
         if self.capability not in CAPABILITIES:
@@ -162,7 +167,8 @@ class ModelRouter:
                 if reason:
                     rejected[key] = reason
                     continue
-                prefer = need.prefer if need.prefer != "auto" else ("speed" if self.mode == "local_first" else "quality")
+                prefer = need.prefer if need.prefer != "auto" else (
+                    "speed" if self.mode == "local_first" and not need.careful else "quality")
                 primary, secondary = (info.quality, info.speed) if prefer == "quality" else (info.speed, info.quality)
                 local_bonus = 100 if location == "local" and self.mode == "local_first" else 0
                 nudge = max(-3.0, min(3.0, self.adjust.get(mid, 0.0)))   # bounded: never beats the local-first bonus
@@ -198,12 +204,14 @@ class ModelService:
 
     def complete(self, need: Need, request: ChatRequest, *, purpose: str, task_id: str | None = None,
                  step_id: str | None = None, allow_fallback: bool = True, on_token=None,
-                 level: str | None = None, on_event=None) -> ChatResponse:
+                 level: str | None = None, on_event=None, question: str | None = None) -> ChatResponse:
         """``allow_fallback``: if the chosen tier is unavailable (e.g. Claude's usage limit), answer with a
-        local model and say so. Background tasks pass False and instead wait for the reset (UsageLimited)."""
+        local model and say so. Background tasks pass False and instead wait for the reset (UsageLimited).
+        ``question``: the owner's question when the last message isn't it (a retry or fix: "Check before answering
+        again…"), so a maths/logic/code question is retried on the same reasoning model that first answered it."""
         self.killswitch.check()
         need = self._apply_hybrid(need, request, task_id, level)
-        need = self._strong_local_for_reasoning(need, request, task_id)
+        need = self._strong_local_for_reasoning(need, request, task_id, question)
         if need.reasoning:
             r = self._try_reasoning_model(need, request, purpose=purpose, task_id=task_id, step_id=step_id,
                                           on_token=on_token, on_event=on_event)
@@ -222,7 +230,7 @@ class ModelService:
                 raise
             local_need = self._strong_local_for_reasoning(
                 Need(need.capability, min_quality=1, prefer="speed", local_only=True, keep_speed=need.keep_speed),
-                request, task_id)
+                request, task_id, question)
             r = None
             if local_need.reasoning:  # Claude unavailable for a maths/code question: the best local answer, not the fastest
                 r = self._try_reasoning_model(local_need, request, purpose=purpose, task_id=task_id, step_id=step_id,
@@ -270,15 +278,18 @@ class ModelService:
         self.audit.record("models.warmed", models=done)
         return done
 
-    def _strong_local_for_reasoning(self, need: Need, request: ChatRequest, task_id: str | None) -> Need:
+    def _strong_local_for_reasoning(self, need: Need, request: ChatRequest, task_id: str | None,
+                                    question: str | None = None) -> Need:
         """When a chat answer will come from this Mac anyway (local_first, or kept local), maths, logic and code go to
         the strongest local model instead of the fastest (owner's choice, 0.18.3): slower, but right more often. Only
         the choice between local models changes; whether anything may go to the cloud never does."""
-        if need.capability != "chat" or need.prefer == "quality" or need.keep_speed:
+        # "quality" from Deep mode is left alone; "quality" from a careful answer (G) still gets the reasoning model
+        if need.capability != "chat" or (need.prefer == "quality" and not need.careful) or need.keep_speed:
             return need
         if not (need.local_only or self.router.mode == "local_first"):
             return need
-        last = next((m.content for m in reversed(request.messages) if m.role == "user"), "")
+        last = question if question is not None else next(
+            (m.content for m in reversed(request.messages) if m.role == "user"), "")
         if not needs_reasoning(last[:4000]):
             return need
         self.audit.record("model.reasoning_local", task_id=task_id)
@@ -324,7 +335,7 @@ class ModelService:
                 level = "hard"
             self.audit.record("model.triage", task_id=task_id, level=level, raw="goal reader")
         if level == "simple":
-            return replace(need, local_only=True, prefer="speed")
+            return replace(need, local_only=True, prefer="quality" if need.careful else "speed")
         if level == "medium":  # lightest cloud model that is clearly better than local (e.g. Haiku)
             return replace(need, min_quality=max(need.min_quality, 4), prefer="speed")
         return replace(need, min_quality=max(need.min_quality, 5), prefer="quality")
