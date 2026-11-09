@@ -400,6 +400,18 @@ used). Tests prove each protection drill fails when its protection is disabled.
 - **Replan** (`POST /api/tasks/<id>/replan`): failed missions only, once (`context.replan_of`, `plan_jobs.replan_of`);
   `Orchestrator.failure_story` (steps, states, errors) reaches the planner as a note alongside the look-first facts.
 
+## Connected intelligence (work branch, Evolution 3.0 phase 3)
+
+- **Tournament → routing:** `autopilot.act_on_tournament` (tier 7) turns `analysis.tournament()["recommendation"]`
+  into adjustments keyed `tournament:best:<model>` / `tournament:worst:<model>` with the evidence; withdrawn
+  (`autopilot.withdraw`) when the recommendation goes away; never re-applied after an owner undo. `router_bonus` sums
+  per model; the router clamps ±3.
+- **Links:** `MemoryStore.link_informed` writes `memory:<id> —context for→ record:<id>`; `MemoryStore.delete`,
+  `delete_record` and `TaskStore.delete` remove any link touching the node. `knowledge_graph` adds conversation nodes
+  (date only), project-evidence edges (from `project_ideas.body.evidence`) and replan edges (`context.replan_of`).
+- **Initiative feed:** `initiative.py` (`candidates`, `feed`, `dismiss`, `should_notify`); `GET /api/initiative`,
+  `POST /api/initiative/dismiss`; `Notifier.poll` sends the daily generic notification after the quiet-hours check.
+
 ## Service and backups
 
 `service.py` writes a per-user LaunchAgent that runs `uv run jarvis dashboard --no-open` at login and after

@@ -1379,10 +1379,17 @@ function renderMemFilters(counts) {
 
 // ---------------------------------------------------------------- briefing & ideas (read-only here)
 const IDEA_STATES = { open: "Waiting for you", approved: "Approved · to do", rejected: "Rejected", done: "Done" };
+// "Not now" on a suggestion: hides it on this page (a display choice; it decides nothing and changes nothing else)
+async function dismissSuggestion(it) {
+  try { await call("/api/initiative/dismiss", { key: it.key, size: it.size }); } catch (e) { note(cancelled(e)); }
+  loadIntel();
+}
+const INITIATIVE_SOURCE = { mission: "Mission", health: "Problem", project: "Project", lesson: "Lesson", proposal: "Improvement" };
 async function loadIntel() {
   const box = $("#intel");
   box.replaceChildren(h("div", { class: "empty" }, "Loading…"));
-  let brief = null, ideas = null;
+  let brief = null, ideas = null, feed = null;
+  try { feed = await api("/api/initiative"); } catch (e) { feed = { error: e.message }; }
   try { brief = await api("/api/briefing"); } catch (e) { brief = { error: e.message }; }
   try { ideas = (await api("/api/proposals")).proposals; } catch (e) { ideas = { error: e.message }; }
   const sections = brief.error ? [h("div", { class: "empty" }, `Couldn't build the briefing: ${brief.error}`)]
@@ -1394,7 +1401,24 @@ async function loadIntel() {
     : !ideas.length ? [h("div", { class: "empty" }, "No ideas right now: nothing in JARVIS's record suggests a change.")]
     : [h("ul", { class: "ideas" }, ideas.slice(0, 8).map((x) => h("li", { class: `idea ${x.state}` },
         h("small", {}, `${IDEA_STATES[x.state] || x.state} · ${x.kind}`), h("b", {}, x.title), h("span", {}, x.problem))))];
-  fill(box, h("section", { class: "intel-part" }, sections.flat(Infinity)),
+  // The Initiative feed: one ranked list. It suggests; opening an item takes you to where you decide.
+  const open = (it) => (it.key.startsWith("mission-failed:") ? openMission(it.key.split(":")[1]) : (location.hash = it.href));
+  const feedPart = h("section", { class: "intel-part" }, h("h3", { class: "sys-part" }, "For you, ranked"),
+    feed.error ? h("div", { class: "empty" }, `Couldn't load suggestions: ${feed.error}`)
+    : feed.paused ? h("div", { class: "empty" }, `Suggestions are off: ${feed.why}.`)
+    : !feed.items.length ? h("div", { class: "empty" }, feed.hidden
+      ? `Nothing new. ${feed.hidden} suggestion(s) hidden with “Not now” (problems come back after a day).`
+      : "Nothing needs you: no failed missions, problems, stalled projects or open ideas.")
+    : h("ul", { class: "ideas initiative" }, feed.items.map((it) => h("li", { class: `idea ${it.source}` },
+        h("small", {}, `${INITIATIVE_SOURCE[it.source] || it.source} · ${it.urgency === 3 ? "urgent" : it.urgency === 2 ? "soon" : "when you like"}`),
+        h("b", {}, it.title), h("span", {}, it.why),
+        h("small", { class: "why-rank", title: "Ranked by urgency first, then value, weighted by how sure the source is (fixed per kind of suggestion)" },
+          `Why here: ${["", "when you like", "soon", "urgent"][it.urgency]} · ${["", "small", "useful", "important"][it.value]} · ${it.confidence >= 0.95 ? "certain (it happened)" : it.confidence >= 0.7 ? "likely" : "possible"}`),
+        h("div", { class: "row" }, h("button", { class: "btn btn-sm", type: "button", onclick: () => open(it) }, "Open"),
+          h("button", { class: "btn btn-ghost btn-sm", type: "button", title: "Hide for 30 days (it comes back sooner only if the evidence doubles)",
+            onclick: () => dismissSuggestion(it) }, "Not now"))))),
+    h("p", { class: "d-why" }, "Suggestions only: nothing here runs by itself. At most one notification a day, never in quiet hours."));
+  fill(box, feedPart, h("section", { class: "intel-part" }, sections.flat(Infinity)),
     h("section", { class: "intel-part" }, h("h3", { class: "sys-part" }, "Improvement ideas"),
       h("p", { class: "d-why" }, "JARVIS suggests these from its own record. It never changes itself: approving puts an idea on your to-do list."),
       ideaList, h("div", { class: "row mt" }, h("a", { class: "btn btn-sm", href: "/proposals" }, "Open Ideas to decide"),

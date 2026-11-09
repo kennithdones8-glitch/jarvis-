@@ -1580,3 +1580,5 @@ body.projection .projbar { position: fixed; z-index: 66; left: 20px; bottom: 20p
 .criteria li { overflow-wrap: anywhere; }
 .criteria.checked li { display: grid; grid-template-columns: 16px 1fr; gap: 4px; }
 .criteria li.verified { color: #8fe3ad; } .criteria li.failed { color: #ff8a80; } .criteria li.unconfirmed { color: #f2c46d; }
+.ideas.initiative .why-rank { color: var(--muted, #b9aa91); font-size: 12px; }
+.ideas.initiative li.mission, .ideas.initiative li.health { border-left-color: rgba(255, 138, 128, .6); }

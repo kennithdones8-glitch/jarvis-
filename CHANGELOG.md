@@ -2,6 +2,26 @@
 
 ## Unreleased — after 0.19.3 (work branch `claude/funny-allen-ygy8kk`, not yet released)
 
+### Connected intelligence: tournament → routing, knowledge links, one suggestions feed (Evolution 3.0, phase 3)
+
+- **The intelligence tournament informs routing** (level 7 only). When its evidence clearly separates two models
+  (5+ checked answers each, 20+ points apart), the better one gets a small bonus and the weaker a small penalty —
+  the same ±3 limit as before, only among models already allowed, logged, in the morning digest, undoable (an undone
+  adjustment never returns), and withdrawn by itself when the gap closes. Benchmark runs are shown alongside but don't
+  drive it (a run mixes models, so it can't be credited to one). A lesson and the tournament about one model add up.
+- **Lasting knowledge links.** JARVIS now remembers which memories were given to each answer as context ("context
+  for" — being in the context doesn't prove the answer relied on it, so it doesn't claim more). The knowledge graph
+  also connects memories and conversations to the project ideas they're evidence for, and a replan to the mission it
+  retried. Links hold ids only, never text; conversations appear as "a conversation on <date>". Deleting or
+  forgetting a memory, a conversation or a mission removes its links.
+- **One ranked suggestions feed** ("For you, ranked" on Briefing & ideas): failed missions you can retry, failing
+  health checks, projects stalled for a week, lessons whose evidence disagrees, improvement proposals and new project
+  ideas — ranked by urgency, then value, weighted by how sure the source is, with the reason shown. It suggests only:
+  "Open" takes you where you decide; "Not now" hides an item for 30 days (a failing health check only for a day;
+  sooner if its evidence doubles), and the feed says how many are hidden.
+  Empty with the initiative pause, level 5 off or the emergency stop. At most one notification a day, generic ("JARVIS
+  has a suggestion"), never in quiet hours.
+
 ### Mission Control: missions are checked, plans survive restarts, one replan (Evolution 3.0, phase 2)
 
 - **Every mission has a definition of success**, decided from its plan when you run it (never by a model): one

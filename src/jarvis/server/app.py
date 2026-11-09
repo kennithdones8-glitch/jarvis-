@@ -489,6 +489,7 @@ class Dashboard:
         from ..learn import Pipeline, autopilot
         result = Pipeline(self.kernel).run()
         autopilot.act_on_lessons(self.kernel)
+        autopilot.act_on_tournament(self.kernel)
         autopilot.apply_to_router(self.kernel)   # also clears the nudges when tier 7 is off or the stop is on
         autopilot.nightly(self.kernel)
         return result
@@ -910,6 +911,7 @@ class Dashboard:
             appr = self.kernel.approvals.get(exc.approval_id)
             return {"needs_approval": True, "approval_id": exc.approval_id, "summary": appr["summary"]}
         record = memory.learn_from(session, message, r.text)
+        memory.link_informed([m["id"] for m in recalled if m.get("id")], record)   # which memories this answer was given
         return {"record": record, "past": past_n, "code_test": code_test, "text": r.text, "model": f"{r.provider}/{r.model}", "seconds": round(time.time() - started, 1),
                 "tokens": r.usage.output_tokens, "note": r.note, "memories_used": len(recalled),
                 "checked": found.checked, "offer_plan": found.change, "grounded": grounded,
@@ -1294,6 +1296,9 @@ class Dashboard:
             return self._json(h, 200, self.kernel.audit.entries(task_id=m.group(1), limit=300))
         if url.path == "/api/briefing":
             return self._json(h, 200, self.briefing())
+        if url.path == "/api/initiative":   # one ranked list of suggestions (suggests only; nothing runs)
+            from .. import initiative
+            return self._json(h, 200, initiative.feed(self.kernel, health=self._health or None))
         if url.path == "/bench":
             return self._send(h, 200, (STATIC / "bench.html").read_bytes(), "text/html; charset=utf-8")
         if url.path.startswith("/api/bench"):
@@ -1569,6 +1574,11 @@ class Dashboard:
                 return {"task_id": self.run_plan(m.group(1))}
             self.jobs.pop(m.group(1), None)
             self._forget_job(m.group(1))
+            return {"ok": True}
+        if path == "/api/initiative/dismiss":
+            from .. import initiative
+            size = body.get("size") if isinstance(body.get("size"), int) else 1
+            initiative.dismiss(self.kernel, text("key", 200), by=actor, size=size)
             return {"ok": True}
         if m := re.fullmatch(r"/api/tasks/([\w-]+)/replan", path):   # one new plan for a failed mission (reviewed as usual)
             return {"job_id": self.replan(m.group(1), actor=actor)}

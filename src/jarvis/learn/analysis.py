@@ -324,8 +324,28 @@ def knowledge_graph(kernel, *, limit: int = 120) -> dict[str, Any]:
             edges.append({"from": f"task:{o['ref']}", "to": sid, "rel": "answered by"})
     for p in db.query("SELECT id, title, state FROM proposals ORDER BY updated_at DESC LIMIT 15"):
         nodes[f"proposal:{p['id']}"] = {"id": f"proposal:{p['id']}", "kind": "proposal", "label": p["title"][:80], "status": p["state"]}
-    for p in db.query("SELECT id, title, state FROM project_ideas ORDER BY updated_at DESC LIMIT 15"):
-        nodes[f"project:{p['id']}"] = {"id": f"project:{p['id']}", "kind": "project", "label": p["title"][:80], "status": p["state"]}
+    def conversation(rid: str) -> str | None:   # a conversation is shown by its date only, never its text
+        row = db.one("SELECT created_at FROM records WHERE id = ?", (rid,))
+        if row is None:
+            return None
+        nid = f"record:{rid}"
+        nodes.setdefault(nid, {"id": nid, "kind": "conversation", "label": f"a conversation on {row['created_at'][:10]}", "status": "fact"})
+        return nid
+    for p in db.query("SELECT id, title, state, body FROM project_ideas ORDER BY updated_at DESC LIMIT 15"):
+        pid = f"project:{p['id']}"
+        nodes[pid] = {"id": pid, "kind": "project", "label": p["title"][:80], "status": p["state"]}
+        for ref in (json.loads(p["body"]).get("evidence") or [])[:6]:   # the idea's own references: no second copy
+            src = f"memory:{ref.get('id')}" if ref.get("type") == "memory" else conversation(str(ref.get("id"))) if ref.get("type") == "record" else None
+            if src and src in nodes:
+                edges.append({"from": src, "to": pid, "rel": "evidence for"})
+    # lasting links (memory → the answers it was given as context), only between items that still exist
+    for ln in db.query("SELECT src, dst, rel FROM links WHERE src LIKE 'memory:%' ORDER BY created_at DESC LIMIT 60"):
+        if ln["src"] in nodes and ln["dst"].startswith("record:") and conversation(ln["dst"].split(":", 1)[1]):
+            edges.append({"from": ln["src"], "to": ln["dst"], "rel": ln["rel"]})
+    for t in db.query("SELECT id, context FROM tasks ORDER BY created_at DESC LIMIT 20"):   # a replan and the mission it retried
+        again = json.loads(t["context"] or "{}").get("replan_of")
+        if again and f"task:{t['id']}" in nodes and f"task:{again}" in nodes:
+            edges.append({"from": f"task:{t['id']}", "to": f"task:{again}", "rel": "second attempt of"})
     return {"nodes": list(nodes.values()), "edges": edges,
             "legend": {"user": "you told JARVIS", "confirmed": "confirmed by you", "inferred": "inferred from evidence",
                        "hypothesis": "contested: evidence points both ways", "outdated": "evidence stopped arriving"}}

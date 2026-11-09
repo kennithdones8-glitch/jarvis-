@@ -38,12 +38,12 @@ Approved model paths and what they cost:
 |---|---|---|
 | Flight Recorder | exists (v0.17.3) | audit hash chain, steps/checkpoints, approvals, evidence, model routes, **per-task timeline** · missing: external anchor for the newest entries |
 | Outcome Engine | v2 on the branch | per-mission criteria from the plan, read-back for Calendar/Reminders/Notes, unconfirmed ≠ verified, durable plans, one reviewed replan · missing: owner-written criteria, multi-mission objectives |
-| Intelligence Tournament | evidence report (branch) | `learn/analysis.py:tournament`: per-model answer-check rate, latency, your ratings, benchmark categories · suggestion only; routing is not changed by it |
-| Opportunity Radar | partial, in three places | morning briefing, `proposals.py` detectors, Projects for you · not yet one ranked feed |
-| Personal Knowledge Graph | partial (branch) | computed on request: memories, lessons, missions, proposals, projects, with duplicate and contradiction links · lasting links only for lessons |
+| Intelligence Tournament | evidence report + routing at level 7 (branch) | `learn/analysis.py:tournament` · its recommendation becomes a bounded, undoable, self-withdrawing routing adjustment (`autopilot.act_on_tournament`) · benchmark runs don't drive it (mixed models) |
+| Opportunity Radar | one ranked feed (branch) | `initiative.py`: failed missions, health, stalled projects, contested lessons, proposals, project ideas · the briefing stays separate |
+| Personal Knowledge Graph | partial (branch) | computed on request + lasting links (memory → answers it was given, ids only, deleted with either side) · project evidence and replans as edges · no search by meaning |
 | Simulation Lab | exists (branch) | routing replay, recovery drills, benchmark comparison, level 6 change trials (worktrees; not yet OS-sandboxed) |
 | Trust Contract | partial | global policy, tiers, privacy gate, budget, approvals · no per-task contract |
-| Initiative Engine | partial (branch) | propose-only detectors gated by the autonomy "initiative" pause; quiet hours apply to notifications only |
+| Initiative Engine | feed + daily notification (branch) | suggest-only; initiative pause; dismissals; one generic notification a day outside quiet hours |
 | Personal Operations Model | missing | on-demand calendar/reminder reads |
 | Self-Test & Recovery Lab | mostly exists (v0.17.4) | 800+ tests, `jarvis doctor`, `jarvis bench`, `jarvis gate`, **`jarvis drill`** (10 recovery drills on a throwaway JARVIS) · missing: drills against the live install (deliberately not done) |
 
