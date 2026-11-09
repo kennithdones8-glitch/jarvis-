@@ -137,3 +137,53 @@ def left_out(instruction: str, inputs: list[str], text: str) -> list[str]:
         if key and len(key & have) * 2 < len(key):  # fewer than half of its key words: treat it as left out
             missing.append(item)
     return missing
+
+
+# ---- the facts JARVIS worked out are all in the answer (hard set, smarter-v2) -------------------------------------
+# Real failure: JARVIS listed "Due in the window you asked about (1): Call plumber" and the answer named only the two
+# overdue reminders. The reminders JARVIS listed as overdue or due in the window asked about must each be named.
+FACT_LIST = re.compile(r"^- (?:Overdue|Due in the window you asked about[^:]*?) \((\d+)\): (.+)$", re.M)
+
+
+def facts_left_out(answer: str, lookup_text: str) -> list[str]:
+    """Reminders JARVIS listed (overdue, or due in the window asked about) that the answer doesn't name."""
+    missing = []
+    low = (answer or "").lower()
+    for m in FACT_LIST.finditer(lookup_text or ""):
+        if m.group(1) == "0":
+            continue
+        for title in (t.strip() for t in m.group(2).split(", ")):
+            every = re.findall(r"[a-z0-9]+", title.lower())
+            # the words that name it ("council", "plumber"); short verbs like "pay", "buy" aren't required
+            words = [w for w in every if len(w) >= 4] or [w for w in every if len(w) >= 3]
+            if title and title.lower() not in low and not (words and all(w in low for w in words)):
+                missing.append(title)
+    return missing
+
+
+# ---- "what's my first commitment?": the first event JARVIS worked out is the answer ------------------------------
+# Real failure (owner's Mac, smarter-v2, 7B): the facts said "First event on Mon 09 Nov: 09:00–09:30 Standup" and the
+# answer called the 13:00 lunch the first commitment (planning-free 9/10 with the 3B, 4/10 with the 7B). Only checked
+# when the question asks what comes first and JARVIS listed the first event of 1–3 days; nothing else is judged.
+ASKS_FIRST = re.compile(r"\b(first|earliest)\b[^?.!]{0,40}\b(commitment|event|meeting|appointment|thing|plan|"
+                        r"booking|call)s?\b|\bwhat time do i (?:start|have to be)\b|\bwhen do i start\b", re.I)
+FIRST_EVENT = re.compile(r"^- First event on [^:]+: (\d{2}:\d{2})–\d{2}:\d{2} (.+)$", re.M)
+
+
+def first_event_left_out(question: str, answer: str, lookup_text: str) -> list[str]:
+    """The first events JARVIS worked out that an answer to "what's first?" doesn't name (by title or start time)."""
+    if not ASKS_FIRST.search(question or ""):
+        return []
+    found = FIRST_EVENT.findall(lookup_text or "")
+    if not 1 <= len(found) <= 3:
+        return []
+    low = (answer or "").lower()
+    missing = []
+    for start, title in found:
+        words = [w for w in re.findall(r"[a-z0-9]+", title.lower()) if len(w) >= 3] or [title.lower()]
+        named = all(w in low for w in words)
+        hour = start.lstrip("0") if not start.startswith("00") else start
+        timed = start in low or hour in low
+        if not (named and timed):
+            missing.append(f"{title.strip()} at {start}")
+    return missing

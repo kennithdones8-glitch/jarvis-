@@ -20,6 +20,10 @@ from .planner import Plan, Planner, describe_args
 from .refs import resolve_step_args
 
 DEFAULT_NOTES = "~/Documents/JARVIS/Notes"
+# "my dentist appointment tomorrow": the words before the event word say which one (checked against the calendar).
+PREMISE = re.compile(r"\b(?:my|the|our)\s+(?P<what>(?:[A-Za-z]+\s+){1,3}?)(?P<kind>appointment|meeting|call|interview|"
+                     r"booking|lesson|class|session)s?\b", re.I)
+VAGUE = {"next", "upcoming", "first", "last", "big", "usual", "weekly", "daily", "new", "important", "own", "a", "an"}
 # A task that refers to an existing appointment, meeting or reminder: planned with it looked up first.
 LOOK_FIRST = re.compile(r"\b(my|the|our)\s+(?:\w+\s+){0,3}?(appointments?|meetings?|events?|calls?|reminders?|"
                         r"bookings?|flights?|lunch|dinner|interview)\b", re.I)
@@ -73,12 +77,79 @@ class Orchestrator:
                                notes_dir=self.notes_dir)
 
     def plan(self, request: str, *, local_only: bool = False) -> Plan:
+        if question := self.premise_question(request):
+            plan = Plan("clarify", message=question, model="jarvis (calendar check)")
+            self.kernel.audit.record("orchestrator.premise_checked", actor="system", asked=True)
+            return plan
         facts = self.look_first(request)
         plan = self.planner.plan(request, local_only=local_only, facts=facts)
         self.kernel.audit.record("orchestrator.planned", actor="system", kind=plan.kind, goal=plan.goal,
                                  model=plan.model, attempts=plan.attempts, message=plan.message,
                                  steps=[f"{s.tool}.{s.action} {describe_args(s.args)}" for s in plan.steps])
         return plan
+
+    def premise_question(self, request: str) -> str | None:
+        """A question when a task names an appointment on a day it isn't on. Real failure (hard set, smarter-v2):
+        "a reminder ... before my dentist appointment tomorrow" was planned even with the calendar in front of the
+        planner (the appointment was the day after). Checked here in code, read-only: the calendar for the day the
+        request names must have an event with that word in its title; if not, JARVIS asks, and says where the
+        nearest one is. Never raises; anything it can't check (no calendar access, no day named) plans as before."""
+        from datetime import datetime, timedelta
+
+        from .lookup import named_days
+        m = PREMISE.search(request or "")
+        if not m:
+            return None
+        words = [w for w in re.findall(r"[a-z]+", m.group("what").lower()) if w not in VAGUE]
+        days = named_days(request)
+        if not words or not days:
+            return None
+        day = days[0]
+        start = datetime(day.year, day.month, day.day).astimezone()
+        events = self._read_calendar(start - timedelta(days=7), start + timedelta(days=15))
+        if events is None:
+            return None
+
+        def matches(e: dict) -> bool:
+            title = str(e.get("title", "")).lower()
+            return any(re.search(rf"\b{re.escape(w)}", title) for w in words)
+
+        def when(e: dict) -> datetime | None:
+            try:
+                return datetime.fromisoformat(str(e["start"]).replace("Z", "+00:00")).astimezone()
+            except (KeyError, ValueError):
+                return None
+        hits = [(t, e) for e in events if matches(e) and (t := when(e))]
+        if any(t.date() == day for t, _ in hits):
+            return None
+        thing = f"{' '.join(words)} {m.group('kind').lower()}"
+        said = f"{day:%A %d %B}"
+        if hits:
+            t, e = min(hits, key=lambda h: abs((h[0].date() - day).days))
+            return (f"I can't see a {thing} on {said}. There's \u201c{e.get('title')}\u201d on {t:%A %d %B at %H:%M}. "
+                    "Is that the one you mean?")
+        return f"I can't see a {thing} on {said}, or in the two weeks around it. When is it?"
+
+    def _read_calendar(self, start, end) -> list[dict] | None:
+        """Calendar events, read-only and only when the permission engine allows it without asking; else None."""
+        from ..core.killswitch import EmergencyStop
+        from ..core.permissions import Effect
+
+        spec = self.kernel.registry.action("calendar", "events")
+        if spec is None:
+            return None
+        decision = self.kernel.permissions.evaluate(tool="calendar", action="events", tier=spec.tier,
+                                                    resource_kind=spec.resource_kind, resource=None)
+        if decision.effect is not Effect.ALLOW:
+            return None
+        try:
+            r = self.kernel.gateway.invoke("calendar", "events", {"from": start.isoformat(), "to": end.isoformat()},
+                                           summary="check the appointment the task names")
+        except EmergencyStop:
+            return None
+        except Exception:
+            return None
+        return r.get("events", []) if isinstance(r, dict) else None
 
     def look_first(self, request: str):
         """Look before acting: a task that refers to something already in the calendar or reminders ("my dentist
