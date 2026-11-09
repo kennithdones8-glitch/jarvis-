@@ -1582,3 +1582,10 @@ body.projection .projbar { position: fixed; z-index: 66; left: 20px; bottom: 20p
 .criteria li.verified { color: #8fe3ad; } .criteria li.failed { color: #ff8a80; } .criteria li.unconfirmed { color: #f2c46d; }
 .ideas.initiative .why-rank { color: var(--muted, #b9aa91); font-size: 12px; }
 .ideas.initiative li.mission, .ideas.initiative li.health { border-left-color: rgba(255, 138, 128, .6); }
+
+/* iPhone: section headers stay compact (one swipeable row of figures), so the page's content comes first */
+@media (max-width: 760px) {
+  .page-stats { flex-wrap: nowrap; overflow-x: auto; scroll-snap-type: x proximity; padding-bottom: 4px; gap: 8px; }
+  .ph-stat { min-width: 92px; padding: 6px 10px; scroll-snap-align: start; flex: 0 0 auto; }
+  .ph-stat b { font-size: 20px; }
+}

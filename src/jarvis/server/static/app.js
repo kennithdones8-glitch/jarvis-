@@ -343,7 +343,7 @@ function setMode(mode) {
   ui.mode = mode;
   for (const m of Object.keys(MODES)) $(`#tab-${m}`).setAttribute("aria-selected", mode === m);
   $("#cmd").placeholder = MODES[mode][0];
-  $("#modehint").textContent = MODES[mode][1];
+  $("#modehint").textContent = touchOnly() ? MODES[mode][1].replace(/\s+⌘↩ to send$/, "") : MODES[mode][1];   // no keyboard hint on a phone
   $("#intelmodes").hidden = mode !== "ask";
   $("#intelcycle").hidden = mode !== "ask" || !!ui.abort;
   if (ui.data && $("#context")) renderContext(ui.data);
@@ -1599,6 +1599,7 @@ function renderContext(d) {
   fill(box, answer, mission, part("Mode"), h("div", { class: "ctx-line" }, MODES[ui.mode][1]));
 }
 
+const touchOnly = () => window.matchMedia("(hover: none) and (pointer: coarse)").matches;
 const isPhone = () => window.matchMedia("(max-width: 760px), (pointer: coarse)").matches;
 
 // ---------------------------------------------------------------- display settings (this device only)
@@ -2262,6 +2263,7 @@ document.addEventListener("DOMContentLoaded", () => {
     ui.sysbarKey = ""; render();
   });
   $("#projexit").addEventListener("click", closeProjection);
+  document.querySelectorAll("#projpanel .pp-tabs [role=tab]").forEach((b) => b.addEventListener("click", () => setPanelTab(b.dataset.tab)));
   $("#projback").addEventListener("click", closeProjection);
   $("#projevo").addEventListener("click", () => showEvolution());
   $("#cmd").addEventListener("keydown", (e) => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) submitCommand(e); });
@@ -2685,14 +2687,26 @@ function researchProjection() {
 }
 // Open projections, each with its panel controls. Every control changes the look only: none of them approves, runs or
 // changes anything (pending actions still need the approval card).
+// iPhone: one tab of the focus panel at a time (CSS shows every part on a computer)
+function setPanelTab(name) {
+  const panel = $("#projpanel");
+  if (!panel) return;
+  ui.panelTab = name;
+  panel.dataset.tab = name;
+  panel.querySelectorAll(".pp-tabs [role=tab]").forEach((b) => b.setAttribute("aria-selected", String(b.dataset.tab === name)));
+  if (name === "controls") $("#projctl").open = true;
+  panel.scrollTop = 0;
+}
 function renderProjBar() {
   const bar = $("#projbar");
   if (!bar || !window.JarvisAvatar) return;
   const list = JarvisAvatar.projections, focus = document.body.classList.contains("projection");
+  const tab = $("#pptab-proj");
+  if (tab) tab.textContent = list.length ? `Projections (${list.length})` : "Projections";
   bar.hidden = !list.length;
   document.body.classList.toggle("proj-area", focus && list.some((p) => !p.minimized));   // the wider projection area
   const ctl = (op, m, arg) => (e) => { e.stopPropagation(); JarvisAvatar.projectionControl(op, m, arg); if (op === "inspect") { document.body.classList.add("inspecting"); renderInspectBar(); } renderProjBar(); };
-  const b = (text, label, fn, on) => h("button", { class: `btn btn-ghost btn-xs${on ? " on" : ""}`, type: "button", "aria-label": label, title: label,
+  const b = (text, label, fn, on, extra = "") => h("button", { class: `btn btn-ghost btn-xs${on ? " on" : ""}${extra}`, type: "button", "aria-label": label, title: label,
     "aria-pressed": on === undefined ? null : String(!!on), onclick: fn }, text);
   bar.replaceChildren(...list.map((p, i) => {
     const d = ui.projData && ui.projData[p.module];
@@ -2703,8 +2717,8 @@ function renderProjBar() {
         p.minimized ? b("Restore", `Restore ${p.title}`, ctl("minimize", p.module, false))
           : [p.expanded ? b("Collapse", `Collapse ${p.title}`, ctl("collapse")) : b("Expand", `Expand ${p.title} into the projection area`, ctl("expand", p.module)),
              b("–", `Minimise ${p.title}`, ctl("minimize", p.module, true)),
-             !p.expanded ? b(p.side === "left" ? "▶" : "◀", `Move ${p.title} to the ${p.side === "left" ? "right" : "left"} side`, ctl("side", p.module, p.side === "left" ? "right" : "left")) : null,
-             i > 0 ? b("↑", `Move ${p.title} up`, ctl("move", p.module, -1)) : null,
+             !p.expanded ? b(p.side === "left" ? "▶" : "◀", `Move ${p.title} to the ${p.side === "left" ? "right" : "left"} side`, ctl("side", p.module, p.side === "left" ? "right" : "left"), undefined, " pj-arrange") : null,
+             i > 0 ? b("↑", `Move ${p.title} up`, ctl("move", p.module, -1), undefined, " pj-arrange") : null,
              focus ? b("Inspect", `Inspect ${p.title} up close`, ctl("inspect", p.module)) : null],
         b("Details", `Details of ${p.title}`, (e) => { e.stopPropagation(); ui.projDetail = open ? null : p.module; renderProjBar(); }, open),
         b(p.pinned ? "Pinned" : "Pin", "Keep this projection open", (e) => { e.stopPropagation(); JarvisAvatar.pinProjection(p.module, !p.pinned); renderProjBar(); }, p.pinned),
@@ -2895,6 +2909,7 @@ function openProjection() {
   enterWorkMode();
   setForm(savedForm(), { save: false });
   if (isPhone()) $("#projpanel").insertBefore($("#projbar"), $("#projstate"));   // phone: the list scrolls inside the focus panel
+  setPanelTab(ui.panelTab || "now");
   renderProjBar();
   renderDiag();
   $("#projexit").focus();

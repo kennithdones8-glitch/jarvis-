@@ -135,7 +135,7 @@
         <circle class="heart" cx="120" cy="120" r="20"/>
       </svg>
     </div>
-    <span id="projbar-home" hidden></span><div id="projbar" class="projbar" aria-label="Open projections" hidden></div>
+    <span id="projbar-home" hidden></span><div id="projbar" class="projbar" aria-label="Open projections" data-pane="projections" hidden></div>
     <div class="headline" role="status" aria-live="polite">
       <div id="hl-kicker" class="kicker">Status</div>
       <div id="hl-main" class="hl">Connecting…</div>
@@ -227,19 +227,26 @@
 <div id="projback" class="proj-backdrop" hidden><div class="vwall" aria-hidden="true"><div class="vw-tile"></div><div class="vw-tile"></div><div class="vw-tile"></div><div class="vw-tile"></div><div class="vw-tile"></div><div class="vw-tile"></div><div class="vw-tile"></div></div></div>
 <aside id="projpanel" class="proj-panel panel" aria-label="Projection focus" hidden>
   <header class="ph"><h2>Projection</h2><button id="projexit" class="btn btn-ghost btn-sm" type="button" title="Back to the dashboard (Esc)">Exit</button></header>
-  <div class="kicker" id="projstate"></div>
-  <div class="pp-main" id="projmain"></div>
-  <div class="hl-sub" id="projsub"></div>
-  <div class="pp-motion" id="projmotion" aria-live="off"></div>
-  <div class="pp-ready" id="projready"></div>
-  <div class="pp-modes" id="projmodes"></div>
-  <div class="pp-modes" id="projforms"></div>
-  <section class="pp-work" id="projwork" aria-label="Current work"></section>
-  <div class="pp-systems" id="projsystems" aria-label="Systems"></div>
-  <p class="pp-aura hl-sub" id="projaura"></p>
-  <button id="projevo" class="btn btn-sm pp-evo" type="button">Evolution record</button>
-  <div id="avdiag" class="pp-diag" role="status" aria-live="off" hidden></div>
-  <details id="projctl" class="pp-ctl"><summary>Projection controls</summary><div id="projctlbody"></div></details>
+  <!-- iPhone: the panel is split into tabs (shown by CSS on small screens only; on a computer everything is shown) -->
+  <div class="pp-tabs" role="tablist" aria-label="Focus panel">
+    <button type="button" role="tab" data-tab="now" aria-selected="true">Now</button>
+    <button type="button" role="tab" data-tab="modes" aria-selected="false">Modes</button>
+    <button type="button" role="tab" data-tab="projections" aria-selected="false" id="pptab-proj">Projections</button>
+    <button type="button" role="tab" data-tab="controls" aria-selected="false">Controls</button>
+  </div>
+  <div class="kicker" id="projstate" data-pane="now"></div>
+  <div class="pp-main" id="projmain" data-pane="now"></div>
+  <div class="hl-sub" id="projsub" data-pane="now"></div>
+  <div class="pp-motion" id="projmotion" aria-live="off" data-pane="now"></div>
+  <div class="pp-ready" id="projready" data-pane="now"></div>
+  <div class="pp-modes" id="projmodes" data-pane="modes"></div>
+  <div class="pp-modes" id="projforms" data-pane="modes"></div>
+  <section class="pp-work" id="projwork" aria-label="Current work" data-pane="now"></section>
+  <div class="pp-systems" id="projsystems" aria-label="Systems" data-pane="now"></div>
+  <p class="pp-aura hl-sub" id="projaura" data-pane="now"></p>
+  <button id="projevo" class="btn btn-sm pp-evo" type="button" data-pane="now">Evolution record</button>
+  <div id="avdiag" class="pp-diag" role="status" aria-live="off" data-pane="controls" hidden></div>
+  <details id="projctl" class="pp-ctl" data-pane="controls"><summary>Projection controls</summary><div id="projctlbody"></div></details>
 </aside>
 <div id="inspectbar" class="inspectbar panel" role="region" aria-label="Inspection controls" hidden></div>
 </body>

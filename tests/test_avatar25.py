@@ -627,3 +627,37 @@ def test_readiness_comes_only_from_the_health_checks():
     assert "if (ok && ui.wasReady !== true && window.JarvisAvatar) JarvisAvatar.ready();" in rd   # once, or after a problem clears
     assert "Not fully operational" in rd and "Math.random" not in rd
     assert 'ready() { if (mode === "full" && !boot) {' in AV3                   # never during startup or reduced motion
+
+
+# ---- Evolution 3.0 phase 6: the iPhone layout ---------------------------------------------------------------------
+# Checked in a headless browser at iPhone 13 size: every control in every focus-panel tab is at least 40 px, nothing
+# scrolls sideways, and the screenshots were reviewed. Real Safari on a real iPhone is still to be checked.
+def test_on_a_phone_the_focus_panel_is_split_into_tabs():
+    html = (STATIC / "index.html").read_text()
+    panel = html.split('<aside id="projpanel"')[1].split("</aside>")[0]
+    tabs = re.findall(r'role="tab" data-tab="(\w+)"', panel)
+    assert tabs == ["now", "modes", "projections", "controls"]
+    for line in panel.splitlines():
+        line = line.strip()
+        if line.startswith(("<div", "<section", "<p", "<button", "<details")) and "pp-tabs" not in line and 'role="tab"' not in line:
+            assert "data-pane=" in line, line                                     # every part belongs to one tab
+    assert 'id="projbar" class="projbar" aria-label="Open projections" data-pane="projections"' in html
+    css = (STATIC / "avatar.css").read_text()
+    phone = css.split("/* ---- iPhone (Evolution 3.0, phase 6)")[1]
+    assert ".pp-tabs { display: none; }" in phone.split("@media (max-width: 760px)")[0]   # computers see everything
+    for t in tabs:
+        assert f'.proj-panel[data-tab="{t}"] [data-pane]:not([data-pane="{t}"])' in phone
+    assert "min-height: 44px" in phone.split(".pp-tabs [role=tab] {")[1].split("}")[0]
+    assert "body.projection .projbar .pj-arrange { display: none; }" in phone
+    st = re.search(r"function setPanelTab\(.*?\n\}\n", JS, re.S).group(0)
+    assert 'b.setAttribute("aria-selected", String(b.dataset.tab === name))' in st and "api(" not in st
+
+
+def test_phone_touch_targets_compact_headers_and_no_keyboard_hint():
+    css = (STATIC / "avatar.css").read_text()
+    assert "body.projection .projbar .pj-ctl .btn { min-height: 44px; min-width: 44px;" in css
+    assert '@media (pointer: coarse) {\n  input[type="text"], input[type="search"], input:not([type]), select { min-height: 44px; }' in css
+    app_css = (STATIC / "app.css").read_text()
+    assert ".page-stats { flex-wrap: nowrap; overflow-x: auto;" in app_css.split("iPhone: section headers stay compact")[1]
+    assert 'touchOnly() ? MODES[mode][1].replace(/\\s+⌘↩ to send$/, "") : MODES[mode][1]' in JS
+    assert 'const touchOnly = () => window.matchMedia("(hover: none) and (pointer: coarse)").matches;' in JS

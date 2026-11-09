@@ -2,6 +2,18 @@
 
 ## Unreleased — after 0.19.3 (work branch `claude/funny-allen-ygy8kk`, not yet released)
 
+### iPhone layout (Evolution 3.0, phase 6)
+
+- **The focus view on iPhone is split into tabs** — Now (state, readiness, current work, systems), Modes (working
+  modes and avatar forms), Projections (the open ones and their controls) and Controls (presets, camera, quality,
+  Diagnostics) — instead of one long scrolling panel. On a computer everything is shown as before.
+- **Touch-sized controls**: projection buttons, tabs, mode and form chips and text fields are at least 44 points; on
+  the phone the projection list hides the "move to the other side" and "move up" buttons (not meaningful on a narrow
+  screen). Checked at iPhone 13 size: no control under 40 points in any tab, nothing scrolls sideways.
+- **Section headers stay compact** on the phone (one swipeable row of figures), so a page's content comes first.
+- The "⌘↩ to send" hint is no longer shown on touch-only devices.
+- Still to check on a real iPhone in Safari (the headless browser only emulates its size and touch).
+
 ### Avatar forms and operational readiness (Evolution 3.0, phase 5)
 
 - **Five forms of the same figure** (focus view → Form): Standard (armour closed), Diagnostic (helmet opened to

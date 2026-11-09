@@ -306,3 +306,27 @@ body.projection .projbar .pj-ctl { flex-wrap: nowrap; } body.projection .projbar
 .pp-mode-now b { color: var(--gold, #f2c46d); font: 600 12px var(--display); letter-spacing: .16em; text-transform: uppercase; }
 .pp-mode-now small { display: block; font-size: 12px; }
 .pp-ready { margin-top: 6px; font-size: 13px; color: #8fe3ad; } .pp-ready.warn { color: #f2c46d; }
+
+/* ---- iPhone (Evolution 3.0, phase 6): the focus panel in tabs, touch-sized controls ------------------------------ */
+.pp-tabs { display: none; }
+@media (max-width: 760px) {
+  .pp-tabs { display: flex; gap: 4px; margin: 2px 0 8px; position: sticky; top: -1px; z-index: 2; padding: 4px 0;
+    background: linear-gradient(rgba(14, 11, 7, .96), rgba(14, 11, 7, .9)); }
+  .pp-tabs [role=tab] { flex: 1 1 0; min-height: 44px; padding: 0 4px; font: 600 12px var(--display); letter-spacing: .1em;
+    text-transform: uppercase; color: var(--muted, #b9aa91); background: transparent; border: 1px solid rgba(217, 180, 95, .2); border-radius: 10px; }
+  .pp-tabs [role=tab][aria-selected="true"] { color: var(--gold, #f2c46d); border-color: rgba(255, 217, 143, .55); background: rgba(255, 217, 143, .08); }
+  .proj-panel[data-tab="now"] [data-pane]:not([data-pane="now"]),
+  .proj-panel[data-tab="modes"] [data-pane]:not([data-pane="modes"]),
+  .proj-panel[data-tab="projections"] [data-pane]:not([data-pane="projections"]),
+  .proj-panel[data-tab="controls"] [data-pane]:not([data-pane="controls"]) { display: none !important; }
+  .proj-panel[data-tab="projections"] .projbar[hidden] { display: block !important; }
+  .proj-panel[data-tab="projections"] .projbar:empty::after { content: "No projections open. Choose a mode, or ask “show me the workflow”.";
+    display: block; color: var(--muted, #b9aa91); font-size: 13px; padding: 8px 0; }
+  body.projection .projbar .pj-ctl { flex-wrap: wrap; overflow: visible; gap: 6px; }
+  body.projection .projbar .pj-ctl .btn { min-height: 44px; min-width: 44px; width: auto; padding: 0 12px; letter-spacing: .08em; }
+  body.projection .projbar .pj-arrange { display: none; }   /* side and order: not meaningful on a narrow screen */
+  .pp-modes .chip, .proj-panel .chip { min-height: 44px; }
+}
+@media (pointer: coarse) {
+  input[type="text"], input[type="search"], input:not([type]), select { min-height: 44px; }
+}

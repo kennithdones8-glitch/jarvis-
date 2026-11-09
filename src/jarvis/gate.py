@@ -191,7 +191,8 @@ SECURITY: dict[str, tuple[str, list[str]]] = {
         "test_avatar25::the_workflow_projection_draws_only_real_dependencies",
         "test_avatar25::only_you_choose_a_form_and_it_changes_the_look_only",
         "test_avatar25::xray_shows_what_is_inside_without_faking_activity",
-        "test_avatar25::readiness_comes_only_from_the_health_checks"]),
+        "test_avatar25::readiness_comes_only_from_the_health_checks",
+        "test_avatar25::on_a_phone_the_focus_panel_is_split_into_tabs"]),
     "Emergency stop (protected)": ("One stop halts everything, including work in progress", [
         "test_gateway::emergency_stop_blocks_everything", "test_tasks::emergency_stop_pauses_then_requires_explicit_resume",
         "test_stop::stop_kills_running_claude_and_its_children", "test_models::emergency_stop_blocks_model_calls",
