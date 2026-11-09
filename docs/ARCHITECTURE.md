@@ -315,7 +315,7 @@ prefer="quality")` and up to 2000 tokens, falling back to the best available mod
   verification, stage changes and definitions version (`DEFINITION_VERSION`) are stored and audited. A device may
   show a lower stage (Evolution record), never a higher one.
 
-## Avatar 2.5 — living intelligence projection (in progress)
+## Avatar 2.5 — living intelligence projection
 
 - **Camera rig** `static/avatar3d-camera.js`: the camera on a sphere around a target (azimuth, elevation, distance)
   with views (`VIEWS`) and inspection targets (`TARGETS`); goals are eased per frame (k = 1 in Low performance and

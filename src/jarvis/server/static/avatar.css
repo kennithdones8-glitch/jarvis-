@@ -204,6 +204,8 @@ body.projection .core-wrap .av-task { display: none; }
   padding: 6px 8px; background: rgba(0, 0, 0, .3); border: 1px solid rgba(217, 180, 95, .2); color: inherit; cursor: pointer; }
 .ps-sys small { grid-column: 1 / -1; color: var(--muted, #b9aa91); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ps-sys:hover, .ps-sys:focus-visible { border-color: rgba(246, 230, 194, .55); }
+.pp-motion { margin-top: 6px; font-size: 13px; color: var(--muted, #b9aa91); overflow-wrap: anywhere; }
+.pp-motion b { color: var(--gold, #f2c46d); font: 600 12px var(--display); letter-spacing: .16em; text-transform: uppercase; }
 .pp-evo { margin-top: 12px; width: 100%; white-space: normal; overflow-wrap: anywhere; }
 @media (max-width: 760px) {
   body.projection .hud > .center > .core-wrap.has-avatar { left: 50%; top: 34%; width: min(62vw, 34vh) !important; grid-column: auto; }

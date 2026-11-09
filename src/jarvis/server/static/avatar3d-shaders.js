@@ -213,9 +213,15 @@ void main() {
   float h = uReflect > 0.5 ? -vWorld.y : vWorld.y;
   if (h > uReveal || vEdge < 0.0) discard;   // a smooth plate border
   vec3 n = normalize(vNormal), v = normalize(vView), l = normalize(vec3(-0.45, 0.65, 0.6));
-  float diff = max(dot(n, l), 0.0), spec = pow(max(dot(reflect(-l, n), v), 0.0), 36.0);
+  float diff = max(dot(n, l), 0.0), rl = max(dot(reflect(-l, n), v), 0.0), spec = pow(rl, 36.0);
   float fres = pow(1.0 - abs(dot(n, v)), 3.0);
-  vec3 col = vec3(0.055, 0.05, 0.047) * (0.45 + 0.9 * diff) + vec3(1.0, 0.86, 0.7) * spec * 0.4 + uTint * fres * 0.35;
+  // brushed alloy: fine streaks in the highlight (faded out where they would alias), a tight polished glint,
+  // and lighter worn metal along the plate edges
+  float bq = vObj.y * 900.0 + vObj.x * 30.0;
+  float brush = mix(1.0, 0.7 + 0.6 * fract(sin(floor(bq) * 12.9898) * 43758.5), clamp(1.0 - fwidth(bq) * 0.5, 0.0, 1.0));
+  float wear = smoothstep(0.035, 0.012, vEdge) * smoothstep(0.0, 0.006, vEdge);
+  vec3 col = vec3(0.055, 0.05, 0.047) * (0.45 + 0.9 * diff) + vec3(1.0, 0.86, 0.7) * (spec * 0.4 * brush + pow(rl, 140.0) * 0.35)
+           + vec3(0.32, 0.28, 0.23) * wear * (0.3 + diff) + uTint * fres * 0.35;
   float edge = 1.0 - smoothstep(0.004, 0.02, vEdge), inner = 1.0 - smoothstep(0.0, 0.0045, abs(vEdge - 0.05));
   float run = exp(-pow((fract(vObj.y * 0.4 - uTime * 0.25) - 0.5) * 8.0, 2.0));
   vec3 an = abs(normalize(vObjN)); vec2 mq = (an.z > max(an.x, an.y) ? vObj.xy : (an.x > an.y ? vObj.zy : vObj.xz)) * 22.0;

@@ -1,5 +1,19 @@
 # Changelog
 
+## Unreleased — Avatar 2.5, phase 7: contextual HUD, neural operations, evolution layers, materials
+
+- **Focus panel motion line**: what the figure's movement means right now ("concentrating — working out an answer
+  or a plan") plus one real detail when there is one: the mission step (step 2 of 5), decisions waiting, recording
+  time, looking things up. Never a percentage that doesn't exist.
+- **Neural activity by operation**: the network shows where the work is — toward the head while concentrating,
+  flickering nodes while reading sources, out to the limbs while executing, pulsing with each spoken word while
+  explaining, the whole network beating as a lesson is stored — chosen by the real state.
+- **Evolution 2.5**: the Evolution record now keeps four things apart: verified capability (the milestones), visual
+  progression (the displayed stage, never ahead of the record), rendering modules (on and off at this stage), and
+  your customisation on this device (preset, quality, view, sound), which never changes a capability.
+- **Materials**: brushed-alloy streaks in the plate highlights (faded where they would shimmer), a tight polished
+  glint and lighter worn metal along plate edges. Shader-only; no textures added.
+
 ## Unreleased — Avatar 2.5, phase 6: mechanical transformations
 
 - **Transformation sequences** (`avatar3d-transform.js`): a group of armour plates opens in seven steps — unlock (the

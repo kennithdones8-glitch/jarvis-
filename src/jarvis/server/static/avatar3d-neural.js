@@ -8,6 +8,17 @@ import * as THREE from "/static/vendor/three.module.min.js";
 
 const V = (x, y, z) => new THREE.Vector3(x, y, z);
 const CORE = V(0, 3.62, 0.18);
+// where activity shows, per operation (weights for the core links, the limb links and the nodes)
+const OPS = {
+  idle: { core: 1, limb: 1, node: 1 }, listening: { core: 1, limb: 0.8, node: 1 },
+  concentrating: { core: 1.3, limb: 0.55, node: 1.05 },        // toward the head
+  curious: { core: 0.95, limb: 0.7, node: 1.15, flick: 1 },     // sampling: nodes flicker as sources are read
+  executing: { core: 0.8, limb: 1.25, node: 1 },                // out to the hands and feet
+  explaining: { core: 1.05, limb: 0.7, node: 1, speech: 0.8 },  // the core pulses with each spoken word
+  learning: { core: 1.1, limb: 1, node: 1.1, beat: 1 },         // the whole network beats as a lesson is stored
+  waiting: { core: 0.9, limb: 0.6, node: 0.9 }, confirming: { core: 1.1, limb: 1.1, node: 1.2 },
+  recovering: { core: 0.8, limb: 0.8, node: 0.9 }, alert: { core: 0.6, limb: 0.4, node: 0.7 }, disagreeing: { core: 0.7, limb: 0.45, node: 0.8 },
+};
 
 // stage 1: the backbone (core links: reactor to head and pelvis; limb links: reactor to hands, pelvis to feet).
 // stage 3: only the added branches and nodes.
@@ -48,12 +59,21 @@ export function buildNeural(ctx, to) {
   };
   part("neural", 1, build(false));    // the backbone: reactor to head, hands and feet
   part("neural3", 3, build(true));    // stage 3: branches and more nodes
+  let op = "idle";
   return {
-    // thinking: the real neural level; executing: whether a mission is really running; reactor: its real level
-    update(thinking, executing, reactor) {
-      for (const m of mats.links) m.uniforms.uOpacity.value = 0.12 + thinking * 0.6;
-      for (const m of mats.limbs) m.uniforms.uOpacity.value = 0.1 + thinking * 0.25 + (executing ? 0.55 : 0) + reactor * 0.1;
-      for (const m of mats.nodes) m.uniforms.uOpacity.value = 0.3 + thinking * 0.5 + reactor * 0.15;
+    // thinking: the real neural level; executing: whether a mission is really running; reactor: its real level;
+    // how: the operation in progress (the personality from avatar-events.js, or "learning"), which decides WHERE the
+    // activity shows: toward the head while concentrating, flickering nodes while reading sources, the limbs while
+    // executing, the core with the voice while explaining, the whole network beating as a lesson is stored.
+    update(thinking, executing, reactor, how = "idle", t = 0, speech = 0) {
+      op = OPS[how] ? how : "idle";
+      const w = OPS[op];
+      const flick = w.flick ? 0.75 + 0.25 * Math.sin(t * 7.0) * Math.sin(t * 2.3) : 1;
+      const beat = w.beat ? 1 + 0.35 * Math.max(0, Math.sin(t * 4.2)) : 1;
+      for (const m of mats.links) m.uniforms.uOpacity.value = (0.12 + thinking * 0.6) * w.core * beat * (1 + speech * (w.speech || 0));
+      for (const m of mats.limbs) m.uniforms.uOpacity.value = (0.1 + thinking * 0.25 + (executing ? 0.55 : 0) + reactor * 0.1) * w.limb * beat;
+      for (const m of mats.nodes) m.uniforms.uOpacity.value = (0.3 + thinking * 0.5 + reactor * 0.15) * w.node * flick * beat;
     },
+    get op() { return op; },
   };
 }

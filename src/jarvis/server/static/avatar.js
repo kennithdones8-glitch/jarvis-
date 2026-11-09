@@ -538,6 +538,7 @@
                           get renderer() { return av.three ? "3d" : "2d"; },
                           get stats() { return av.three ? av.three.stats : null; },
                           get voiceNow() { return av.three ? av.three.voice : null; },
+                          get neuralOp() { return av.three ? av.three.neuralOp : null; },
                           get personality() { const p = personality(av.state); return p ? p.name : null; },
                           get camera() { return av.three ? av.three.camera : null; }, get inspecting() { return !!(av.three && av.inspecting); },
                           get views() { return av.three ? av.three.VIEWS : {}; }, get sequences() { return av.three ? av.three.SEQUENCES : {}; },

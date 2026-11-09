@@ -506,3 +506,34 @@ def test_only_you_start_a_transformation_never_a_jarvis_state():
     assert "xform" not in set_state                                            # no state opens the armour
     assert "if (boot) bootStep(dt); else applyTransform(xs);" in AV3          # never during the startup assembly
     assert "(pivot - R·pivot)" in AV3                                          # plates turn about their own centre
+
+
+# ---- phase 7: contextual HUD, operation-specific neural activity, evolution layers, materials --------------------
+def test_neural_activity_shows_where_the_real_operation_is():
+    neural = (STATIC / "avatar3d-neural.js").read_text()
+    ops = set(re.findall(r"^  (\w+): \{ core:", neural, re.M)) | set(re.findall(r", (\w+): \{ core:", neural))
+    out = events("out.p = Object.keys(E.PERSONALITY);")
+    assert set(out["p"]) | {"learning"} <= ops                            # every personality (and learning) has a pattern
+    assert 'state === "learning" ? "learning" : pers ? pers.name : "idle"' in AV3   # chosen by the real state only
+    assert "Math.random" not in neural
+
+
+def test_hud_motion_line_explains_the_movement_and_uses_real_details_only():
+    detail = re.search(r"function hudDetail\(.*?\n\}\n", JS, re.S).group(0)
+    assert "%" not in detail and "Math.random" not in detail               # counts and steps, never invented percentages
+    assert "t.steps.length" in detail and "d.approvals.length" in detail
+    assert 'pm && pname !== "idle"' in JS and 'id="projmotion"' in (STATIC / "index.html").read_text()
+
+
+def test_evolution_keeps_capability_progression_modules_and_customisation_apart():
+    layers = re.search(r"function evolutionLayers\(.*?\n\}\n", JS, re.S).group(0)
+    for heading in ("Visual progression", "Rendering modules", "Your customisation (this device)"):
+        assert heading in layers
+    assert "none of this changes a capability or a milestone" in layers and "api(" not in layers
+    assert "it never runs ahead of it" in layers
+
+
+def test_brushed_alloy_stays_within_the_existing_shader_and_fades_where_it_would_alias():
+    shaders = (STATIC / "avatar3d-shaders.js").read_text()
+    assert "clamp(1.0 - fwidth(bq) * 0.5, 0.0, 1.0)" in shaders and "float wear = smoothstep(0.035, 0.012, vEdge)" in shaders
+    assert not list((STATIC).glob("*.png")) or all(p.name.startswith(("apple-touch", "icon")) for p in STATIC.glob("*.png"))   # no textures added

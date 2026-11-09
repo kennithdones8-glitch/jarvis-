@@ -1661,7 +1661,7 @@ function presetSection() {
     actions, edit];
 }
 
-const QUALITY_WORD = { high: "Quality", balanced: "Balanced", low: "Performance", lowpower: "Low Power" };
+const QUALITY_WORD = { auto: "Auto", high: "Quality", balanced: "Balanced", low: "Performance", lowpower: "Low Power" };
 const RENDER_STATUS = { loading: "Loading the 3D view…", "2d": "2D core (no 3D on this device)", lost: "GPU context lost: showing the 2D core, waiting for the browser to restore it",
   restarting: "Rebuilding the 3D view…", unavailable: "2D core: the 3D view couldn't load (it retries when JARVIS is reachable)",
   failed: "2D core: the 3D view failed three times (Projection controls → Rebuild 3D view)" };
@@ -2728,11 +2728,30 @@ function closeProjection() {
   renderProjBar();   // leaves the wider projection area
 }
 
+// one real detail for the focus panel's motion line: never a percentage that doesn't exist
+function hudDetail(st, d) {
+  if (!d) return "";
+  const core = $("#core");
+  if (core.dataset.listening && voice.started) return `recording ${Math.floor((Date.now() - voice.started) / 1000)}s`;
+  if (st === "executing" || st === "verifying") {
+    const t = d.tasks.find((x) => ACTIVE.includes(x.state));
+    if (t && t.steps.length) return `step ${Math.min(t.steps.length, t.steps.filter((x) => ["done", "skipped"].includes(x.state)).length + 1)} of ${t.steps.length}`;
+  }
+  if (st === "approval") return `${d.approvals.length} waiting for you`;
+  if (st === "researching" && ui.stage && ui.stage.stage === "lookup") return "looking things up";
+  if (st === "disagreeing") return "see the audit log in the Activity log";
+  return "";
+}
 function renderProjection(d) {
   const st = window.JarvisAvatar ? JarvisAvatar.state : "unknown";
   const s = situation(d), w = liveWork(d), evo = d && d.evolution;
   const list = d ? systems(d) : [];
   $("#projstate").textContent = AVATAR_WORDS[st] || st;
+  // what the movement means right now (avatar-events.js), plus the one live detail that matters for it
+  const pname = window.JarvisEvents ? JarvisEvents.personalityOf(st) : null;
+  const pm = pname && JarvisEvents.PERSONALITY[pname];
+  const detail = hudDetail(st, d);
+  $("#projmotion").replaceChildren(...(pm && pname !== "idle" ? [h("b", {}, pname), ` — ${pm.means}${detail ? ` · ${detail}` : ""}`] : []));
   $("#projmain").textContent = s.main || "";
   $("#projsub").textContent = s.sub || "";
   $("#projwork").replaceChildren(...(w ? [h("div", { class: "kicker" }, w.kind), h("div", { class: "pw-text" }, w.text), h("div", { class: "pw-sub" }, w.sub)]
@@ -2744,6 +2763,22 @@ function renderProjection(d) {
   const pct = (v) => (typeof v === "number" ? `${Math.round(v * 100)}%` : "unavailable");
   $("#projaura").textContent = d ? `Aura (inner to outer): CPU load ${pct(av.cpu)} · memory ${pct(av.memory)} · missions ${d.tasks.filter((x) => ACTIVE.includes(x.state)).length} · decisions ${d.approvals.length}` : "";
   $("#projevo").textContent = evo ? `Stage ${displayStage(evo)} · ${evo.stages ? evo.stages[displayStage(evo) - 1] : evo.name} — evolution record` : "Evolution record";
+}
+
+// Evolution 2.5 keeps four things apart: what JARVIS can verifiably do (the milestones above), how far the look has
+// progressed (the displayed stage), which rendering modules that stage switches on, and what you customised here.
+function evolutionLayers(evo) {
+  const mods = window.JarvisAvatar ? JarvisAvatar.modules.filter((m) => MODULE_LABEL[m.name]) : [];
+  const d = loadDisplay(), st = loadPresets(), now = st && window.JarvisPresets ? JarvisPresets.current(st, d) : null;
+  return [
+    h("h3", { class: "sys-part" }, "Visual progression"),
+    h("p", { class: "hl-sub" }, `Showing stage ${displayStage(evo)} of 5${evoCap() ? " (capped on this device)" : ""}. It follows the verified record; it never runs ahead of it.`),
+    h("h3", { class: "sys-part" }, "Rendering modules"),
+    mods.length ? h("p", { class: "hl-sub" }, `${mods.filter((m) => m.on).length} of ${mods.length} on at this stage. Off: ${mods.filter((m) => !m.on).map((m) => `${MODULE_LABEL[m.name]} (stage ${m.tier})`).join(", ") || "none"}.`)
+      : h("p", { class: "hl-sub" }, "The 2D core is showing on this device: no 3D modules."),
+    h("h3", { class: "sys-part" }, "Your customisation (this device)"),
+    h("p", { class: "hl-sub" }, `${now ? (now.modified ? `Custom (changed from ${now.label})` : `Preset: ${now.label}`) : "Default look"} · quality ${QUALITY_WORD[d.quality] || d.quality} · resting view ${d.view} · sound ${d.sound}. Looks only: none of this changes a capability or a milestone.`),
+  ];
 }
 
 // Evolution: the stage comes from the server (verified milestones). This device may choose to show a lower stage.
@@ -2770,6 +2805,7 @@ function showEvolution() {
           onclick: () => { try { if (v) localStorage.setItem(EVO_CAP_KEY, String(v)); else localStorage.removeItem(EVO_CAP_KEY); } catch (e) { /* this visit only */ }
             dlg.close(); renderHead(ui.data); showEvolution(); } }, label))),
     h("p", { class: "hl-sub" }, "Showing a lower stage only changes the look on this device; it never changes what JARVIS can do or the record above."),
+    ...evolutionLayers(evo),
   ];
   const dlg = h("dialog", { class: "pairdlg askdlg evodlg", "aria-labelledby": "evo-h" },
     h("h2", { id: "evo-h" }, "Projection evolution"), ...body,

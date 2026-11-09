@@ -982,7 +982,8 @@ export function create(wrap, opts = {}) {
     const breathe = moving ? 0.92 + 0.08 * Math.sin(t * 1.3) : 1;
     REACTOR.value = cur.reactor * breathe * (1 + speech * 0.8 + voice * 0.9 + flash) * K.reactor[OPT.reactor] * (1 + 0.6 * exposeR);
     if (innerMat) innerMat.uniforms.uOpacity.value = 0.12 + cur.neural * 0.5 + flash * 0.3;   // the inner network brightens while thinking
-    neuralX.update(cur.neural, ["executing", "coding", "verifying"].includes(state), REACTOR.value);
+    neuralX.update(cur.neural, ["executing", "coding", "verifying"].includes(state), REACTOR.value,
+                   state === "learning" ? "learning" : pers ? pers.name : "idle", t, speech);
     const projecting = director.update(dt, moving);
     const camMoving = rig.update(moving ? 1 - Math.exp(-dt * 4) : 1, director.wide, director.wideX, director.wideR);
     const confirming = reactorX.update(dt * K.animation[OPT.animation], moving, target.rpat);
@@ -1184,7 +1185,7 @@ export function create(wrap, opts = {}) {
     skipBoot() { if (boot) { boot.t = BOOT_END; kick(); } }, get booting() { return !!boot; },
     get animating() { return raf !== 0; },
     get eyes() { return { hot: FACE.uEyeHot.value, level: EYE.value, open: FACE.uEyeOpen.value, look: FACE.uEyeLook.value, scan: FACE.uEyeScan.value, speech: FACE.uSpeech.value }; }, get lost() { return lost; }, get state() { return state; },
-    get personality() { return pers ? pers.name : null; }, get voice() { return +voice.toFixed(3); },
+    get personality() { return pers ? pers.name : null; }, get neuralOp() { return neuralX.op; }, get voice() { return +voice.toFixed(3); },
     get stats() { return { frameMs: raf && mode === "full" ? frameAvg : 0, calls: renderer.info.render.calls, triangles: renderer.info.render.triangles, camera: camera.position.toArray().map((x) => +x.toFixed(2)) }; },
     // everything this renderer made: listeners, observers, geometries, materials, textures, render targets
     dispose() {

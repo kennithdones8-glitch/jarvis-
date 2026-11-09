@@ -468,7 +468,7 @@ def test_reactor_layers_follow_the_real_reactor_level_and_confirm_only_real_comp
 
 def test_neural_network_reflects_real_thinking_and_execution_and_bends_with_the_body():
     assert 'part("neural", 1, build(false));' in AV3 and 'part("neural3", 3, build(true));' in AV3   # branches from stage 3
-    assert 'neuralX.update(cur.neural, ["executing", "coding", "verifying"].includes(state), REACTOR.value);' in AV3
+    assert 'neuralX.update(cur.neural, ["executing", "coding", "verifying"].includes(state), REACTOR.value,' in AV3
     assert AV3.count("flow: true, core: 0.6, head: true }") >= 2                    # drawn with the figure's vertex shader (bends)
 
 
