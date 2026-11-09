@@ -577,10 +577,14 @@ function jobCard(j) {
   }
   if (j.kind === "plan") {
     return h("div", { class: "job" },
-      h("div", { class: "kicker" }, `Plan ready · ${plural(j.steps.length, "step")} · ${j.model.split("/").pop()}`),
+      h("div", { class: "kicker" }, `${j.replan_of ? "New plan (second attempt)" : "Plan ready"} · ${plural(j.steps.length, "step")} · ${j.model.split("/").pop()}`),
       j.note ? h("div", { class: "d-why" }, j.note) : null,
+      j.restored ? h("div", { class: "d-why" }, "Kept from before JARVIS restarted.") : null,
+      j.replan_of ? h("div", { class: "d-why" }, "Planned with what happened on the first attempt, so it doesn't redo what's done.") : null,
       h("div", { class: "job-title" }, j.goal || j.request),
       h("ol", { class: "plan-steps" }, j.steps.map((s) => h("li", {}, s.description))),
+      j.criteria && j.criteria.length ? h("details", { class: "more" }, h("summary", {}, "How JARVIS will check it's done"),
+        h("ul", { class: "criteria" }, j.criteria.map((c) => h("li", { class: c.check }, c.text)))) : null,
       h("details", { class: "more" }, h("summary", {}, "Technical details"),
         h("ul", { class: "steps" }, j.steps.map((s) => h("li", {}, h("span", { class: "ic" }, "·"), h("small", {}, `${s.call} ${s.args}`))))),
       h("div", { class: "row mt" },
@@ -1004,18 +1008,31 @@ async function settleStep(t, s, happened) {
   act(`/api/tasks/${t.id}/steps/${s.id}/resolve`, { happened });
 }
 
+const CHECK_ICON = { verified: "✓", failed: "✗", unconfirmed: "?", reported: "•", skipped: "–" };
+const CHECK_WORD = { verified: "verified", failed: "not found / didn't hold", unconfirmed: "couldn't be checked (not counted as verified)",
+                     reported: "reported by the app", skipped: "skipped" };
+// "Complete · verified" only when every check held; something that couldn't be checked is said so
+function missionWord(t) {
+  if (t.state !== "completed" || !t.evidence || !t.evidence.checks) return STATE_WORDS[t.state] || t.state;
+  return t.evidence.unconfirmed ? `Complete · ${t.evidence.unconfirmed} not confirmed` : "Complete · verified";
+}
 function missionCard(t) {
   const done = t.steps.filter((s) => s.state === "done" || s.state === "skipped").length;
   const cls = NEEDS.includes(t.state) ? "needs" : ACTIVE.includes(t.state) ? "active"
     : t.state === "completed" ? "done" : ["failed", "cancelled"].includes(t.state) ? "bad" : "";
   const cur = t.steps.find((s) => s.state === "started") || t.steps.find((s) => s.state === "pending");
   const files = (t.evidence && t.evidence.files) || [];
+  const checks = (t.evidence && t.evidence.checks) || [];
   const controls = [];
   if (["queued", "running", "awaiting_approval"].includes(t.state)) controls.push(h("button", { class: "btn btn-ghost btn-sm", type: "button",
     title: "Pause: stops after the current step. Nothing is undone; resume any time.", onclick: () => act(`/api/tasks/${t.id}/pause`, {}) }, "Pause"));
   controls.push(h("button", { class: "btn btn-ghost btn-sm", type: "button", onclick: () => showTimeline(t.id) }, "Timeline"));
   const uncertain = t.steps.filter((s) => s.state === "uncertain");
   if (["paused", "blocked"].includes(t.state) && !uncertain.length) controls.push(h("button", { class: "btn btn-sm", type: "button", onclick: () => act(`/api/tasks/${t.id}/resume`, {}) }, "Resume"));
+  if (t.replannable) controls.push(h("button", { class: "btn btn-sm", type: "button",
+    title: "JARVIS plans this once more, told what already happened. You review the new plan before anything runs.",
+    onclick: async () => { try { await call(`/api/tasks/${t.id}/replan`, {}); note("Planning a second attempt — it appears in the chat when ready. Nothing runs until you press Run plan."); }
+      catch (e) { note(cancelled(e)); } } }, "Try a new plan"));
   if (!["completed", "failed", "cancelled"].includes(t.state)) controls.push(h("button", { class: "btn btn-ghost btn-sm", type: "button",
     title: "Cancel: ends the mission for good, after the current step. Anything already done stays done.",
     onclick: async () => (await ask(`Cancel “${t.goal}”?\n\nIt stops for good after the current step. Anything already done (files saved, events added, drafts created) is not undone.`,
@@ -1031,7 +1048,7 @@ function missionCard(t) {
   details.addEventListener("toggle", () => details.open ? ui.open.add(t.id) : ui.open.delete(t.id));
 
   return h("article", { class: `mission ${cls}`, id: `m-${t.id}` },
-    h("div", { class: "m-state" }, STATE_WORDS[t.state] || t.state),
+    h("div", { class: "m-state" }, missionWord(t)),
     h("div", { class: "m-title" }, t.goal),
     h("div", { class: "segs", role: "progressbar", "aria-label": "Progress", "aria-valuemin": 0, "aria-valuemax": t.steps.length, "aria-valuenow": done,
                "aria-valuetext": stepText(t) },
@@ -1045,8 +1062,12 @@ function missionCard(t) {
       h("div", { class: "row" },
         h("button", { class: "btn btn-sm", type: "button", onclick: () => settleStep(t, s, true) }, "Yes, it happened"),
         h("button", { class: "btn btn-ghost btn-sm", type: "button", onclick: () => settleStep(t, s, false) }, "No, it didn't")))),
-    files.map((f) => h("div", { class: `m-ok${f.content_matches ? "" : " bad"}`, title: f.path },
-      f.content_matches ? `✓ Saved & verified · ${base(f.path)}` : `✗ Verification failed · ${base(f.path)}`)),
+    // Mission Control: each success criterion and what the check found (verified / failed / unconfirmed / reported)
+    checks.length ? h("ul", { class: "criteria checked", "aria-label": "How it was checked" }, checks.map((c) =>
+      h("li", { class: c.status }, h("span", { class: "ic" }, CHECK_ICON[c.status] || "·"), `${c.text}${CHECK_WORD[c.status] ? ` — ${CHECK_WORD[c.status]}` : ""}`)))
+      : files.map((f) => h("div", { class: `m-ok${f.content_matches ? "" : " bad"}`, title: f.path },
+        f.content_matches ? `✓ Saved & verified · ${base(f.path)}` : `✗ Verification failed · ${base(f.path)}`)),
+    t.replan_of ? h("div", { class: "d-why" }, "Second attempt at a mission that failed.") : null,
     details,
     controls.length ? h("div", { class: "row mt" }, controls) : null);
 }

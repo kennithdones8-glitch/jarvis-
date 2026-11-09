@@ -387,6 +387,19 @@ used). Tests prove each protection drill fails when its protection is disabled.
   in the question; otherwise one retry with the problem pointed out, then the reply is marked "Unverified". Logged
   as `chat.grounding` (outcome and counts only).
 
+## Mission Control (Outcome Engine v2, work branch)
+
+- **Criteria** (`orchestrator/criteria.py`): `criteria_for(plan.steps)` at submit → `context.criteria` (check kinds:
+  file, read_back, reported, finished). Verifier `mission_verified` = `writes_verified` (files, citations) + each
+  criterion: read-back reuses the action's `reconcile` (the crash-recovery lookup) on the step's arguments merged with
+  its result; statuses verified / failed / unconfirmed / reported / skipped; any failed → FAILED; unconfirmed counted
+  in `evidence.unconfirmed` (learning verdict "unverified"). Tasks created before v2 keep `writes_verified`.
+- **Durable planning jobs** (`plan_jobs`, schema v10): `Dashboard._persist_job` on every state change;
+  `_restore_jobs` at start (ready → back with the plan; planning → re-planned; waiting_approval → waits on the same
+  approval; >24 h or submitted → dropped).
+- **Replan** (`POST /api/tasks/<id>/replan`): failed missions only, once (`context.replan_of`, `plan_jobs.replan_of`);
+  `Orchestrator.failure_story` (steps, states, errors) reaches the planner as a note alongside the look-first facts.
+
 ## Service and backups
 
 `service.py` writes a per-user LaunchAgent that runs `uv run jarvis dashboard --no-open` at login and after

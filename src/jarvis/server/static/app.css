@@ -1574,3 +1574,9 @@ body[data-view="evolution"] .hud .panel:not(.evo-panel) { display: none !importa
 .projbar .btn.on { border-color: rgba(255, 217, 143, .6); }
 body.projection .projbar { position: fixed; z-index: 66; left: 20px; bottom: 20px; width: min(520px, 40vw); }
 .trial-form { margin: 8px 0; } .trial-form input { flex: 1 1 280px; min-height: 36px; }
+
+/* Mission Control: success criteria and what the checks found */
+.criteria { list-style: none; margin: 6px 0 0; padding: 0; display: grid; gap: 3px; font-size: 13px; color: var(--muted, #b9aa91); }
+.criteria li { overflow-wrap: anywhere; }
+.criteria.checked li { display: grid; grid-template-columns: 16px 1fr; gap: 4px; }
+.criteria li.verified { color: #8fe3ad; } .criteria li.failed { color: #ff8a80; } .criteria li.unconfirmed { color: #f2c46d; }

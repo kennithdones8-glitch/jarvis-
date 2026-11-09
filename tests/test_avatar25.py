@@ -537,3 +537,10 @@ def test_brushed_alloy_stays_within_the_existing_shader_and_fades_where_it_would
     shaders = (STATIC / "avatar3d-shaders.js").read_text()
     assert "clamp(1.0 - fwidth(bq) * 0.5, 0.0, 1.0)" in shaders and "float wear = smoothstep(0.035, 0.012, vEdge)" in shaders
     assert not list((STATIC).glob("*.png")) or all(p.name.startswith(("apple-touch", "icon")) for p in STATIC.glob("*.png"))   # no textures added
+
+
+def test_the_renderer_waits_for_a_size_before_drawing():
+    """Opening the dashboard on a page where the projection is hidden (e.g. #/missions) left the bloom targets unsized;
+    the first frame then crashed. It now skips drawing until resize() has sized them."""
+    assert "if (post && !post.dims) { settling = Math.max(settling, 1); return; }" in AV3
+    assert AV3.index("if (post && !post.dims)") < AV3.index("if (post) post.begin(); else renderer.clear();")

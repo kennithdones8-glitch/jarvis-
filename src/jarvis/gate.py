@@ -120,6 +120,7 @@ SECURITY: dict[str, tuple[str, list[str]]] = {
         "test_fileperms::a_new_data_folder_starts_private", "test_fileperms::a_symlink_is_not_followed",
         "test_security_phase1::forget_removes_ratings_and_their_comments",
         "test_security_phase1::deleting_one_exchange_removes_its_rating",
+        "test_mission_control::forget_removes_saved_plans",
         "test_audit_privacy::forget_removes_text_from_every_table_and_the_raw_files",
         "test_audit_privacy::audit_fingerprints_free_text_but_keeps_paths_and_structure",
         "test_memory::audit_holds_no_memory_text", "test_memory::memory_context_is_private_category",
@@ -140,6 +141,10 @@ SECURITY: dict[str, tuple[str, list[str]]] = {
         "test_telemetry_evolution::dashboard_state_carries_real_telemetry_evolution_and_model_timings"]),
     "Honest reporting": ("Failures and unverified results are reported as such", [
         "test_tasks::failed_verification_is_not_reported_as_complete", "test_tasks::rejection_fails_task_honestly",
+        "test_mission_control::a_tool_that_returned_but_left_nothing_fails_the_mission",
+        "test_mission_control::a_check_that_cannot_run_is_unconfirmed_never_verified",
+        "test_mission_control::an_event_is_read_back_before_the_mission_counts_as_done",
+        "test_mission_control::a_failed_mission_can_be_planned_again_once_and_is_reviewed_first",
         "test_learn::outcomes_are_judged_by_evidence_not_by_returning",
         "test_trial::a_regression_is_caught_and_nothing_is_merged",
         "test_learn::lessons_have_evidence_confidence_and_flag_contradictions",

@@ -2,6 +2,26 @@
 
 ## Unreleased — after 0.19.3 (work branch `claude/funny-allen-ygy8kk`, not yet released)
 
+### Mission Control: missions are checked, plans survive restarts, one replan (Evolution 3.0, phase 2)
+
+- **Every mission has a definition of success**, decided from its plan when you run it (never by a model): one
+  criterion per step. The plan card shows "How JARVIS will check it's done" before you press Run plan.
+- **"Complete" means checked.** Files: exactly what was written (as before). Calendar events, reminders and notes:
+  read back from the app afterwards — if the app said it added something that isn't there, the mission **fails**.
+  Mail drafts and Music/system changes are marked "reported by the app" (Mail drafts can't be read back). A check
+  that couldn't run (e.g. Calendar didn't answer) shows "Complete · 1 not confirmed", never "verified", and the
+  learning engine counts it as unverified. Each mission card lists every criterion and what the check found.
+- **Plans survive a restart.** A plan waiting for you comes back after JARVIS restarts ("Kept from before JARVIS
+  restarted"); planning that was cut off starts again; a plan waiting for your OK to use Claude keeps waiting on the
+  same request instead of asking twice. Saved plans older than a day are dropped, and **forget** removes them.
+- **Try a new plan** on a failed mission: JARVIS plans it once more, told which steps happened and what failed (step
+  descriptions and errors, never file contents), so it doesn't redo what's done. The new plan is reviewed like any
+  other; nothing runs until you press Run plan. One replan per mission; a second attempt can't be replanned.
+- Schema v10 (`plan_jobs`). The benchmark's tool-use record now shows the read-back (`reminders.find` after
+  `reminders.add`).
+- Fix (3D): opening the dashboard straight onto a page where the projection is hidden (e.g. Missions) made the
+  renderer's first frame fail; it now waits until it has a size.
+
 ### Security: closing the autonomy gaps (Evolution 3.0, phase 1)
 
 - **Change trials (level 6) are isolated.** The branch's tests no longer run as you: no API keys, tokens, SSH agent

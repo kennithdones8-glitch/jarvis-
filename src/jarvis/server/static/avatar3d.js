@@ -1101,6 +1101,7 @@ export function create(wrap, opts = {}) {
 
     }
     // draw: the figure and environment, then the floor reflection as a second pass of the same figure
+    if (post && !post.dims) { settling = Math.max(settling, 1); return; }   // no size yet (opened on a page where the projection is hidden): resize() kicks again
     renderer.info.reset();
     if (post) post.begin(); else renderer.clear();
     renderer.render(scene, camera);

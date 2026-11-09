@@ -28,7 +28,7 @@ import threading
 import time
 import traceback
 from dataclasses import replace
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any, Callable
@@ -40,6 +40,7 @@ from ..core.approvals import ApprovalStateError
 from ..core.killswitch import EmergencyStop
 from ..core.tasks import InvalidTransition, TaskState
 from ..core.tools import ApprovalRequired
+from ..core.util import now_iso
 from ..codecheck import MAX_CASES, TEST_PROMPT, SandboxUnavailable, code_of, parse_cases, run_cases, wants_code
 from ..orchestrator.answer_checks import chat_problems
 from ..orchestrator.lookup import lenient_json
@@ -226,7 +227,9 @@ def _last_briefing(kernel: Kernel) -> str | None:
 
 def _tilde_evidence(evidence: Any) -> Any:
     if isinstance(evidence, dict) and isinstance(evidence.get("files"), list):
-        return {**evidence, "files": [{**f, "path": tilde(f.get("path"))} for f in evidence["files"]]}
+        evidence = {**evidence, "files": [{**f, "path": tilde(f.get("path"))} for f in evidence["files"]]}
+    if isinstance(evidence, dict) and isinstance(evidence.get("checks"), list):
+        evidence = {**evidence, "checks": [{**c, "text": str(c.get("text", "")).replace(HOME, "~")} for c in evidence["checks"]]}
     return evidence
 
 
@@ -332,6 +335,7 @@ class Dashboard:
 
     def start(self) -> None:
         """Run in background threads (used by tests)."""
+        self._restore_jobs()
         self.voice.start()
         self._runner.start()
         self._maint.start()
@@ -339,6 +343,7 @@ class Dashboard:
         threading.Thread(target=self.httpd.serve_forever, kwargs={"poll_interval": 0.1}, daemon=True).start()
 
     def serve_forever(self) -> None:
+        self._restore_jobs()
         self.voice.start()
         self._runner.start()
         self._maint.start()
@@ -598,15 +603,100 @@ class Dashboard:
                 self._inflight.discard(tid)
 
     # ---- planning jobs (planning takes ~1 min on CPU, so it runs in the background) ----
-    def start_plan(self, request: str) -> str:
+    def start_plan(self, request: str, *, replan_of: str | None = None, earlier: str | None = None) -> str:
         job_id = secrets.token_hex(6)
         job = {"id": job_id, "request": request, "state": "planning", "started": time.time()}
+        if replan_of:
+            job.update(replan_of=replan_of, earlier=earlier)
         with self._lock:
-            self.jobs = {k: v for k, v in self.jobs.items() if v["state"] == "planning"
+            self.jobs = {k: v for k, v in self.jobs.items() if v["state"] in ("planning", "waiting_approval")
                          or time.time() - v["started"] < 3600}
             self.jobs[job_id] = job
+        self._persist_job(job)
         self._pool.submit(self._plan_job, job)
         return job_id
+
+    # ---- Mission Control: planning jobs survive a restart (plan_jobs) ---------------------------------------------
+    def _persist_job(self, job: dict[str, Any]) -> None:
+        """Save a planning job: a plan waiting for you, or one still being planned, isn't lost if JARVIS restarts."""
+        from dataclasses import asdict
+        data = {k: v for k, v in job.items() if k != "plan"}
+        plan = job.get("plan")
+        if plan is not None:
+            data["plan"] = {"kind": plan.kind, "goal": plan.goal, "message": plan.message, "model": plan.model,
+                            "attempts": plan.attempts, "steps": [asdict(st) for st in plan.steps]}
+        state = job["state"] if job["state"] in ("planning", "waiting_approval", "ready", "submitted") else "ready"
+        now = now_iso()
+        try:
+            with self.kernel.db.tx() as c:
+                c.execute("INSERT INTO plan_jobs (id, request, state, data, replan_of, created_at, updated_at) VALUES (?,?,?,?,?,?,?) "
+                          "ON CONFLICT(id) DO UPDATE SET state = excluded.state, data = excluded.data, updated_at = excluded.updated_at",
+                          (job["id"], job["request"], state, json.dumps(data, default=str), job.get("replan_of"), now, now))
+        except Exception as exc:  # noqa: BLE001 - saving is a safety net; planning carries on without it
+            self.kernel.audit.record("dashboard.plan_save_failed", error=type(exc).__name__)
+
+    def _forget_job(self, job_id: str) -> None:
+        with self.kernel.db.tx() as c:
+            c.execute("DELETE FROM plan_jobs WHERE id = ?", (job_id,))
+
+    def _restore_jobs(self) -> int:
+        """At start: bring back plans that were waiting for you, and restart planning that was cut off (waiting on
+        the same approval if it was waiting for one). Old or already-run jobs are dropped."""
+        from ..core.tasks import StepSpec
+        from ..orchestrator.planner import Plan
+        db = self.kernel.db
+        cutoff = (datetime.now(timezone.utc) - timedelta(hours=24)).isoformat()
+        with db.tx() as c:
+            c.execute("DELETE FROM plan_jobs WHERE updated_at < ? OR state = 'submitted'", (cutoff,))
+        restored = 0
+        for row in db.query("SELECT * FROM plan_jobs ORDER BY created_at"):
+            try:
+                job = json.loads(row["data"])
+                p = job.pop("plan", None)
+                if p is not None:
+                    steps = [StepSpec(**st) for st in p["steps"]]
+                    if any(self.kernel.registry.action(st.tool, st.action) is None for st in steps):
+                        job.update(state="ready", kind="failed", message="JARVIS's abilities changed since this was planned: plan it again.")
+                    else:
+                        job["plan"] = Plan(p["kind"], goal=p["goal"], steps=steps, message=p["message"], model=p["model"], attempts=p["attempts"])
+            except Exception:  # noqa: BLE001 - an unreadable saved job is dropped, never half-restored
+                self._forget_job(row["id"])
+                continue
+            job["restored"] = True
+            with self._lock:
+                self.jobs[job["id"]] = job
+            if row["state"] in ("planning", "waiting_approval"):
+                self._pool.submit(self._plan_job, job)
+            restored += 1
+        if restored:
+            self.kernel.audit.record("dashboard.plans_restored", count=restored)
+        return restored
+
+    def replan(self, tid: str, *, actor: str) -> str:
+        """One new plan for a failed mission, told what already happened. It goes through the usual review: nothing
+        runs until you press Run. A mission gets one replan; a replan can't be replanned."""
+        from ..core.tasks import TaskState
+        from ..orchestrator import Orchestrator
+        k = self.kernel
+        try:
+            task = k.tasks.get(tid)
+        except KeyError:
+            raise HttpError(404, "no such mission") from None
+        if task["state"] != TaskState.FAILED:
+            raise HttpError(409, "only a failed mission can be planned again")
+        if task["context"].get("replan_of"):
+            raise HttpError(409, "this was already the second attempt: describe the task again to start fresh")
+        if self._replanned(tid):
+            raise HttpError(409, "this mission has already been planned again")
+        job_id = self.start_plan(task["request"], replan_of=tid, earlier=Orchestrator.failure_story(task, k.tasks.steps(tid)))
+        k.audit.record("mission.replan", actor=actor, task_id=tid, job=job_id)
+        return job_id
+
+    def _replanned(self, tid: str) -> bool:
+        db = self.kernel.db
+        return bool(db.one("SELECT 1 FROM plan_jobs WHERE replan_of = ?", (tid,))
+                    or db.one("SELECT 1 FROM tasks WHERE json_extract(context, '$.replan_of') = ?", (tid,))
+                    or any(j.get("replan_of") == tid for j in self.jobs.values()))
 
     def mac_command(self, body: dict[str, Any]) -> dict[str, Any]:
         """Run one Music or system action through the gateway: reads run, changes ask (unless your policy allows them),
@@ -654,42 +744,61 @@ class Dashboard:
                        steps=[{"description": s.description, "call": f"{s.tool}.{s.action}",
                                "args": describe_args(s.args, 200), "depends_on": s.depends_on} for s in plan.steps],
                        plan=plan, state="ready")
+            if plan.kind == "plan":   # how JARVIS will check it's done, shown before you press Run
+                from ..orchestrator.criteria import criteria_for
+                job["criteria"] = [{**c, "text": c["text"].replace(HOME, "~")} for c in criteria_for(plan.steps)]
         except NoModelAvailable as exc:
             job.update(state="ready", kind="failed", message=f"No model can plan this: {exc}",
                        reasons=exc.reasons)
         except Exception as exc:
             job.update(state="ready", kind="failed", message=f"Planning failed: {type(exc).__name__}: {exc}")
         job["seconds"] = round(time.time() - job["started"], 1)
+        if not self._stop.is_set():
+            self._persist_job(job)
 
     def _plan_with_consent(self, job: dict[str, Any]):
         """Plan with the best model. If that needs your approval to send the request to the cloud, wait
         for your decision in Decisions: approved → retry the identical request; rejected or ignored for
         15 minutes → plan with a local model instead."""
-        try:
-            return self.orch.plan(job["request"])
-        except ApprovalRequired as exc:
-            job.update(state="waiting_approval", approval_id=exc.approval_id)
-            deadline = time.time() + 900
-            while time.time() < deadline and not self._stop.is_set():
-                decision = self.kernel.approvals.get(exc.approval_id)["state"]
-                if decision != "pending":
-                    break
-                time.sleep(0.5)
-            else:
+        earlier = job.get("earlier")
+        if job.get("state") == "waiting_approval" and job.get("approval_id"):   # restored: keep waiting on the same request
+            approval_id = job["approval_id"]
+        else:
+            try:
+                return self.orch.plan(job["request"], earlier=earlier)
+            except ApprovalRequired as exc:
+                approval_id = exc.approval_id
+        job.update(state="waiting_approval", approval_id=approval_id)
+        self._persist_job(job)
+        deadline = time.time() + 900
+        decision = "expired"
+        while time.time() < deadline and not self._stop.is_set():
+            try:
+                decision = self.kernel.approvals.get(approval_id)["state"]
+            except KeyError:
                 decision = "expired"
-            job["state"] = "planning"
-            if decision == "approved":
-                job["started"] = time.time()
-                return self.orch.plan(job["request"])
-            job["note"] = "Planned locally (you kept this request on your Mac)."
-            return self.orch.plan(job["request"], local_only=True)
+            if decision != "pending":
+                break
+            time.sleep(0.5)
+        else:
+            decision = "expired"
+        if self._stop.is_set():   # shutting down mid-wait: stays saved as waiting, resumes after the restart
+            raise RuntimeError("JARVIS is shutting down")
+        job["state"] = "planning"
+        if decision == "approved":
+            job["started"] = time.time()
+            return self.orch.plan(job["request"], earlier=earlier)
+        job["note"] = "Planned locally (you kept this request on your Mac)."
+        return self.orch.plan(job["request"], local_only=True, earlier=earlier)
 
     def run_plan(self, job_id: str) -> str:
         job = self.jobs.get(job_id)
         if not job or job.get("kind") != "plan" or job.get("task_id"):
             raise HttpError(409, "this plan cannot be run")
-        job["task_id"] = self.orch.submit(job["request"], job["plan"], actor="user:dashboard", runner=RUNNER)
+        job["task_id"] = self.orch.submit(job["request"], job["plan"], actor="user:dashboard", runner=RUNNER,
+                                          replan_of=job.get("replan_of"))
         job["state"] = "submitted"
+        self._persist_job(job)
         return job["task_id"]
 
     # ---- chat --------------------------------------------------------------------------
@@ -889,6 +998,10 @@ class Dashboard:
                 "created_at": t["created_at"], "updated_at": t["updated_at"], "error": t["error"],
                 "next_action": t["next_action"], "runner": t["context"].get("runner"),
                 "evidence": _tilde_evidence((t["result"] or {}).get("evidence")),
+                # Mission Control: what "done" means for this mission, and whether it can be planned once more
+                "criteria": [{**c, "text": str(c.get("text", "")).replace(HOME, "~")} for c in t["context"].get("criteria") or []] or None,
+                "replan_of": t["context"].get("replan_of"),
+                "replannable": t["state"] == TaskState.FAILED and not t["context"].get("replan_of") and not self._replanned(t["id"]),
                 "steps": [{"id": s["id"], "n": s["idx"], "description": s["description"], "call": f"{s['tool']}.{s['action']}",
                            "state": s["state"], "attempts": s["attempts"], "error": s["error"]} for s in steps],
                 "final_text": next((s["result"].get("text") for s in reversed(steps) if s["tool"] == "llm"
@@ -914,7 +1027,7 @@ class Dashboard:
                               "summary": a["summary"].replace(HOME, "~"), "created_at": a["created_at"],
                               "preview": preview[:4000] if isinstance(preview, str) else None})
 
-        jobs = [{k2: v for k2, v in j.items() if k2 != "plan"} for j in
+        jobs = [{k2: v for k2, v in j.items() if k2 not in ("plan", "earlier")} for j in
                 sorted(self.jobs.values(), key=lambda j: j["started"], reverse=True)[:5]]
         for j in jobs:
             if j["state"] in ("planning", "waiting_approval"):
@@ -1395,7 +1508,12 @@ class Dashboard:
                 mem.edit(m.group(1), text("text", 500), by=actor)
             return {"ok": True}
         if path == "/api/memory/forget":
-            return self.kernel.forget(text("query", 200), by=actor, dry_run=body.get("confirm") is not True)
+            query, dry = text("query", 200), body.get("confirm") is not True
+            out = self.kernel.forget(query, by=actor, dry_run=dry)
+            if not dry and query.strip():   # the dashboard's own copy of saved plans goes too
+                with self._lock:
+                    self.jobs = {i: j for i, j in self.jobs.items() if query.strip().lower() not in j["request"].lower()}
+            return out
         if path == "/api/feedback":
             from .. import learn
             rating = body.get("rating")
@@ -1450,7 +1568,10 @@ class Dashboard:
             if m.group(2) == "run":
                 return {"task_id": self.run_plan(m.group(1))}
             self.jobs.pop(m.group(1), None)
+            self._forget_job(m.group(1))
             return {"ok": True}
+        if m := re.fullmatch(r"/api/tasks/([\w-]+)/replan", path):   # one new plan for a failed mission (reviewed as usual)
+            return {"job_id": self.replan(m.group(1), actor=actor)}
         if m := re.fullmatch(r"/api/approvals/([\w-]+)", path):
             approve = body.get("approve")
             if not isinstance(approve, bool):

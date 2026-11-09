@@ -179,7 +179,9 @@ class Pipeline:
                 if model:
                     mp = json.loads(model["payload"])
                     mname = f"{mp['provider']}/{mp['model']}" if "provider" in mp else f"local/{mp.get('model')}"
-                new.append(("task", r["task_id"], mname, "verified" if p.get("ok") else "failed",
+                unconfirmed = (p.get("evidence") or {}).get("unconfirmed") if isinstance(p.get("evidence"), dict) else 0
+                verdict = ("verified" if not unconfirmed else "unverified") if p.get("ok") else "failed"   # couldn't check ≠ verified
+                new.append(("task", r["task_id"], mname, verdict,
                             {"verifier": p.get("verifier"), "evidence": p.get("evidence")},
                             _seconds(task["created_at"], r["ts"]) if task else None, errors, 1 if recovered else 0, r["ts"]))
         with self.db.tx() as c:

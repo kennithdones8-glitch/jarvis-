@@ -297,6 +297,19 @@ MIGRATIONS: list[str] = [
         updated_by  TEXT NOT NULL
     );
     """,
+    # v10: Mission Control — planning jobs survive a restart (a plan waiting for you, or being planned, isn't lost)
+    """
+    CREATE TABLE plan_jobs (
+        id          TEXT PRIMARY KEY,
+        request     TEXT NOT NULL,
+        state       TEXT NOT NULL CHECK (state IN ('planning', 'waiting_approval', 'ready', 'submitted')),
+        data        TEXT NOT NULL,          -- the job as the dashboard shows it (JSON), plus the plan itself
+        replan_of   TEXT,                   -- the failed mission this is a second attempt at
+        created_at  TEXT NOT NULL,
+        updated_at  TEXT NOT NULL
+    );
+    CREATE INDEX plan_jobs_replan ON plan_jobs(replan_of);
+    """,
 ]
 
 

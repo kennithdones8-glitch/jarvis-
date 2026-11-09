@@ -101,6 +101,9 @@ class Kernel:
         rated = [r["id"] for r in self.db.query("SELECT id, reason FROM feedback WHERE reason IS NOT NULL")
                  if q and q in r["reason"].lower()]
         out["ratings"] = len(rated)
+        # saved plans (Mission Control) whose request mentions it
+        plans = [r["id"] for r in self.db.query("SELECT id, request FROM plan_jobs") if q and q in r["request"].lower()]
+        out["plans"] = len(plans)
         if not dry_run:
             for t in out["tasks"]:
                 if t["deletable"]:
@@ -110,6 +113,7 @@ class Kernel:
                     if t["deletable"]:
                         c.execute("DELETE FROM feedback WHERE target = 'task' AND ref = ?", (t["id"],))
                 c.executemany("DELETE FROM feedback WHERE id = ?", [(i,) for i in rated])
+                c.executemany("DELETE FROM plan_jobs WHERE id = ?", [(i,) for i in plans])
             if rated:
                 self.audit.record("memory.ratings_forgotten", actor=by, count=len(rated))
             self.db.checkpoint()  # with secure_delete, no copy of the deleted text is left in the files
