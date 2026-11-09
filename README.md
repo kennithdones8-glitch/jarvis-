@@ -2,14 +2,15 @@
 
 A personal AI system for Mac and iPhone: persistent, permissioned, auditable, local-first.
 
-**Status: v0.17 — Mac apps, smarter chat, benchmark, release gate.** JARVIS chats (local models + Claude via
+**Status: v0.19.3 (released on `main`), plus unreleased work on the `claude/funny-allen-ygy8kk` branch (Avatar 2.5,
+continuous learning with autonomy levels, Music and system control; see the [changelog](CHANGELOG.md)).** JARVIS chats (local models + Claude via
 your Pro plan) and looks things up in your calendar, reminders, notes and files before answering; researches the
 web with verified sources; reads documents; plans and carries out tasks with approvals (files, Calendar, Reminders,
 Notes, Mail drafts); remembers what you tell it; runs in the background with encrypted backups; works from your
 iPhone over your private Tailscale network with Face ID sign-in, and can require Touch ID sign-in on the Mac (dangerous actions ask again).
 Each morning it tells you what's on today, what needs you and what's wrong. You can talk to it (whisper.cpp on your
 Mac). `jarvis bench` measures it on fixed tasks; `jarvis gate` must pass before a release.
-**Much of v0.12–v0.17 is not yet confirmed on the Mac** (see the table). **Not built yet:** watched folders,
+**Much of v0.12–v0.17, and all of the branch's unreleased work, is not yet confirmed on the Mac** (see the table). **Not built yet:** watched folders,
 applying self-improvement proposals (JARVIS proposes; it never changes itself), a personal operations model. See [ROADMAP](docs/ROADMAP.md).
 
 ## What works today
@@ -32,7 +33,7 @@ the owner's Intel Mac (macOS 14.1.1). Untested-on-Mac items may still have Mac-s
 | Web fetch (pinned to the checked address, ports 80/443, one deadline) | ✅ | not yet |
 | Memory: archive + facts with provenance, recall, review/correct/delete, forget (incl. task history) | ✅ | not yet |
 | Dashboard (holographic HUD), live replies, Help and welcome | ✅ + headless browser | ✅ opens (v0.16.x) · live replies not yet |
-| Avatar 2.0: faceless projection, reactor assembly, 18 states from real signals, focus view, system satellites, evolution v2 (7-day hold, versioned) | ✅ + headless browser with software WebGL | **not yet** (real GPU cost and speech word-boundary support unverified on the Mac/iPhone) |
+| Avatar 2.0: faceless projection, reactor assembly, 22 states from real signals, focus view, system satellites, evolution v2 (7-day hold, versioned) | ✅ + headless browser with software WebGL | **not yet** (real GPU cost and speech word-boundary support unverified on the Mac/iPhone) |
 | 3D holographic core (Three.js, served locally; 2D fallback), gold-white cinematic environment, Normal / Low performance / Reduced motion | ✅ + headless browser with software WebGL | **not yet** (real GPU cost on the Intel Mac and iPhone unmeasured) |
 | Holographic core (modular humanoid, 13 real states, evolution from verified milestones), adaptive layout, Command center (8 systems, live CPU/RAM/disk/network), Effects setting | ✅ + headless browser (desktop, laptop, iPhone size, reduced motion) | **not yet** (macOS `vm_stat` parsing tested with a sample only) |
 | Claude replies shown as they're written; Quick / Balanced / Deep; Stop, Copy, Regenerate, Retry, Edit; live stages | ✅ (stand-in CLI) + headless browser | **not yet** (needs the real `claude` CLI) |
@@ -44,7 +45,11 @@ the owner's Intel Mac (macOS 14.1.1). Untested-on-Mac items may still have Mac-s
 | `jarvis doctor`: one-command check of the whole installation | ✅ | ✅ (v0.16.4) |
 | Mac apps: Calendar, Reminders, Notes, Mail drafts, open apps (reads free; changes ask first) | ✅ (osascript stand-in) | **not yet** (`jarvis mac check`) |
 | Smarter chat: read-only lookups chosen by the local model; "Make a plan" for changes | ✅ (stand-in models) | **not yet** |
-| Benchmark `jarvis bench` (12 tasks, isolated runs, Claude-app baseline) | ✅ (oracle/careless stand-ins) | **not yet** (first run pending) |
+| Benchmark `jarvis bench` (core 12 + extended 12 + hard 17 held-out tasks, isolated runs, Claude-app baseline, busy-Mac flag) | ✅ (oracle/careless stand-ins) | ✅ runs on the Mac (0.19.3: hard set 9 of 17, core + extended all scored tasks passing) |
+| Private data folder (made `drwx------` on start), `jarvis checkup` (look-only Mac health check), warm start of local models | ✅ | ✅ released after a Mac test (0.18.2, 0.19.1) |
+| Avatar 2.5 (branch, unreleased): 360° inspection, presets, projection controls and research sources, GPU-loss recovery, Low Power, voice-reactive reactor, optional sound, transformations | ✅ + headless browser with software WebGL | **not yet** |
+| Continuous learning (branch, unreleased): outcomes and lessons with evidence, autonomy levels 1–7 (6–7 only from the Mac's terminal), simulation lab, level 6 change trials, level 7 nightly self-checks and bounded routing adjustments | ✅ | **not yet** |
+| Music and system (branch, unreleased): what's playing, playback, playlists, volume, battery/Wi-Fi/disk, Do Not Disturb via your Shortcuts; automatic Ask / Research / Do | ✅ (osascript stand-in) | **not yet** |
 | Release gate `jarvis gate` (full suite + linter + 12 security items) | ✅ | n/a (runs from the repo) |
 | Flight Recorder: per-task timeline (`jarvis trace`, dashboard Timeline) | ✅ + headless browser | **not yet** |
 | Recovery drills `jarvis drill` (10 drills, throwaway JARVIS, real process crashes) | ✅ | **not yet** — run it on the Mac |

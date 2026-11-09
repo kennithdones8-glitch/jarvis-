@@ -14,7 +14,7 @@ from __future__ import annotations
 import re
 import time
 from dataclasses import dataclass, field, replace
-from typing import Iterable, Literal
+from typing import Any, Iterable, Literal
 
 from ..core.audit import AuditLog
 from ..core.killswitch import KillSwitch
@@ -23,7 +23,9 @@ from .egress import BudgetExceeded, EgressDenied, EgressGate
 from .providers import Cancelled
 from .types import Category, ChatRequest, ChatResponse, Message, ModelInfo, Provider, ProviderError, UsageLimited
 
-CAPABILITIES = frozenset({"chat", "plan", "code", "summarize", "classify", "json", "extract", "research"})
+# "reasoning": a model kept for maths, logic and code only (owner's choice, 0.19.1). It is never picked for everyday
+# chat, planning or tools, so a big slow model can be installed without slowing everything else down.
+CAPABILITIES = frozenset({"chat", "plan", "code", "summarize", "classify", "json", "extract", "research", "reasoning"})
 
 
 @dataclass(frozen=True)
@@ -33,6 +35,11 @@ class Need:
     # "auto": quality when routing mode is "best", speed when it is "local_first".
     prefer: Literal["quality", "speed", "auto"] = "quality"
     local_only: bool = False
+    # The caller chose speed on purpose (the owner's Quick mode): no automatic upgrade to a stronger local model.
+    keep_speed: bool = False
+    # Set by ModelService when the question is maths, logic or code that will be answered on this Mac: try a local
+    # "reasoning" model first, if one is installed, then the usual choice.
+    reasoning: bool = False
 
     def __post_init__(self) -> None:
         if self.capability not in CAPABILITIES:
@@ -90,6 +97,20 @@ def hard_signals(text: str) -> bool:
     from ..orchestrator.answer_checks import is_puzzle  # plain regexes; no import cycle
 
     return bool(HARD_SIGNALS.search(text)) or text.count("?") >= 3 or len(text) > 1200 or is_puzzle(text)
+
+
+WORD_PROBLEM = re.compile(r"\b(how (many|much|long|far|old)|calculate|work out|what is the (total|difference|average))\b",
+                          re.I)
+NUMBER = re.compile(r"\d+(?:[.,]\d+)?")
+
+
+def needs_reasoning(text: str) -> bool:
+    """Work a small local model often gets wrong: anything ``hard_signals`` flags, a word problem with numbers, or a
+    request to write code. Used only to pick the *stronger local* model; it never sends anything to the cloud."""
+    from ..codecheck import wants_code  # plain regexes; no import cycle
+
+    return (hard_signals(text) or wants_code(text)
+            or (len(NUMBER.findall(text)) >= 2 and bool(WORD_PROBLEM.search(text))))
 
 
 class ModelRouter:
@@ -182,6 +203,12 @@ class ModelService:
         local model and say so. Background tasks pass False and instead wait for the reset (UsageLimited)."""
         self.killswitch.check()
         need = self._apply_hybrid(need, request, task_id, level)
+        need = self._strong_local_for_reasoning(need, request, task_id)
+        if need.reasoning:
+            r = self._try_reasoning_model(need, request, purpose=purpose, task_id=task_id, step_id=step_id,
+                                          on_token=on_token, on_event=on_event)
+            if r is not None:
+                return r
         try:
             return self._complete(need, request, purpose=purpose, task_id=task_id, step_id=step_id, on_token=on_token,
                                   on_event=on_event)
@@ -193,9 +220,15 @@ class ModelService:
                 if limited:
                     raise UsageLimited("Claude is at its usage limit", limited) from exc
                 raise
-            local_need = Need(need.capability, min_quality=1, prefer="speed", local_only=True)
+            local_need = self._strong_local_for_reasoning(
+                Need(need.capability, min_quality=1, prefer="speed", local_only=True, keep_speed=need.keep_speed),
+                request, task_id)
+            r = None
+            if local_need.reasoning:  # Claude unavailable for a maths/code question: the best local answer, not the fastest
+                r = self._try_reasoning_model(local_need, request, purpose=purpose, task_id=task_id, step_id=step_id,
+                                              on_token=on_token, on_event=on_event)
             try:
-                r = self._complete(local_need, request, purpose=purpose, task_id=task_id, step_id=step_id,
+                r = r or self._complete(local_need, request, purpose=purpose, task_id=task_id, step_id=step_id,
                                    on_token=on_token, on_event=on_event)
             except NoModelAvailable:
                 raise exc from None
@@ -207,6 +240,75 @@ class ModelService:
             note = f"Answered locally — {why}."
             self.audit.record("model.fallback", task_id=task_id, model=f"{r.provider}/{r.model}", reason=why)
             return replace(r, note=note)
+
+    def warm_local(self) -> dict[str, Any]:
+        """Load every installed local model into memory, fastest first (owner's choice, 0.19.1): the first question
+        after JARVIS starts no longer waits 10-30 s for a model to load. Nothing is generated or sent anywhere; an
+        engaged emergency stop skips it. Recorded in the audit log (model names and seconds only)."""
+        if self.killswitch.engaged():
+            return {}
+        done: dict[str, Any] = {}
+        for provider in self.router.local.values():
+            warm = getattr(provider, "warm", None)
+            if warm is None:
+                continue
+            try:
+                installed = provider.available_models()
+            except ProviderError as exc:
+                done[provider.name] = f"unavailable: {str(exc)[:120]}"
+                continue
+            # A reasoning-only model is big and only for maths/code: loaded when first asked, not at start, so it
+            # doesn't take 9 GB of memory on a day it isn't needed.
+            everyday = [m for m in installed if provider.models[m].capabilities != frozenset({"reasoning"})]
+            for mid in sorted(everyday, key=lambda m: -provider.models[m].speed):
+                if self.killswitch.engaged():
+                    break
+                try:
+                    done[f"{provider.name}/{mid}"] = round(warm(mid), 1)
+                except ProviderError as exc:
+                    done[f"{provider.name}/{mid}"] = f"failed: {str(exc)[:120]}"
+        self.audit.record("models.warmed", models=done)
+        return done
+
+    def _strong_local_for_reasoning(self, need: Need, request: ChatRequest, task_id: str | None) -> Need:
+        """When a chat answer will come from this Mac anyway (local_first, or kept local), maths, logic and code go to
+        the strongest local model instead of the fastest (owner's choice, 0.18.3): slower, but right more often. Only
+        the choice between local models changes; whether anything may go to the cloud never does."""
+        if need.capability != "chat" or need.prefer == "quality" or need.keep_speed:
+            return need
+        if not (need.local_only or self.router.mode == "local_first"):
+            return need
+        last = next((m.content for m in reversed(request.messages) if m.role == "user"), "")
+        if not needs_reasoning(last[:4000]):
+            return need
+        self.audit.record("model.reasoning_local", task_id=task_id)
+        return replace(need, prefer="quality", reasoning=True)
+
+    def chat_stays_local(self, message: str, *, local_only: bool = False, level: str | None = None) -> bool:
+        """Whether a "balanced"/"deep" chat is sure to be answered on this Mac: asked to, no cloud model configured,
+        or hybrid routing with the goal reader's "simple" rating (the same rule ``_apply_hybrid`` applies). Used to
+        decide whether extra local-only context may be added; if it's ever wrong, that context still can't leave
+        (it is marked local_only, so routing keeps the request here)."""
+        if local_only or not self.router.gate.summaries():
+            return True
+        return self.router.mode == "hybrid" and level == "simple" and not hard_signals(message)
+
+    def has_local(self, capability: str) -> bool:
+        """Whether any configured local model has ``capability`` (installed or not: routing checks that)."""
+        return any(capability in info.capabilities for p in self.router.local.values() for info in p.models.values())
+
+    def _try_reasoning_model(self, need: Need, request: ChatRequest, **kw) -> ChatResponse | None:
+        """A maths/logic/code question kept on this Mac goes to a local "reasoning" model when one is installed.
+        None (and the usual local choice is used) when there is none, it isn't installed, or it fails. Only the
+        choice between local models changes: this never sends anything anywhere."""
+        if not self.has_local("reasoning"):
+            return None
+        try:
+            return self._complete(replace(need, capability="reasoning", local_only=True, min_quality=1), request, **kw)
+        except NoModelAvailable as exc:
+            self.audit.record("model.reasoning_unavailable", task_id=kw.get("task_id"),
+                              reasons={k: v[:120] for k, v in list(exc.reasons.items())[:6]})
+            return None
 
     def _apply_hybrid(self, need: Need, request: ChatRequest, task_id: str | None, level: str | None = None) -> Need:
         """``level``: already rated by the caller (e.g. the goal reader), so no second local call."""

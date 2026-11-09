@@ -1,0 +1,17 @@
+id = "hard-reasoning-trick"
+set = "hard"
+category = "reasoning"
+title = "A question where the obvious answer is wrong"
+mode = "chat"
+time_limit_s = 300
+prompt = """
+A notebook and a pen cost £1.30 together. The notebook costs £1.00 more than the pen. How much does the pen cost?
+End with a line in the form "Pen: £0.00".
+"""
+
+[[checks]]
+type = "regex"
+pattern = 'pen:\W*(£?\s*0?\.15\b|15\s*p\b)'
+[[checks]]
+type = "not_contains"
+values = ["pen: £0.30", "pen: 30p"]

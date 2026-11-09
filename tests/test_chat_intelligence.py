@@ -291,6 +291,13 @@ def test_quick_mode_stays_local_and_skips_the_goal_reader(brain, fake_claude):
     assert fake_claude() == []
 
 
+def test_quick_mode_never_upgrades_maths_to_a_slower_model(brain, fake_claude):
+    k, local, d = brain("hybrid")
+    q = "A recipe for 4 uses 300 g of flour. How many grams do I need for 10 people?"
+    stream(d, {"message": q, "history": [], "mode": "quick"})
+    assert not [e for e in k.audit.entries(limit=100) if e["event"] == "model.reasoning_local"]  # Quick means fast
+
+
 def test_balanced_hybrid_still_rates_with_the_goal_reader(brain, fake_claude):
     k, local, d = brain("hybrid")
     k.models.router.gate.grants.grant(category="conversation", provider="claude", by="user:test")
@@ -340,3 +347,47 @@ def test_a_failed_attempt_is_announced_so_its_words_can_be_dropped(brain, fake_c
     gens = [x["s"] for x in lines if x.get("s", {}).get("stage") == "generating"]
     assert gens[0]["location"] == "cloud" and gens[-1]["location"] == "local"
     assert lines[-1]["done"]["text"] == "Local says hello."
+
+
+FLIGHT = "My flight to Lisbon is on 14 August"
+CAT_Q = "Which date do I take the cat to my mum's?"
+
+
+def _two_memories(k):
+    k.memory.remember(FLIGHT, by="user:test")
+    k.memory.remember("Whenever I travel, the cat goes to my mum's the day before I leave", by="user:test")
+
+
+def test_a_small_memory_is_shown_whole_to_an_answer_on_this_mac(brain, fake_claude):
+    """Keyword recall alone can't link "take the cat to my mum's" to the flight; a small store is shown whole."""
+    k, local, d = brain("local_first", claude=False)
+    _two_memories(k)
+    r = d.chat(CAT_Q, [])
+    sent = json.dumps(local.received[-1]["body"]["messages"])
+    assert "Lisbon" in sent and "Everything else you remember" in sent and r["memories_used"] == 2
+
+
+def test_the_whole_memory_never_goes_to_claude(brain, fake_claude):
+    """Privacy: only the memories that match the question can be offered to Claude (and only with consent, as
+    before). The rest is marked local-only, so it can't leave even if routing were wrong."""
+    k, _, d = brain("hybrid")
+    for cat in ("conversation", "memory"):
+        k.models.router.gate.grants.grant(category=cat, provider="claude", by="user:test")
+    _two_memories(k)
+    r = d.chat(CAT_Q, [], mode="deep")
+    assert r["model"] == "claude/sonnet"
+    everything_sent = json.dumps(fake_claude()[-1])  # arguments and stdin
+    assert "Lisbon" not in everything_sent and "cat goes to my mum" in everything_sent
+    with pytest.raises(Exception):  # a local-only message can't be sent to Claude by any route
+        k.models.complete(Need("chat", min_quality=5, prefer="quality"), ChatRequest((
+            k.memory.context_message([k.memory.list()[0]], local_only=True), Message("user", "hi"))), purpose="t")
+    assert "Lisbon" not in json.dumps(fake_claude())
+
+
+def test_a_big_memory_falls_back_to_keyword_recall(brain, fake_claude, monkeypatch):
+    import jarvis.memory as memory_module
+    monkeypatch.setattr(memory_module, "SMALL_STORE", 1)
+    k, local, d = brain("local_first", claude=False)
+    _two_memories(k)
+    d.chat(CAT_Q, [])
+    assert "Lisbon" not in json.dumps(local.received[-1]["body"]["messages"])

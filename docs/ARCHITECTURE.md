@@ -299,7 +299,7 @@ prefer="quality")` and up to 2000 tokens, falling back to the best available mod
   environment: neural lattice, research data streams, vertical scan ring, platform energy pulses, rotating
   platform geometry, and eight **system satellites** on the main orbit coloured by the Command center's live status.
   Shared uniforms drive every material; the floor reflection is a second pass of the same figure.
-- **States** (18) come only from real signals in `avatarState(s, d)` (`app.js`): microphone or typing in the
+- **States** (22 today: the 18 below plus learning, experimenting, analyzing and disagreeing — see Avatar 2.5) come only from real signals in `avatarState(s, d)` (`app.js`): microphone or typing in the
   message box → listening; chat stream stages → understanding / reasoning / writing / coding / verifying;
   research → researching; task running → executing; task recovering or the connection coming back → recovery;
   speech engine speaking → speaking (reactor pulses on reported word boundaries); task completed → completed;

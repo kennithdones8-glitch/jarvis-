@@ -28,7 +28,7 @@ Approved model paths and what they cost:
 | **v0.17** | **Mac apps, smarter chat (lookups), Briefing 2.0, benchmark (milestone 1), live replies, Help** | ✅ in tests · **Mac check pending** |
 | **v0.17.2** | **M-B: release gate (`jarvis gate`) + docs synced with the code** | ✅ |
 | M-A | Verification on the Mac: tests, `mac check`, benchmark (local + hybrid), Claude-app baseline, iPhone pairing and a notification, voice (optional) | **next (needs the Mac)** |
-| M-C | Outcome Engine v1: goal interpretation, context packing, "no downgrades" routing, per-goal acceptance checks, measured on the benchmark before and after | after M-A |
+| M-C | Outcome Engine v1: goal interpretation, context packing, "no downgrades" routing, grounding checks | ✅ v1 done (0.18.0) · 0.19.x added plan checks (contradictions, bad references, split writes, look first) · **v2 open:** per-goal acceptance criteria, read-back checks for Mac app steps, replanning |
 | M9+ | Mac automation, deeper proactive monitoring (e.g. watched folders), self-improvement proposals (isolated worktrees, owner-approved) | later |
 | — | Search by meaning (embeddings) | only if keyword recall proves weak |
 
@@ -37,15 +37,15 @@ Approved model paths and what they cost:
 | System | Today | Built from |
 |---|---|---|
 | Flight Recorder | exists (v0.17.3) | audit hash chain, steps/checkpoints, approvals, evidence, model routes, **per-task timeline** · missing: external anchor for the newest entries |
-| Outcome Engine | partial | planner + task engine + writes_verified + bench checks · missing: per-goal criteria, broader verification, replanning (M-C) |
-| Intelligence Tournament | missing | research source verification only |
-| Opportunity Radar | minimal | morning briefing |
-| Personal Knowledge Graph | partial | memories with provenance, records, full-text search · no relations |
-| Simulation Lab | partial | benchmark throwaway folders, stand-ins |
+| Outcome Engine | partial (v1 + 0.19 plan checks) | planner + task engine + writes_verified + bench checks + plan checks · missing: per-goal criteria, read-back for Mac app steps, replanning |
+| Intelligence Tournament | evidence report (branch) | `learn/analysis.py:tournament`: per-model answer-check rate, latency, your ratings, benchmark categories · suggestion only; routing is not changed by it |
+| Opportunity Radar | partial, in three places | morning briefing, `proposals.py` detectors, Projects for you · not yet one ranked feed |
+| Personal Knowledge Graph | partial (branch) | computed on request: memories, lessons, missions, proposals, projects, with duplicate and contradiction links · lasting links only for lessons |
+| Simulation Lab | exists (branch) | routing replay, recovery drills, benchmark comparison, level 6 change trials (worktrees; not yet OS-sandboxed) |
 | Trust Contract | partial | global policy, tiers, privacy gate, budget, approvals · no per-task contract |
-| Initiative Engine | missing | notifications only |
+| Initiative Engine | partial (branch) | propose-only detectors gated by the autonomy "initiative" pause; quiet hours apply to notifications only |
 | Personal Operations Model | missing | on-demand calendar/reminder reads |
-| Self-Test & Recovery Lab | mostly exists (v0.17.4) | 350+ tests, `jarvis doctor`, `jarvis bench`, `jarvis gate`, **`jarvis drill`** (10 recovery drills on a throwaway JARVIS) · missing: drills against the live install (deliberately not done) |
+| Self-Test & Recovery Lab | mostly exists (v0.17.4) | 800+ tests, `jarvis doctor`, `jarvis bench`, `jarvis gate`, **`jarvis drill`** (10 recovery drills on a throwaway JARVIS) · missing: drills against the live install (deliberately not done) |
 
 Superseded: M3c/SearXNG web search (research now goes through Claude Code; the SearXNG tool is optional and
 off by default).

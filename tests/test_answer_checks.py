@@ -145,3 +145,40 @@ def test_no_private_content_in_the_audit(chat_env):  # noqa: F811
     chat(d, FLOUR)
     ev = [e for e in d.kernel.audit.entries() if e["event"] == "chat.answer_check"][-1]
     assert "flour" not in json.dumps(ev["payload"]).lower()
+
+
+# ---- "list every decision": nothing left out (owner's Mac, 0.19.0 benchmark) ----------------------------------------
+MON = ("Monday meeting\nDecisions: the budget is approved at 12,000. The launch moves to Friday.\n"
+       "Actions: Sam updates the website.\n")
+WED = "Wednesday meeting\nDecisions: we will hire one designer. The launch stays on Friday.\nOpen question: where to hold the party.\n"
+DROPPED = "1. Hire one designer. 2. Launch on Friday. 3. Party location to be determined. 4. Update the website (by Sam)."
+ALL = "- Budget approved at 12,000\n- Launch moves to Friday (kept on Wednesday)\n- Hire one designer"
+
+
+def compose(models, instruction):
+    return ComposeTool(models).handle("compose", {"instruction": instruction, "inputs": [MON, WED]},
+                                      CallContext(task_id="t", step_id="s", op_id="o", resource=None))
+
+
+def test_a_left_out_decision_is_named_and_retried_locally():
+    """Real failure: the 7B dropped "the budget is approved at 12,000" when combining two meeting notes."""
+    m = ScriptedModels([DROPPED, ALL])
+    out = compose(m, "Save a file that lists every decision from both meetings")
+    assert out["text"] == ALL and "possibly_left_out" not in out and len(m.calls) == 2
+    assert m.calls[1][0].local_only is True and "budget is approved" in m.calls[1][1].messages[-1].content
+
+
+def test_still_missing_after_the_retry_is_reported_not_hidden():
+    m = ScriptedModels([DROPPED, DROPPED])
+    out = compose(m, "Combine the decisions from both notes into one list")
+    assert out["possibly_left_out"] == ["the budget is approved at 12,000."]
+
+
+def test_complete_lists_and_other_writing_are_left_alone():
+    m = ScriptedModels([ALL])
+    assert "possibly_left_out" not in compose(m, "List every decision") and len(m.calls) == 1
+    m = ScriptedModels(["Short summary."])
+    compose(m, "Summarise the meetings in two sentences")  # not asked for every item: no check, no retry
+    assert len(m.calls) == 1
+    m = ScriptedModels([DROPPED], provider="claude")
+    assert compose(m, "List every decision")["possibly_left_out"] and len(m.calls) == 1  # no second Claude request

@@ -202,6 +202,14 @@ class OllamaProvider:
         self._cached = (time.monotonic(), found)
         return found
 
+    def warm(self, model: str) -> float:
+        """Load ``model`` into memory without generating anything (an empty chat), so the first real question
+        doesn't wait for it. Kept loaded for ``keep_alive``. Returns how long loading took."""
+        started = time.monotonic()
+        request_json("POST", f"{self.host}/api/chat", {"model": model, "messages": [], "keep_alive": self.keep_alive},
+                     timeout=self.timeout)
+        return time.monotonic() - started
+
     def chat(self, model: str, request: ChatRequest, on_token=None) -> ChatResponse:
         """``on_token(text)`` gets each piece of the reply as Ollama writes it (for live display). The reply itself
         is the same either way. If ``on_token`` raises (emergency stop, the viewer left), generation stops."""

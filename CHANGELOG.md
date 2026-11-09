@@ -1,6 +1,17 @@
 # Changelog
 
-## Unreleased — Avatar 2.5, phase 7: contextual HUD, neural operations, evolution layers, materials
+## Unreleased — after 0.19.3 (work branch `claude/funny-allen-ygy8kk`, not yet released)
+
+- **Merged 0.19.3 from `main`** (private data folder, the stronger and reasoning-only local models, warm start,
+  `jarvis checkup`, exact calendar and reminder facts, small memory seen whole, the harder benchmark set and its plan
+  checks). Nothing from either side was dropped. Two adaptations: the Ask / Research / Do classifier keeps the fastest
+  local model (`keep_speed`), so a message that looks like maths or code never loads the big reasoning model just to
+  be classified; and "don't change anything" in a request now also covers Music and system changes (play, pause,
+  playlists, volume, Do Not Disturb).
+- Below: the work since 0.19.0 on this branch (Avatar 2.5, E.V.O.L.V.E., Music and system, automatic Ask /
+  Research / Do and more), newest first. "Avatar 3.x" headings are early avatar steps, not a product version.
+
+### Avatar 2.5, phase 7: contextual HUD, neural operations, evolution layers, materials
 
 - **Focus panel motion line**: what the figure's movement means right now ("concentrating — working out an answer
   or a plan") plus one real detail when there is one: the mission step (step 2 of 5), decisions waiting, recording
@@ -14,7 +25,7 @@
 - **Materials**: brushed-alloy streaks in the plate highlights (faded where they would shimmer), a tight polished
   glint and lighter worn metal along plate edges. Shader-only; no textures added.
 
-## Unreleased — Avatar 2.5, phase 6: mechanical transformations
+### Avatar 2.5, phase 6: mechanical transformations
 
 - **Transformation sequences** (`avatar3d-transform.js`): a group of armour plates opens in seven steps — unlock (the
   seams flash), separate, move, expose, reconfigure (the plates turn about their own centre), sync (one pulse as
@@ -26,7 +37,7 @@
 - Only you start one: no JARVIS state opens the armour, so it never suggests work that isn't happening. Never
   during the startup assembly; Low performance and Reduced motion go straight to the end without animation.
 
-## Unreleased — Avatar 2.5, phase 5: voice-reactive reactor and optional sound
+### Avatar 2.5, phase 5: voice-reactive reactor and optional sound
 
 - **Your voice moves the reactor**: while the microphone records, its measured level (RMS from an analyser on the
   same stream, about 20 times a second) brightens the reactor and the helmet sensors. Not played back, not stored,
@@ -38,7 +49,7 @@
   and stays silent while JARVIS speaks or you record; previews never make a sound; a standing warning or decision
   chimes at most once a minute; turning it off releases the audio device.
 
-## Unreleased — Avatar 2.5, phase 4: recovery and performance profiles
+### Avatar 2.5, phase 4: recovery and performance profiles
 
 - **3D recovery**: when the browser loses the GPU context, the 2D core shows at once. If the browser restores the
   context within 8 s, the same projection resumes (open projections kept). Otherwise the 3D view is disposed (every
@@ -53,7 +64,7 @@
 - Diagnostics shows the profile and why (your setting, or Auto's reason), the last change with the measured average
   frame time, and GPU context losses and restores. No temperatures: browsers don't report them.
 
-## Unreleased — Avatar 2.5, phase 3: schematic controls, the projection area, research sources
+### Avatar 2.5, phase 3: schematic controls, the projection area, research sources
 
 - Every open projection has controls: **Expand** (takes the projection area on its own; the others step aside until
   you collapse it), **Collapse**, **Minimise** / Restore, move to the **other side** of the figure, move **up** in the
@@ -67,7 +78,7 @@
   number of searches and pages read. Built in the browser from that answer (sites only); nothing is fetched. Opens on
   its own in the focus view while JARVIS researches, or say "show me the sources".
 
-## Unreleased — Avatar 2.5, phase 2: one event-to-visual map and personalities
+### Avatar 2.5, phase 2: one event-to-visual map and personalities
 
 - **`avatar-events.js`**: the one table that says, for every state, how the figure moves, which projection the focus
   view opens on its own, the one-off effect (the completion surge, the shield, the rebuild) and the sound cue for
@@ -83,7 +94,7 @@
 - Fix: a Music or system command refused by your rules now answers "Refused by your rules: …" (403) instead of an
   internal error; a bad argument answers with the reason (400).
 
-## Unreleased — Avatar 2.5, phase 1: 360° inspection and projection presets
+### Avatar 2.5, phase 1: 360° inspection and projection presets
 
 - **Inspect in 360°** (focus view → Projection controls → Camera): drag or arrow keys orbit the projection, the
   wheel, a pinch or +/− zooms, shift-drag, right-drag or two fingers pan, 0 resets. Six views (Front,
@@ -102,7 +113,7 @@
 - New files `avatar3d-camera.js` (the camera rig: plain maths, no imports) and `avatar-presets.js`. No new
   dependencies.
 
-## Unreleased — Music and system abilities
+### Music and system abilities
 
 - **Music** (`music` tool): what's playing (read), play / pause / skip / previous, play a playlist by name, Music's own
   volume. **System** (`system` tool): battery, power, Wi-Fi on/off, free disk, macOS version, uptime and volume
@@ -116,7 +127,7 @@
 - Also listed in the Trust Contract and available to the planner. Tested with a stand-in for the Mac apps; the
   scripts themselves run only on macOS.
 
-## Unreleased — smarter answers from your ratings
+### smarter answers from your ratings
 
 - Your 👍/👎 now improves later answers: for a question similar to an earlier one (half of the meaningful words in
   common), the answer you rated helpful joins the prompt as a reference, and one you rated unhelpful as an approach
@@ -125,7 +136,7 @@
   The reply says "learned from an earlier answer you rated" when it happened (`learn.recalled` in the audit log).
 - Ratings are now stored against the exchange's own record id.
 
-## Unreleased — faster avatar loading
+### faster avatar loading
 
 - The figure's meshes (body, head, hands, wireframe) are built in a background module worker
   (`avatar3d-worker.js`), so the dashboard stays responsive while the avatar loads. Measured on the cloud test
@@ -133,7 +144,7 @@
   real GPU both are far smaller; what remains is shader compilation and cutting the armour plates. Without worker
   support the renderer builds the meshes itself, as before.
 
-## Unreleased — Tier 7: autopilot (owner's choices)
+### Tier 7: autopilot (owner's choices)
 
 - **Nightly self-checks**: once a day after 03:00 local time, the routing replay, recovery drills and benchmark
   comparison run in the simulation lab by themselves (sandboxed, no model calls).
@@ -147,7 +158,7 @@
 - Turn on from the Mac's terminal: `jarvis autonomy enable 6` then `jarvis autonomy enable 7` (stays on).
 - Changes to JARVIS's own code stay propose-only.
 
-## Unreleased — Tier 6: change trials
+### Tier 6: change trials
 
 - **Change trials** (`jarvis/learn/trial.py`): name a branch or commit and JARVIS checks it and your current code out
   into two throwaway git worktrees under its data folder, runs the full test suite (results read from pytest's JUnit
@@ -161,7 +172,7 @@
 - Verified: a candidate that breaks a test is caught as "newly failing" and nothing is merged (tested on a throwaway
   repository); on this repository a trial of the previous commit ran 679 vs 669 tests with no regressions.
 
-## Unreleased — E.V.O.L.V.E. visual and integration (phases F and G)
+### E.V.O.L.V.E. visual and integration (phases F and G)
 
 - **Projection Director** (`avatar3d-projections.js`): eight data-driven projections built in the existing scene and
   drawn by the existing render loop (no second renderer). Up to two at once (a pinned one stays; a data refresh
@@ -184,7 +195,7 @@
   delete), the tournament table, the simulation lab, improvements (proposals), capability discoveries, autonomy tiers
   and pauses, and Projection studio. **👍/👎 on every answer.**
 
-## Unreleased — E.V.O.L.V.E. backend: continuous intelligence (phases D and E)
+### E.V.O.L.V.E. backend: continuous intelligence (phases D and E)
 
 - **Schema v9** (one migration, nothing existing changed): `outcomes`, `lessons`, `links`, `experiments`, `feedback`,
   `autonomy`.
@@ -210,7 +221,7 @@
   memories and contradictions linked), and real data for eight projections (`GET /api/projection/<module>`).
 - New tests (`tests/test_learn.py`), six of them added to the release gate.
 
-## Unreleased — HUD on every section page
+### HUD on every section page
 
 - **Section pages** (Command center, Missions, Decisions, Memory, Systems, Workspace) open with a HUD header: a large
   title with a section code, a scale line, and real stat tiles (missions active / queued / needing you / completed /
@@ -220,7 +231,7 @@
 - **Decisions are gold** instead of cyan (the owner's palette: gold, silver, green, red).
 - The model response trace fills from the right, so the newest call is always at the right edge.
 
-## Unreleased — HUD: activity, system readouts, missions and decisions
+### HUD: activity, system readouts, missions and decisions
 
 - **Recent activity**: an icon ring per kind of event (problems in red, model events in silver), an **activity pulse**
   (real audit events per 5 minutes over the last hour, with the count), and new entries slide in.
@@ -231,7 +242,7 @@
   approvals have no deadline, so none is shown.
 - All of it holds still in Low performance and Reduced motion.
 
-## Unreleased — HUD module: Systems panel, 3D depth (Iron Man direction)
+### HUD module: Systems panel, 3D depth (Iron Man direction)
 
 - Chosen with the owner: Iron Man HUD direction, live visuals, 3D depth, HUD detail; constant motion in Normal
   effects, none in Low performance or Reduced motion. Started with the Systems panel.
@@ -242,7 +253,7 @@
 - **3D depth**: on wide screens the side columns lean toward the projection, with a slight mouse parallax in Normal
   effects. The perspective lives on each column (not the page grid), so the focus view's projection stays in place.
 
-## Unreleased — automatic Ask / Research / Do
+### automatic Ask / Research / Do
 
 - **No more mode buttons** (owner's choice): JARVIS works out what a message is (`jarvis/intent.py`). Instant rules on
   this Mac handle the obvious cases ("remind me…", "latest news on…", "how do…"); only when they are unsure does one
@@ -254,7 +265,7 @@
   research keeps its existing consent rules.
 - New endpoint `POST /api/route` (same authentication and request checks as every other API call).
 
-## Unreleased — UI 5: frosted glass, short activity, docked command bar (owner's spec)
+### UI 5: frosted glass, short activity, docked command bar (owner's spec)
 
 - Chosen with the owner (Vision Pro calm + Marvel JARVIS fine lines + HUD structure, subtle glow, balanced layout,
   moderate density): **rounded frosted-glass panels**, glow only on edges and titles, body text plain white, gold
@@ -267,7 +278,7 @@
   Do and Quick / Balanced / Deep are small pills inside it, Send at the end.
 - Replaces the UI 3 panel look and the UI 4 see-through draft (meters and the wider command center stay).
 
-## Unreleased — UI 3: holographic glass panels
+### UI 3: holographic glass panels
 
 - **Panels** are lit glass that matches the projection: a gold hairline edge, depth and inner glow, a faint scan
   texture, brighter corner brackets, a divider under each header, and a light that catches the top edge now and
@@ -279,7 +290,7 @@
 - **Composer, mode controls and navigation** follow the same language: a lit console input with a focus glow, a gold
   Send, glowing selected tabs and modes, and a glowing current section (a top bar on phones).
 
-## Unreleased — Avatar 3D, step 5: chamber, controls, stage 5, quality presets
+### Avatar 3D, step 5: chamber, controls, stage 5, quality presets
 
 - **Projection chamber** (`avatar3d-environment.js`): platform markers and a turning segmented ring; orbital systems
   around the knees (stage 1), diagonally around the torso (stage 2), around the chest (stage 3) and a counter-rotating
@@ -298,7 +309,7 @@
   of the 19 milestones verified, including 30 days reliable and 100 verified missions). Definitions v4 (audited);
   the displayed stage can be capped at any earned stage on this device.
 
-## Unreleased — Avatar 3D, step 4: materialise and dematerialise
+### Avatar 3D, step 4: materialise and dematerialise
 
 - **Reconstruction particles** (`avatar3d-particles.js`): each particle belongs to a point on the body. During the
   startup sequence and any reconstruction they stream in from a cloud over the platform and land as the build edge
@@ -310,7 +321,7 @@
 - **Dematerialisation on the real emergency stop** (Normal mode only): the figure leaves, the platform and orbitals
   stay; releasing the stop rebuilds it. The 3D renderer reports these phases to the state machine (`lifecycle`).
 
-## Unreleased — Avatar 3D, step 3: the reactor and the neural network
+### Avatar 3D, step 3: the reactor and the neural network
 
 - **Reactor** (`avatar3d-reactor.js`), added in depth around the existing rings, rotor, hex cage and arcs: a plasma
   core sphere, an inner ring of twelve segments, two tilted gyroscope rings (stage 2), eight radial energy pathways
@@ -322,7 +333,7 @@
   along the links with the shared flow; brightness follows the real thinking level, and the reactor-to-limb links
   light only while a mission is really executing, coding or verifying. It bends with the arms and turns with the head.
 
-## Unreleased — Avatar 3D, step 2: helmet, hands, layered armour, gold identity
+### Avatar 3D, step 2: helmet, hands, layered armour, gold identity
 
 - **Gold identity restored** (owner's brief): warm gold, gold-white and amber for every state; red only for a genuine
   error; teal removed from the projection, the dashboard and the background walls (dashboard tokens back to gold).
@@ -339,7 +350,7 @@
   hubs and wrist rings; a fine holographic wireframe over the body from stage 2 (not on phones).
 - Fixed: the joints now carry local changes, so plates really vent and fingers really curl on bent arms.
 
-## Unreleased — Avatar 3D, step 1: module split and the central state machine
+### Avatar 3D, step 1: module split and the central state machine
 
 - **Central state machine** (`static/avatar-state.js`): every state the projection shows now passes through one
   place, with priorities, minimum display times, a 4 s success, a fall-back to idle when activity stops being
@@ -349,7 +360,7 @@
 - The 3D renderer is split into modules: shaders and geometry move out of `avatar3d.js` (1,372 → 916 lines);
   dead torso helpers removed. No visual change.
 
-## Unreleased — Avatar 3.5.2: a refined face
+### Avatar 3.5.2: a refined face
 
 - The face is reworked to read as an elegant sculpted mask rather than a crude one: almond-shaped eyes with lifted
   outer corners, a slimmer nose with a soft tip, higher cheekbones with soft hollows, a cleaner jaw and chin, and a
@@ -360,7 +371,7 @@
   glowing body), a line down the forehead (the rear crest seam showing through), and a streak from the inner spine
   reaching into the head. The helmet now sweeps behind the face instead of capping the forehead.
 
-## Unreleased — Avatar 3.5.1: the eyes, made visible
+### Avatar 3.5.1: the eyes, made visible
 
 - Glances now move the eye glow with the head (the shift was too small to see); a horizontal scan line with a moving
   light crosses the eyes while researching or verifying.
@@ -369,7 +380,7 @@
 - `JarvisAvatar.eyes` (read-only) reports what the eyes show: glow level, openness (blinks, narrowing), glance offset,
   scan and speech pulse, used by the browser checks.
 
-## Unreleased — Avatar 3.5: sculpted face
+### Avatar 3.5: sculpted face
 
 - **A face, sculpted subtly in the light body** (owner's choice, replacing the smooth head): brow ridge, eye
   sockets, cheekbones, nose bridge and tip, lips, chin and jaw line. The head is meshed at a finer resolution
@@ -381,7 +392,7 @@
 - The aura shell is no longer drawn in the floor reflection (lighter frames); the head crest line no longer runs
   down the face.
 
-## Unreleased — Avatar 3.4: character detail and alloy armour
+### Avatar 3.4: character detail and alloy armour
 
 - **More detail, growing with evolution** (rich now, maximum at stage 4): helmet crest ridge, swept rear fin and temple
   pods; finger grooves, knuckle points, forearm bands and a double wrist band; knee caps, thigh and shin lines;
@@ -398,7 +409,7 @@
     reasoning (Normal mode only).
   - A hexagon energy shield flares over the body on a real error or warning, and stays faint while an error lasts.
 
-## Unreleased — Avatar 3.3: gestures, live data wall, screen wall
+### Avatar 3.3: gestures, live data wall, screen wall
 
 - **Gestures from real states only**: speaking opens the right hand toward you, coding and executing raise both hands
   to work (a small alternating motion in Normal), waiting for approval raises the right hand, a completed mission
@@ -412,7 +423,7 @@
   more opaque so the dashboard no longer shows through.
 - The focus view's evolution button no longer clips its label.
 
-## Unreleased — Avatar 3.2: athletic light body, suit contours, warmer dashboard
+### Avatar 3.2: athletic light body, suit contours, warmer dashboard
 
 - **Sculpt refined**: V-taper (lats, trapezius, deltoids), chest, abdominal wall, biceps and forearms, quadriceps,
   knees, closed hands and a swept-back faceless head.
@@ -423,7 +434,7 @@
 - **Dashboard palette follows the figure**: headings and identity accents warm light-orange, healthy status teal-green
   (all text still meets WCAG AA); the background data wall is brighter.
 
-## Unreleased — Avatar 3.1: light-body figure (from the owner's reference)
+### Avatar 3.1: light-body figure (from the owner's reference)
 
 - **Sleek figure made of light** replaces the armoured robot (owner feedback: "looks like a toy robot", "too much
   gold/orange"): one smooth humanoid sculpted as a distance field in code and meshed once at load, glowing orange
@@ -435,7 +446,7 @@
   flowing orange/teal ribbons and network graphs (still in Low performance, Reduced motion and Subtle projection).
 - State colours re-tuned to the orange family; red stays reserved for genuine errors.
 
-## Unreleased — Avatar 3.0: real armour, startup assembly, live data aura
+### Avatar 3D (early step): real armour, startup assembly, live data aura
 
 - **Lit metal armour over the hologram** (owner's choice: sleek cinematic armour, metal + hologram): polished gold
   and graphite plates (chest, abdomen, ribs, collar, layered shoulders, arm guards, helm with crest and guards) with
@@ -451,7 +462,7 @@
 - Free models were researched: no permissively licensed sleek full-body armour exists; the closest full-body pack
   forbids redistribution, so the armour is sculpted in code.
 
-## Unreleased — Avatar 2.2: cinematic rendering
+### Avatar 2.2: cinematic rendering
 
 - **Bloom**: a small post-processing pipeline written for JARVIS (no extra library): bright edges and cores glow,
   with a slight lens fringe and fine grain. Falls back to direct drawing if the device can't do it.
@@ -462,7 +473,7 @@
   (the brow/cheek frame that read like a face is gone); a V-tapered torso; an inner frame with circuitry seen
   through the armour; calmer shoulders and platform.
 
-## Unreleased — Avatar 2.1: livelier projection, more ways to evolve
+### Avatar 2.1: livelier projection, more ways to evolve
 
 - **More alive at rest** (owner's choice): glances toward the message box or the side panels every ~6–11 s,
   mechanical sensor blinks, sparks circling the optical sensors, deeper breathing. Only in the resting look; any
@@ -477,7 +488,7 @@
   failure or failed recovery drill). `jarvis doctor`, `jarvis mac check` and `jarvis drill` now record their
   outcome for this. Stage thresholds: 5 / 10 / 15 milestones.
 
-## Unreleased — Avatar 2.0: living intelligence projection
+### Avatar 2.0: living intelligence projection
 
 - **Faceless helm** with optical sensors, layered visor, internal gear rings and a visor scan line (no mouth).
 - **Reactor assembly**: independent rings, a rotor and discharge arcs around the chest core; brightness follows
@@ -495,7 +506,7 @@
   verifying (owner's choice), all changes audited.
 - Fix: the floor reflection now turns with the figure; satellite picking accounts for the reflection pass.
 
-## Unreleased — Armoured avatar: sentinel helm with knight elements
+### Armoured avatar: sentinel helm with knight elements
 
 - New helmet (owner's choice: sentinel faceplate + knight elements): crest blade over the crown, angled V-brow,
   two glowing eye slits that brighten while JARVIS speaks or writes, nose guard, cheek plates with vents, jaw
@@ -504,7 +515,116 @@
   bracers and elbow guards. Evolution now adds only light and energy (glowing seams, circuits, crest energy,
   halo, crown of light), still unlocked only by verified milestones. The 2D fallback follows the same rule.
 
-## Unreleased — Cinematic core: 3D hologram, gold-white environment
+## 0.19.3 — A harder benchmark, and fixes for what it found (owner-approved after a test on the Mac)
+
+**Proven on the Mac (bench home, local models, ×5):** the new hard set went from 7 to 9 of 17 tasks passing (20261107-141713-local → 20261107-163941-local, verdict MERGE, no new failures; planning-slot 1→5/5 is a clear change). Core + extended: 108 of 110 runs, all 22 scored tasks still passing (20261108-014415-local). The Mac was busy in all three runs (time only). Merged exactly the tested commit (a5569e0); later work on `smarter-v2` (G–J) and `compute-v1` (F) is not in this release. Also: a lookup test used a fixed date and failed from 8 November; it now uses today's date (test only). The briefing test could clash with the dashboard's real-clock background loop after 08:00; it now stops that loop first (test only).
+
+Built on `harder-bench-v1`. Fixes the two gaps the hard set found, where even a perfect model failed.
+- **"Overdue or due today" lists both.** Any time window in the question ("today", "tomorrow", "next 3 days") now
+  wins over "overdue", and the window's list already includes what's overdue. "Overdue" on its own is unchanged.
+- **A small memory is seen whole.** With 150 memories or fewer, a chat answered on this Mac also gets every
+  memory the keyword search missed, oldest first, so "take the cat to my mum's" can use "my flight to Lisbon is on
+  14 August". Bigger stores use keyword recall as before.
+- **Privacy unchanged.** The extra memories are marked local-only: the egress gate can't send them to Claude, and
+  they're only added when the answer is sure to stay on the Mac (Quick, local routing, no Claude configured, or
+  hybrid rated "simple"). Answers that go to Claude get only the matching memories, still with consent. New
+  Privacy gate test: `the_whole_memory_never_goes_to_claude`.
+- **A. Reminders are looked up whenever the message asks what's due** ("overdue", "due", "to-dos"; not "due to").
+  The hard-set baseline showed "overdue or due today" looking at the calendar only.
+- **B. Free slots of the length you ask for are worked out exactly** ("a free 90-minute slot", "an hour", "two
+  hours"): JARVIS lists the gaps long enough, or says there are none and gives the longest. The model had called
+  11:00–13:15 free.
+- **C. A step can only use outputs earlier steps really produce.** "{{steps.1.urgent_item}}" from a writing step
+  (which only gives "text") is sent back to the planner once. Only results with a fixed shape are checked.
+- **D. A plan that breaks a "don't" in the request becomes a question.** "Save it as summary.md, but don't create
+  any new files" now asks which you meant, instead of asking you to approve the write.
+- **E. Look before acting.** A task that refers to an existing appointment, meeting, call or reminder ("my dentist
+  appointment tomorrow") is planned with the calendar and reminders looked up first (read-only), and the planner
+  is told to ask when the request doesn't match what's there. The looked-up data is private like folder contents:
+  it reaches Claude only through the privacy gate, with your consent, as before.
+
+### The hard benchmark set (from `harder-bench-v1`)
+
+- **17 held-out hard tasks** (`--set hard`): reasoning ×4, coding ×3 (one is fixing a bug), memory ×3, planning ×3,
+  tool use ×2, recovery ×2. Core + extended were all passing (110/110), so they could no longer show a gain or a
+  loss. Answers were worked out by script (the five-person puzzle has exactly one solution). Benchmark only: no
+  change to how JARVIS answers.
+- `--set all` still means core + extended (24 tasks), so earlier runs stay comparable.
+- Writing them found **two gaps in JARVIS itself**, which fail even with a perfect model: "overdue or due today"
+  leaves out the reminder due today, and keyword recall can't link "take the cat to my mum's" to the flight memory.
+  Recorded, not fixed here.
+- Baseline of 0.19.2 on the hard set: 38 of 85 runs, 7 of 17 tasks (20261107-141713-local).
+
+## 0.19.2 — Direct answers, one file means one write (owner-approved with the merge rule unmet; see below)
+
+- **"Am I free?" gets a yes or no.** The calendar facts now say "FREE: yes, you're free then" / "BUSY: no, you're
+  not free then", and the model is told to answer a yes/no question with yes or no first. On the owner's Mac the
+  facts were right but the model hedged ("a free block, but that's not exactly what you're looking for") or only
+  said it "couldn't find any events" (planning-free 1/5).
+- **One file means one write.** A plan that writes the same file twice is sent back to the planner once to combine
+  everything into one write (writes to other files still go to the owner's approval, as before). Real failure: decisions.md written once per meeting, so
+  the second write replaced the budget decision, and the owner was asked to approve twice.
+- **A task that only saved a file says what it saved** ("Saved decisions.md:" and the text), instead of finishing
+  with nothing to read.
+- **Proven on the Mac:** planning-free 1/5 → 4/5 and tooluse-decisions 3/5 → 5/5 (subset ×5); full set ×5 with
+  `--run-code`: **110 of 110 scored runs passed, no failures** (planning-free and tooluse-decisions 5/5). The Mac
+  was busy during the full run (load peak 14.4), which affects time, not pass/fail.
+- **Merge rule not met, owner approved anyway.** `bench compare` said DON'T MERGE only because the net gain was +1
+  task, under the +2 rule. +2 was unreachable: planning-free was the only task failing at the task level before this
+  branch. No new failures, ≥5 runs. The owner was told this and replied "merge".
+
+## 0.19.1 — Smarter answers: a model for maths and code, exact calendar facts, warm start, Mac checkup (owner-approved after a test on the Mac)
+
+- Proven on the owner's Mac (full benchmark ×5, local models only, $0): **103/110 passed vs 88/110** for 0.18.3; verdict MERGE (net +2 tasks, no new failures). Coding 13→20/20, reasoning 5→9/10, planning 12→16/20; everyday tasks faster (planning ~20 s vs ~50 s). Merged branches `checkup-v1`, `smarter-v1` and `bench-load-v1`.
+- Still failing: `planning-free` 1/5 (the facts reach the answer, but the model hedges instead of saying "you're free"), `tooluse-decisions` 3/5 (the planner sometimes writes one file per meeting).
+
+- **"Tomorrow" is worked out by JARVIS, not the small model.** Asked late on Fri 6 Nov about tomorrow, the local
+  model looked up Friday, found nothing and made up a meeting (benchmark `planning-free`, 0/5). JARVIS now reads
+  "today", "tonight", "tomorrow", "the day after tomorrow" and weekday names from the Mac's clock and makes the
+  calendar lookup cover those days, and says so in the lookup notes. The label now names the days covered
+  ("Calendar, Sat 07 Nov", not "Fri 06 Nov–Sat 07 Nov" for a single day).
+- **Warm start:** when the background service starts, the local models are loaded in the background, fastest first,
+  so the first question after login doesn't wait 10–30 s. Nothing is generated or sent; the emergency stop skips
+  it; recorded in the audit log (model names and seconds).
+- **`jarvis checkup`:** a look-only health check of the Mac: macOS version, disk space, clutter (Downloads, Trash,
+  caches), CPU load and the busiest apps, memory and swap, battery condition, days since the last restart, startup
+  helpers and Time Machine, each with plain advice. `--updates` also lists waiting macOS updates (the only check
+  that uses the network, via Software Update). Fixed system commands only; nothing is installed, deleted or
+  changed; the audit log gets counts only.
+- **A model just for maths, logic and code** (branch `smarter-v1`): a local model listed with
+  `capabilities = ["reasoning"]` answers maths, logic and code questions that are answered on this Mac, and nothing
+  else: everyday chat, planning, tools and Quick mode never use it, and it isn't loaded at start. Missing or failing,
+  JARVIS uses the usual local model. On the owner's Mac, qwen2.5:14b-instruct passed 30/30 maths/code runs vs 20/30
+  for the 7B (coding-duration 0/5 → 5/5, reasoning-schedule 1/5 → 5/5), at about 2–3× the wait. When Claude is
+  unavailable for such a question, the local fallback also uses it instead of the fastest model.
+- **Calendar and reminder facts worked out by JARVIS:** above the looked-up list, the model now gets exact lines:
+  the first event of each day, FREE/BUSY for a time the message names ("between 2pm and 3:30pm"), every clash
+  (overlapping events), and for reminders, which are overdue and which fall in the window asked about ("next 7
+  days", "tomorrow"); reminders outside that window are counted, not listed. Real failures fixed by this: the 13:00
+  lunch called the first commitment with a 09:00 standup listed; a clash listed but never called one; a reminder due
+  in 9 days listed as "within 7".
+- **Nothing left out when combining notes:** when an instruction asks to list/combine items the data labels
+  ("Decisions: …"), JARVIS checks each one is in the written text and retries once locally, naming the missing ones;
+  anything still missing is shown in the step output ("possibly_left_out"). Real failure: "the budget is approved"
+  dropped from a combined decisions list.
+- **Time Machine date:** when `tmutil` gives no date, the checkup reads it from Time Machine's own settings
+  (`defaults read`, read-only), and otherwise shows what tmutil said.
+- **Benchmarks say how busy the Mac was:** Each run records the Mac's 1-minute load average at the start, the busiest point and the end (with the number of
+  cores). The report shows it, with a warning when more than half the cores were busy with other work: answers
+  were slower than usual, but pass/fail still counts. `bench compare` notes any busy run. Runs from before this
+  have no figures and still work. No change to JARVIS's behaviour.
+
+## 0.19.0 — Holographic dashboard, Quick/Balanced/Deep, live Claude replies (owner-approved after a test on the Mac)
+
+- Merged the holographic dashboard work (branch `claude/funny-allen-ygy8kk`, reviewed) with 0.18.1–0.18.3. Sections
+  below list what it adds.
+- **Quick stays quick:** Quick mode asks for the fastest local model, and the 0.18.3 "stronger local model for maths,
+  logic and code" upgrade respects that (it applies to Balanced and to answers kept local by routing).
+- Review: replies stream only after consent; local-only data stays local in every mode; the emergency stop kills a
+  streaming reply; Three.js 0.160.0 is byte-identical to npm; CSP unchanged; release-gate items only added.
+- Tried by the owner on the Mac in a test copy (port 8766) before release.
+
+### Cinematic core: 3D hologram, gold-white environment
 
 - **3D holographic core** (Three.js r160, served from the Mac, pinned by hash): translucent gold-white figure with
   rim light, scan lines, energy pulses along its circuits, a beam and rising dust from the projector, a floor
@@ -516,7 +636,7 @@
 - **Living environment** (owner-approved): a gliding perspective grid floor, breathing light and drifting dust.
 - **Display → Effects** is now Normal / Low performance / Reduced motion.
 
-## Unreleased — Dashboard theme v2: holographic command deck
+### Dashboard theme v2: holographic command deck
 
 - The hologram stands on a projector pad in a beam of light, its torso dissolving into the beam; orbit rings pass in
   front of and behind it; soft glow, scan-line texture, and a flicker as it powers up.
@@ -530,7 +650,7 @@
 - Presentation only: no change to what JARVIS does. Still no background animation; Effects Off and reduced motion
   still make everything still.
 
-## Unreleased — Phase 2: holographic core and command center
+### Phase 2: holographic core and command center
 
 - **Holographic core**: an amber humanoid hologram (layered SVG, energy motes) with the reactor as its chest core.
   13 states, each from a real signal (the live chat stage, missions, decisions, voice, errors). Helmet, visor and face
@@ -545,7 +665,7 @@
 - **Display → Effects**: Full / Reduced / Off. Reduced motion is respected; animations pause when the page is hidden.
 - iPhone: the Quick/Balanced/Deep choice is one button in the tab row, so the message box keeps its width.
 
-## Unreleased — Phase 3a: faster chat
+### Phase 3a: faster chat
 
 - **Claude replies appear as they're written.** Chat used Claude Code's whole-reply JSON output, so nothing showed
   until Claude had finished. It now uses `stream-json` with partial messages; every safety flag is unchanged (tools
@@ -561,6 +681,26 @@
   status pill and an Activity list on each answer. Real stages only; no model reasoning is shown.
 - Release gate: new streaming tests added to Privacy, Emergency stop, Resource limits and Honest reporting.
 - Docs: Outcome Engine is merged (0.18.0), Mac apps exist, proposals exist (propose-only).
+
+## 0.18.3 — Stronger local model for maths, logic and code (owner's choice)
+
+- When a chat answer will come from your Mac anyway (local-first, or kept local), word problems with numbers,
+  puzzles, other hard-looking requests and requests to write code go to the strongest local model (e.g.
+  qwen2.5:7b) instead of the fastest (llama3.2:3b). Everyday chat stays on the fast one.
+- Only the choice between local models changes: whether anything may go to the cloud is never affected, and no
+  extra call is made. Recorded in the audit log as `model.reasoning_local` (no question text).
+- Proven on the owner's Mac (5 runs each side, pooled): tasks passing 2 → 4 of 6, no new failures, 0 Claude calls.
+  reasoning-flour 1/5 → 5/5 (clear change, p=0.048); coding-dedupe 2/5 → 5/5 (could be luck, p=0.17);
+  coding-roman 5/5 → 3/5 (could be luck, p=0.44). Those answers take about 2–3× longer.
+
+## 0.18.2 — Private data folder (owner-approved)
+
+- On every start JARVIS makes its data folder readable by you only (`drwx------`) and its database files
+  `-rw-------`. Before, a folder made with the Mac's default permissions (`drwxr-xr-x`, `jarvis.db -rw-r--r--`)
+  could be read by other accounts on the Mac. A new database is created private from the start.
+- It only ever removes access for others, only on files you own, and never follows a symlink. A change is recorded
+  in the audit log (`privacy.files_made_private`, modes only).
+- `jarvis doctor` has a new "Data folder privacy" check that warns if the folder becomes readable again.
 
 ## 0.18.1 — Fairer benchmarks: pooled before/after, 5-run minimum, re-scoring
 

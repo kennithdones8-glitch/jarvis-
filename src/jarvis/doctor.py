@@ -87,6 +87,12 @@ class Doctor:
         chain = k.audit.verify()
         self.add("Audit log", OK if chain.ok else FAIL,
                  f"intact · {chain.checked} entries" if chain.ok else f"broken at entry {chain.first_bad_seq}")
+        from .core.fileperms import is_private
+
+        private = is_private(k.home)
+        self.add("Data folder privacy", OK if private else WARN,
+                 "only you can read it" if private else "other accounts on this Mac can read it",
+                 "" if private else "Restart JARVIS (`jarvis service restart`): it makes the folder private on start")
         free = shutil.disk_usage(k.home).free / 1e9
         self.add("Disk space", OK if free > 5 else WARN if free > 2 else FAIL, f"{free:.0f} GB free")
 

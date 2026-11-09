@@ -103,6 +103,22 @@ Fixed guarantees, independent of policy:
 
 Config can only make a category stricter. It can never make one less strict.
 
+## Autonomy and self-improvement (work branch, unreleased)
+
+- **Levels 1–7** (`learn/__init__.py:Autonomy`): 1–5 (observe, learn, analyze, experiment, propose) are on by
+  default; 6 (change trials) and 7 (nightly self-checks, bounded routing adjustments) are off and can be switched on
+  only from the Mac's terminal (`jarvis autonomy enable N`); `/api/autonomy` is Mac-only. The emergency stop and the
+  pauses (learning, experiments, initiative) override every level. No level grants a permission: actions still go
+  through the permission engine and your approvals.
+- **Level 7** may only reorder models you already allow (a nudge of at most ±3, which never outranks the local-first
+  bonus); every adjustment is audited, shown in the morning briefing and can be undone.
+- **Self-improvement stays propose-only:** JARVIS never merges, pushes, installs or changes its running code.
+- **Known gaps (planned fixes):** a level 6 trial runs a branch's tests in a throwaway worktree but with your user
+  account, home folder and network (not an OS sandbox); once level 6 is on, a paired iPhone can start a trial through
+  `/api/experiments` without Face ID; rating comments (`feedback.reason`) are not removed by `forget`.
+- **Avatar inputs:** the microphone level drives the reactor only while you record (measured on the page, never
+  stored or sent); optional sound is generated on the page, off by default, and never listens.
+
 ## Known limitations
 
 - Voice identity is not authentication, and neither is "being on the tailnet": a phone also needs its passkey.

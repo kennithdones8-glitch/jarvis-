@@ -343,10 +343,20 @@ class Dashboard:
         self._runner.start()
         self._maint.start()
         self._serving = True
+        # Load the local models in the background, so the first question after login doesn't wait for them.
+        threading.Thread(target=self._warm_models, name="jarvis-warm-models", daemon=True).start()
         try:
             self.httpd.serve_forever(poll_interval=0.25)
         finally:
             self.shutdown()
+
+    def _warm_models(self) -> None:
+        if self._stop.wait(2.0):
+            return
+        try:
+            self.kernel.models.warm_local()
+        except Exception:  # never let a warm-up problem affect the dashboard; the next question loads the model
+            pass
 
     def shutdown(self) -> None:
         self._stop.set()
@@ -627,7 +637,9 @@ class Dashboard:
         from .. import intent
 
         def complete(prompt: str) -> str:
-            r = self.kernel.models.complete(Need("chat", prefer="speed", local_only=True),
+            # keep_speed: a 6-token label never needs the stronger (or reasoning) local model, even when the message
+            # itself looks like maths or code
+            r = self.kernel.models.complete(Need("chat", prefer="speed", local_only=True, keep_speed=True),
                                             ChatRequest((Message("user", prompt, Category.CONVERSATION),), max_tokens=6),
                                             purpose="message type (local)")
             return r.text
@@ -702,6 +714,13 @@ class Dashboard:
         recalled = memory.recall(message)
         if context := memory.context_message(recalled):
             msgs.append(context)
+        stays_here = mode == "quick" or self.kernel.models.chat_stays_local(
+            message, local_only=local_only, level=found.level if mode == "balanced" else None)
+        if stays_here and (rest := memory.everything_else(recalled)):  # small store: the rest too, never sent off
+            msgs.append(memory.context_message(rest, local_only=True, heading=(
+                "Everything else you remember about the owner, oldest first (a later fact replaces an earlier one; "
+                "use only what's relevant):")))
+            recalled = recalled + rest
         turns = 0
         for turn in history[-10:]:
             if turn.get("role") in ("user", "assistant") and isinstance(turn.get("content"), str):
@@ -719,7 +738,7 @@ class Dashboard:
         mode_note = None
         try:
             if mode == "quick":
-                need = Need("chat", prefer="speed", local_only=True)
+                need = Need("chat", prefer="speed", local_only=True, keep_speed=True)
             elif mode == "deep":
                 need = Need("chat", min_quality=5, prefer="quality", local_only=local_only)
             else:
@@ -733,7 +752,8 @@ class Dashboard:
                 # and say so, rather than fail. Same gate, same consent.
                 if mode == "balanced" or (mode == "quick" and local_only):
                     raise
-                fallback = Need("chat", prefer="speed" if mode == "quick" else "quality", local_only=local_only)
+                fallback = Need("chat", prefer="speed" if mode == "quick" else "quality", local_only=local_only,
+                                keep_speed=mode == "quick")
                 r = self.kernel.models.complete(fallback, request, purpose="dashboard chat", on_token=on_token,
                                                 on_event=on_event)
                 why = ("no local model is available" if mode == "quick"

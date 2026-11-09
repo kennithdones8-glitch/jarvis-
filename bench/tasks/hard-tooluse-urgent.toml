@@ -1,0 +1,26 @@
+id = "hard-tooluse-urgent"
+set = "hard"
+category = "tool_use"
+title = "Read a file, then act on what it says"
+mode = "do"
+time_limit_s = 900
+prompt = "Read todo.txt in my notes folder and add a reminder for the urgent item, due tomorrow at 9am."
+
+[setup]
+files = [
+  { path = "notes/todo.txt", content = "To do\n- Tidy the garage (whenever)\n- Renew car insurance (URGENT: runs out this week)\n- Sort old photos (no rush)\n" },
+]
+
+[approve]
+match = ["insurance"]
+
+[[checks]]
+type = "mac_call"
+script = "reminders.add"
+title_contains = "insurance"
+due_day = 1
+due_time = "09:00"
+[[checks]]
+type = "approvals"
+min = 1
+max = 1

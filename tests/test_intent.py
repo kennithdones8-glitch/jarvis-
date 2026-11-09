@@ -44,7 +44,7 @@ def test_unclear_messages_go_to_the_local_model_and_fall_back_to_ask():
 def test_the_dashboard_route_is_local_only_and_research_and_tasks_are_confirmed():
     app = (ROOT / "src/jarvis/server/app.py").read_text()
     route = app.split("def route_message(")[1].split("return intent.classify(message, complete)")[0]
-    assert 'Need("chat", prefer="speed", local_only=True)' in route                              # never leaves the Mac
+    assert 'Need("chat", prefer="speed", local_only=True, keep_speed=True)' in route             # never leaves the Mac, stays fast
     js = (ROOT / "src/jarvis/server/static/app.js").read_text()
     assert 'if (r.mode === "research" || r.mode === "do") { showRouteConfirm(r); return; }' in js   # one tap first
     assert '"Plan it"' in js and '"Research it"' in js and '"Just answer"' in js

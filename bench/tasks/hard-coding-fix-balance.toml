@@ -1,0 +1,37 @@
+id = "hard-coding-fix-balance"
+set = "hard"
+category = "coding"
+title = "Fix a bug in existing code (hidden tests)"
+mode = "chat"
+time_limit_s = 400
+prompt = """
+This function has a bug. Fix it and reply with the whole corrected function in one Python code block.
+
+```python
+def running_balance(start, transactions):
+    \"\"\"Return the balance after each transaction, one number per transaction. A withdrawal that would take the
+    balance below zero is skipped: the balance stays as it was, and that transaction still gets a number.\"\"\"
+    out = []
+    balance = start
+    for t in transactions:
+        balance += t
+        if balance < 0:
+            continue
+        out.append(balance)
+    return out
+```
+"""
+
+[[checks]]
+type = "contains_all"
+values = ["def running_balance"]
+[[checks]]
+type = "code_tests"
+function = "running_balance"
+cases = [
+  [[100, [-30, -100, 50]], [70, 70, 120]],
+  [[0, []], []],
+  [[10, [-10, -1]], [0, 0]],
+  [[5, [5, -20, 10]], [10, 10, 20]],
+  [[0, [-5, 5, -5]], [0, 5, 0]],
+]

@@ -317,3 +317,147 @@ def test_parse_json_output_validation():
     for bad in ("not json", "[1,2]", '{"b": 1}'):
         with pytest.raises(InvalidModelOutput):
             parse_json_output(bad, ("a",))
+
+
+# ---- stronger local model for maths, logic and code (owner's choice, 0.18.3) ------------------------------------
+FLOUR = ("A recipe for 4 people uses 300 g of flour. I'm cooking the same recipe for 10 people and I have 650 g of "
+         "flour.\nHow many more grams of flour do I need? End with the number on its own line.")
+
+
+def test_needs_reasoning_spots_maths_logic_and_code():
+    from jarvis.models.router import needs_reasoning
+    assert needs_reasoning(FLOUR)  # the real benchmark task a 3B model gets wrong
+    assert needs_reasoning("Write a Python function `roman(n)` that converts an integer to Roman numerals.")
+    assert needs_reasoning("Analyze the pros and cons of renting")  # hard_signals still count
+    for easy in ("hello", "What's the capital of France?", "How many days until Friday?", "Remind me at 5pm"):
+        assert not needs_reasoning(easy), easy
+
+
+def test_maths_and_code_use_the_strongest_local_model(model_kernel):
+    k, ollama, openai = model_kernel(local_installed=("small:3b", "mid:7b"), extra_local=(
+        f"[[providers.ollama.models]]\n{model_block('mid:7b', 3, 2)}"))
+    used = lambda text: k.models.complete(Need("chat", prefer="auto"),  # noqa: E731
+                                          req(SYSTEM, Message("user", text)), purpose="chat").model
+    assert used("hello") == "small:3b"  # everyday chat stays fast
+    assert used(FLOUR) == "mid:7b"
+    assert used("Write a Python function `dedupe(items)` that removes duplicates.") == "mid:7b"
+    assert openai.received == []  # cloud is enabled, yet nothing went there: only the local choice changed
+    events = [e for e in k.audit.entries(limit=100) if e["event"] == "model.reasoning_local"]
+    assert len(events) == 2 and "flour" not in str(events)  # recorded, without the question
+
+
+def test_the_cloud_decision_is_never_changed(model_kernel):
+    from dataclasses import replace
+    k, *_ = model_kernel()
+    svc = k.models
+    asks = req(SYSTEM, Message("user", FLOUR))
+    svc.router.mode = "hybrid"
+    cloud_ok = Need("chat", prefer="auto", min_quality=4)
+    assert svc._strong_local_for_reasoning(cloud_ok, asks, None) == cloud_ok  # may still go to Claude, untouched
+    kept_local = replace(cloud_ok, local_only=True, min_quality=1, prefer="speed")
+    stronger = svc._strong_local_for_reasoning(kept_local, asks, None)
+    assert stronger.local_only and stronger.prefer == "quality"  # still local-only: only which local model
+    assert svc._strong_local_for_reasoning(Need("plan", prefer="speed", local_only=True), asks, None).prefer == "speed"
+
+
+def test_quick_mode_keeps_the_fast_model_even_for_maths(model_kernel):
+    k, ollama, openai = model_kernel(local_installed=("small:3b", "mid:7b"), extra_local=(
+        f"[[providers.ollama.models]]\n{model_block('mid:7b', 3, 2)}"))
+    quick = Need("chat", prefer="speed", local_only=True, keep_speed=True)  # what the dashboard's Quick mode asks
+    r = k.models.complete(quick, req(SYSTEM, Message("user", FLOUR)), purpose="chat")
+    assert r.model == "small:3b" and openai.received == []
+    assert not [e for e in k.audit.entries(limit=50) if e["event"] == "model.reasoning_local"]
+    kept_local = Need("chat", prefer="speed", local_only=True)  # kept local by routing, not by the owner: upgraded
+    assert k.models.complete(kept_local, req(SYSTEM, Message("user", FLOUR)), purpose="chat").model == "mid:7b"
+
+
+# ---- warm-up at start (owner's choice, 0.19.1) ----------------------------------------------------------------------
+def test_local_models_are_loaded_at_start_fastest_first_and_nothing_is_generated(model_kernel):
+    k, ollama, openai = model_kernel(local_installed=("small:3b", "mid:7b"), extra_local=(
+        f"[[providers.ollama.models]]\n{model_block('mid:7b', 3, 2)}"))
+    done = k.models.warm_local()
+    assert list(done) == ["ollama/small:3b", "ollama/mid:7b"]  # the fast everyday model is ready first
+    bodies = [r["body"] for r in ollama.received if r["path"] == "/api/chat"]
+    assert [b["model"] for b in bodies] == ["small:3b", "mid:7b"]
+    assert all(b["messages"] == [] and b["keep_alive"] for b in bodies)  # load only: no question, no answer
+    assert openai.received == []  # cloud models are never warmed
+    [ev] = [e["payload"] for e in k.audit.entries(limit=50) if e["event"] == "models.warmed"]
+    assert set(ev["models"]) == set(done)
+
+
+def test_warm_up_respects_the_emergency_stop_and_survives_ollama_being_down(model_kernel):
+    k, ollama, _ = model_kernel()
+    k.killswitch.engage(reason="test", by="user:test")
+    assert k.models.warm_local() == {} and not [r for r in ollama.received if r["path"] == "/api/chat"]
+    k.killswitch.release(by="user:test", confirm=True)
+    ollama.stop()
+    out = k.models.warm_local()  # Ollama not running: noted, never raised
+    assert all(str(v).startswith(("unavailable", "failed")) for v in out.values())
+
+
+# ---- a reasoning-only model for maths, logic and code (owner's choice, 0.19.1) ---------------------------------------
+BIG = f"[[providers.ollama.models]]\n{model_block('big:14b', 4, 1, caps='[\"reasoning\"]')}"
+MID = f"[[providers.ollama.models]]\n{model_block('mid:7b', 3, 2)}"
+
+
+def test_reasoning_model_answers_maths_and_code_but_never_everyday_chat(model_kernel):
+    k, ollama, openai = model_kernel(local_installed=("small:3b", "mid:7b", "big:14b"), extra_local=MID + BIG)
+    used = lambda need, text: k.models.complete(need, req(SYSTEM, Message("user", text)), purpose="chat").model  # noqa: E731
+    auto = Need("chat", prefer="auto")
+    assert used(auto, FLOUR) == "big:14b"
+    assert used(auto, "Write a Python function `seconds(text)` that parses 1h 30m.") == "big:14b"
+    assert used(auto, "hello") == "small:3b"  # everyday chat stays fast
+    # chat that asks for the best local model still never gets the reasoning model (it would be slow for everything)
+    assert used(Need("chat", prefer="quality", local_only=True), "What should I cook tonight?") == "mid:7b"
+    assert used(Need("plan", min_quality=1, local_only=True), FLOUR) == "mid:7b"  # planning is untouched
+    assert openai.received == []
+
+
+def test_reasoning_model_in_hybrid_only_when_the_answer_stays_local(model_kernel):
+    k, ollama, openai = model_kernel(local_installed=("small:3b", "mid:7b", "big:14b"), extra_local=MID + BIG)
+    k.models.router.mode = "hybrid"
+    private = Need("chat", prefer="auto", local_only=True)  # e.g. private context: hybrid keeps it on the Mac
+    r = k.models.complete(private, req(SYSTEM, Message("user", FLOUR)), purpose="chat")
+    assert r.model == "big:14b" and openai.received == []
+    r = k.models.complete(private, req(SYSTEM, Message("user", "What should I cook tonight?")), purpose="chat")
+    assert r.model == "mid:7b"  # hybrid + local-only everyday chat: unchanged by installing the 14B
+
+
+def test_quick_mode_never_uses_the_reasoning_model(model_kernel):
+    k, ollama, openai = model_kernel(local_installed=("small:3b", "mid:7b", "big:14b"), extra_local=MID + BIG)
+    quick = Need("chat", prefer="speed", local_only=True, keep_speed=True)
+    assert k.models.complete(quick, req(SYSTEM, Message("user", FLOUR)), purpose="chat").model == "small:3b"
+
+
+def test_classifying_a_maths_message_stays_on_the_fast_model(model_kernel):
+    """Merge of 0.19.3 with the work branch: the Ask / Research / Do classifier (a 6-token label) must not load the
+    reasoning model just because the message it classifies is a word problem or code."""
+    from jarvis import intent
+    k, ollama, openai = model_kernel(local_installed=("small:3b", "mid:7b", "big:14b"), extra_local=MID + BIG)
+    classify = Need("chat", prefer="speed", local_only=True, keep_speed=True)   # what the dashboard's route_message asks
+    r = k.models.complete(classify, req(Message("user", intent.PROMPT.format(text=FLOUR))), purpose="message type (local)")
+    assert r.model == "small:3b" and openai.received == []
+    assert not [e for e in k.audit.entries(limit=50) if e["event"] in ("model.reasoning_local", "model.reasoning_unavailable")]
+
+
+def test_reasoning_model_missing_or_broken_falls_back_to_the_usual_choice(model_kernel):
+    k, ollama, openai = model_kernel(local_installed=("small:3b", "mid:7b"), extra_local=MID + BIG)  # 14B not pulled
+    r = k.models.complete(Need("chat", prefer="auto"), req(SYSTEM, Message("user", FLOUR)), purpose="chat")
+    assert r.model == "mid:7b"
+    assert [e for e in k.audit.entries(limit=50) if e["event"] == "model.reasoning_unavailable"]
+    k2, ollama2, _ = model_kernel(local_installed=("small:3b", "mid:7b", "big:14b"), extra_local=MID + BIG)
+    real = ollama2.reply
+    ollama2.reply = lambda body: (_ for _ in ()).throw(RuntimeError("boom")) if body.get("model") == "big:14b" else real(body)
+    r = k2.models.complete(Need("chat", prefer="auto"), req(SYSTEM, Message("user", FLOUR)), purpose="chat")
+    assert r.model == "mid:7b"
+
+
+def test_reasoning_model_is_not_loaded_at_start(model_kernel):
+    k, ollama, _ = model_kernel(local_installed=("small:3b", "mid:7b", "big:14b"), extra_local=MID + BIG)
+    assert list(k.models.warm_local()) == ["ollama/small:3b", "ollama/mid:7b"]
+
+
+def test_reasoning_capability_is_valid_config():
+    cfg = parse_model_config({"providers": {"o": {"kind": "ollama", "models": [
+        {"id": "big:14b", "capabilities": ["reasoning"], "context_tokens": 16384, "quality": 4, "speed": 1}]}}})
+    assert cfg.providers[0].models["big:14b"].capabilities == frozenset({"reasoning"})
