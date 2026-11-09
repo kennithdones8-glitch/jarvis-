@@ -527,7 +527,9 @@
   function resetCamera() { if (av.three) av.three.resetCamera(); }
   // transformation sequences (look only; avatar3d-transform.js): name or null to close
   function transform(name) { return av.three ? av.three.transform(name) : false; }
-  const api = { mount, setState, previewState, endPreview, setOptions, setPanels, showProjection, closeProjection, closeProjections, pinProjection, projectionControl, inspect, rebuild: () => rebuild(true), retry3d, onRebuilt: null, cameraView, inspectTarget, resetCamera, transform, setTier, setSystems, setAura, setThought, systemAt, pulse, voiceLevel, registerPart, refresh: loop, STATES, onFocus: null, onSystem: null,
+  // every health check passes (the page decides, from /api/state): one readiness pulse
+  function ready() { if (av.three) av.three.ready(); }
+  const api = { mount, setState, previewState, endPreview, setOptions, setPanels, showProjection, closeProjection, closeProjections, pinProjection, projectionControl, inspect, rebuild: () => rebuild(true), retry3d, onRebuilt: null, cameraView, inspectTarget, resetCamera, transform, ready, setTier, setSystems, setAura, setThought, systemAt, pulse, voiceLevel, registerPart, refresh: loop, STATES, onFocus: null, onSystem: null,
                           get state() { return av.state; }, get profile() { return smOut.profile; }, get preview() { return smOut.preview; },
                           get lifecycle() { return smOut.lifecycle; },
                           get quality() { return av.three ? av.three.quality : null; },

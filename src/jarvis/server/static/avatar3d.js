@@ -634,7 +634,7 @@ export function create(wrap, opts = {}) {
   // The owner's projection settings (per device) and the quality preset. Auto starts Balanced and steps down
   // when frames take too long (or up when there is room), measured in Normal mode while animating.
   const OPT = { quality: "auto", particles: "normal", animation: "normal", reactor: "normal", orbit: "normal", env: true, orbitals: true, panels: false,
-               view: "front", camspeed: "normal", lowBattery: false };
+               view: "front", camspeed: "normal", lowBattery: false, xray: false };
   const K = { particles: { low: 0.35, normal: 0.7, high: 1 }, animation: { calm: 0.6, normal: 1, lively: 1.35 },
               reactor: { soft: 0.7, normal: 1, bright: 1.3 }, orbit: { slow: 0.5, normal: 1, fast: 1.6 } };
   let quality = phone ? "low" : "balanced", panelItems = null;
@@ -672,6 +672,10 @@ export function create(wrap, opts = {}) {
     else if (!OPT.lowBattery && quality === "lowpower") setAutoQuality("balanced", "battery no longer low");
     else if (autoQ.reason === "your setting") autoQ.reason = "measuring";
     rig.setRest(OPT.view); rig.setSpeed(OPT.camspeed);
+    for (const m of metals) {   // X-ray (Intelligence form): the plates thin out and stop hiding what's inside them
+      m.mesh.material.uniforms.uOpacity.value = OPT.xray ? 0.28 : 1;
+      m.mesh.material.depthWrite = !OPT.xray;
+    }
     applyQuality(); envX.setPanels(panelItems, OPT.panels && OPT.env); kick();
   }
   let panelKey = "";
@@ -981,7 +985,8 @@ export function create(wrap, opts = {}) {
     if (!moving) { FACE.uEyeOpen.value = 1; FACE.uEyeLook.value = 0; FACE.uEyeScan.value = 0; }
     const breathe = moving ? 0.92 + 0.08 * Math.sin(t * 1.3) : 1;
     REACTOR.value = cur.reactor * breathe * (1 + speech * 0.8 + voice * 0.9 + flash) * K.reactor[OPT.reactor] * (1 + 0.6 * exposeR);
-    if (innerMat) innerMat.uniforms.uOpacity.value = 0.12 + cur.neural * 0.5 + flash * 0.3;   // the inner network brightens while thinking
+    // the inner network brightens while thinking; X-ray adds a fixed visibility, never activity it isn't doing
+    if (innerMat) innerMat.uniforms.uOpacity.value = 0.12 + cur.neural * 0.5 + flash * 0.3 + (OPT.xray ? 0.25 : 0);
     neuralX.update(cur.neural, ["executing", "coding", "verifying"].includes(state), REACTOR.value,
                    state === "learning" ? "learning" : pers ? pers.name : "idle", t, speech);
     const projecting = director.update(dt, moving);
@@ -1159,6 +1164,8 @@ export function create(wrap, opts = {}) {
   resize();
 
   const api = {
+    // operational readiness (a real event: every health check passing, first time or again after a problem)
+    ready() { if (mode === "full" && !boot) { firePulse(1.3); flash = Math.max(flash, 0.35); } settling = Math.max(settling, 2); kick(); },
     setState, setPersonality, setVoice, setTier, setMode, setIntensity, setSystems, setAura, setThought, pulse, pick, setOptions, setPanels, onLost: null, onRestored: null,
     get qualityInfo() { return { setting: OPT.quality, current: quality, reason: OPT.quality === "auto" ? autoQ.reason : "your setting", log: autoQ.log.slice() }; },
     get context() { return { lost, losses, restores }; },

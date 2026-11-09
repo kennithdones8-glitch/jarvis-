@@ -173,7 +173,7 @@ def test_gestures_are_captured_only_while_inspecting():
     assert 'if (inspecting()) return;             // inspecting: clicks only steer the camera' in AV
     assert ".core-wrap.inspecting { touch-action: none;" in CSS and "touch-action: none" not in CSS.split(".core-wrap.inspecting")[0]
     assert 'if (!stopInspect()) closeProjection();' in JS   # Esc: inspection first, then the focus view
-    assert "stopInspect();\n  leaveWorkMode();\n  document.body.classList.remove(\"projection\");" in JS
+    assert "stopInspect();\n  leaveWorkMode();\n  leaveForm();\n  document.body.classList.remove(\"projection\");" in JS
     for forbidden in ("fetch(", "localStorage.setItem", "innerHTML"):   # the renderer side still only shows
         assert forbidden not in AV and forbidden not in CAM and forbidden not in PRESETS, forbidden
 
@@ -573,7 +573,8 @@ def test_the_mode_controller_is_safe_and_changes_the_look_only():
     assert "MODE_HOLD_MS = 8000, MODE_RETURN_MS = 20000" in ctl
     assert "if (JarvisAvatar.preview) return;" in JS.split("function autoProjection(state) {")[1].split("\n}\n")[0]
     eff = re.search(r"function effectiveDisplay\(.*?\n\}\n", JS, re.S).group(0)
-    assert 'document.body.classList.contains("projection") && ui.wlook' in eff    # the focus view only
+    assert 'if (!document.body.classList.contains("projection")) return d;' in eff   # the focus view only
+    assert "...(ui.wlook || {}), ...(ui.flook || {})" in eff                           # your form wins over the mode
     assert "leaveWorkMode();" in re.search(r"function closeProjection\(.*?\n\}\n", JS, re.S).group(0)
 
 
@@ -589,3 +590,40 @@ const segs = []; scene.traverse((o) => { if (o.isLineSegments && o.geometry.attr
 out.segs = segs;
 """)
     assert out["segs"] == [2]   # one dependency (a -> c) drawn as an arc of two segments; independent steps aren't chained
+
+
+# ---- Evolution 3.0 phase 5: avatar forms and operational readiness -------------------------------------------------
+def test_forms_reuse_real_sequences_views_and_settings():
+    out = events("out.forms = E.FORMS;")
+    xform = node(f"import {{ SEQUENCES }} from {json.dumps(str(STATIC / 'avatar3d-transform.js'))}; console.log(JSON.stringify(Object.keys(SEQUENCES)));")
+    cam = node(f"import {{ VIEWS }} from {json.dumps(str(STATIC / 'avatar3d-camera.js'))}; console.log(JSON.stringify(Object.keys(VIEWS)));")
+    assert list(out["forms"]) == ["standard", "diagnostic", "engineering", "intelligence", "advanced"]
+    for name, f in out["forms"].items():
+        assert f["transform"] is None or f["transform"] in xform, name
+        assert f["view"] is None or f["view"] in cam, name
+        assert set(f["look"]) <= {"diag", "projection", "animation", "particles"}, name
+    assert out["forms"]["standard"]["transform"] is None and out["forms"]["intelligence"]["xray"] is True
+
+
+def test_only_you_choose_a_form_and_it_changes_the_look_only():
+    ctl = JS.split("// ---- avatar forms (Evolution 3.0, phase 5)")[1].split("// ---- operational readiness")[0]
+    for forbidden in ("api(", "call(", "act(", "saveDisplay(", "JarvisAvatar.state", "modeFor("):
+        assert forbidden not in ctl, forbidden                           # never runs anything; no state picks a form
+    assert ctl.count("JarvisAvatar.transform(") == 3                    # set, re-apply after inspection, close on leaving
+    assert "reapplyForm();" in re.search(r"function stopInspect\(.*?\n\}\n", JS, re.S).group(0)
+    assert "setForm(savedForm(), { save: false });" in JS               # entering the focus view restores your choice
+
+
+def test_xray_shows_what_is_inside_without_faking_activity():
+    assert "m.mesh.material.uniforms.uOpacity.value = OPT.xray ? 0.28 : 1;" in AV3 and "m.mesh.material.depthWrite = !OPT.xray;" in AV3
+    inner = next(ln for ln in AV3.splitlines() if "innerMat.uniforms.uOpacity.value" in ln)
+    assert "(OPT.xray ? 0.25 : 0)" in inner and "cur.neural * 0.5" in inner   # a fixed visibility, separate from thinking
+    assert "neuralX.update(cur.neural," in AV3                                  # the network's activity is untouched
+
+
+def test_readiness_comes_only_from_the_health_checks():
+    rd = re.search(r"function readiness\(d\) \{.*?\n\}\n", JS, re.S).group(0)
+    assert "d.health && d.health.items" in rd and "if (!items.length) return null;" in rd   # no data: no claim
+    assert "if (ok && ui.wasReady !== true && window.JarvisAvatar) JarvisAvatar.ready();" in rd   # once, or after a problem clears
+    assert "Not fully operational" in rd and "Math.random" not in rd
+    assert 'ready() { if (mode === "full" && !boot) {' in AV3                   # never during startup or reduced motion

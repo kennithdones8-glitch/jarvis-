@@ -2,6 +2,21 @@
 
 ## Unreleased — after 0.19.3 (work branch `claude/funny-allen-ygy8kk`, not yet released)
 
+### Avatar forms and operational readiness (Evolution 3.0, phase 5)
+
+- **Five forms of the same figure** (focus view → Form): Standard (armour closed), Diagnostic (helmet opened to
+  the sensor array, three-quarter view, Diagnostics on), Engineering (arms and hands opened for inspection),
+  Intelligence (**X-ray**: the plates thin out so the neural network inside shows, at its real activity level) and
+  Advanced (reactor exposed, close up, the full holographic look). Each reuses a transformation sequence, a camera
+  view and a look; the avatar's identity is unchanged.
+- **Only you choose a form** — no JARVIS state or working mode picks one. Leaving inspection re-opens the form you
+  chose; leaving the focus view closes the armour (your choice is kept for next time). The look lasts only while
+  the form does; your saved settings never change.
+- **Operational readiness** from the health checks the dashboard already runs: the focus panel says "Operational:
+  all N checks pass" or "Not fully operational: N of M failing (names)", and the avatar gives one readiness pulse
+  when all checks first pass (again only after a problem clears) — never during the startup assembly or in reduced
+  motion, never without data.
+
 ### Working modes and mission dependency maps (Evolution 3.0, phase 4)
 
 - **Six working modes in the focus view**: Command (the overview), Engineering (software architecture + simulation,

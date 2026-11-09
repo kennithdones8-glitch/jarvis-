@@ -305,3 +305,4 @@ body.projection .projbar .pj-ctl { flex-wrap: nowrap; } body.projection .projbar
 .pp-mode-now { font-size: 13px; color: var(--muted, #b9aa91); overflow-wrap: anywhere; }
 .pp-mode-now b { color: var(--gold, #f2c46d); font: 600 12px var(--display); letter-spacing: .16em; text-transform: uppercase; }
 .pp-mode-now small { display: block; font-size: 12px; }
+.pp-ready { margin-top: 6px; font-size: 13px; color: #8fe3ad; } .pp-ready.warn { color: #f2c46d; }

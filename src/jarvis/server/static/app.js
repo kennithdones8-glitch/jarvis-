@@ -267,6 +267,7 @@ function renderHead(d) {
     if (d && d.evolution) JarvisAvatar.setTier(displayStage(d.evolution));
   }
   renderAvTask(d);
+  ui.readyText = readiness(d);
   if (window.JarvisAvatar && d && d.telemetry) JarvisAvatar.setAura(auraValues(d));
   renderWall(d);
   renderPageHud(d);
@@ -1632,11 +1633,13 @@ function loadDisplay() {
 function saveDisplay(d) { try { localStorage.setItem(DISPLAY_KEY, JSON.stringify(d)); } catch (e) { /* this visit only */ } }
 function avatarOptions(d) {
   return { quality: d.quality, particles: d.particles, animation: d.animation, reactor: d.reactor, orbit: d.orbit,
-           env: d.env === "on", orbitals: d.orbitals === "on", panels: document.body.classList.contains("projection"), view: d.view, camspeed: d.camspeed };
+           env: d.env === "on", orbitals: d.orbitals === "on", panels: document.body.classList.contains("projection"), view: d.view, camspeed: d.camspeed,
+           xray: d.xray === "on" };
 }
 // The working mode's look (focus view only) on top of your saved settings; the saved settings are never changed
 function effectiveDisplay(d) {
-  return document.body.classList.contains("projection") && ui.wlook ? { ...d, ...ui.wlook } : d;
+  if (!document.body.classList.contains("projection")) return d;
+  return { ...d, ...(ui.wlook || {}), ...(ui.flook || {}) };   // the form (your choice) wins over the mode
 }
 function applyDisplay(d) {
   const root = document.documentElement;
@@ -1739,6 +1742,7 @@ function stopInspect() {
   if (!document.body.classList.contains("inspecting")) return false;
   document.body.classList.remove("inspecting");
   if (window.JarvisAvatar) JarvisAvatar.inspect(false);
+  reapplyForm();   // leaving inspection closes the armour: the form you chose opens it again
   const bar = $("#inspectbar"); if (bar) bar.hidden = true;
   renderProjControls();
   return true;
@@ -2784,6 +2788,57 @@ function enterWorkMode() {
   if (!w.auto) setWorkMode(w.mode, "you");
   else setWorkMode((window.JarvisAvatar && JarvisEvents.modeFor(JarvisAvatar.state)) || "command", window.JarvisAvatar ? JarvisAvatar.state : "");
 }
+// ---- avatar forms (Evolution 3.0, phase 5): chosen only by you, in the focus view -------------------------------
+// A form is a transformation, a camera view, a look and (Intelligence) X-ray, from avatar-events.js FORMS. It never
+// changes on its own: no JARVIS state picks a form. Leaving the focus view returns to Standard; your choice is kept.
+const FORM_KEY = "jarvis-form";
+function savedForm() {
+  let v = null;
+  try { v = localStorage.getItem(FORM_KEY); } catch (e) { v = null; }
+  return window.JarvisEvents && JarvisEvents.FORMS && JarvisEvents.FORMS[v] ? v : "standard";
+}
+function setForm(name, { save = true } = {}) {
+  const F = window.JarvisEvents && JarvisEvents.FORMS && JarvisEvents.FORMS[name];
+  if (!F || !window.JarvisAvatar) return;
+  if (save) { try { localStorage.setItem(FORM_KEY, name); } catch (e) { /* this visit only */ } }
+  ui.form = name;
+  ui.flook = { ...F.look, ...(F.view ? { view: F.view } : {}), xray: F.xray ? "on" : "off" };
+  JarvisAvatar.transform(F.transform || null);
+  applyDisplay(loadDisplay());
+  renderFormBar();
+}
+function reapplyForm() {
+  const F = ui.form && window.JarvisEvents && JarvisEvents.FORMS[ui.form];
+  if (F && window.JarvisAvatar) JarvisAvatar.transform(F.transform || null);
+}
+function leaveForm() {
+  ui.form = null; ui.flook = null;
+  if (window.JarvisAvatar) JarvisAvatar.transform(null);
+}
+function renderFormBar() {
+  const el = $("#projforms");
+  if (!el || !window.JarvisEvents || !JarvisEvents.FORMS) return;
+  const F = JarvisEvents.FORMS[ui.form || "standard"];
+  el.replaceChildren(
+    h("div", { class: "row", role: "group", "aria-label": "Avatar form" }, Object.entries(JarvisEvents.FORMS).map(([k, f]) =>
+      h("button", { class: `chip${(ui.form || "standard") === k ? " on" : ""}`, type: "button", "aria-pressed": String((ui.form || "standard") === k),
+        title: f.means, onclick: () => setForm(k) }, f.label))),
+    h("div", { class: "pp-mode-now" }, h("b", {}, `Form: ${F.label}`), ` — ${F.means} · only you change it`));
+}
+
+// ---- operational readiness: a real event, from the health checks the dashboard already runs ---------------------
+// "Operational" means every check passes. The avatar pulses once when that first becomes true, and again only after a
+// problem clears. While a check fails it says how many, and never pulses.
+function readiness(d) {
+  const items = (d && d.health && d.health.items) || [];
+  if (!items.length) return null;
+  const bad = items.filter((i) => !i.ok);
+  const ok = !bad.length;
+  if (ok && ui.wasReady !== true && window.JarvisAvatar) JarvisAvatar.ready();
+  ui.wasReady = ok;
+  return ok ? `Operational: all ${items.length} checks pass` : `Not fully operational: ${bad.length} of ${items.length} checks failing (${bad.map((i) => i.name).join(", ")})`;
+}
+
 function leaveWorkMode() {
   if (window.JarvisAvatar) for (const p of JarvisAvatar.projections) if ((ui.modeProj || new Set()).has(p.module) && !p.pinned) JarvisAvatar.closeProjection(p.module);
   ui.modeProj = new Set(); ui.wlook = null; ui.wmode = null;
@@ -2838,6 +2893,7 @@ function openProjection() {
   renderProjControls();
   renderProjection(ui.data);
   enterWorkMode();
+  setForm(savedForm(), { save: false });
   if (isPhone()) $("#projpanel").insertBefore($("#projbar"), $("#projstate"));   // phone: the list scrolls inside the focus panel
   renderProjBar();
   renderDiag();
@@ -2847,6 +2903,7 @@ function closeProjection() {
   if (!document.body.classList.contains("projection")) return;
   stopInspect();
   leaveWorkMode();
+  leaveForm();
   document.body.classList.remove("projection");
   $("#projpanel").hidden = true; $("#projback").hidden = true;
   if (window.JarvisAvatar) { JarvisAvatar.setOptions({ panels: false }); JarvisAvatar.endPreview(); }
@@ -2874,6 +2931,8 @@ function renderProjection(d) {
   const s = situation(d), w = liveWork(d), evo = d && d.evolution;
   const list = d ? systems(d) : [];
   $("#projstate").textContent = AVATAR_WORDS[st] || st;
+  const rd = $("#projready");
+  if (rd) { rd.textContent = ui.readyText || ""; rd.className = `pp-ready${ui.wasReady === false ? " warn" : ""}`; }
   // what the movement means right now (avatar-events.js), plus the one live detail that matters for it
   const pname = window.JarvisEvents ? JarvisEvents.personalityOf(st) : null;
   const pm = pname && JarvisEvents.PERSONALITY[pname];

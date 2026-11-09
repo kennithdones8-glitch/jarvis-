@@ -421,6 +421,14 @@ used). Tests prove each protection drill fails when its protection is disabled.
   `effectiveDisplay` (the mode's look over your saved settings, focus view only). Preference: `localStorage
   ["jarvis-workmode"]`.
 
+## Avatar forms and readiness (work branch, Evolution 3.0 phase 5)
+
+- `avatar-events.js` `FORMS` (transform, view, look, xray). `app.js`: `setForm` / `reapplyForm` (after inspection) /
+  `leaveForm`; `effectiveDisplay` layers the form over the working mode over your saved settings. Renderer option
+  `xray` thins the plates (`uOpacity` 0.28, no depth write) and adds a fixed visibility to the inner skeleton.
+- `readiness(d)` (app.js) from `/api/state` health items; `JarvisAvatar.ready()` → one pulse (full mode, not during
+  boot) on the transition to all-passing.
+
 ## Service and backups
 
 `service.py` writes a per-user LaunchAgent that runs `uv run jarvis dashboard --no-open` at login and after

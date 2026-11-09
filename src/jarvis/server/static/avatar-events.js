@@ -70,6 +70,20 @@
     creative:     { label: "Creative", means: "a calmer, cinematic space (only you choose it)", projections: ["globe"], view: "three",
                     look: { projection: "vivid", animation: "calm", particles: "high" }, auto: [] },
   };
+  // Avatar forms (Evolution 3.0, phase 5): the same figure in operational configurations, chosen only by you (a
+  // transformation is never started by a JARVIS state). Each combines what exists: a transformation sequence
+  // (avatar3d-transform.js), a camera view, a look and, for Intelligence, an X-ray view through the armour.
+  const FORMS = {
+    standard:     { label: "Standard", means: "the armour closed, the everyday look", transform: null, view: null, look: {}, xray: false },
+    diagnostic:   { label: "Diagnostic", means: "helmet open to the sensor array, Diagnostics on", transform: "helmet", view: "three",
+                    look: { diag: "on" }, xray: false },
+    engineering:  { label: "Engineering", means: "arms and hands opened for inspection", transform: "arms", view: "three",
+                    look: { particles: "low" }, xray: false },
+    intelligence: { label: "Intelligence", means: "X-ray: the armour thins out to show the neural network", transform: null, view: "close",
+                    look: {}, xray: true },
+    advanced:     { label: "Advanced", means: "reactor exposed, the full holographic look", transform: "reactor", view: "close",
+                    look: { projection: "vivid", particles: "high", animation: "lively" }, xray: false },
+  };
   const MODE_OF = {};
   for (const [name, m] of Object.entries(MODES)) for (const st of m.auto) MODE_OF[st] = name;
 
@@ -83,7 +97,7 @@
     }
     return null;
   }
-  const api = { PERSONALITY, MAP, AUDIT_STATES, PROJECTIONS, MODES, visual, personalityOf, fromAudit,
+  const api = { PERSONALITY, MAP, AUDIT_STATES, PROJECTIONS, MODES, FORMS, visual, personalityOf, fromAudit,
                 modeFor: (state) => MODE_OF[state] || null,
                 projectionFor: (state) => visual(state).projection, effectOf: (state) => visual(state).effect,
                 soundOf: (state) => visual(state).sound };
