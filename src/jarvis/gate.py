@@ -24,7 +24,8 @@ ALLOWED_SKIPS = {"test_live_ollama::real_ollama_round_trip", "test_live_ollama::
 MACOS_ONLY = {"test_macos_only::mac_app_scripts_compile", "test_macos_only::launch_agent_file_is_valid",
               "test_macos_only::code_sandbox_blocks_network_and_outside_writes",
               "test_macos_only::chat_code_self_test_sandbox",
-              "test_macos_only::launcher_app_compiles_and_holds_no_secret"}
+              "test_macos_only::launcher_app_compiles_and_holds_no_secret",
+              "test_macos_only::trial_sandbox_escape_attempts_all_fail"}
 if sys.platform != "darwin":
     ALLOWED_SKIPS = ALLOWED_SKIPS | MACOS_ONLY
 
@@ -103,6 +104,8 @@ SECURITY: dict[str, tuple[str, list[str]]] = {
         "test_dashboard::only_loopback"]),
     "Corrupted or inconsistent state": ("Damage is detected and reported, never silently trusted", [
         "test_tasks::corrupt_checkpoint_skipped", "test_tasks::invalid_transitions_rejected",
+        "test_security_phase1::contained_run_stops_the_whole_group_on_the_time_limit",
+        "test_security_phase1::contained_run_limits_file_size_and_the_trial_folder",
         "test_upgrade_safety::upgrade_is_backed_up_first", "test_upgrade_safety::a_mac_refuses_to_upgrade_without_a_backup",
         "test_upgrade_safety::dashboard_already_running_never_opens_the_data",
         "test_objectives::two_failures_in_a_row_pause_it_and_the_feed_says_so",

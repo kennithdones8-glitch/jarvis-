@@ -13,9 +13,14 @@ Isolation (the branch's tests are code you haven't vetted yet, so they run as if
 - a bare environment: no API keys, tokens, SSH agent or JARVIS settings; a throwaway HOME and TMPDIR inside the
   trial's own folder; no bytecode written anywhere else;
 - on macOS, inside the system sandbox (``sandbox-exec``): no network except this Mac itself (the tests' own stand-in
-  servers), no writes outside the trial folder, no reads of JARVIS's data folder, your SSH keys, cloud credentials or
-  Keychains, and no Keychain access. If the sandbox can't start, the suite doesn't run and the trial reports that it
-  proves nothing; it never falls back to running unsandboxed on a Mac.
+  servers); no writes outside the trial folder; no reading anything in any user folder or external drive except the
+  trial, the Python installation and the repository's history (so not your Documents, Mail, Messages, browser data,
+  SSH keys, cloud credentials or Keychains, and never JARVIS's data folder); no Keychain, no remote control of other
+  apps (Apple events), no clipboard; no starting osascript, open, security, screencapture, pbcopy/pbpaste,
+  automator or shortcuts; no local socket into a home folder or to Docker. If the sandbox can't start, the suite
+  doesn't run and the trial reports that it proves nothing; it never falls back to running unsandboxed on a Mac;
+- limits on everything it starts: 2 GB per file, 2,048 open files, 30 minutes of CPU, and the trial folder at most
+  6 GB; on the time limit or a full folder its whole process group is stopped.
 """
 
 from __future__ import annotations
@@ -78,11 +83,28 @@ def _q(path: Path | str) -> str:
     return '"' + str(path).replace("\\", "\\\\").replace('"', '\\"') + '"'
 
 
-def sandbox_profile(root: Path, data: Path | None, real_home: Path) -> str:
-    """The macOS sandbox rules for one trial (later rules win). ``root``: the trial's own folder; ``data``: JARVIS's
-    data folder (the trial folder lives inside it, so that subfolder is allowed again last)."""
+# Programs a trial may not start (they reach your apps, clipboard, screen or Keychain through other processes).
+NO_EXEC = ("/usr/bin/osascript", "/usr/bin/open", "/usr/bin/security", "/usr/bin/pbcopy", "/usr/bin/pbpaste",
+           "/usr/sbin/screencapture", "/usr/bin/automator", "/usr/bin/shortcuts")
+# Limits for everything a trial starts: biggest single file, open files, CPU seconds, and the whole trial folder.
+MAX_FILE = 2 * 1024 ** 3
+MAX_FILES_OPEN = 2048
+MAX_DISK = 6 * 1024 ** 3
+
+
+def _python_reads() -> list[Path]:
+    """The Python installation and the environment the tests run in (they may live under your home folder)."""
+    exe = Path(os.path.realpath(sys.executable))
+    return sorted({Path(os.path.realpath(p)) for p in (sys.prefix, sys.base_prefix, exe.parent)})
+
+
+def sandbox_profile(root: Path, data: Path | None, real_home: Path, *, extra_reads: list[Path] | None = None) -> str:
+    """The macOS sandbox rules for one trial (later rules win). Reads are denied for every user folder and external
+    drive, then allowed back only for the trial itself, the Python installation and the repository's history
+    (`extra_reads`); private folders and JARVIS's data folder are denied again on top, except the trial."""
     root, home = Path(os.path.realpath(root)), Path(os.path.realpath(real_home))
     private = [home / p for p in PRIVATE] + ([Path(os.path.realpath(data))] if data else [])
+    reads = [*_python_reads(), *[Path(os.path.realpath(p)) for p in (extra_reads or [])]]
     return "\n".join([
         "(version 1)",
         "(allow default)",
@@ -90,12 +112,75 @@ def sandbox_profile(root: Path, data: Path | None, real_home: Path) -> str:
         '(allow network* (local ip "localhost:*"))',
         '(allow network* (remote ip "localhost:*"))',
         "(allow network* (remote unix-socket))",
-        '(deny mach-lookup (global-name "com.apple.SecurityServer") (global-name "com.apple.securityd"))',
+        '(deny network* (remote unix-socket (path-regex #"^/(private/)?var/run/docker")))',
+        f'(deny network* (remote unix-socket (path-regex #"^{_rx(home)}/")))',
+        f"(allow network* (remote unix-socket (subpath {_q(root)})))",
+        '(deny mach-lookup (global-name "com.apple.SecurityServer") (global-name "com.apple.securityd")'
+        ' (global-name "com.apple.coreservices.appleevents") (global-name "com.apple.pasteboard.1"))',
+        "(deny appleevent-send)",
+        "(deny process-exec " + " ".join(f"(literal {_q(x)})" for x in NO_EXEC) + ")",
         "(deny file-write*)",
         f'(allow file-write* (subpath {_q(root)}) (literal "/dev/null") (literal "/dev/zero") (literal "/dev/tty") (subpath "/dev/fd"))',
+        '(deny file-read-data (subpath "/Users") (subpath "/Volumes") ' + f"(subpath {_q(home)}))",
+        "(allow file-read-data " + " ".join(f"(subpath {_q(r)})" for r in reads) + ")",
         "(deny file-read* " + " ".join(f"(subpath {_q(p)})" for p in private) + ")",
         f"(allow file-read* (subpath {_q(root)}))",
     ])
+
+
+def _rx(path: Path) -> str:
+    import re as _re
+    return _re.escape(str(path)).replace('"', '\\"')
+
+
+def _limits() -> None:  # pragma: no cover - runs in the child, before it starts
+    import resource
+    for what, value in ((resource.RLIMIT_FSIZE, MAX_FILE), (resource.RLIMIT_NOFILE, MAX_FILES_OPEN),
+                        (resource.RLIMIT_CPU, TIMEOUT)):
+        try:
+            soft, hard = resource.getrlimit(what)
+            cap = value if hard == resource.RLIM_INFINITY else min(value, hard)
+            resource.setrlimit(what, (cap if soft == resource.RLIM_INFINITY else min(soft, cap), hard))
+        except (ValueError, OSError):
+            pass
+
+
+def _size(folder: Path) -> int:
+    total = 0
+    for dirpath, _dirs, files in os.walk(folder):
+        for f in files:
+            try:
+                total += os.lstat(os.path.join(dirpath, f)).st_size
+            except OSError:
+                pass
+    return total
+
+
+def contained_run(argv: list[str], *, cwd: Path, env: dict[str, str], timeout: int, watch: Path,
+                  max_disk: int = MAX_DISK) -> tuple[int, str, str]:
+    """Run with the resource limits, in its own process group: on a timeout or a full trial folder the whole group
+    (everything it started) is stopped. Output goes to files, so a chatty suite can't fill a pipe and hang."""
+    import signal
+    out, err = watch / ".trial-stdout.txt", watch / ".trial-stderr.txt"
+    with open(out, "w") as o, open(err, "w") as e:
+        proc = subprocess.Popen(argv, cwd=cwd, env=env, stdout=o, stderr=e, stdin=subprocess.DEVNULL,
+                                start_new_session=True, preexec_fn=_limits)
+        deadline, reason = time.monotonic() + timeout, ""
+        while proc.poll() is None:
+            if time.monotonic() > deadline:
+                reason = f"stopped: over the {timeout // 60}-minute limit"
+            elif _size(watch) > max_disk:
+                reason = f"stopped: the trial folder passed {max_disk // 1024 ** 3} GB"
+            if reason:
+                try:
+                    os.killpg(proc.pid, signal.SIGKILL)
+                except ProcessLookupError:
+                    pass
+                proc.wait()
+                break
+            time.sleep(2)
+    text = out.read_text(errors="replace"), err.read_text(errors="replace")
+    return (proc.returncode if not reason else -9), text[0], (text[1] + ("\n" + reason if reason else ""))
 
 
 def isolation() -> str:
@@ -107,13 +192,13 @@ def isolation() -> str:
     return "macOS sandbox"
 
 
-def _isolated(argv: list[str], root: Path, data: Path | None) -> list[str]:
+def _isolated(argv: list[str], root: Path, data: Path | None, *, reads: list[Path] | None = None) -> list[str]:
     if isolation() == "macOS sandbox":
-        return ["/usr/bin/sandbox-exec", "-p", sandbox_profile(root, data, Path.home()), *argv]
+        return ["/usr/bin/sandbox-exec", "-p", sandbox_profile(root, data, Path.home(), extra_reads=reads), *argv]
     return argv
 
 
-def _run_suite(tree: Path, root: Path | None = None, data: Path | None = None) -> dict[str, Any]:
+def _run_suite(tree: Path, root: Path | None = None, data: Path | None = None, repo: Path = REPO) -> dict[str, Any]:
     """The tests and the linter inside one worktree, isolated (see the module notes), with that worktree's own code
     first on the path."""
     box = root or tree.parent / f"{tree.name}-box"   # this side's throwaway HOME and TMPDIR
@@ -125,9 +210,10 @@ def _run_suite(tree: Path, root: Path | None = None, data: Path | None = None) -
     env = trial_env(tree, home, tmp)
     started = time.monotonic()
     report = tree / ".trial-junit.xml"   # machine-readable results: independent of the project's pytest output settings
-    t = subprocess.run(_isolated([sys.executable, "-m", "pytest", "-q", "--no-header", "-p", "no:cacheprovider",
-                                  f"--junitxml={report}", "tests"], root, data),
-                       cwd=tree, env=env, capture_output=True, text=True, timeout=TIMEOUT)
+    reads = [Path(repo) / ".git"]   # a worktree's history lives in the repository's .git
+    code, _out, err_text = contained_run(_isolated([sys.executable, "-m", "pytest", "-q", "--no-header", "-p",
+                                                    "no:cacheprovider", f"--junitxml={report}", "tests"], root, data,
+                                                   reads=reads), cwd=tree, env=env, timeout=TIMEOUT, watch=root)
     counts, failing = {"passed": 0, "failed": 0, "error": 0, "skipped": 0}, []
     try:
         import xml.etree.ElementTree as ET
@@ -148,11 +234,12 @@ def _run_suite(tree: Path, root: Path | None = None, data: Path | None = None) -
     lint = None
     if shutil.which("ruff") or (Path(sys.executable).parent / "ruff").exists():
         ruff = shutil.which("ruff") or str(Path(sys.executable).parent / "ruff")
-        lr = subprocess.run(_isolated([ruff, "check", "--no-cache", "src", "tests"], root, data), cwd=tree, env=env,
-                            capture_output=True, text=True, timeout=300)
-        lint = "clean" if lr.returncode == 0 else (lr.stdout.strip().splitlines() or ["problems"])[-1][:200]
+        lcode, lout, _ = contained_run(_isolated([ruff, "check", "--no-cache", "src", "tests"], root, data, reads=reads),
+                                       cwd=tree, env=env, timeout=300, watch=root)
+        lint = "clean" if lcode == 0 else (lout.strip().splitlines() or ["problems"])[-1][:200]
+    stopped = next((line for line in err_text.splitlines() if line.startswith("stopped:")), None)
     return {"tests": counts, "failing": sorted(set(failing)), "lint": lint,
-            "seconds": round(time.monotonic() - started, 1), "exit": t.returncode}
+            "seconds": round(time.monotonic() - started, 1), "exit": code, **({"stopped": stopped} if stopped else {})}
 
 
 def run(candidate: str, baseline: str = "HEAD", *, work: Path, repo: Path = REPO, data: Path | None = None) -> dict[str, Any]:
@@ -173,7 +260,7 @@ def run(candidate: str, baseline: str = "HEAD", *, work: Path, repo: Path = REPO
         for side, tree in trees.items():
             box = root / f"{side}-box"
             box.mkdir()
-            res[side] = _run_suite(tree, box, data)
+            res[side] = _run_suite(tree, box, data, repo)
     finally:
         for tree in trees.values():
             subprocess.run(["git", "worktree", "remove", "--force", str(tree)], cwd=repo, capture_output=True, timeout=120)

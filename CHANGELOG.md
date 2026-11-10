@@ -6,6 +6,21 @@
   before planning, nothing left out, retries routed by the question, the first-event check). Both sides kept; one
   conflict: `Orchestrator.plan` runs main's premise check first and keeps this branch's replan history.
 
+### Level 6 trial sandbox hardened (Evolution 4.0, M2)
+
+- **Reads are now an allow-list:** nothing in any user folder or external drive (`/Users`, `/Volumes`) can be read
+  except the trial itself, the Python installation and the repository's history; private folders and JARVIS's data
+  folder stay denied on top. Before, only a list of private folders was blocked, so Documents, Mail, Messages and
+  browser data were readable.
+- **No reaching other apps:** Apple events, the pasteboard and the Keychain are blocked, and osascript, open,
+  security, screencapture, pbcopy/pbpaste, automator and shortcuts can't be started. Local sockets into a home folder
+  or to Docker are refused.
+- **Limits:** 2 GB per file, 2,048 open files, 30 CPU minutes, and the whole trial folder at most 6 GB; on the time
+  limit or a full folder the whole process group is stopped (before, only the first process was).
+- **Proved on GitHub's macOS runners:** a program inside the real sandbox tries each escape (home file, outside
+  write, internet, home socket, osascript) and must be blocked, while the trial's own files, localhost and ordinary
+  programs still work (`test_macos_only::trial_sandbox_escape_attempts_all_fail`, required on a Mac).
+
 ### Games: chess with JARVIS
 
 - **Play chess against JARVIS** (new Games page, ♞). The full rules: castling, en passant, promotion (you choose the

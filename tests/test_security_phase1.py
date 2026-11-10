@@ -70,19 +70,54 @@ def test_trial_env_passes_only_the_basics(tmp_path, monkeypatch):
 
 
 def test_the_macos_sandbox_rules_deny_network_writes_and_private_reads(tmp_path):
-    root, data = tmp_path / "data" / "trials" / "trial-1", tmp_path / "data"
-    p = trial.sandbox_profile(root, data, tmp_path / "home")
+    root, data, home = tmp_path / "data" / "trials" / "trial-1", tmp_path / "data", tmp_path / "home"
+    p = trial.sandbox_profile(root, data, home, extra_reads=[tmp_path / "repo" / ".git"])
     lines = p.splitlines()
     assert lines[:3] == ["(version 1)", "(allow default)", "(deny network*)"]
     assert '(allow network* (remote ip "localhost:*"))' in p                     # only this Mac (the tests' stand-ins)
     assert "(deny file-write*)" in p and f'(allow file-write* (subpath "{os.path.realpath(root)}")' in p
+    # reads: every user folder and external drive denied, then only the trial, Python and the repo's history back
+    deny_all = next(x for x in lines if x.startswith("(deny file-read-data"))
+    assert '(subpath "/Users")' in deny_all and '(subpath "/Volumes")' in deny_all and os.path.realpath(home) in deny_all
+    allowed = next(x for x in lines if x.startswith("(allow file-read-data"))
+    assert os.path.realpath(tmp_path / "repo" / ".git") in allowed and os.path.realpath(sys.prefix) in allowed
+    assert lines.index(deny_all) < lines.index(allowed)                          # later rules win
     denied = next(x for x in lines if x.startswith("(deny file-read*"))
     for private in (".ssh", ".aws", "Library/Keychains"):
-        assert os.path.realpath(tmp_path / "home" / private) in denied, private
-    assert f'(subpath "{os.path.realpath(data)}")' in denied                     # JARVIS's data folder
+        assert os.path.realpath(home / private) in denied, private
+    assert f'(subpath "{os.path.realpath(data)}")' in denied                     # JARVIS's data folder, even if allowed above
     assert lines[-1] == f'(allow file-read* (subpath "{os.path.realpath(root)}"))'   # the trial itself (inside data): last rule wins
-    assert '(deny mach-lookup (global-name "com.apple.SecurityServer")' in p      # no Keychain access
+    assert '(global-name "com.apple.SecurityServer")' in p and '(global-name "com.apple.coreservices.appleevents")' in p
+    assert "(deny appleevent-send)" in p and '(literal "/usr/bin/osascript")' in p and '(literal "/usr/bin/open")' in p
+    assert "docker" in p and f'(path-regex #"^{trial._rx(Path(os.path.realpath(home)))}/")' in p   # no sockets into home
     assert trial._q('/a "b"\\c') == '"/a \\"b\\"\\\\c"'                              # paths can't break out of the rules
+
+
+def test_contained_run_stops_the_whole_group_on_the_time_limit(tmp_path):
+    import time as _t
+    marker = tmp_path / "grandchild-alive"
+    inner = f"import time; time.sleep(6); open({str(marker)!r}, 'w').write('x')"
+    script = f"import subprocess, sys, time\nsubprocess.Popen([sys.executable, '-c', {inner!r}])\ntime.sleep(60)\n"
+    t0 = _t.monotonic()
+    code, _out, err = trial.contained_run([sys.executable, "-c", script], cwd=tmp_path, env={"PATH": "/usr/bin:/bin"},
+                                          timeout=2, watch=tmp_path)
+    assert code == -9 and "over the" in err and _t.monotonic() - t0 < 20
+    _t.sleep(7)
+    assert not marker.exists()                                                  # the grandchild was stopped too
+
+
+def test_contained_run_limits_file_size_and_the_trial_folder(tmp_path, monkeypatch):
+    monkeypatch.setattr(trial, "MAX_FILE", 1024 * 1024)
+    big = tmp_path / "big.bin"
+    code, _o, err = trial.contained_run([sys.executable, "-c", f"open({str(big)!r}, 'wb').write(b'x' * (4 * 1024 * 1024))"],
+                                        cwd=tmp_path, env={"PATH": "/usr/bin:/bin"}, timeout=30, watch=tmp_path)
+    assert code != 0 and big.stat().st_size <= 1024 * 1024                      # the file-size limit held
+    filler = ("import time\n"
+              f"open({str(tmp_path / 'fill.bin')!r}, 'wb').write(b'x' * 900_000)\n"
+              "time.sleep(30)\n")
+    code, _o, err = trial.contained_run([sys.executable, "-c", filler], cwd=tmp_path, env={"PATH": "/usr/bin:/bin"},
+                                        timeout=60, watch=tmp_path, max_disk=512 * 1024)
+    assert code == -9 and "trial folder passed" in err
 
 
 def test_on_a_mac_the_suite_runs_inside_the_sandbox_or_not_at_all(tmp_path, monkeypatch):
