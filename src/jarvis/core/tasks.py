@@ -223,6 +223,7 @@ class TaskStore:
             conn.execute("DELETE FROM steps WHERE task_id = ?", (tid,))
             conn.execute("DELETE FROM approvals WHERE task_id = ?", (tid,))
             conn.execute("DELETE FROM tasks WHERE id = ?", (tid,))
+            conn.execute("DELETE FROM links WHERE src = ? OR dst = ?", (f"task:{tid}",) * 2)
             self.audit.record("task.deleted", actor=by, task_id=tid)
 
     def find(self, text: str, *, limit: int = 200) -> list[dict[str, Any]]:

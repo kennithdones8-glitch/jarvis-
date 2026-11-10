@@ -24,7 +24,8 @@ ALLOWED_SKIPS = {"test_live_ollama::real_ollama_round_trip", "test_live_ollama::
 MACOS_ONLY = {"test_macos_only::mac_app_scripts_compile", "test_macos_only::launch_agent_file_is_valid",
               "test_macos_only::code_sandbox_blocks_network_and_outside_writes",
               "test_macos_only::chat_code_self_test_sandbox",
-              "test_macos_only::launcher_app_compiles_and_holds_no_secret"}
+              "test_macos_only::launcher_app_compiles_and_holds_no_secret",
+              "test_macos_only::trial_sandbox_escape_attempts_all_fail"}
 if sys.platform != "darwin":
     ALLOWED_SKIPS = ALLOWED_SKIPS | MACOS_ONLY
 
@@ -42,6 +43,29 @@ SECURITY: dict[str, tuple[str, list[str]]] = {
         "test_mac::note_body_is_escaped_html"]),
     "Permission bypass": ("Every change passes the permission engine and, where needed, your approval", [
         "test_settle_steps::settling_from_the_phone_is_one_tap_once_signed_in",
+        "test_learn::autonomy_tiers_pauses_and_the_emergency_stop", "test_learn::autonomy_is_mac_only",
+        "test_trial::trials_need_tier_6_from_the_terminal", "test_trial::refs_are_validated",
+        "test_update::update_and_backup_routes_are_mac_only_and_update_needs_touch_id",
+        "test_update::start_refuses_without_the_mac_service_or_from_jarvis",
+        "test_benchtest::only_you_can_ask_and_inputs_are_checked", "test_benchtest::routes_are_mac_only",
+        "test_objectives::schema_v11_and_rules", "test_objectives::autopilot_route_is_mac_only",
+        "test_drafts::scope_is_src_and_tests_only_and_sensitive_files_are_flagged",
+        "test_drafts::a_patch_is_tested_on_a_throwaway_copy_and_never_applied", "test_drafts::the_lab_needs_tier_6_and_you",
+        "test_review::reviewer_is_local_and_never_the_author", "test_security_phase1::socket_rules_deny_home_then_allow_the_trial",
+        "test_objectives::pursue_runs_the_plan_through_the_same_engine",
+        "test_security_phase1::no_code_reaches_a_tool_without_the_permission_gateway",
+        "test_security_phase1::mac_check_calls_only_read_actions",
+        "test_security_phase1::every_server_path_that_runs_a_tool_uses_the_gateway",
+        "test_security_phase1::a_trial_runs_with_no_secrets_and_a_throwaway_home",
+        "test_security_phase1::the_macos_sandbox_rules_deny_network_writes_and_private_reads",
+        "test_security_phase1::on_a_mac_the_suite_runs_inside_the_sandbox_or_not_at_all",
+        "test_remote::a_phone_can_never_start_a_change_trial",
+        "test_autopilot::nothing_happens_without_tier_7",
+        "test_intelligence_wiring::the_tournament_moves_routing_only_at_tier_7_and_within_limits",
+        "test_intelligence_wiring::an_undone_adjustment_stays_undone_and_a_closed_gap_is_withdrawn",
+        "test_intelligence_wiring::the_initiative_pause_and_the_emergency_stop_empty_the_feed",
+        "test_autopilot::nudges_reorder_allowed_models_only_and_never_beat_local_first",
+        "test_intent::the_dashboard_route_is_local_only_and_research_and_tasks_are_confirmed",
         "test_permissions::outside_root_denied", "test_permissions::path_traversal_denied",
         "test_permissions::symlink_escape_denied", "test_permissions::deny_beats_allow",
         "test_permissions::high_tiers_never_auto_allowed", "test_permissions::protected_paths_not_writable_but_readable",
@@ -83,6 +107,14 @@ SECURITY: dict[str, tuple[str, list[str]]] = {
         "test_dashboard::only_loopback"]),
     "Corrupted or inconsistent state": ("Damage is detected and reported, never silently trusted", [
         "test_tasks::corrupt_checkpoint_skipped", "test_tasks::invalid_transitions_rejected",
+        "test_security_phase1::contained_run_stops_the_whole_group_on_the_time_limit",
+        "test_security_phase1::contained_run_limits_file_size_and_the_trial_folder",
+        "test_upgrade_safety::upgrade_is_backed_up_first", "test_upgrade_safety::a_mac_refuses_to_upgrade_without_a_backup",
+        "test_upgrade_safety::dashboard_already_running_never_opens_the_data",
+        "test_objectives::two_failures_in_a_row_pause_it_and_the_feed_says_so",
+        "test_objectives::the_runner_waits_for_the_mission_before_and_never_builds_on_a_failure",
+        "test_update::failing_tests_put_the_old_code_back_without_a_restart",
+        "test_update::a_new_version_that_doesnt_answer_is_rolled_back_with_its_database",
         "test_audit::tampering_detected_even_if_triggers_removed", "test_audit::deleted_middle_entry_detected",
         "test_backup_service::wrong_passphrase_and_tampering_detected",
         "test_orchestrator::writes_verified_detects_tampering",
@@ -95,6 +127,7 @@ SECURITY: dict[str, tuple[str, list[str]]] = {
         "test_stop::run_tracked_deadline_kills_process_group", "test_remote::unauthenticated_challenges_are_bounded",
         "test_dashboard::bad_content_length_refused_quickly", "test_voice::transcribe_endpoint_defences",
         "test_bench::code_is_only_run_when_asked", "test_chat_intelligence::streaming_respects_the_deadline",
+        "test_compute::an_endless_program_is_stopped",
         "test_orchestrator::validator_rejects_oversized_and_forward_references"]),
     "Privacy and data disclosure": ("Private data leaves the Mac only with permission; logs hold no content", [
         "test_models::quality_floor_selects_cloud_but_private_data_needs_approval",
@@ -103,9 +136,18 @@ SECURITY: dict[str, tuple[str, list[str]]] = {
         "test_models::approval_is_bound_to_exact_request", "test_models::secret_content_blocked",
         "test_models::audit_never_contains_message_content",
         "test_codecheck::off_by_default",
+        "test_compute::off_by_default", "test_compute::never_runs_when_the_answer_goes_to_claude",
+        "test_compute::nothing_runs_without_the_sandbox", "test_compute::unsafe_programs_are_never_run",
+        "test_compute::never_in_quick_mode",
         "test_fileperms::an_open_data_folder_is_made_private_on_start_and_recorded",
         "test_checkup::cli_records_counts_only", "test_checkup::only_fixed_read_only_commands_are_run",
         "test_fileperms::a_new_data_folder_starts_private", "test_fileperms::a_symlink_is_not_followed",
+        "test_security_phase1::forget_removes_ratings_and_their_comments",
+        "test_security_phase1::deleting_one_exchange_removes_its_rating",
+        "test_mission_control::forget_removes_saved_plans",
+        "test_intelligence_wiring::links_hold_ids_only_and_vanish_with_either_side",
+        "test_intelligence_wiring::forget_removes_links_through_the_normal_path",
+        "test_intelligence_wiring::one_generic_notification_a_day_never_in_quiet_hours",
         "test_audit_privacy::forget_removes_text_from_every_table_and_the_raw_files",
         "test_audit_privacy::audit_fingerprints_free_text_but_keeps_paths_and_structure",
         "test_memory::audit_holds_no_memory_text", "test_memory::memory_context_is_private_category",
@@ -126,6 +168,14 @@ SECURITY: dict[str, tuple[str, list[str]]] = {
         "test_telemetry_evolution::dashboard_state_carries_real_telemetry_evolution_and_model_timings"]),
     "Honest reporting": ("Failures and unverified results are reported as such", [
         "test_tasks::failed_verification_is_not_reported_as_complete", "test_tasks::rejection_fails_task_honestly",
+        "test_mission_control::a_tool_that_returned_but_left_nothing_fails_the_mission",
+        "test_mission_control::a_check_that_cannot_run_is_unconfirmed_never_verified",
+        "test_mission_control::an_event_is_read_back_before_the_mission_counts_as_done",
+        "test_mission_control::a_failed_mission_can_be_planned_again_once_and_is_reviewed_first",
+        "test_learn::outcomes_are_judged_by_evidence_not_by_returning",
+        "test_trial::a_regression_is_caught_and_nothing_is_merged",
+        "test_learn::lessons_have_evidence_confidence_and_flag_contradictions",
+        "test_learn::projection_security_never_calls_pending_authorized",
         "test_orchestrator::invalid_plan_gets_one_repair_then_fails_honestly",
         "test_persona::system_prompt_lists_real_abilities_and_known_gaps",
         "test_lookup::persona_matches_the_new_abilities",
@@ -140,7 +190,30 @@ SECURITY: dict[str, tuple[str, list[str]]] = {
         "test_telemetry_evolution::activity_alone_earns_nothing",
         "test_ui_avatar::every_avatar_state_comes_from_a_real_signal",
         "test_ui_avatar::evolution_comes_from_the_server_only",
-        "test_lookup::a_lookup_of_the_wrong_day_is_corrected_to_the_day_asked_about"]),
+        "test_lookup::a_lookup_of_the_wrong_day_is_corrected_to_the_day_asked_about",
+        "test_ui_avatar::speech_pulses_come_only_from_real_word_boundaries",
+        "test_telemetry_evolution::a_lost_capability_holds_for_seven_days_then_stops_counting",
+        "test_telemetry_evolution::stage_changes_and_definition_versions_are_audited",
+        "test_telemetry_evolution::benchmark_milestone_needs_a_real_passing_run",
+        "test_telemetry_evolution::doctor_and_mac_check_count_only_when_they_passed_recently",
+        "test_telemetry_evolution::reliability_needs_thirty_quiet_days",
+        "test_ui_avatar::idle_liveliness_is_limited_to_rest_and_never_fakes_activity",
+        "test_avatar25::gestures_are_captured_only_while_inspecting",
+        "test_avatar25::presets_and_diagnostics_change_the_look_only_and_show_measured_numbers",
+        "test_avatar25::disagreeing_comes_only_from_a_new_refusal_in_the_audit_log",
+        "test_avatar25::personalities_never_claim_feelings_and_red_stays_for_errors",
+        "test_avatar25::panel_controls_change_the_look_only",
+        "test_avatar25::auto_quality_has_hysteresis_and_reports_measured_reasons",
+        "test_avatar25::microphone_level_is_measured_locally_and_stops_with_the_recording",
+        "test_avatar25::only_you_start_a_transformation_never_a_jarvis_state",
+        "test_avatar25::hud_motion_line_explains_the_movement_and_uses_real_details_only",
+        "test_avatar25::modes_are_built_from_real_projections_and_real_states",
+        "test_avatar25::the_mode_controller_is_safe_and_changes_the_look_only",
+        "test_avatar25::the_workflow_projection_draws_only_real_dependencies",
+        "test_avatar25::only_you_choose_a_form_and_it_changes_the_look_only",
+        "test_avatar25::xray_shows_what_is_inside_without_faking_activity",
+        "test_avatar25::readiness_comes_only_from_the_health_checks",
+        "test_avatar25::on_a_phone_the_focus_panel_is_split_into_tabs"]),
     "Emergency stop (protected)": ("One stop halts everything, including work in progress", [
         "test_gateway::emergency_stop_blocks_everything", "test_tasks::emergency_stop_pauses_then_requires_explicit_resume",
         "test_stop::stop_kills_running_claude_and_its_children", "test_models::emergency_stop_blocks_model_calls",
@@ -196,6 +269,21 @@ def parse_junit(xml_text: str) -> dict[str, str]:
     return out
 
 
+def failure_reasons(xml_text: str) -> dict[str, str]:
+    """{"test_file::test_name": the first line of why it failed}, so a failure on another machine (CI) is readable."""
+    out: dict[str, str] = {}
+    for case in ET.fromstring(xml_text).iter("testcase"):
+        bad = case.find("failure")
+        bad = bad if bad is not None else case.find("error")
+        if bad is None:
+            continue
+        module = case.get("classname", "").split(".")[-1]
+        key = f"{module}::{case.get('name', '').split('[')[0].removeprefix('test_')}"
+        text = (bad.get("message") or bad.text or "").strip()
+        out.setdefault(key, " ".join(text.split())[:400])
+    return out
+
+
 def evaluate(results: dict[str, str], lint_ok: bool, lint_detail: str = "") -> GateResult:
     failed = sorted(k for k, v in results.items() if v == "failed")
     bad_skips = sorted(k for k, v in results.items() if v == "skipped" and k not in ALLOWED_SKIPS)
@@ -228,6 +316,7 @@ def run(root: Path = ROOT, timeout: float = 1800) -> GateResult:
         except subprocess.TimeoutExpired:
             raise RuntimeError(f"the test suite took longer than {timeout:.0f}s") from None
         results = parse_junit(report.read_text()) if report.exists() else {}
+        reasons = failure_reasons(report.read_text()) if report.exists() else {}
     try:
         lint = subprocess.run([sys.executable, "-m", "ruff", "check", "src", "tests"], cwd=root,
                               capture_output=True, text=True, timeout=300)
@@ -238,6 +327,7 @@ def run(root: Path = ROOT, timeout: float = 1800) -> GateResult:
     except (OSError, subprocess.TimeoutExpired) as exc:
         lint_ok, lint_detail = False, f"the linter didn't run: {exc}"
     result = evaluate(results, lint_ok, lint_detail)
+    result.suite["why"] = {k: v for k, v in reasons.items() if k in result.suite["failed"]}
     result.seconds = round(time.monotonic() - started, 1)
     return result
 
@@ -250,6 +340,8 @@ def report(r: GateResult) -> str:
              f"{'✓' if r.lint['ok'] else '✗'} Linter          {r.lint['detail'] if r.lint['ok'] else 'problems found'}", ""]
     for f in s["failed"]:
         lines.append(f"    failed: {f}")
+        if s.get("why", {}).get(f):
+            lines.append(f"      why: {s['why'][f]}")
     if not r.lint["ok"]:
         lines += ["    " + x for x in r.lint["detail"].splitlines()[-12:]]
     lines.append("Security items (each must pass; they can't be outweighed):")

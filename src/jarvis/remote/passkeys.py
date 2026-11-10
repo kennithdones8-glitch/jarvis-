@@ -28,6 +28,7 @@ STEP_UP = (
     r"/api/release",                      # release the emergency stop
     r"/api/memory/[\w-]+/(delete|edit)",
     r"/api/memory/forget",
+    r"/api/memory/conflicts/resolve",     # deletes one of two memories, like delete
     r"/api/devices/[\w-]+/revoke",
 )
 # ...and approving a HIGH-RISK (tier 4) action. Everything else (lower tiers, rejecting, running a plan, idea

@@ -157,7 +157,7 @@ def test_oracle_passes_every_task(config, tmp_path):
     failed = {k: [c for c in v["checks"] if c["passed"] is not True] for k, v in res.items() if v["status"] not in ("pass", "skipped")}
     assert failed == {}
     assert res["research-python"]["status"] == "skipped"  # needs Claude: not run in local mode
-    assert res["tooluse-reminder"]["mac_calls"] == ["reminders.add"]
+    assert res["tooluse-reminder"]["mac_calls"] == ["reminders.add", "reminders.find"]   # added, then read back (Mission Control)
     assert res["planning-free"]["mac_calls"] == ["calendar.events"]
     assert all(not r.get("violations") for r in res.values())
     report = (run_dir / "report.md").read_text()

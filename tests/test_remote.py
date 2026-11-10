@@ -23,6 +23,7 @@ from jarvis.remote.devices import DeviceError, DeviceStore
 from jarvis.remote.push import Notifier, PushService, allowed_endpoint, encrypt
 from jarvis.remote.webauthn import b64url_decode, b64url_encode
 from jarvis.server import Dashboard
+from jarvis.server.app import HttpError
 from jarvis.tools import default_registry
 
 HOST = "mac.tail1234.ts.net"
@@ -533,3 +534,53 @@ def test_deciding_on_an_idea_from_the_phone_is_one_tap(remote_dash):
     path = f"/api/proposals/{pid}/approve"
     assert phone.req(path, {})[0] == 200  # Face ID was at sign-in (owner's choice)
     assert d.proposals.list()[0]["state"] == "approved"
+
+
+def test_a_phone_can_never_start_a_change_trial(remote_dash):
+    """Change trials run code on the Mac (tier 6), so they can only be started from the Mac's own dashboard, even
+    when tier 6 is on and the phone is signed in. Other experiments stay available from the phone."""
+    from jarvis.learn import Autonomy
+    d, *_ = remote_dash
+    Autonomy(d.kernel).set_tier(6, True, by="user:cli", from_dashboard=False)
+    phone, _ = paired(d)
+    status, _, body = phone.req("/api/experiments", {"kind": "trial", "ref": "HEAD"})
+    assert status == 403 and "only be started from the Mac" in body["error"]
+    assert d.kernel.db.one("SELECT COUNT(*) FROM experiments")[0] == 0                      # nothing started
+    assert any(e["event"] == "device.denied" for e in d.kernel.audit.entries(limit=10))
+    with pytest.raises(HttpError, match="only be started from the Mac"):                    # second check, below routing
+        d._post("/api/experiments", {"kind": "trial", "ref": "HEAD"}, actor="user:phone:Test iPhone")
+
+
+def test_phone_setup_checklist_says_what_is_missing(tmp_path, monkeypatch):
+    from jarvis.remote import tailscale as ts
+    monkeypatch.setattr(ts, "cli", lambda: (_ for _ in ()).throw(ts.TailscaleError("no")))
+    steps = ts.checklist()
+    assert steps == [{"name": "Tailscale installed on this Mac", "ok": False,
+                      "fix": "Install Tailscale from the Mac App Store (free) and sign in."}]
+    monkeypatch.setattr(ts, "cli", lambda: "/usr/bin/tailscale")
+    monkeypatch.setattr(ts, "_run", lambda *a, **k: json.dumps({"BackendState": "Running", "Self": {"DNSName": "mac.tail1.ts.net."},
+                                                               "Peer": {"x": {"OS": "iOS", "HostName": "kens-iphone"}}}))
+    assert all(st["ok"] for st in ts.checklist()) and len(ts.checklist()) == 4
+    monkeypatch.setattr(ts, "_run", lambda *a, **k: json.dumps({"BackendState": "NeedsLogin"}))
+    assert ts.checklist()[-1] == {"name": "Tailscale signed in and connected", "ok": False,
+                                  "fix": "Open the Tailscale app (menu bar) and sign in."}
+
+
+def test_phone_setup_turns_sharing_on_only_when_ready(tmp_path, monkeypatch, capsys):
+    from jarvis.cli import main as cli_main
+    from jarvis.remote import tailscale as ts
+    home = tmp_path / "home"
+    assert cli_main(["--home", str(home), "init"]) == 0
+    served = []
+    monkeypatch.setattr(ts, "checklist", lambda: [{"name": "Tailscale installed on this Mac", "ok": False, "fix": "Install it"}])
+    monkeypatch.setattr(ts, "serve", lambda port: served.append(port))
+    assert cli_main(["--home", str(home), "remote", "setup"]) == 1 and not served
+    assert "Install it" in capsys.readouterr().out
+    monkeypatch.setattr(ts, "checklist", lambda: [{"name": n, "ok": True, "fix": ""} for n in
+                                                  ("Tailscale installed on this Mac", "Tailscale signed in and connected",
+                                                   "MagicDNS and HTTPS on", "An iPhone in the same Tailscale account")])
+    monkeypatch.setattr(ts, "hostname", lambda: "mac.tail1.ts.net")
+    monkeypatch.setattr("jarvis.service.is_loaded", lambda: False)
+    assert cli_main(["--home", str(home), "remote", "setup"]) == 0 and served == [8765]
+    out = capsys.readouterr().out
+    assert "https://mac.tail1.ts.net" in out and "Pair a phone" in out

@@ -14,12 +14,18 @@
 <link rel="stylesheet" href="/static/app.css">
 <link rel="stylesheet" href="/static/avatar.css">
 <script src="/static/qrcode.js" defer></script>
+<script src="/static/avatar-state.js" defer></script>
+<script src="/static/avatar-presets.js" defer></script>
+<script src="/static/avatar-events.js" defer></script>
+<script src="/static/avatar-sound.js" defer></script>
 <script src="/static/avatar.js" defer></script>
+<script src="/static/chess.js" defer></script>
+<script src="/static/games.js" defer></script>
 <script src="/static/app.js" defer></script>
 </head>
 <body data-view="home">
 <div class="backdrop" aria-hidden="true"></div>
-<div class="env" aria-hidden="true"><div class="env-floor"></div><div class="env-pool"></div><div class="env-dust"></div><div class="env-dust far"></div></div>
+<div class="env" aria-hidden="true"><svg class="env-ribbons" viewBox="0 0 1600 900" preserveAspectRatio="xMidYMid slice" aria-hidden="true"><g class="rb-flow"><g class="rb-cpu"><path class="rb-o" d="M-100 484.2 C350 101.3 700 817.2 1700 271.4"/><path class="rb-o" d="M-100 489.8 C350 113.4 700 808.4 1700 275.8"/><path class="rb-o" d="M-100 495.2 C350 125.5 700 799.6 1700 280.2"/><path class="rb-o" d="M-100 500.8 C350 137.7 700 790.8 1700 284.6"/><path class="rb-o" d="M-100 506.2 C350 149.8 700 782.0 1700 289.0"/><path class="rb-o" d="M-100 511.8 C350 161.8 700 773.2 1700 293.4"/><path class="rb-o" d="M-100 517.2 C350 173.9 700 764.4 1700 297.8"/><path class="rb-o" d="M-100 522.8 C350 186.1 700 755.6 1700 302.2"/><path class="rb-o" d="M-100 528.2 C350 198.2 700 746.8 1700 306.6"/><path class="rb-o" d="M-100 533.8 C350 210.2 700 738.0 1700 311.0"/><path class="rb-o" d="M-100 539.2 C350 222.3 700 729.2 1700 315.4"/><path class="rb-o" d="M-100 544.8 C350 234.4 700 720.4 1700 319.8"/><path class="rb-o" d="M-100 550.2 C350 246.6 700 711.6 1700 324.2"/><path class="rb-o" d="M-100 555.8 C350 258.6 700 702.8 1700 328.6"/></g><g class="rb-mem"><path class="rb-t" d="M-100 619.8 C420 335.4 900 892.4 1700 453.8"/><path class="rb-t" d="M-100 624.2 C420 345.4 900 885.2 1700 457.4"/><path class="rb-t" d="M-100 628.8 C420 355.2 900 878.0 1700 461.0"/><path class="rb-t" d="M-100 633.2 C420 365.1 900 870.8 1700 464.6"/><path class="rb-t" d="M-100 637.8 C420 375.1 900 863.6 1700 468.2"/><path class="rb-t" d="M-100 642.2 C420 384.9 900 856.4 1700 471.8"/><path class="rb-t" d="M-100 646.8 C420 394.9 900 849.2 1700 475.4"/><path class="rb-t" d="M-100 651.2 C420 404.8 900 842.0 1700 479.0"/><path class="rb-t" d="M-100 655.8 C420 414.6 900 834.8 1700 482.6"/><path class="rb-t" d="M-100 660.2 C420 424.6 900 827.6 1700 486.2"/></g><g class="rb-model"><path class="rb-o dim" d="M-100 286.0 C500 389.2 1000 142.4 1700 208.8"/><path class="rb-o dim" d="M-100 290.0 C500 398.0 1000 136.0 1700 212.0"/><path class="rb-o dim" d="M-100 294.0 C500 406.8 1000 129.6 1700 215.2"/><path class="rb-o dim" d="M-100 298.0 C500 415.6 1000 123.2 1700 218.4"/><path class="rb-o dim" d="M-100 302.0 C500 424.4 1000 116.8 1700 221.6"/><path class="rb-o dim" d="M-100 306.0 C500 433.2 1000 110.4 1700 224.8"/><path class="rb-o dim" d="M-100 310.0 C500 442.0 1000 104.0 1700 228.0"/><path class="rb-o dim" d="M-100 314.0 C500 450.8 1000 97.6 1700 231.2"/></g></g><g class="rb-net"><g class="rb-work"><line class="nd-o" x1="297" y1="204" x2="349" y2="240"/><line class="nd-o" x1="297" y1="204" x2="332" y2="236"/><line class="nd-o" x1="297" y1="204" x2="393" y2="187"/><line class="nd-o" x1="297" y1="204" x2="251" y2="114"/><line class="nd-o" x1="297" y1="204" x2="273" y2="173"/><line class="nd-o" x1="297" y1="204" x2="194" y2="235"/><line class="nd-o" x1="349" y1="240" x2="332" y2="236"/><line class="nd-o" x1="349" y1="240" x2="393" y2="187"/><line class="nd-o" x1="349" y1="240" x2="273" y2="173"/><line class="nd-o" x1="332" y1="236" x2="393" y2="187"/><line class="nd-o" x1="332" y1="236" x2="273" y2="173"/><line class="nd-o" x1="119" y1="154" x2="114" y2="109"/><line class="nd-o" x1="119" y1="154" x2="111" y2="227"/><line class="nd-o" x1="393" y1="187" x2="380" y2="90"/><line class="nd-o" x1="393" y1="187" x2="340" y2="99"/><line class="nd-o" x1="393" y1="187" x2="349" y2="95"/><line class="nd-o" x1="380" y1="90" x2="340" y2="99"/><line class="nd-o" x1="380" y1="90" x2="349" y2="95"/><line class="nd-o" x1="380" y1="90" x2="295" y2="93"/><line class="nd-o" x1="251" y1="114" x2="273" y2="173"/><line class="nd-o" x1="251" y1="114" x2="340" y2="99"/><line class="nd-o" x1="251" y1="114" x2="349" y2="95"/><line class="nd-o" x1="251" y1="114" x2="295" y2="93"/><line class="nd-o" x1="273" y1="173" x2="194" y2="235"/><line class="nd-o" x1="273" y1="173" x2="340" y2="99"/><line class="nd-o" x1="273" y1="173" x2="349" y2="95"/><line class="nd-o" x1="273" y1="173" x2="295" y2="93"/><line class="nd-o" x1="194" y1="235" x2="111" y2="227"/><line class="nd-o" x1="340" y1="99" x2="349" y2="95"/><line class="nd-o" x1="340" y1="99" x2="295" y2="93"/><line class="nd-o" x1="349" y1="95" x2="295" y2="93"/></g><line class="nd-t" x1="1298" y1="120" x2="1234" y2="102"/><line class="nd-t" x1="1298" y1="120" x2="1280" y2="199"/><line class="nd-t" x1="1298" y1="120" x2="1291" y2="146"/><line class="nd-t" x1="1298" y1="120" x2="1285" y2="177"/><line class="nd-t" x1="1298" y1="120" x2="1401" y2="100"/><line class="nd-t" x1="1298" y1="120" x2="1300" y2="194"/><line class="nd-t" x1="1298" y1="120" x2="1193" y2="98"/><line class="nd-t" x1="1234" y1="102" x2="1280" y2="199"/><line class="nd-t" x1="1234" y1="102" x2="1291" y2="146"/><line class="nd-t" x1="1234" y1="102" x2="1285" y2="177"/><line class="nd-t" x1="1234" y1="102" x2="1193" y2="98"/><line class="nd-t" x1="1280" y1="199" x2="1191" y2="212"/><line class="nd-t" x1="1280" y1="199" x2="1291" y2="146"/><line class="nd-t" x1="1280" y1="199" x2="1285" y2="177"/><line class="nd-t" x1="1280" y1="199" x2="1195" y2="232"/><line class="nd-t" x1="1280" y1="199" x2="1300" y2="194"/><line class="nd-t" x1="1280" y1="199" x2="1244" y2="262"/><line class="nd-t" x1="1191" y1="212" x2="1285" y2="177"/><line class="nd-t" x1="1191" y1="212" x2="1195" y2="232"/><line class="nd-t" x1="1191" y1="212" x2="1244" y2="262"/><line class="nd-t" x1="1291" y1="146" x2="1285" y2="177"/><line class="nd-t" x1="1291" y1="146" x2="1300" y2="194"/><line class="nd-t" x1="1291" y1="146" x2="1193" y2="98"/><line class="nd-t" x1="1436" y1="177" x2="1401" y2="100"/><line class="nd-t" x1="1436" y1="177" x2="1483" y2="94"/><line class="nd-t" x1="1436" y1="177" x2="1415" y2="242"/><line class="nd-t" x1="1285" y1="177" x2="1195" y2="232"/><line class="nd-t" x1="1285" y1="177" x2="1300" y2="194"/><line class="nd-t" x1="1285" y1="177" x2="1244" y2="262"/><line class="nd-t" x1="1401" y1="100" x2="1483" y2="94"/><line class="nd-t" x1="1195" y1="232" x2="1244" y2="262"/><line class="nd-t" x1="1300" y1="194" x2="1244" y2="262"/><line class="nd-o" x1="1327" y1="671" x2="1395" y2="642"/><line class="nd-o" x1="1327" y1="671" x2="1323" y2="637"/><line class="nd-o" x1="1327" y1="671" x2="1348" y2="619"/><line class="nd-o" x1="1327" y1="671" x2="1422" y2="653"/><line class="nd-o" x1="1327" y1="671" x2="1317" y2="775"/><line class="nd-o" x1="1327" y1="671" x2="1310" y2="699"/><line class="nd-o" x1="1483" y1="775" x2="1402" y2="776"/><line class="nd-o" x1="1483" y1="775" x2="1507" y2="789"/><line class="nd-o" x1="1483" y1="775" x2="1478" y2="759"/><line class="nd-o" x1="1483" y1="775" x2="1437" y2="686"/><line class="nd-o" x1="1402" y1="776" x2="1507" y2="789"/><line class="nd-o" x1="1402" y1="776" x2="1478" y2="759"/><line class="nd-o" x1="1402" y1="776" x2="1437" y2="686"/><line class="nd-o" x1="1402" y1="776" x2="1317" y2="775"/><line class="nd-o" x1="1464" y1="666" x2="1395" y2="642"/><line class="nd-o" x1="1464" y1="666" x2="1422" y2="653"/><line class="nd-o" x1="1464" y1="666" x2="1478" y2="759"/><line class="nd-o" x1="1464" y1="666" x2="1437" y2="686"/><line class="nd-o" x1="1395" y1="642" x2="1323" y2="637"/><line class="nd-o" x1="1395" y1="642" x2="1348" y2="619"/><line class="nd-o" x1="1395" y1="642" x2="1422" y2="653"/><line class="nd-o" x1="1395" y1="642" x2="1437" y2="686"/><line class="nd-o" x1="1395" y1="642" x2="1310" y2="699"/><line class="nd-o" x1="1323" y1="637" x2="1348" y2="619"/><line class="nd-o" x1="1323" y1="637" x2="1422" y2="653"/><line class="nd-o" x1="1323" y1="637" x2="1310" y2="699"/><line class="nd-o" x1="1507" y1="789" x2="1478" y2="759"/><line class="nd-o" x1="1348" y1="619" x2="1422" y2="653"/><line class="nd-o" x1="1348" y1="619" x2="1310" y2="699"/><line class="nd-o" x1="1422" y1="653" x2="1437" y2="686"/><line class="nd-o" x1="1478" y1="759" x2="1437" y2="686"/><line class="nd-o" x1="1317" y1="775" x2="1310" y2="699"/><circle class="nd-o dot" cx="297" cy="204" r="1.9"/><circle class="nd-o dot" cx="349" cy="240" r="1.9"/><circle class="nd-o dot" cx="332" cy="236" r="3.2"/><circle class="nd-o dot" cx="119" cy="154" r="3.0"/><circle class="nd-o dot" cx="393" cy="187" r="2.0"/><circle class="nd-o dot" cx="380" cy="90" r="3.1"/><circle class="nd-o dot" cx="251" cy="114" r="2.4"/><circle class="nd-o dot" cx="273" cy="173" r="2.7"/><circle class="nd-o dot" cx="114" cy="109" r="1.8"/><circle class="nd-o dot" cx="194" cy="235" r="3.1"/><circle class="nd-o dot" cx="340" cy="99" r="2.7"/><circle class="nd-o dot" cx="349" cy="95" r="3.1"/><circle class="nd-o dot" cx="295" cy="93" r="3.0"/><circle class="nd-o dot" cx="111" cy="227" r="2.0"/><circle class="nd-t dot" cx="1298" cy="120" r="1.8"/><circle class="nd-t dot" cx="1234" cy="102" r="2.8"/><circle class="nd-t dot" cx="1280" cy="199" r="3.1"/><circle class="nd-t dot" cx="1191" cy="212" r="3.1"/><circle class="nd-t dot" cx="1291" cy="146" r="2.1"/><circle class="nd-t dot" cx="1436" cy="177" r="2.1"/><circle class="nd-t dot" cx="1285" cy="177" r="2.4"/><circle class="nd-t dot" cx="1401" cy="100" r="2.8"/><circle class="nd-t dot" cx="1483" cy="94" r="1.7"/><circle class="nd-t dot" cx="1415" cy="242" r="2.8"/><circle class="nd-t dot" cx="1195" cy="232" r="2.9"/><circle class="nd-t dot" cx="1300" cy="194" r="3.0"/><circle class="nd-t dot" cx="1193" cy="98" r="1.6"/><circle class="nd-t dot" cx="1244" cy="262" r="3.1"/><circle class="nd-o dot" cx="1327" cy="671" r="2.9"/><circle class="nd-o dot" cx="1483" cy="775" r="1.7"/><circle class="nd-o dot" cx="1402" cy="776" r="2.7"/><circle class="nd-o dot" cx="1464" cy="666" r="3.1"/><circle class="nd-o dot" cx="1395" cy="642" r="2.6"/><circle class="nd-o dot" cx="1323" cy="637" r="2.8"/><circle class="nd-o dot" cx="1507" cy="789" r="1.7"/><circle class="nd-o dot" cx="1348" cy="619" r="2.2"/><circle class="nd-o dot" cx="1596" cy="706" r="1.8"/><circle class="nd-o dot" cx="1422" cy="653" r="2.9"/><circle class="nd-o dot" cx="1478" cy="759" r="2.0"/><circle class="nd-o dot" cx="1437" cy="686" r="2.3"/><circle class="nd-o dot" cx="1317" cy="775" r="3.2"/><circle class="nd-o dot" cx="1310" cy="699" r="2.9"/></g></svg><div class="env-floor"></div><div class="env-pool"></div><div class="env-dust"></div><div class="env-dust far"></div></div>
 
 <div id="stopbar" class="stopbar" role="alert" hidden>
   <span id="stoptext"></span>
@@ -60,10 +66,13 @@
   <a href="#/command" data-view="command" class="nav-command" title="Command center: the eight systems"><span class="ni" aria-hidden="true">⌬</span><span class="nl">Command</span></a>
   <a href="#/workspace" data-view="workspace" class="nav-workspace" title="Workspace"><span class="ni" aria-hidden="true">⌘</span><span class="nl">Workspace</span></a>
   <a href="#/missions" data-view="missions" title="Missions"><span class="ni" aria-hidden="true">▤</span><span class="nl">Missions</span><span class="badge" id="badge-missions" hidden></span></a>
+  <a href="#/objectives" data-view="objectives" title="Objectives: outcomes you want, pursued through missions"><span class="ni" aria-hidden="true">◇</span><span class="nl">Objectives</span></a>
   <a href="#/decisions" data-view="decisions" title="Decisions"><span class="ni" aria-hidden="true">◆</span><span class="nl">Decisions</span><span class="badge alert" id="badge-decisions" hidden></span></a>
+  <a href="#/games" data-view="games" title="Games: play chess against JARVIS"><span class="ni" aria-hidden="true">♞</span><span class="nl">Games</span></a>
   <a href="#/memory" data-view="memory" title="Memory"><span class="ni" aria-hidden="true">✦</span><span class="nl">Memory</span></a>
   <a href="#/systems" data-view="systems" title="Systems"><span class="ni" aria-hidden="true">≡</span><span class="nl">Systems</span></a>
   <div class="nav-more">
+    <a href="#/evolution" data-view="evolution" title="Evolution center: learning, experiments, autonomy"><span class="ni" aria-hidden="true">⟁</span><span class="nl">Evolution</span></a>
     <a href="#/intelligence" data-view="intelligence" title="Briefing &amp; ideas"><span class="ni" aria-hidden="true">✧</span><span class="nl">Briefing &amp; ideas</span></a>
     <a href="#/projects" data-view="projects" title="Projects for you"><span class="ni" aria-hidden="true">✚</span><span class="nl">Projects for you</span></a>
     <a href="/bench" title="Benchmarks"><span class="ni" aria-hidden="true">▥</span><span class="nl">Benchmarks</span></a>
@@ -73,6 +82,7 @@
 </nav>
 
 <main class="hud">
+  <header id="pagehud" class="page-hud" hidden></header>
   <aside class="rail rail-left stack-rail">
     <section class="panel missions-panel" aria-labelledby="mis-h">
       <header class="ph"><h2 id="mis-h">Missions</h2><span id="miscount" class="ph-count"></span></header>
@@ -80,7 +90,8 @@
     </section>
     <section class="panel recent-panel" aria-labelledby="rec-h">
       <header class="ph"><h2 id="rec-h">Recent activity</h2>
-        <button id="recentlog" class="btn btn-ghost btn-sm" type="button">Full log</button></header>
+        <button id="recentlog" class="btn btn-ghost btn-sm" type="button">Full log</button>
+        <span id="recentpulse" class="recent-pulse" title="Real events per 5 minutes over the last hour"></span></header>
       <ol id="recent" class="activity recent"></ol>
     </section>
     <section class="panel memory-panel" aria-labelledby="mem-h">
@@ -89,8 +100,10 @@
       <div id="memfilters" class="memfilters" role="group" aria-label="Show"></div>
       <form id="memsearch" class="memform" role="search">
         <label for="memq" class="sr">Search memory</label>
-        <input id="memq" type="search" placeholder="Search what JARVIS remembers…" autocomplete="off">
+        <input id="memq" type="search" placeholder="Search what JARVIS remembers (and your files, if file search is on)…" autocomplete="off">
       </form>
+      <div id="memconflicts"></div>
+      <div id="memfiles"></div>
       <div id="memlist" class="stack"></div>
       <form id="memadd" class="memform">
         <label for="memtext" class="sr">Something to remember</label>
@@ -102,6 +115,7 @@
 
   <section class="center" aria-label="JARVIS">
     <div class="core-wrap">
+      <div id="avtask" class="av-task" role="status" aria-live="polite" hidden></div>
       <svg id="core" class="core" viewBox="0 0 240 240" data-state="online" aria-hidden="true">
         <defs>
           <radialGradient id="arcglow">
@@ -127,6 +141,7 @@
         <circle class="heart" cx="120" cy="120" r="20"/>
       </svg>
     </div>
+    <span id="projbar-home" hidden></span><div id="projbar" class="projbar" aria-label="Open projections" data-pane="projections" hidden></div>
     <div class="headline" role="status" aria-live="polite">
       <div id="hl-kicker" class="kicker">Status</div>
       <div id="hl-main" class="hl">Connecting…</div>
@@ -138,8 +153,9 @@
 
     <div id="feed" class="feed" aria-live="polite"></div>
 
-    <form id="cmdform" class="cmd panel">
-      <div class="tabs" role="tablist" aria-label="Mode">
+    <div id="routeconfirm" class="routeconfirm" role="status" aria-live="polite" hidden></div>
+    <form id="cmdform" class="cmd panel cmdbar">
+      <div class="tabs" role="tablist" aria-label="Mode" hidden>
         <button type="button" role="tab" id="tab-ask" aria-selected="true" class="tab">Ask</button>
         <button type="button" role="tab" id="tab-research" aria-selected="false" class="tab">Research</button>
         <button type="button" role="tab" id="tab-do" aria-selected="false" class="tab">Do</button>
@@ -165,6 +181,8 @@
     <p id="modehint" class="hint"></p>
     <button id="speak" class="btn btn-ghost btn-sm speak-toggle" type="button" hidden aria-pressed="false"
             title="Read replies aloud with this device's built-in voice">Voice replies: off</button>
+    <button id="convo" class="btn btn-ghost btn-sm speak-toggle" type="button" hidden aria-pressed="false"
+            title="Hands-free: after each spoken reply the microphone opens again, and stops by itself when you pause">Conversation: off</button>
   </section>
 
   <aside class="rail rail-right">
@@ -180,9 +198,21 @@
       <header class="ph"><h2 id="ctx-h">Context</h2></header>
       <div id="context"></div>
     </section>
+    <section class="panel evo-panel" aria-labelledby="evo-h">
+      <header class="ph"><h2 id="evo-h">Learning &amp; evolution</h2></header>
+      <div id="evo"></div>
+    </section>
     <section class="panel intel-panel" aria-labelledby="int-h">
       <header class="ph"><h2 id="int-h">Briefing &amp; ideas</h2></header>
       <div id="intel"></div>
+    </section>
+    <section class="panel games-panel" aria-labelledby="games-h">
+      <header class="ph"><h2 id="games-h">Games with JARVIS</h2><span id="chesssum" class="ph-count"></span></header>
+      <div id="games"></div>
+    </section>
+    <section class="panel objectives-panel" aria-labelledby="obj-h">
+      <header class="ph"><h2 id="obj-h">Objectives</h2><span id="objsum" class="ph-count"></span></header>
+      <div id="objectives"></div>
     </section>
     <section class="panel projects-panel" aria-labelledby="proj-h">
       <header class="ph"><h2 id="proj-h">Projects for you</h2></header>
@@ -210,5 +240,30 @@
   <header class="ph"><h2 id="log-h">Activity log</h2><button id="logclose" class="btn btn-ghost btn-sm" type="button">Close</button></header>
   <ol id="activity" class="activity"></ol>
 </dialog>
+<div id="projback" class="proj-backdrop" hidden><div class="vwall" aria-hidden="true"><div class="vw-tile"></div><div class="vw-tile"></div><div class="vw-tile"></div><div class="vw-tile"></div><div class="vw-tile"></div><div class="vw-tile"></div><div class="vw-tile"></div></div></div>
+<aside id="projpanel" class="proj-panel panel" aria-label="Projection focus" hidden>
+  <header class="ph"><h2>Projection</h2><button id="projexit" class="btn btn-ghost btn-sm" type="button" title="Back to the dashboard (Esc)">Exit</button></header>
+  <!-- iPhone: the panel is split into tabs (shown by CSS on small screens only; on a computer everything is shown) -->
+  <div class="pp-tabs" role="tablist" aria-label="Focus panel">
+    <button type="button" role="tab" data-tab="now" aria-selected="true">Now</button>
+    <button type="button" role="tab" data-tab="modes" aria-selected="false">Modes</button>
+    <button type="button" role="tab" data-tab="projections" aria-selected="false" id="pptab-proj">Projections</button>
+    <button type="button" role="tab" data-tab="controls" aria-selected="false">Controls</button>
+  </div>
+  <div class="kicker" id="projstate" data-pane="now"></div>
+  <div class="pp-main" id="projmain" data-pane="now"></div>
+  <div class="hl-sub" id="projsub" data-pane="now"></div>
+  <div class="pp-motion" id="projmotion" aria-live="off" data-pane="now"></div>
+  <div class="pp-ready" id="projready" data-pane="now"></div>
+  <div class="pp-modes" id="projmodes" data-pane="modes"></div>
+  <div class="pp-modes" id="projforms" data-pane="modes"></div>
+  <section class="pp-work" id="projwork" aria-label="Current work" data-pane="now"></section>
+  <div class="pp-systems" id="projsystems" aria-label="Systems" data-pane="now"></div>
+  <p class="pp-aura hl-sub" id="projaura" data-pane="now"></p>
+  <button id="projevo" class="btn btn-sm pp-evo" type="button" data-pane="now">Evolution record</button>
+  <div id="avdiag" class="pp-diag" role="status" aria-live="off" data-pane="controls" hidden></div>
+  <details id="projctl" class="pp-ctl" data-pane="controls"><summary>Projection controls</summary><div id="projctlbody"></div></details>
+</aside>
+<div id="inspectbar" class="inspectbar panel" role="region" aria-label="Inspection controls" hidden></div>
 </body>
 </html>

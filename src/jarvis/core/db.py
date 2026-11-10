@@ -225,11 +225,137 @@ MIGRATIONS: list[str] = [
         decided_at  TEXT
     );
     """,
+    # v9: continuous intelligence — outcomes, lessons with evidence, knowledge links, experiments, feedback, autonomy.
+    # Everything here is derived from the audit log or stated by the owner; text is short and never a transcript.
+    """
+    CREATE TABLE outcomes (
+        id          TEXT PRIMARY KEY,
+        kind        TEXT NOT NULL CHECK (kind IN ('task', 'reply')),
+        ref         TEXT NOT NULL,
+        model       TEXT,
+        verdict     TEXT NOT NULL CHECK (verdict IN ('verified', 'failed', 'unverified')),
+        evidence    TEXT NOT NULL,
+        seconds     REAL,
+        errors      INTEGER NOT NULL DEFAULT 0,
+        recovered   INTEGER NOT NULL DEFAULT 0,
+        created_at  TEXT NOT NULL,
+        UNIQUE (kind, ref)
+    );
+    CREATE INDEX outcomes_created ON outcomes(created_at);
+    CREATE TABLE lessons (
+        id          TEXT PRIMARY KEY,
+        key         TEXT NOT NULL UNIQUE,
+        subject     TEXT NOT NULL,
+        polarity    INTEGER NOT NULL DEFAULT 0,
+        statement   TEXT NOT NULL,
+        kind        TEXT NOT NULL CHECK (kind IN ('confirmed', 'user', 'inferred', 'hypothesis', 'outdated')),
+        evidence    TEXT NOT NULL,
+        confidence  REAL NOT NULL,
+        seen        INTEGER NOT NULL DEFAULT 1,
+        applied     INTEGER NOT NULL DEFAULT 0,
+        state       TEXT NOT NULL DEFAULT 'active' CHECK (state IN ('active', 'rejected')),
+        first_seen  TEXT NOT NULL,
+        last_seen   TEXT NOT NULL
+    );
+    CREATE TABLE links (
+        src         TEXT NOT NULL,
+        dst         TEXT NOT NULL,
+        rel         TEXT NOT NULL,
+        source      TEXT NOT NULL,
+        created_at  TEXT NOT NULL,
+        PRIMARY KEY (src, dst, rel)
+    );
+    CREATE INDEX links_dst ON links(dst);
+    CREATE TABLE experiments (
+        id          TEXT PRIMARY KEY,
+        kind        TEXT NOT NULL,
+        objective   TEXT NOT NULL,
+        hypothesis  TEXT NOT NULL,
+        baseline    TEXT NOT NULL,
+        criteria    TEXT NOT NULL,
+        environment TEXT NOT NULL,
+        state       TEXT NOT NULL DEFAULT 'planned' CHECK (state IN ('planned', 'running', 'done', 'failed', 'cancelled')),
+        results     TEXT,
+        recommendation TEXT,
+        created_at  TEXT NOT NULL,
+        updated_at  TEXT NOT NULL
+    );
+    CREATE TABLE feedback (
+        id          TEXT PRIMARY KEY,
+        target      TEXT NOT NULL CHECK (target IN ('reply', 'task')),
+        ref         TEXT NOT NULL,
+        model       TEXT,
+        mode        TEXT,
+        rating      INTEGER NOT NULL CHECK (rating IN (-1, 1)),
+        reason      TEXT,
+        created_at  TEXT NOT NULL
+    );
+    CREATE TABLE autonomy (
+        key         TEXT PRIMARY KEY,
+        value       TEXT NOT NULL,
+        updated_at  TEXT NOT NULL,
+        updated_by  TEXT NOT NULL
+    );
+    """,
+    # v10: Mission Control — planning jobs survive a restart (a plan waiting for you, or being planned, isn't lost)
+    """
+    CREATE TABLE plan_jobs (
+        id          TEXT PRIMARY KEY,
+        request     TEXT NOT NULL,
+        state       TEXT NOT NULL CHECK (state IN ('planning', 'waiting_approval', 'ready', 'submitted')),
+        data        TEXT NOT NULL,          -- the job as the dashboard shows it (JSON), plus the plan itself
+        replan_of   TEXT,                   -- the failed mission this is a second attempt at
+        created_at  TEXT NOT NULL,
+        updated_at  TEXT NOT NULL
+    );
+    CREATE INDEX plan_jobs_replan ON plan_jobs(replan_of);
+    """,
+    # v11: Objectives (Evolution 4.0) — an outcome you want, pursued through missions. Missions stay ordinary tasks,
+    # tied to their objective in `links` (rel "mission of"); nothing about a mission is copied here.
+    """
+    CREATE TABLE objectives (
+        id          TEXT PRIMARY KEY,
+        outcome     TEXT NOT NULL,
+        criteria    TEXT NOT NULL DEFAULT '[]',      -- JSON list: what "done" means, in your words
+        priority    INTEGER NOT NULL DEFAULT 3 CHECK (priority BETWEEN 1 AND 5),
+        deadline    TEXT,                            -- YYYY-MM-DD, optional
+        state       TEXT NOT NULL DEFAULT 'active' CHECK (state IN ('active', 'paused', 'achieved', 'abandoned')),
+        autopilot   TEXT NOT NULL DEFAULT 'suggest' CHECK (autopilot IN ('suggest', 'prepare', 'pursue')),
+        created_at  TEXT NOT NULL,
+        updated_at  TEXT NOT NULL
+    );
+    """,
+    # v12: file search (off until you turn it on): what's in your approved folders, searchable. Turning it off
+    # deletes all of it; forget removes matching files' entries and keeps them out.
+    """
+    CREATE VIRTUAL TABLE file_index USING fts5(path UNINDEXED, name, body, tokenize = 'porter unicode61');
+    CREATE TABLE file_index_meta (
+        path        TEXT PRIMARY KEY,
+        mtime       REAL NOT NULL,
+        size        INTEGER NOT NULL,
+        indexed_at  TEXT NOT NULL
+    );
+    """,
 ]
 
 
 class SchemaTooNew(RuntimeError):
     pass
+
+
+SCHEMA_VERSION = len(MIGRATIONS)
+
+
+def schema_of(path: str | Path) -> int:
+    """The schema version of a database file, read without changing it (0 if there is no file or it's empty)."""
+    p = Path(path)
+    if not p.is_file() or p.stat().st_size == 0:
+        return 0
+    conn = sqlite3.connect(f"file:{p}?mode=ro", uri=True)
+    try:
+        return conn.execute("PRAGMA user_version").fetchone()[0]
+    finally:
+        conn.close()
 
 
 class Database:

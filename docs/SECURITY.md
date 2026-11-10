@@ -103,6 +103,33 @@ Fixed guarantees, independent of policy:
 
 Config can only make a category stricter. It can never make one less strict.
 
+## Autonomy and self-improvement (work branch, unreleased)
+
+- **Levels 1–7** (`learn/__init__.py:Autonomy`): 1–5 (observe, learn, analyze, experiment, propose) are on by
+  default; 6 (change trials) and 7 (nightly self-checks, bounded routing adjustments) are off and can be switched on
+  only from the Mac's terminal (`jarvis autonomy enable N`); `/api/autonomy` is Mac-only. The emergency stop and the
+  pauses (learning, experiments, initiative) override every level. No level grants a permission: actions still go
+  through the permission engine and your approvals.
+- **Level 7** may only reorder models you already allow (a nudge of at most ±3, which never outranks the local-first
+  bonus); every adjustment is audited, shown in the morning briefing and can be undone.
+- **Self-improvement stays propose-only:** JARVIS never merges, pushes, installs or changes its running code.
+- **Level 6 change trials are isolated** (`learn/trial.py`): the branch's tests get a bare environment (no API keys,
+  tokens, SSH agent or JARVIS settings), a throwaway HOME and TMPDIR, and on macOS run inside the system sandbox
+  (`sandbox-exec`): no network except this Mac, no writes outside the trial folder, no reads of JARVIS's data folder,
+  `~/.ssh`, cloud credentials or Keychains, no Keychain access. Without the sandbox a Mac refuses to run trials; if
+  the sandbox rules fail to start, the suite doesn't run and the trial "proves nothing" (never an unsandboxed run).
+  Off macOS (development only) the isolation is environment-only, and the result says so.
+- **Trials can only be started from the Mac** (checked where phone requests arrive and again where experiments
+  start); a phone attempt is refused and audited.
+- **Forget removes ratings** (and their comments) for the exchanges and tasks it deletes, and any rating whose
+  comment mentions what you asked to forget.
+- **Every tool action goes through the permission gateway:** a release-gate test scans the code for any direct call
+  to a tool handler. The one exception, `jarvis mac check`, runs three read-only lookups you start yourself at
+  Terminal so macOS can ask for permission.
+- **Still to verify on the Mac:** that the sandbox rules start on macOS 14 (the first real trial will show it).
+- **Avatar inputs:** the microphone level drives the reactor only while you record (measured on the page, never
+  stored or sent); optional sound is generated on the page, off by default, and never listens.
+
 ## Known limitations
 
 - Voice identity is not authentication, and neither is "being on the tailnet": a phone also needs its passkey.

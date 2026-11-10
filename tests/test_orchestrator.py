@@ -287,6 +287,10 @@ def test_a_reference_to_an_output_a_step_never_gives_is_sent_back():
     ("Draft a reply to Sam", [("mail", "draft")], False),
     ("Summarise budget.txt; don't email anyone", [("mail", "draft")], True),
     ("Summarise plan.txt as plan-summary.md", [("fs", "write")], False),
+    # Music and system changes count as changes too (merge of 0.19.3 with the work branch)
+    ("Check what's playing but don't change anything", [("music", "now"), ("music", "control")], True),
+    ("Tell me my battery level, do not change anything", [("system", "status"), ("system", "volume")], True),
+    ("How's my Mac? Don't change anything", [("system", "status")], False),
 ])
 def test_a_plan_that_breaks_a_dont_in_the_request_asks_first(request_, plan_actions, asks):
     from jarvis.orchestrator.planner import Plan, against_request

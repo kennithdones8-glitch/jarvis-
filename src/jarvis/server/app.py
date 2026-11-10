@@ -22,13 +22,14 @@ import json
 import os
 import re
 import shutil
+import subprocess
 import sys
 import secrets
 import threading
 import time
 import traceback
 from dataclasses import replace
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any, Callable
@@ -40,6 +41,8 @@ from ..core.approvals import ApprovalStateError
 from ..core.killswitch import EmergencyStop
 from ..core.tasks import InvalidTransition, TaskState
 from ..core.tools import ApprovalRequired
+from ..core.util import now_iso
+from ..compute import NOTE as COMPUTE_NOTE, PROGRAM_PROMPT, Computed, program_of, result_message_text, run_program, wants_compute
 from ..codecheck import MAX_CASES, TEST_PROMPT, SandboxUnavailable, code_of, parse_cases, run_cases, wants_code
 from ..orchestrator.answer_checks import chat_problems, facts_left_out, first_event_left_out
 from ..orchestrator.lookup import FACTS_HEAD, lenient_json
@@ -119,6 +122,8 @@ def describe_event(event: str, p: dict[str, Any], *, task_id: str | None = None,
         "chat.answer_check": lambda: ("Answer checked: fine" if not p.get("problems") else
                                       f"Answer checked: {p.get('problems')} problem(s){', retried' if p.get('retried') else ''}"),
         "evolution.milestone": lambda: f"Core evolution: verified “{_milestone_title(p.get('milestone'))}”",
+        "evolution.check": lambda: f"Recorded `jarvis {str(p.get('check', '')).replace('_', ' ')}`: {'passed' if p.get('ok') else 'did not pass'}",
+        "evolution.definitions": lambda: f"Projection milestones updated: definitions v{p.get('frm')} → v{p.get('to')}",
         "evolution.tier": lambda: f"Core evolution: tier {p.get('frm')} → {p.get('to')} ({p.get('verified')} milestones verified)",
         "chat.mode_fallback": lambda: f"{str(p.get('mode', '')).capitalize()} mode: answered with {p.get('model')} instead",
         "task.state": lambda: f"Task {p.get('frm', '').replace('_', ' ')} → {p.get('to', '').replace('_', ' ')}"
@@ -216,6 +221,41 @@ def _content_length(h: BaseHTTPRequestHandler) -> int:
     return length
 
 
+def _files_status(k) -> dict[str, Any] | None:
+    from .. import files_index
+    try:
+        return files_index.status(k)
+    except Exception:  # noqa: BLE001
+        return None
+
+
+def _whatsnew(k) -> dict[str, Any]:
+    from .. import whatsnew
+    try:
+        return whatsnew.state(k)
+    except Exception:  # noqa: BLE001 - never let this break the dashboard
+        return {"items": [], "unseen": False}
+
+
+def _objectives(k) -> list[dict[str, Any]]:
+    from .. import objectives
+    return [{key: o.get(key) for key in ("id", "outcome", "criteria", "priority", "deadline", "days_left", "state",
+                                         "autopilot", "progress")}
+            | {"missions": [{x: m[x] for x in ("id", "goal", "state", "confirmed", "after", "waiting")} for m in o["missions"][-12:]]}
+            for o in objectives.list_all(k)]
+
+
+def _benchtest_status(k) -> dict[str, Any] | None:
+    from .. import benchtest
+    return benchtest.status(k)
+
+
+def _update_status(k) -> dict[str, Any] | None:
+    from .. import update
+    s = update.status(k.home)
+    return {key: s.get(key) for key in ("state", "steps", "behind", "started", "finished")} if s else None
+
+
 def _last_briefing(kernel: Kernel) -> str | None:
     from ..proactive import last_briefing_date
 
@@ -224,7 +264,9 @@ def _last_briefing(kernel: Kernel) -> str | None:
 
 def _tilde_evidence(evidence: Any) -> Any:
     if isinstance(evidence, dict) and isinstance(evidence.get("files"), list):
-        return {**evidence, "files": [{**f, "path": tilde(f.get("path"))} for f in evidence["files"]]}
+        evidence = {**evidence, "files": [{**f, "path": tilde(f.get("path"))} for f in evidence["files"]]}
+    if isinstance(evidence, dict) and isinstance(evidence.get("checks"), list):
+        evidence = {**evidence, "checks": [{**c, "text": str(c.get("text", "")).replace(HOME, "~")} for c in evidence["checks"]]}
     return evidence
 
 
@@ -232,6 +274,37 @@ class HttpError(Exception):
     def __init__(self, status: int, message: str):
         super().__init__(message)
         self.status = status
+
+
+def _say_mac(tool: str, action: str, args: dict[str, Any], r: Any) -> str:
+    """One plain sentence from a Music or system result."""
+    r = r if isinstance(r, dict) else {}
+    if (tool, action) == ("music", "now"):
+        if not r.get("running"):
+            return "Music isn't open."
+        t = r.get("track") or {}
+        return f"{r.get('state', '').capitalize()}: {t.get('name', 'unknown')}" + (f" by {t['artist']}" if t.get("artist") else "") + f" (volume {r.get('volume')}%)."
+    if (tool, action) == ("music", "control"):
+        return f"Music {r.get('state', 'updated')}" + (f": {r['track']}." if r.get("track") else ".")
+    if (tool, action) == ("music", "playlist"):
+        return f"Playing your playlist “{r.get('playing')}”."
+    if action == "volume":
+        return f"{'Music' if tool == 'music' else 'Mac'} volume set to {r.get('volume')}%."
+    if (tool, action) == ("system", "focus"):
+        return f"Do Not Disturb is {r.get('focus')}."
+    parts = []
+    if b := r.get("battery"):
+        parts.append(f"battery {b['percent']}% ({b['state']}{', ' + b['remaining'] + ' left' if b.get('remaining') else ''})" if "percent" in b
+                     else "no battery (on mains power)")
+    if w := r.get("wifi"):
+        parts.append(f"Wi-Fi {'on' if w['on'] else 'off'}")
+    if d := r.get("disk"):
+        parts.append(f"{d['free_gb']} GB free of {d['total_gb']} GB")
+    if r.get("volume") is not None:
+        parts.append(f"volume {r['volume']}%")
+    if r.get("macos"):
+        parts.append(f"macOS {r['macos']}")
+    return ("Your Mac: " + ", ".join(parts) + ".") if parts else "Couldn't read the Mac's status."
 
 
 class Dashboard:
@@ -250,6 +323,7 @@ class Dashboard:
         self._proposals_checked = -1e9
         self.token = token or secrets.token_urlsafe(32)
         self.jobs: dict[str, dict[str, Any]] = {}
+        self._autoplanned: dict[str, float] = {}   # objective id → when autopilot last asked for a plan
         self._lock = threading.Lock()
         self._inflight: set[str] = set()
         self._pool = cf.ThreadPoolExecutor(max_workers=workers, thread_name_prefix="jarvis-runner")
@@ -299,6 +373,8 @@ class Dashboard:
 
     def start(self) -> None:
         """Run in background threads (used by tests)."""
+        self._restore_jobs()
+        self._report_update()
         self.voice.start()
         self._runner.start()
         self._maint.start()
@@ -306,6 +382,8 @@ class Dashboard:
         threading.Thread(target=self.httpd.serve_forever, kwargs={"poll_interval": 0.1}, daemon=True).start()
 
     def serve_forever(self) -> None:
+        self._restore_jobs()
+        self._report_update()
         self.voice.start()
         self._runner.start()
         self._maint.start()
@@ -350,6 +428,8 @@ class Dashboard:
                             continue
                         if task["state"] == TaskState.AWAITING_APPROVAL and self.kernel.approvals.pending(task_id=tid):
                             continue
+                        if task["state"] == TaskState.QUEUED and not self._dependency_met(task):
+                            continue
                         with self._lock:
                             if tid in self._inflight:
                                 continue
@@ -365,6 +445,42 @@ class Dashboard:
                 except Exception as exc:
                     self.kernel.audit.record("push.error", error=f"{type(exc).__name__}: {exc}"[:300])
             self._stop.wait(self._poll_s)
+
+    def _dependency_met(self, task: dict[str, Any]) -> bool:
+        """A mission planned to follow another waits until that one has completed. If it ended any other way, the
+        follower is paused with the reason, for you to decide (it never runs on a failed foundation)."""
+        after = task["context"].get("after")
+        if not after:
+            return True
+        dep = self.kernel.db.one("SELECT state FROM tasks WHERE id = ?", (after,))
+        state = dep["state"] if dep else "cancelled"
+        if state == TaskState.COMPLETED:
+            return True
+        if state in (TaskState.FAILED, TaskState.CANCELLED):
+            try:
+                self.kernel.tasks.transition(task["id"], TaskState.PAUSED, actor="system",
+                                             reason="the mission it follows didn't complete",
+                                             error=f"waits for a mission that {state}: cancel this one or plan it again")
+            except Exception:  # noqa: BLE001 - someone else moved it meanwhile
+                pass
+        return False
+
+    def benchtest_tick(self) -> str | None:
+        """A benchmark you asked for starts when the Mac is idle (and for "tonight", in quiet hours)."""
+        from .. import benchtest, proactive
+        quiet = proactive.Schedule.from_config(self.kernel.model_config.proactive).quiet(datetime.now())
+        return benchtest.tick(self.kernel, quiet=quiet)
+
+    def files_tick(self) -> dict[str, int]:
+        from .. import files_index
+        return files_index.refresh(self.kernel)
+
+    def _report_update(self) -> None:
+        from .. import update
+        try:
+            update.report(self.kernel)
+        except (OSError, ValueError, KeyError):
+            pass
 
     # ---- health & automatic backups --------------------------------------------------
     def backup_settings(self) -> dict[str, Any]:
@@ -445,6 +561,44 @@ class Dashboard:
             self.notifier.briefing_ready()
         return True
 
+    def learn_cycle(self) -> dict[str, Any]:
+        """OBSERVE + LEARN: new audit entries become outcomes and lessons (respects autonomy and the emergency stop);
+        then, with tier 7 on, act on strong lessons and run the nightly self-checks."""
+        from ..learn import Pipeline, autopilot
+        result = Pipeline(self.kernel).run()
+        autopilot.act_on_lessons(self.kernel)
+        autopilot.act_on_tournament(self.kernel)
+        autopilot.apply_to_router(self.kernel)   # also clears the nudges when tier 7 is off or the stop is on
+        autopilot.nightly(self.kernel)
+        return result
+
+    def _learn_cached(self) -> dict[str, Any]:
+        now = time.monotonic()
+        cached = getattr(self, "_learn_cache", None)
+        if not cached or now - cached[0] > 5:
+            try:
+                self._learn_cache = (now, self.learn_state())
+            except Exception as exc:  # noqa: BLE001 - never break the dashboard over the learning summary
+                self._learn_cache = (now, {"error": f"{type(exc).__name__}"})
+        return self._learn_cache[1]
+
+    def learn_state(self) -> dict[str, Any]:
+        from .. import learn
+        return {"summary": learn.summary(self.kernel), "autonomy": learn.Autonomy(self.kernel).state()}
+
+    def _discovery_facts(self) -> dict[str, Any]:
+        status = self._models_cache[1] or models_status(self.kernel)
+        evo = self._evolution or {}
+        verified = {m["id"] for m in evo.get("milestones", []) if m.get("verified")}
+        return {"models_available": [m for p in status["providers"] if p.get("location") == "local" for m in p.get("available", [])],
+                "voice": "voice" in verified, "backups": "backups" in verified, "touch_id": "touch_id" in verified,
+                "iphone": "iphone" in verified}
+
+    def projection(self, module: str) -> dict[str, Any]:
+        """Real data for one projection module (read-only)."""
+        from ..learn import projections
+        return projections.data(self, module)
+
     def evolution(self) -> dict[str, Any]:
         """Which milestones are verified right now (and since when): drives the avatar's evolution tier."""
         from .. import evolution
@@ -506,6 +660,10 @@ class Dashboard:
                         self.notifier.health_changed(self._health["ok"])
                 self.maybe_briefing()
                 self._evolution = self.evolution()
+                self.learn_cycle()
+                self.benchtest_tick()
+                self.objectives_tick()
+                self.files_tick()
             except Exception as exc:
                 if self._stop.is_set():
                     return  # shutting down: the database may already be closed
@@ -527,15 +685,141 @@ class Dashboard:
                 self._inflight.discard(tid)
 
     # ---- planning jobs (planning takes ~1 min on CPU, so it runs in the background) ----
-    def start_plan(self, request: str) -> str:
+    def start_plan(self, request: str, *, replan_of: str | None = None, earlier: str | None = None,
+                   objective: str | None = None, auto_run: bool = False) -> str:
         job_id = secrets.token_hex(6)
         job = {"id": job_id, "request": request, "state": "planning", "started": time.time()}
+        if replan_of:
+            job.update(replan_of=replan_of, earlier=earlier)
+        if objective:
+            job.update(objective=objective, auto_run=auto_run)
         with self._lock:
-            self.jobs = {k: v for k, v in self.jobs.items() if v["state"] == "planning"
+            self.jobs = {k: v for k, v in self.jobs.items() if v["state"] in ("planning", "waiting_approval")
                          or time.time() - v["started"] < 3600}
             self.jobs[job_id] = job
+        self._persist_job(job)
         self._pool.submit(self._plan_job, job)
         return job_id
+
+    # ---- Mission Control: planning jobs survive a restart (plan_jobs) ---------------------------------------------
+    def _persist_job(self, job: dict[str, Any]) -> None:
+        """Save a planning job: a plan waiting for you, or one still being planned, isn't lost if JARVIS restarts."""
+        from dataclasses import asdict
+        data = {k: v for k, v in job.items() if k != "plan"}
+        plan = job.get("plan")
+        if plan is not None:
+            data["plan"] = {"kind": plan.kind, "goal": plan.goal, "message": plan.message, "model": plan.model,
+                            "attempts": plan.attempts, "steps": [asdict(st) for st in plan.steps]}
+        state = job["state"] if job["state"] in ("planning", "waiting_approval", "ready", "submitted") else "ready"
+        now = now_iso()
+        try:
+            with self.kernel.db.tx() as c:
+                c.execute("INSERT INTO plan_jobs (id, request, state, data, replan_of, created_at, updated_at) VALUES (?,?,?,?,?,?,?) "
+                          "ON CONFLICT(id) DO UPDATE SET state = excluded.state, data = excluded.data, updated_at = excluded.updated_at",
+                          (job["id"], job["request"], state, json.dumps(data, default=str), job.get("replan_of"), now, now))
+        except Exception as exc:  # noqa: BLE001 - saving is a safety net; planning carries on without it
+            self.kernel.audit.record("dashboard.plan_save_failed", error=type(exc).__name__)
+
+    def _forget_job(self, job_id: str) -> None:
+        with self.kernel.db.tx() as c:
+            c.execute("DELETE FROM plan_jobs WHERE id = ?", (job_id,))
+
+    def _restore_jobs(self) -> int:
+        """At start: bring back plans that were waiting for you, and restart planning that was cut off (waiting on
+        the same approval if it was waiting for one). Old or already-run jobs are dropped."""
+        from ..core.tasks import StepSpec
+        from ..orchestrator.planner import Plan
+        db = self.kernel.db
+        cutoff = (datetime.now(timezone.utc) - timedelta(hours=24)).isoformat()
+        with db.tx() as c:
+            c.execute("DELETE FROM plan_jobs WHERE updated_at < ? OR state = 'submitted'", (cutoff,))
+        restored = 0
+        for row in db.query("SELECT * FROM plan_jobs ORDER BY created_at"):
+            try:
+                job = json.loads(row["data"])
+                p = job.pop("plan", None)
+                if p is not None:
+                    steps = [StepSpec(**st) for st in p["steps"]]
+                    if any(self.kernel.registry.action(st.tool, st.action) is None for st in steps):
+                        job.update(state="ready", kind="failed", message="JARVIS's abilities changed since this was planned: plan it again.")
+                    else:
+                        job["plan"] = Plan(p["kind"], goal=p["goal"], steps=steps, message=p["message"], model=p["model"], attempts=p["attempts"])
+            except Exception:  # noqa: BLE001 - an unreadable saved job is dropped, never half-restored
+                self._forget_job(row["id"])
+                continue
+            job["restored"] = True
+            with self._lock:
+                self.jobs[job["id"]] = job
+            if row["state"] in ("planning", "waiting_approval"):
+                self._pool.submit(self._plan_job, job)
+            restored += 1
+        if restored:
+            self.kernel.audit.record("dashboard.plans_restored", count=restored)
+        return restored
+
+    def replan(self, tid: str, *, actor: str) -> str:
+        """One new plan for a failed mission, told what already happened. It goes through the usual review: nothing
+        runs until you press Run. A mission gets one replan; a replan can't be replanned."""
+        from ..core.tasks import TaskState
+        from ..orchestrator import Orchestrator
+        k = self.kernel
+        try:
+            task = k.tasks.get(tid)
+        except KeyError:
+            raise HttpError(404, "no such mission") from None
+        if task["state"] != TaskState.FAILED:
+            raise HttpError(409, "only a failed mission can be planned again")
+        if task["context"].get("replan_of"):
+            raise HttpError(409, "this was already the second attempt: describe the task again to start fresh")
+        if self._replanned(tid):
+            raise HttpError(409, "this mission has already been planned again")
+        job_id = self.start_plan(task["request"], replan_of=tid, earlier=Orchestrator.failure_story(task, k.tasks.steps(tid)))
+        k.audit.record("mission.replan", actor=actor, task_id=tid, job=job_id)
+        return job_id
+
+    def _replanned(self, tid: str) -> bool:
+        db = self.kernel.db
+        return bool(db.one("SELECT 1 FROM plan_jobs WHERE replan_of = ?", (tid,))
+                    or db.one("SELECT 1 FROM tasks WHERE json_extract(context, '$.replan_of') = ?", (tid,))
+                    or any(j.get("replan_of") == tid for j in self.jobs.values()))
+
+    def mac_command(self, body: dict[str, Any]) -> dict[str, Any]:
+        """Run one Music or system action through the gateway: reads run, changes ask (unless your policy allows them),
+        an approved request runs when sent again. The reply is worded from the result, no model involved."""
+        from ..core.tools import ApprovalRequired as Needed
+        from ..core.tools import PermissionDenied, ToolError
+        tool, action, args = body.get("tool"), body.get("action"), body.get("args") or {}
+        if tool not in ("music", "system") or not isinstance(action, str) or not isinstance(args, dict):
+            raise HttpError(400, "only Music and system commands run this way")
+        started = time.time()
+        summary = {("music", "control"): f"Music: {args.get('action')}", ("music", "playlist"): f"Music: play the playlist “{args.get('name')}”",
+                   ("music", "volume"): f"Music volume to {args.get('level')}%", ("system", "volume"): f"Mac volume to {args.get('level')}%",
+                   ("system", "focus"): f"Do Not Disturb {args.get('state')}"}.get((tool, action))
+        try:
+            r = self.kernel.gateway.invoke(tool, action, args, summary=summary)
+        except Needed as exc:
+            return {"needs_approval": True, "approval_id": exc.approval_id, "summary": summary or f"{tool}.{action}"}
+        except PermissionDenied as exc:   # refused by your rules (audited as permission.denied by the gateway)
+            raise HttpError(403, f"Refused by your rules: {exc}") from None
+        except ToolError as exc:          # a bad argument or the Mac app couldn't do it: say so plainly
+            raise HttpError(400, str(exc)[:300]) from None
+        return {"text": _say_mac(tool, action, args, r), "model": "mac/tools", "location": "local",
+                "seconds": round(time.time() - started, 1)}
+
+    def route_message(self, message: str) -> dict[str, str]:
+        """Ask, research or do? A suggestion for the dashboard, which confirms research and tasks with one tap.
+        Rules first; when they are unsure, one tiny call to a local model (``local_only``: never leaves the Mac)."""
+        from .. import intent
+
+        def complete(prompt: str) -> str:
+            # keep_speed: a 6-token label never needs the stronger (or reasoning) local model, even when the message
+            # itself looks like maths or code
+            r = self.kernel.models.complete(Need("chat", prefer="speed", local_only=True, keep_speed=True),
+                                            ChatRequest((Message("user", prompt, Category.CONVERSATION),), max_tokens=6),
+                                            purpose="message type (local)")
+            return r.text
+
+        return intent.classify(message, complete)
 
     def _plan_job(self, job: dict[str, Any]) -> None:
         try:
@@ -545,45 +829,135 @@ class Dashboard:
                        steps=[{"description": s.description, "call": f"{s.tool}.{s.action}",
                                "args": describe_args(s.args, 200), "depends_on": s.depends_on} for s in plan.steps],
                        plan=plan, state="ready")
+            if plan.kind == "plan":   # how JARVIS will check it's done, shown before you press Run
+                from ..orchestrator.criteria import criteria_for
+                job["criteria"] = [{**c, "text": c["text"].replace(HOME, "~")} for c in criteria_for(plan.steps)]
+                if self._changes_something(plan):   # a second opinion before you Run a plan that changes things
+                    from ..orchestrator.review import plan_opinion
+                    op = plan_opinion(self.kernel.models, job["request"], job["steps"], author=plan.model)
+                    job["review"] = op.as_dict()
+                    self.kernel.audit.record("plan.second_opinion", verdict=op.verdict, problems=len(op.problems),
+                                             reviewer=op.model)
         except NoModelAvailable as exc:
             job.update(state="ready", kind="failed", message=f"No model can plan this: {exc}",
                        reasons=exc.reasons)
         except Exception as exc:
             job.update(state="ready", kind="failed", message=f"Planning failed: {type(exc).__name__}: {exc}")
         job["seconds"] = round(time.time() - job["started"], 1)
+        if (job.get("auto_run") and job.get("kind") == "plan" and job.get("plan") is not None
+                and not self._stop.is_set() and not self.kernel.killswitch.engaged()):
+            # pursue: run it as if you'd pressed Run; each step still asks you whenever the rules say it must
+            try:
+                job["task_id"] = self.orch.submit(job["request"], job["plan"], actor="jarvis:objective", runner=RUNNER)
+                job["state"] = "submitted"
+                self._link_objective(job, source="jarvis:objective")
+            except Exception as exc:  # noqa: BLE001 - it then simply waits in Missions for you
+                self.kernel.audit.record("objective.autorun_failed", objective=job.get("objective"), error=type(exc).__name__)
+        if not self._stop.is_set():
+            self._persist_job(job)
+
+    def _changes_something(self, plan) -> bool:
+        """Any step above a read-only look (risk tier READ, from the tool registry's own description of the action)."""
+        from ..core.permissions import Tier
+        for st in plan.steps:
+            spec = self.kernel.registry.action(st.tool, st.action)
+            if spec is None or spec.tier > Tier.READ:
+                return True
+        return False
 
     def _plan_with_consent(self, job: dict[str, Any]):
         """Plan with the best model. If that needs your approval to send the request to the cloud, wait
         for your decision in Decisions: approved → retry the identical request; rejected or ignored for
         15 minutes → plan with a local model instead."""
-        try:
-            return self.orch.plan(job["request"])
-        except ApprovalRequired as exc:
-            job.update(state="waiting_approval", approval_id=exc.approval_id)
-            deadline = time.time() + 900
-            while time.time() < deadline and not self._stop.is_set():
-                decision = self.kernel.approvals.get(exc.approval_id)["state"]
-                if decision != "pending":
-                    break
-                time.sleep(0.5)
-            else:
+        earlier = job.get("earlier")
+        if job.get("state") == "waiting_approval" and job.get("approval_id"):   # restored: keep waiting on the same request
+            approval_id = job["approval_id"]
+        else:
+            try:
+                return self.orch.plan(job["request"], earlier=earlier)
+            except ApprovalRequired as exc:
+                approval_id = exc.approval_id
+        job.update(state="waiting_approval", approval_id=approval_id)
+        self._persist_job(job)
+        deadline = time.time() + 900
+        decision = "expired"
+        while time.time() < deadline and not self._stop.is_set():
+            try:
+                decision = self.kernel.approvals.get(approval_id)["state"]
+            except KeyError:
                 decision = "expired"
-            job["state"] = "planning"
-            if decision == "approved":
-                job["started"] = time.time()
-                return self.orch.plan(job["request"])
-            job["note"] = "Planned locally (you kept this request on your Mac)."
-            return self.orch.plan(job["request"], local_only=True)
+            if decision != "pending":
+                break
+            time.sleep(0.5)
+        else:
+            decision = "expired"
+        if self._stop.is_set():   # shutting down mid-wait: stays saved as waiting, resumes after the restart
+            raise RuntimeError("JARVIS is shutting down")
+        job["state"] = "planning"
+        if decision == "approved":
+            job["started"] = time.time()
+            return self.orch.plan(job["request"], earlier=earlier)
+        job["note"] = "Planned locally (you kept this request on your Mac)."
+        return self.orch.plan(job["request"], local_only=True, earlier=earlier)
 
     def run_plan(self, job_id: str) -> str:
         job = self.jobs.get(job_id)
         if not job or job.get("kind") != "plan" or job.get("task_id"):
             raise HttpError(409, "this plan cannot be run")
-        job["task_id"] = self.orch.submit(job["request"], job["plan"], actor="user:dashboard", runner=RUNNER)
+        job["task_id"] = self.orch.submit(job["request"], job["plan"], actor="user:dashboard", runner=RUNNER,
+                                          replan_of=job.get("replan_of"), after=job.get("after"))
         job["state"] = "submitted"
+        self._link_objective(job, source="user:dashboard")
+        self._persist_job(job)
         return job["task_id"]
 
+    def _link_objective(self, job: dict[str, Any], *, source: str) -> None:
+        if job.get("objective") and job.get("task_id"):
+            from .. import objectives
+            try:
+                objectives.link_mission(self.kernel, job["objective"], job["task_id"], source=source,
+                                        after=job.get("after"))
+            except KeyError:
+                pass   # the objective was deleted meanwhile: the mission stays an ordinary mission
+
+    def objectives_tick(self) -> int:
+        """Autopilot (prepare / pursue): plan the next mission of an objective that has nothing in flight. At most one
+        attempt per objective every 30 minutes; the plan goes through the same planner and, when run, the same
+        approvals as anything you start yourself."""
+        from .. import objectives
+        with self._lock:
+            pending = {j.get("objective") for j in self.jobs.values()
+                       if j.get("objective") and (j["state"] in ("planning", "waiting_approval")
+                                                  or (j["state"] == "ready" and j.get("kind") == "plan"))}
+        started = 0
+        for o, run in objectives.due_for_autopilot(self.kernel, pending=pending):
+            if time.time() - self._autoplanned.get(o["id"], 0) < 1800:
+                continue
+            self._autoplanned[o["id"]] = time.time()
+            self.start_plan(objectives.next_request(o), objective=o["id"], auto_run=run)
+            self.kernel.audit.record("objective.autoplanned", objective=o["id"], run=run)
+            started += 1
+        return started
+
     # ---- chat --------------------------------------------------------------------------
+    def _compute(self, message: str, stage) -> "Computed":
+        """F: the local model writes a short program for a maths/date/logic question; it is vetted and run in the
+        sandbox (see jarvis.compute). Always local; never raises."""
+        stage({"stage": "computing"})
+        try:
+            r = self.kernel.models.complete(
+                Need("chat", prefer="quality", local_only=True),
+                ChatRequest((Message("system", PROGRAM_PROMPT, Category.SYSTEM_PROMPT),
+                             Message("user", message, Category.CONVERSATION, local_only=True)),
+                            max_tokens=700, temperature=0.0), purpose="chat: work it out with code")
+            code = program_of(r.text)
+            computed = run_program(code) if code else Computed(error="no program in the reply")
+        except Exception as exc:  # no local model, emergency stop...: answer the usual way
+            computed = Computed(error=f"{type(exc).__name__}"[:80])
+        self.kernel.audit.record("chat.computed", ok=computed.ok, error=(computed.error or "")[:160],
+                                 output_chars=len(computed.output or ""))
+        return computed
+
     def chat(self, message: str, history: list[dict[str, str]], *, local_only: bool = False,
              session: str = "dashboard", on_token=None, mode: str = "balanced", on_event=None) -> dict[str, Any]:
         """``mode`` (see ``INTELLIGENCE``): quick = fastest local model, no pre-call unless a lookup could help;
@@ -626,8 +1000,19 @@ class Dashboard:
                 turns += 1
         if found.context:
             msgs.append(found.context)
+        from ..learn import recall
+        past, past_n = recall.context_message(self.kernel, message)   # answers you rated, for a similar question
+        if past:
+            msgs.append(past)
+        computed = None
+        if (self.kernel.model_config.coding.get("compute") and mode in ("balanced", "deep") and stays_here
+                and wants_compute(message)):
+            computed = self._compute(message, stage)
+            if computed.ok:
+                msgs.append(Message("system", result_message_text(computed), Category.CONVERSATION, local_only=True))
+                careful = True
         msgs.append(Message("user", message, Category.CONVERSATION))
-        stage({"stage": "context", "memories": len(recalled), "turns": turns})
+        stage({"stage": "context", "memories": len(recalled), "turns": turns, "past": past_n})
         max_tokens = INTELLIGENCE[mode]["max_tokens"]
         mode_note = None
         try:
@@ -656,6 +1041,8 @@ class Dashboard:
                 self.kernel.audit.record("chat.mode_fallback", mode=mode, model=f"{r.provider}/{r.model}")
             if mode_note:
                 r = replace(r, note=((r.note + " ") if r.note else "") + mode_note)
+            if computed is not None and computed.ok:
+                r = replace(r, note=((r.note + " ") if r.note else "") + COMPUTE_NOTE)
             # Retries and fixes are local-only at any quality: they must never become a consent question.
             local_need = replace(need, local_only=True, min_quality=1)
             grounded, retried = None, False
@@ -696,13 +1083,33 @@ class Dashboard:
                     and wants_code(message) and code_of(r.text)):
                 stage({"stage": "checking", "code_test": True})
                 r, code_test = self._self_test(message, msgs, r, local_need, found.level)
+            second = None
+            if mode == "deep" and not wants_code(message):   # Deep: a different local model checks the answer
+                from ..orchestrator.review import answer_opinion, note_for
+                stage({"stage": "checking", "second_opinion": True})
+                op = answer_opinion(self.kernel.models, message, r.text, author=f"{r.provider}/{r.model}")
+                fixed = False
+                if op.verdict == "disagree" and r.provider in self.kernel.models.router.local:
+                    retry = msgs + [Message("assistant", r.text, Category.CONVERSATION),
+                                    Message("user", "A second check of your answer found:\n" + "\n".join(f"- {x}" for x in op.problems)
+                                            + "\nIf it's right, correct your answer; if not, keep it. Reply with the answer only.",
+                                            Category.CONVERSATION)]
+                    r = self.kernel.models.complete(local_need, ChatRequest(tuple(retry), max_tokens=max_tokens),
+                                                    purpose="dashboard chat (second opinion retry)", level=found.level,
+                                                    question=message)
+                    fixed = True
+                r = replace(r, note=((r.note + " ") if r.note else "") + note_for(op, fixed=fixed))
+                second = {**op.as_dict(), "revised": fixed}
+                self.kernel.audit.record("chat.second_opinion", verdict=op.verdict, problems=len(op.problems),
+                                         revised=fixed, reviewer=op.model)
         except NoModelAvailable as exc:
             return {"error": f"No model available: {exc}", "reasons": exc.reasons}
         except ApprovalRequired as exc:
             appr = self.kernel.approvals.get(exc.approval_id)
             return {"needs_approval": True, "approval_id": exc.approval_id, "summary": appr["summary"]}
-        memory.learn_from(session, message, r.text)
-        return {"code_test": code_test, "text": r.text, "model": f"{r.provider}/{r.model}", "seconds": round(time.time() - started, 1),
+        record = memory.learn_from(session, message, r.text)
+        memory.link_informed([m["id"] for m in recalled if m.get("id")], record)   # which memories this answer was given
+        return {"record": record, "past": past_n, "code_test": code_test, "second_opinion": second, "text": r.text, "model": f"{r.provider}/{r.model}", "seconds": round(time.time() - started, 1),
                 "tokens": r.usage.output_tokens, "note": r.note, "memories_used": len(recalled),
                 "checked": found.checked, "offer_plan": found.change, "grounded": grounded,
                 "lookup_notes": found.why + found.notes, "mode": mode,
@@ -791,6 +1198,10 @@ class Dashboard:
                 "created_at": t["created_at"], "updated_at": t["updated_at"], "error": t["error"],
                 "next_action": t["next_action"], "runner": t["context"].get("runner"),
                 "evidence": _tilde_evidence((t["result"] or {}).get("evidence")),
+                # Mission Control: what "done" means for this mission, and whether it can be planned once more
+                "criteria": [{**c, "text": str(c.get("text", "")).replace(HOME, "~")} for c in t["context"].get("criteria") or []] or None,
+                "replan_of": t["context"].get("replan_of"),
+                "replannable": t["state"] == TaskState.FAILED and not t["context"].get("replan_of") and not self._replanned(t["id"]),
                 "steps": [{"id": s["id"], "n": s["idx"], "description": s["description"], "call": f"{s['tool']}.{s['action']}",
                            "state": s["state"], "attempts": s["attempts"], "error": s["error"]} for s in steps],
                 "final_text": next((s["result"].get("text") for s in reversed(steps) if s["tool"] == "llm"
@@ -816,7 +1227,7 @@ class Dashboard:
                               "summary": a["summary"].replace(HOME, "~"), "created_at": a["created_at"],
                               "preview": preview[:4000] if isinstance(preview, str) else None})
 
-        jobs = [{k2: v for k2, v in j.items() if k2 != "plan"} for j in
+        jobs = [{k2: v for k2, v in j.items() if k2 not in ("plan", "earlier")} for j in
                 sorted(self.jobs.values(), key=lambda j: j["started"], reverse=True)[:5]]
         for j in jobs:
             if j["state"] in ("planning", "waiting_approval"):
@@ -842,11 +1253,19 @@ class Dashboard:
                        "this_device": {"id": device["id"], "name": device["name"]} if device else None,
                        "devices": self.remote.devices.list() if self.remote else []},
             "touch_id": {"enabled": self.mac.enabled(), "keys": self.mac.keys()},
+            "update": None if device else _update_status(k),
+            "benchtest": None if device else _benchtest_status(k),
+            "objectives": _objectives(k),
+            "whatsnew": _whatsnew(k),
+            "files": None if device else _files_status(k),
+            "coding": {"self_test": bool(k.model_config.coding.get("self_test")), "compute": bool(k.model_config.coding.get("compute")),
+                       "sandbox": sys.platform == "darwin"},
             "briefing": {"last_date": _last_briefing(k)},
             "voice": self.voice.status(),
             "telemetry": self.telemetry.snapshot(),
             "evolution": self._evolution,
             "intelligence": self.intelligence(),
+            "learn": self._learn_cached(),
         }
 
     # ---- HTTP plumbing -----------------------------------------------------------------
@@ -1046,7 +1465,14 @@ class Dashboard:
     def _get(self, h: BaseHTTPRequestHandler, url, *, device: dict | None) -> None:
         if url.path in ("/static/app.js", "/static/app.css", "/static/phone.js", "/static/qrcode.js",
                         "/static/bench.js", "/static/bench.css", "/static/trust.js", "/static/proposals.js",
-                        "/static/avatar.js", "/static/avatar.css", "/static/avatar3d.js"):
+                        "/static/avatar.js", "/static/avatar.css", "/static/avatar3d.js", "/static/avatar-state.js",
+                        "/static/avatar3d-shaders.js", "/static/avatar3d-geometry.js",
+                        "/static/avatar3d-reactor.js", "/static/avatar3d-neural.js", "/static/avatar3d-particles.js",
+                        "/static/avatar3d-environment.js", "/static/avatar3d-projections.js",
+                        "/static/avatar3d-worker.js", "/static/avatar3d-camera.js", "/static/avatar-presets.js",
+                        "/static/avatar-events.js", "/static/avatar-sound.js",
+                        "/static/avatar3d-transform.js", "/static/chess.js", "/static/chess-worker.js",
+                        "/static/games.js", "/static/games-worker.js"):
             ctype = "text/javascript" if url.path.endswith(".js") else "text/css"
             return self._send(h, 200, (STATIC / url.path.rsplit("/", 1)[1]).read_bytes(), f"{ctype}; charset=utf-8")
         if url.path == "/static/vendor/three.module.min.js":  # Three.js r160, served from this Mac (MIT)
@@ -1067,7 +1493,11 @@ class Dashboard:
             q = parse_qs(url.query).get("q", [""])[0][:200]
             mem = self.kernel.memory
             items = mem.search(q) if q.strip() else mem.list(limit=50)
-            return self._json(h, 200, {"memories": items, "counts": mem.counts(),
+            from ..memory.conflicts import find as find_conflicts
+            conflicts = [{"subject": c["subject"], "a": {k: c["a"][k] for k in ("id", "text", "created_at")},
+                          "b": {k: c["b"][k] for k in ("id", "text", "created_at")}}
+                         for c in find_conflicts(mem.list(limit=500))][:5]
+            return self._json(h, 200, {"memories": items, "counts": mem.counts(), "conflicts": conflicts,
                                        "records": mem.search_records(q, limit=10) if q.strip() else []})
         if m := re.fullmatch(r"/api/tasks/([\w-]+)/timeline", url.path):
             from ..flight import timeline
@@ -1076,6 +1506,15 @@ class Dashboard:
             return self._json(h, 200, self.kernel.audit.entries(task_id=m.group(1), limit=300))
         if url.path == "/api/briefing":
             return self._json(h, 200, self.briefing())
+        if url.path == "/api/objectives":
+            return self._json(h, 200, {"objectives": _objectives(self.kernel)})
+        if url.path == "/api/files/search":   # your approved folders, if file search is on (Mac only)
+            from .. import files_index
+            q = parse_qs(url.query).get("q", [""])[0][:200]
+            return self._json(h, 200, {"results": files_index.search(self.kernel, q), **files_index.status(self.kernel)})
+        if url.path == "/api/initiative":   # one ranked list of suggestions (suggests only; nothing runs)
+            from .. import initiative
+            return self._json(h, 200, initiative.feed(self.kernel, health=self._health or None))
         if url.path == "/bench":
             return self._send(h, 200, (STATIC / "bench.html").read_bytes(), "text/html; charset=utf-8")
         if url.path.startswith("/api/bench"):
@@ -1094,6 +1533,22 @@ class Dashboard:
                 self.proposals.refresh()
                 self._proposals_checked = time.monotonic()
             return self._json(h, 200, {"proposals": self.proposals.list()})
+        if url.path == "/api/learn":
+            from .. import learn
+            from ..learn import analysis
+            from ..learn import autopilot
+            return self._json(h, 200, {**self.learn_state(), "lessons": learn.lessons(self.kernel),
+                                       "adjustments": autopilot.adjustments(self.kernel),
+                                       "experiments": analysis.Lab(self.kernel).list(), "kinds": analysis.KINDS,
+                                       "discoveries": analysis.discover(self.kernel, self._discovery_facts())})
+        if url.path == "/api/learn/tournament":
+            from ..learn import analysis
+            return self._json(h, 200, analysis.tournament(self.kernel))
+        if m := re.fullmatch(r"/api/projection/(\w+)", url.path):
+            try:
+                return self._json(h, 200, self.projection(m.group(1)))
+            except KeyError:
+                raise HttpError(404, "no such projection") from None
         if url.path == "/api/push/key" and self.remote is not None:
             return self._json(h, 200, {"key": self.remote.push.public_key})
         raise HttpError(404, "not found")
@@ -1172,6 +1627,9 @@ class Dashboard:
             actor = f"user:phone:{device['name']}"
             if any(re.fullmatch(p, path) for p in LOCAL_ONLY):
                 raise HttpError(403, "only possible from the Mac")
+            if path == "/api/experiments" and body.get("kind") in ("trial", "draft"):   # runs code: never from the phone
+                self.kernel.audit.record("device.denied", path=path, reason="change trials can only be started from the Mac")
+                raise HttpError(403, "change trials can only be started from the Mac")
             if path == "/api/stepup/options":
                 target, target_body = body.get("path"), body.get("body")
                 if not isinstance(target, str) or not isinstance(target_body, dict):
@@ -1270,15 +1728,186 @@ class Dashboard:
             else:
                 mem.edit(m.group(1), text("text", 500), by=actor)
             return {"ok": True}
+        if path == "/api/memory/conflicts/resolve":   # keep one of two memories that disagree; the other is deleted
+            keep, drop = text("keep", 80), text("drop", 80)
+            try:
+                k.memory.get(keep)
+                k.memory.delete(drop, by=actor)
+                k.memory.confirm(keep, by=actor)
+            except KeyError:
+                raise HttpError(404, "no such memory") from None
+            k.audit.record("memory.conflict_resolved", actor=actor, kept=keep, dropped=drop)
+            return {"ok": True}
         if path == "/api/memory/forget":
-            return self.kernel.forget(text("query", 200), by=actor, dry_run=body.get("confirm") is not True)
+            query, dry = text("query", 200), body.get("confirm") is not True
+            out = self.kernel.forget(query, by=actor, dry_run=dry)
+            if not dry and query.strip():   # the dashboard's own copy of saved plans goes too
+                with self._lock:
+                    self.jobs = {i: j for i, j in self.jobs.items() if query.strip().lower() not in j["request"].lower()}
+            return out
+        if path == "/api/feedback":
+            from .. import learn
+            rating = body.get("rating")
+            if rating not in (-1, 1):
+                raise HttpError(400, "rating must be -1 or 1")
+            target = body.get("target") if body.get("target") in ("reply", "task") else "reply"
+            return {"id": learn.add_feedback(k, target=target, ref=text("ref", 120), rating=rating,
+                                             model=body.get("model") if isinstance(body.get("model"), str) else None,
+                                             mode=body.get("mode") if isinstance(body.get("mode"), str) else None,
+                                             reason=body.get("reason") if isinstance(body.get("reason"), str) else None, by=actor)}
+        if m := re.fullmatch(r"/api/lessons/(les_\w+)/(confirm|reject|delete)", path):
+            from .. import learn
+            try:
+                learn.decide_lesson(k, m.group(1), m.group(2), by=actor)
+            except KeyError:
+                raise HttpError(404, "no such lesson") from None
+            return {"ok": True}
+        if path == "/api/autonomy":
+            from ..learn import Autonomy, AutonomyError
+            a = Autonomy(k)
+            try:
+                if "tier" in body:
+                    a.set_tier(int(body["tier"]), body.get("on") is True, by=actor)
+                elif "pause" in body:
+                    a.set_pause(str(body["pause"]), body.get("paused") is True, by=actor)
+                else:
+                    raise HttpError(400, "tier or pause is required")
+            except (AutonomyError, ValueError) as exc:
+                raise HttpError(400, str(exc)) from None
+            return a.state()
+        if path == "/api/adjustments/undo":
+            from ..learn import autopilot
+            autopilot.undo(k, text("lesson", 200), by=actor)
+            return {"adjustments": autopilot.adjustments(k)}
+        if path == "/api/experiments":
+            from ..learn import analysis
+            try:
+                kind = text("kind", 40)
+                if kind in ("trial", "draft") and not actor.startswith("user:dashboard"):   # second check: only the Mac's own dashboard
+                    raise HttpError(403, "change trials can only be started from the Mac")
+                return {"id": analysis.Lab(k).start(kind, by=actor, ref=body.get("ref") if isinstance(body.get("ref"), str) else None,
+                                                    baseline=body.get("baseline") if isinstance(body.get("baseline"), str) else "HEAD",
+                                                    problem=body.get("problem") if isinstance(body.get("problem"), str) else None)}
+            except analysis.LabError as exc:
+                raise HttpError(409, str(exc)) from None
+        if path == "/api/command":   # a direct Mac command (Music, system), through the permission engine
+            return self.mac_command(body)
+        if path == "/api/route":   # which kind of message: rules, then a model on this Mac (never the cloud)
+            return self.route_message(text("text", 2000))
         if path == "/api/plan":
             return {"job_id": self.start_plan(text("request"))}
         if m := re.fullmatch(r"/api/plan/(\w+)/(run|discard)", path):
             if m.group(2) == "run":
                 return {"task_id": self.run_plan(m.group(1))}
             self.jobs.pop(m.group(1), None)
+            self._forget_job(m.group(1))
             return {"ok": True}
+        if path == "/api/whatsnew/seen":
+            from .. import whatsnew
+            whatsnew.mark_seen(k)
+            return {"ok": True}
+        if path == "/api/health/check":
+            self._health = self.check_health()
+            return self._health
+        if path == "/api/backup/now":   # Mac only (LOCAL_ONLY)
+            from ..backup import BackupError, create_backup, get_passphrase
+            if not get_passphrase():   # the first backup prints its passphrase once; that belongs in Terminal, not here
+                raise HttpError(400, "set up backups once in Terminal first: uv run jarvis backup now (save the passphrase it prints)")
+            b = self.backup_settings()
+            try:
+                r = create_backup(k.home, k.policy_path, k.config_path, dest_dir=b["dir"], keep=b["keep"])
+            except (BackupError, OSError, ValueError) as exc:
+                k.audit.record("backup.failed", error=str(exc)[:300])
+                raise HttpError(400, f"backup failed: {exc}") from None
+            k.audit.record("backup.created", actor=actor, file=r.path.name, bytes=r.bytes, verified=r.verified)
+            self._health = self.check_health()
+            return {"ok": True, "file": r.path.name}
+        if path == "/api/objectives":
+            from .. import objectives
+            try:
+                pr = body.get("priority", 3)
+                return objectives.create(k, text("outcome"), criteria=body.get("criteria") if isinstance(body.get("criteria"), list) else [],
+                                         priority=pr if isinstance(pr, int) else 3, deadline=body.get("deadline") or None, by=actor)
+            except objectives.ObjectiveError as exc:
+                raise HttpError(400, str(exc)) from None
+        if m := re.fullmatch(r"/api/objectives/(obj-[0-9a-f]{10})/(state|autopilot|plan|delete)", path):
+            from .. import objectives
+            oid, op = m.groups()
+            try:
+                if op == "state":
+                    return objectives.set_state(k, oid, str(body.get("state", "")), by=actor)
+                if op == "autopilot":   # Mac only (LOCAL_ONLY)
+                    return objectives.set_autopilot(k, oid, str(body.get("level", "")), by=actor)
+                if op == "delete":
+                    objectives.delete(k, oid, by=actor)
+                    return {"ok": True}
+                o = objectives.get(k, oid)
+                if o["state"] != "active":
+                    raise HttpError(409, "resume the objective first")
+                after = objectives.follow_on(o, body.get("after") if isinstance(body.get("after"), str) else None)
+                job_id = self.start_plan(objectives.next_request(o), objective=oid)
+                if after:
+                    self.jobs[job_id]["after"] = after   # it will wait for that mission when you press Run
+                return {"job_id": job_id, "after": after}
+            except KeyError:
+                raise HttpError(404, "no such objective") from None
+            except objectives.ObjectiveError as exc:
+                raise HttpError(400, str(exc)) from None
+        if path == "/api/settings/files":   # Mac only, Touch ID when set up: off deletes the whole index
+            from .. import files_index
+            if not isinstance(body.get("on"), bool):
+                raise HttpError(400, "on must be true or false")
+            return files_index.set_enabled(k, body["on"], by=actor)
+        if path == "/api/settings/coding":   # Mac only, Touch ID when set up: code runs only in the macOS sandbox
+            from ..cli import _write_section
+            from ..models import load_model_config
+            values = dict(k.model_config.coding)
+            for key in ("self_test", "compute"):
+                if key in body:
+                    if not isinstance(body[key], bool):
+                        raise HttpError(400, f"{key} must be true or false")
+                    values[key] = body[key]
+            try:
+                _write_section(k, "coding", values)
+                k.model_config = load_model_config(k.config_path)
+            except (ValueError, OSError) as exc:
+                raise HttpError(400, f"couldn't save the setting: {exc}") from None
+            k.audit.record("config.coding", actor=actor, **{key: bool(values.get(key)) for key in ("self_test", "compute")})
+            return {"coding": dict(k.model_config.coding)}
+        if path == "/api/benchtest":   # Mac only (LOCAL_ONLY): you ask; it runs when the Mac is idle
+            from .. import benchtest
+            try:
+                benchtest.request(k, by=actor, when=str(body.get("when", "tonight")), set_=str(body.get("set", "hard")),
+                                  repeat=int(body.get("repeat", 5)))
+            except (ValueError, TypeError) as exc:
+                raise HttpError(400, str(exc)) from None
+            self.benchtest_tick()
+            return benchtest.status(k)
+        if path == "/api/benchtest/cancel":
+            from .. import benchtest
+            benchtest.cancel(k, by=actor)
+            return benchtest.status(k)
+        if path == "/api/update/check":   # Mac only (LOCAL_ONLY): fetches the branch, changes nothing
+            from .. import update
+            try:
+                c = update.check()
+            except (update.UpdateError, OSError, subprocess.TimeoutExpired) as exc:
+                raise HttpError(400, f"couldn't check for updates: {exc}") from None
+            k.audit.record("update.checked", actor=actor, behind=c.get("behind", 0))
+            return c
+        if path == "/api/update/start":   # Mac only, and Touch ID when it's set up (MAC_STEP_UP)
+            from .. import update
+            try:
+                return update.start(k, port=self.port, by=actor)
+            except (update.UpdateError, OSError, subprocess.TimeoutExpired) as exc:
+                raise HttpError(400, str(exc)) from None
+        if path == "/api/initiative/dismiss":
+            from .. import initiative
+            size = body.get("size") if isinstance(body.get("size"), int) else 1
+            initiative.dismiss(self.kernel, text("key", 200), by=actor, size=size)
+            return {"ok": True}
+        if m := re.fullmatch(r"/api/tasks/([\w-]+)/replan", path):   # one new plan for a failed mission (reviewed as usual)
+            return {"job_id": self.replan(m.group(1), actor=actor)}
         if m := re.fullmatch(r"/api/approvals/([\w-]+)", path):
             approve = body.get("approve")
             if not isinstance(approve, bool):

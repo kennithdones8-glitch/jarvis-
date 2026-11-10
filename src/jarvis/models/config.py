@@ -103,9 +103,11 @@ def parse_model_config(data: dict[str, Any]) -> ModelConfig:
     if routing.get("mode", "local_first") not in ("local_first", "best", "hybrid"):
         raise ConfigError("[routing]: mode must be 'local_first', 'best' or 'hybrid'")
     coding = data.get("coding", {})
-    _check_keys("[coding]", coding, {"self_test"})
+    _check_keys("[coding]", coding, {"self_test", "compute"})
     if not isinstance(coding.get("self_test", False), bool):
         raise ConfigError("[coding]: self_test must be true or false")
+    if not isinstance(coding.get("compute", False), bool):
+        raise ConfigError("[coding]: compute must be true or false")
     search = data.get("search", {})
     _check_keys("[search]", search, {"searxng_url"})
     budget = data.get("budget", {})

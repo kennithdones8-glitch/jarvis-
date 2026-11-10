@@ -1,5 +1,790 @@
 # Changelog
 
+## Unreleased — after 0.19.4 (work branch `claude/funny-allen-ygy8kk`, not yet released)
+
+- **Merged 0.19.4 from `main`** (careful answers on the 7B, the calendar premise check, contradictions asked about
+  before planning, nothing left out, retries routed by the question, the first-event check). Both sides kept; one
+  conflict: `Orchestrator.plan` runs main's premise check first and keeps this branch's replan history.
+
+### Talk with JARVIS hands-free
+
+- **Conversation mode** (the "Conversation" button under the chat, needs voice set up). Tap it once and talk: the
+  recording ends by itself when you pause, JARVIS answers aloud, and the microphone opens again for your next turn.
+  It ends when you say "stop" or "goodbye", stay quiet for 8 seconds, hide the page, or tap the button. It is never
+  remembered between visits, and a reply that needs your answer on screen (a consent question) pauses it. What you
+  say is ordinary chat text: it can't approve anything.
+- **A more natural voice.** Spoken replies now prefer the Mac's and iPhone's higher-quality on-device voices
+  ("Premium" / "Enhanced"; free to download in System Settings → Accessibility → Spoken Content → System voice →
+  Manage Voices). Still on-device only.
+- **No "Hey JARVIS" wake word, on purpose.** A wake word means the microphone is open all the time and a speech model
+  runs constantly on the Mac. JARVIS keeps the microphone closed unless you've just tapped.
+
+### Memories that disagree, search your own files, and a speed check — schema v12
+
+- **Memories that disagree.** The Memory page lists pairs of memories that contradict each other ("My dentist is
+  Dr Patel" vs "Dr Shah is my dentist", where you live, your age), found with plain rules, no model. You pick which
+  to keep; the other is deleted (behind the same Face ID / Touch ID as deleting a memory). Conflicts also show in
+  "Worth your attention".
+- **Search your own files** (off until you turn it on in Configuration, Mac only, Touch ID to switch). JARVIS indexes
+  text, Markdown, CSV, JSON, HTML, PDF and Word files inside the folders you've already approved, a few dozen at a
+  time in the background; every read is checked by the permission engine first. Hidden files and folders are skipped,
+  nothing leaves the Mac and no model is involved. Results appear on the Memory page under "In your files". Turning it
+  off deletes the whole index; `jarvis forget` drops matching files and keeps them out. Schema v12 adds the index.
+- **Speed check for the projection** (focus view → Projection controls). Draws the 3D projection at Quality,
+  Balanced and Performance for a few seconds each and shows the real frame time measured on this device — useful on
+  an older Intel Mac. It recommends the richest level that stays smooth (40 ms a frame or less); nothing changes
+  unless you press Use, and your setting is restored after the check. Auto still adjusts on its own.
+
+### Games: Connect Four, Checkers, and a chess coach
+
+- **Connect Four and Checkers** join chess on the Games page (tabs). Connect Four: drop discs, four in a row wins,
+  full board draws. Checkers (American rules): compulsory captures, multi-jumps, crowning on the far row (which ends
+  the move), 40 moves each without a capture draws. Easy, Medium and Hard opponents (search depth 2 / 5 / 9), take
+  back, play first or second; saved in this browser.
+- **Chess coach: "Review my moves"** replays your game and grades each of your moves against the engine's best at
+  the same depth (inaccuracy ≥ 0.6 pawns, mistake ≥ 1.5, blunder ≥ 3 or a missed mate), with the better move.
+- Same promise as chess: engines written for JARVIS, in a Web Worker, no model, nothing sent.
+
+### Easier to use: iPhone setup, what's new, objectives in the briefing
+
+- **`jarvis remote setup`:** a guided check for using JARVIS on your iPhone: Tailscale installed, signed in,
+  MagicDNS and HTTPS on, an iPhone in the same account. It says exactly what to fix, and turns sharing on (inside
+  your Tailscale network only) only when everything is ready, then tells you how to pair.
+- **What's new:** after an update, the home screen lists what arrived (this changelog's newest headings) until you
+  press "Got it". A fresh install sees nothing "new".
+- **The morning briefing lists your objectives:** missions done, in progress, due dates, paused.
+
+### JARVIS drafts a fix (tier 6, Evolution Lab "Invent")
+
+- **Evolution center → Simulation lab → "Draft a fix":** describe what JARVIS should fix in itself. It names up to
+  three of its own files, writes a patch, and that patch is applied to a throwaway copy and tested (full suite and
+  linter, in the hardened sandbox) against your current code; a second local model reviews the diff. You get the
+  patch (in the data folder, `drafts/<id>.patch`, private), the evidence, and the `git apply` command. JARVIS never
+  applies, commits, merges or pushes a draft.
+- Only `src/` and `tests/` may change; a patch touching anything else (settings, lockfile, CI) is refused untested.
+  Patches touching security-sensitive files (permissions, approvals, audit, egress, the sandbox, the gate, the
+  server, remote access, updates) are labelled.
+- Needs tier 6 (Mac terminal), only you can start it, never from the iPhone. It uses the best model you allow:
+  JARVIS's source counts as private project data, so sending it to Claude asks your consent; otherwise it drafts
+  on this Mac.
+
+### A second opinion
+
+- **Deep-mode answers are checked by a different local model.** It reads your question and the answer; if it names a
+  concrete error, the answering model (when it answered on this Mac) gets one chance to revise, and the reply says
+  what the second opinion said ("agrees", "unsure", "disagrees: …", or "pointed out a problem; the answer was revised
+  once"). Never the same model (`Need.avoid`), never the cloud, never in Quick or Balanced.
+- **Plans that change something get a second opinion before you Run them**, shown on the plan: whether the steps do
+  what you asked, and what worries it. It only informs; it never approves, edits or blocks a plan.
+- With only one local model installed it says "not reviewed", never "checked". Audit: `chat.second_opinion`,
+  `plan.second_opinion` (verdict and counts only).
+
+### Objectives v2: missions that follow one another, and the objective's map
+
+- **A mission can wait for another.** On an objective with a mission in progress, the button reads "Plan a mission to
+  follow": the new mission is planned now, and when you Run it, it waits (queued) until that one has completed. If
+  that one fails or is cancelled, the follower is paused with the reason; it never runs on a failed foundation.
+  Recorded as a `follows` link (removed with the objective; part of forget).
+- **The objective's map:** missions as boxes with an arrow from the one each waits for, coloured by their real state
+  (done, failed, in progress, waiting). Only from the missions' states and links; nothing estimated.
+
+### Level 6 trial sandbox hardened (Evolution 4.0, M2)
+
+- **Reads are now an allow-list:** nothing in any user folder or external drive (`/Users`, `/Volumes`) can be read
+  except the trial itself, the Python installation and the repository's history; private folders and JARVIS's data
+  folder stay denied on top. Before, only a list of private folders was blocked, so Documents, Mail, Messages and
+  browser data were readable.
+- **No reaching other apps:** Apple events, the pasteboard and the Keychain are blocked, and osascript, open,
+  security, screencapture, pbcopy/pbpaste, automator and shortcuts can't be started. Local sockets into a home folder
+  or to Docker are refused.
+- **Limits:** 2 GB per file, 2,048 open files, 30 CPU minutes, and the whole trial folder at most 6 GB; on the time
+  limit or a full folder the whole process group is stopped (before, only the first process was).
+- **Internet access is actually blocked now.** The escape test found that the old rules letting the tests run their
+  own local servers (`network*` on a localhost address) also let a trial connect to the internet; they predate this
+  release, so earlier trials were not as offline as described. Now only listening on loopback and connecting to
+  loopback (or a socket inside the trial folder) are allowed.
+- **Proved on GitHub's macOS runners:** a program inside the real sandbox tries each escape (home file, outside
+  write, internet, home socket, osascript) and must be blocked, while the trial's own files, localhost and ordinary
+  programs still work (`test_macos_only::trial_sandbox_escape_attempts_all_fail`, required on a Mac).
+
+### Games: chess with JARVIS
+
+- **Play chess against JARVIS** (new Games page, ♞). The full rules: castling, en passant, promotion (you choose the
+  piece), check, checkmate, stalemate, the 50-move rule, threefold repetition and insufficient material; the move
+  list in standard notation; take back; play White, Black or random; Easy, Medium or Hard.
+- JARVIS's engine is written for JARVIS (`static/chess.js`): alpha-beta search with a capture search and a time limit
+  (Hard thinks up to 3 s), running in a Web Worker so the board never freezes. No library, no model, nothing
+  downloaded or sent; the game is kept in this browser only. The move generator matches the published perft counts
+  on five standard test positions (tests run them).
+
+### Objectives v1 (Evolution 4.0, first milestone) — schema v11
+
+- **Objectives** (new page, ◇ in the side bar): an outcome you want, what done means (optional), priority 1–5 and an
+  optional deadline. Missions stay ordinary tasks, planned by the usual planner and run by the usual engine with every
+  step through the permission gateway; an objective only ties them together (`links`, rel "mission of"), so nothing
+  about a mission is copied. **Plan next mission** asks the planner for one mission, telling it what's done, what
+  failed and the deadline; the plan waits in Missions for you to Run, as always.
+- **Progress counts real states:** done = completed; confirmed = completed and its checks found everything (a check
+  that couldn't run is "not confirmed"). Achieved is yours to say; the feed asks when every mission is done.
+- **Autopilot per objective:** suggest (default: the feed says when a next mission is worth planning), prepare (plans
+  the next mission when nothing of it is in flight, for you to Run), pursue (Mac only, with a confirmation: also runs
+  it, recorded as `jarvis:objective`; each step still asks you whenever your rules say it must). At most one autopilot
+  plan per objective every 30 minutes; it stops after two failed missions in a row (the objective is paused and the
+  feed says why), under the emergency stop and the autonomy initiative pause.
+- **Suggestions feed:** stuck, due within 3 days, all missions done, and "next step?", weighted by priority (×1.0–1.5).
+- **Forget** includes objectives whose outcome or criteria mention it; deleting an objective keeps its missions.
+- The audit log has ids and counts only (`objective.*`), never the outcome text.
+- **Upgrading needs schema v11**: the first start backs up your database automatically (`backups/before-upgrade`).
+- Not yet: mission dependencies, the Strategy-mode objective map, independent review, the hardened Lab (next).
+
+### Work it out with code (from branch `compute-v1`), and "Test this version"
+
+- **Maths, dates and puzzles are worked out by a program** (merged from `compute-v1`). Off unless you turn it on
+  (`[coding] compute = true`; benchmark: `--compute`). For a question that needs working out and isn't a request for
+  code, in Balanced or Deep, when the answer stays on this Mac, the local model writes a short program; JARVIS checks it
+  (only maths/date/logic modules; no files, network, os, subprocess, open/exec/eval/__import__, no double-underscore
+  names) and runs it in the coding self-test's macOS sandbox (no network, no writes outside a temp folder, no reading
+  your home folder, no other programs, 10 s). The answer is written from what it printed, and says so. Never in Quick,
+  never when the answer may go to Claude, never without the sandbox.
+- **"What time does it arrive?" and "on which weekday…?" with numbers count as maths**, so the 14B answers them.
+- **Test this version** (Systems, Mac only): "Test tonight" or "Test now" runs the hard set ×5 on a throwaway folder
+  (`bench-home`, only a copy of your model settings), local models only, when the Mac is idle (tonight: in your quiet
+  hours), with no mission running and the emergency stop off. The result is compared with the last run of the same
+  tasks on another commit; the verdict and its reasons are shown and logged (`benchtest.*`). It never runs unasked.
+
+### Safe updates, and less Terminal
+
+- **A database upgrade is backed up first.** When new code would upgrade your database, JARVIS first makes an encrypted,
+  verified backup in `backups/before-upgrade` (the last 5 are kept, apart from the daily ones) and logs
+  `database.upgraded` with the file name. On a Mac it refuses to upgrade without that backup ("Nothing was changed");
+  `JARVIS_UPGRADE_WITHOUT_BACKUP=1` is the explicit way past a broken Keychain.
+- **A command that does nothing changes nothing.** `jarvis dashboard` while JARVIS is already running now stops before
+  opening your data. (Before, it upgraded the database and then said "already running", which is how the Mac ended up
+  with a v10 database that 0.19.4 couldn't open.)
+- **Update button** (Systems → Updates, Mac only, Touch ID when it's set up). "Check for updates" fetches your branch
+  and lists the new commits; "Update" runs a separate helper that backs up, fast-forwards (never merges or rewrites),
+  runs `uv sync` and the release gate, then restarts the service. If the tests fail the old commit comes back and
+  nothing restarts; if the new version doesn't answer within two minutes, the old code and the database as it was just
+  before the restart are put back and started again. It refuses local edits, diverged history, a running mission and
+  the emergency stop. JARVIS never starts an update itself. Progress survives the restart (`update/state.json`); the
+  outcome goes in the audit log (`update.started`, `update.finished`).
+- **Systems → Health** has "Check again" and "Back up now" (Mac only; the very first backup still happens in Terminal,
+  because it prints the passphrase once).
+- **JARVIS.app offers "Start JARVIS"** when JARVIS isn't running: only after you click it, it runs
+  `jarvis service install` and opens the dashboard once it answers.
+- **A `jarvis` command.** `jarvis app install` also writes `~/.local/bin/jarvis`, so `jarvis doctor` works without
+  `uv run`. It never replaces a `jarvis` file it didn't make; `jarvis app uninstall` removes both.
+
+### iPhone layout (Evolution 3.0, phase 6)
+
+- **The focus view on iPhone is split into tabs** — Now (state, readiness, current work, systems), Modes (working
+  modes and avatar forms), Projections (the open ones and their controls) and Controls (presets, camera, quality,
+  Diagnostics) — instead of one long scrolling panel. On a computer everything is shown as before.
+- **Touch-sized controls**: projection buttons, tabs, mode and form chips and text fields are at least 44 points; on
+  the phone the projection list hides the "move to the other side" and "move up" buttons (not meaningful on a narrow
+  screen). Checked at iPhone 13 size: no control under 40 points in any tab, nothing scrolls sideways.
+- **Section headers stay compact** on the phone (one swipeable row of figures), so a page's content comes first.
+- The "⌘↩ to send" hint is no longer shown on touch-only devices.
+- Still to check on a real iPhone in Safari (the headless browser only emulates its size and touch).
+
+### Avatar forms and operational readiness (Evolution 3.0, phase 5)
+
+- **Five forms of the same figure** (focus view → Form): Standard (armour closed), Diagnostic (helmet opened to
+  the sensor array, three-quarter view, Diagnostics on), Engineering (arms and hands opened for inspection),
+  Intelligence (**X-ray**: the plates thin out so the neural network inside shows, at its real activity level) and
+  Advanced (reactor exposed, close up, the full holographic look). Each reuses a transformation sequence, a camera
+  view and a look; the avatar's identity is unchanged.
+- **Only you choose a form** — no JARVIS state or working mode picks one. Leaving inspection re-opens the form you
+  chose; leaving the focus view closes the armour (your choice is kept for next time). The look lasts only while
+  the form does; your saved settings never change.
+- **Operational readiness** from the health checks the dashboard already runs: the focus panel says "Operational:
+  all N checks pass" or "Not fully operational: N of M failing (names)", and the avatar gives one readiness pulse
+  when all checks first pass (again only after a problem clears) — never during the startup assembly or in reduced
+  motion, never without data.
+
+### Working modes and mission dependency maps (Evolution 3.0, phase 4)
+
+- **Six working modes in the focus view**: Command (the overview), Engineering (software architecture + simulation,
+  three-quarter view, Diagnostics on), Intelligence (research sources + knowledge network), Strategy (workflow +
+  timeline), System (security shield + data, Diagnostics on) and Creative (globe, a calmer cinematic look). Each is a
+  set of projections, a camera view and a few look settings — workspaces, not new dashboards.
+- **Auto** (the default) follows what JARVIS is really doing: coding and experiments → Engineering; research,
+  analysis and learning → Intelligence; planning, running and verifying missions → Strategy; a decision, a refusal,
+  a warning, an error, the emergency stop or recovery → System (at once). Other changes wait until the current mode
+  has had 8 s; it returns to Command 20 s after the activity ends. Creative is never chosen automatically (nothing
+  real means "be creative"). A preview never changes the mode. Choosing a mode yourself turns Auto off.
+- Projections a mode opened close when it changes; ones you opened or pinned stay. A mode's look lasts only while
+  it does: your saved display settings never change, and leaving the focus view restores them.
+- **Mission dependencies**: the workflow projection now draws a line only where a step really waits for another (an
+  arc above the row), instead of chaining every step, so independent steps no longer look sequential.
+
+### Connected intelligence: tournament → routing, knowledge links, one suggestions feed (Evolution 3.0, phase 3)
+
+- **The intelligence tournament informs routing** (level 7 only). When its evidence clearly separates two models
+  (5+ checked answers each, 20+ points apart), the better one gets a small bonus and the weaker a small penalty —
+  the same ±3 limit as before, only among models already allowed, logged, in the morning digest, undoable (an undone
+  adjustment never returns), and withdrawn by itself when the gap closes. Benchmark runs are shown alongside but don't
+  drive it (a run mixes models, so it can't be credited to one). A lesson and the tournament about one model add up.
+- **Lasting knowledge links.** JARVIS now remembers which memories were given to each answer as context ("context
+  for" — being in the context doesn't prove the answer relied on it, so it doesn't claim more). The knowledge graph
+  also connects memories and conversations to the project ideas they're evidence for, and a replan to the mission it
+  retried. Links hold ids only, never text; conversations appear as "a conversation on <date>". Deleting or
+  forgetting a memory, a conversation or a mission removes its links.
+- **One ranked suggestions feed** ("For you, ranked" on Briefing & ideas): failed missions you can retry, failing
+  health checks, projects stalled for a week, lessons whose evidence disagrees, improvement proposals and new project
+  ideas — ranked by urgency, then value, weighted by how sure the source is, with the reason shown. It suggests only:
+  "Open" takes you where you decide; "Not now" hides an item for 30 days (a failing health check only for a day;
+  sooner if its evidence doubles), and the feed says how many are hidden.
+  Empty with the initiative pause, level 5 off or the emergency stop. At most one notification a day, generic ("JARVIS
+  has a suggestion"), never in quiet hours.
+
+### Mission Control: missions are checked, plans survive restarts, one replan (Evolution 3.0, phase 2)
+
+- **Every mission has a definition of success**, decided from its plan when you run it (never by a model): one
+  criterion per step. The plan card shows "How JARVIS will check it's done" before you press Run plan.
+- **"Complete" means checked.** Files: exactly what was written (as before). Calendar events, reminders and notes:
+  read back from the app afterwards — if the app said it added something that isn't there, the mission **fails**.
+  Mail drafts and Music/system changes are marked "reported by the app" (Mail drafts can't be read back). A check
+  that couldn't run (e.g. Calendar didn't answer) shows "Complete · 1 not confirmed", never "verified", and the
+  learning engine counts it as unverified. Each mission card lists every criterion and what the check found.
+- **Plans survive a restart.** A plan waiting for you comes back after JARVIS restarts ("Kept from before JARVIS
+  restarted"); planning that was cut off starts again; a plan waiting for your OK to use Claude keeps waiting on the
+  same request instead of asking twice. Saved plans older than a day are dropped, and **forget** removes them.
+- **Try a new plan** on a failed mission: JARVIS plans it once more, told which steps happened and what failed (step
+  descriptions and errors, never file contents), so it doesn't redo what's done. The new plan is reviewed like any
+  other; nothing runs until you press Run plan. One replan per mission; a second attempt can't be replanned.
+- Schema v10 (`plan_jobs`). The benchmark's tool-use record now shows the read-back (`reminders.find` after
+  `reminders.add`).
+- Fix (3D): opening the dashboard straight onto a page where the projection is hidden (e.g. Missions) made the
+  renderer's first frame fail; it now waits until it has a size.
+
+### Security: closing the autonomy gaps (Evolution 3.0, phase 1)
+
+- **Change trials (level 6) are isolated.** The branch's tests no longer run as you: no API keys, tokens, SSH agent
+  or JARVIS settings reach them; HOME and TMPDIR are throwaway folders; and on macOS they run inside the system
+  sandbox: no network except this Mac, no writes outside the trial folder, no reads of JARVIS's data, `~/.ssh`,
+  cloud credentials or Keychains. A Mac without the sandbox refuses to run trials, and if the sandbox can't start, the
+  trial reports that it proves nothing rather than running unprotected. The result records how it was isolated.
+- **Trials can only be started from the Mac.** A paired iPhone is refused (and the attempt is audited), even with
+  level 6 on.
+- **Forget removes your ratings and their comments** for what it deletes, plus any rating whose comment mentions it.
+- **A release-gate test proves every tool action goes through the permission gateway** (the one read-only exception,
+  `jarvis mac check`, is listed and checked).
+- Needs a check on the Mac: the first real trial shows whether the sandbox rules start on macOS 14.
+
+- **Merged 0.19.3 from `main`** (private data folder, the stronger and reasoning-only local models, warm start,
+  `jarvis checkup`, exact calendar and reminder facts, small memory seen whole, the harder benchmark set and its plan
+  checks). Nothing from either side was dropped. Two adaptations: the Ask / Research / Do classifier keeps the fastest
+  local model (`keep_speed`), so a message that looks like maths or code never loads the big reasoning model just to
+  be classified; and "don't change anything" in a request now also covers Music and system changes (play, pause,
+  playlists, volume, Do Not Disturb).
+- Below: the work since 0.19.0 on this branch (Avatar 2.5, E.V.O.L.V.E., Music and system, automatic Ask /
+  Research / Do and more), newest first. "Avatar 3.x" headings are early avatar steps, not a product version.
+
+### Avatar 2.5, phase 7: contextual HUD, neural operations, evolution layers, materials
+
+- **Focus panel motion line**: what the figure's movement means right now ("concentrating — working out an answer
+  or a plan") plus one real detail when there is one: the mission step (step 2 of 5), decisions waiting, recording
+  time, looking things up. Never a percentage that doesn't exist.
+- **Neural activity by operation**: the network shows where the work is — toward the head while concentrating,
+  flickering nodes while reading sources, out to the limbs while executing, pulsing with each spoken word while
+  explaining, the whole network beating as a lesson is stored — chosen by the real state.
+- **Evolution 2.5**: the Evolution record now keeps four things apart: verified capability (the milestones), visual
+  progression (the displayed stage, never ahead of the record), rendering modules (on and off at this stage), and
+  your customisation on this device (preset, quality, view, sound), which never changes a capability.
+- **Materials**: brushed-alloy streaks in the plate highlights (faded where they would shimmer), a tight polished
+  glint and lighter worn metal along plate edges. Shader-only; no textures added.
+
+### Avatar 2.5, phase 6: mechanical transformations
+
+- **Transformation sequences** (`avatar3d-transform.js`): a group of armour plates opens in seven steps — unlock (the
+  seams flash), separate, move, expose, reconfigure (the plates turn about their own centre), sync (one pulse as
+  the parts align) and stabilise (a small settling shake) — and closes by playing the same steps backwards.
+- Four sequences: **expose the reactor** (the chest plates part, the core comes forward, larger and brighter),
+  **open the helmet** (the shell lifts back from the sensor head), **open the arms and hands**, **open the
+  shoulders**. Inspecting the reactor, chest, helmet, a hand or the shoulders opens that part; inspecting anything
+  else, Exit or Esc closes it. The Transform row in the inspection bar opens them directly.
+- Only you start one: no JARVIS state opens the armour, so it never suggests work that isn't happening. Never
+  during the startup assembly; Low performance and Reduced motion go straight to the end without animation.
+
+### Avatar 2.5, phase 5: voice-reactive reactor and optional sound
+
+- **Your voice moves the reactor**: while the microphone records, its measured level (RMS from an analyser on the
+  same stream, about 20 times a second) brightens the reactor and the helmet sensors. Not played back, not stored,
+  not sent; it stops with the recording. Reduced motion: no voice motion. JARVIS's own spoken replies still pulse on
+  the word boundaries the browser reports (browsers don't expose the speech audio, so there is no amplitude to use).
+- **Sound** (Projection controls → Sound, off by default, this device only, not part of presets): a very quiet low hum
+  and short tones for real events (completed, a decision needed, a refusal, an error, the emergency stop, a lesson
+  learned). Generated in the browser with Web Audio: no audio files, nothing licensed or downloaded. It fades out
+  and stays silent while JARVIS speaks or you record; previews never make a sound; a standing warning or decision
+  chimes at most once a minute; turning it off releases the audio device.
+
+### Avatar 2.5, phase 4: recovery and performance profiles
+
+- **3D recovery**: when the browser loses the GPU context, the 2D core shows at once. If the browser restores the
+  context within 8 s, the same projection resumes (open projections kept). Otherwise the 3D view is disposed (every
+  geometry, material, texture, render target, observer and listener) and built again, up to three times with
+  growing waits; open projections reopen. **Rebuild 3D view** (Projection controls) starts over at any time. If the
+  renderer couldn't load at all, it is retried when JARVIS is reachable again.
+- **Profiles**: Auto, Quality, Balanced, Performance and the new **Low Power** (lower resolution, 20 fps, 15 on a
+  phone, fewer particles, no floor reflection). Auto now has hysteresis: any change holds for at least 8 s, stepping
+  back up after a step down waits 20 s and needs two good measurements in a row. Auto switches to Low Power only when
+  the browser reports the battery at 20% or less and not charging (browsers without the Battery Status API report
+  nothing, so nothing changes there).
+- Diagnostics shows the profile and why (your setting, or Auto's reason), the last change with the measured average
+  frame time, and GPU context losses and restores. No temperatures: browsers don't report them.
+
+### Avatar 2.5, phase 3: schematic controls, the projection area, research sources
+
+- Every open projection has controls: **Expand** (takes the projection area on its own; the others step aside until
+  you collapse it), **Collapse**, **Minimise** / Restore, move to the **other side** of the figure, move **up** in the
+  order, **Inspect** (the camera goes up close; Esc returns), **Details** (one sentence from its own data and where
+  the data comes from), Pin and Close. Up to four at once, two per side; a third on one side moves to the other side
+  instead of disappearing. They glide to their new places. None of these controls approves, runs or changes anything.
+- **Projection area**: in the focus view on a computer, open projections widen the 3D canvas beside the figure; the
+  camera pulls back only as much as the canvas needs. On a phone the list moves into the focus panel.
+- **Research sources** projection: the question of your last research answer in this conversation at the centre and
+  each cited site around it (green: the research tools really saw the page; amber: cited but not seen), with the
+  number of searches and pages read. Built in the browser from that answer (sites only); nothing is fetched. Opens on
+  its own in the focus view while JARVIS researches, or say "show me the sources".
+
+### Avatar 2.5, phase 2: one event-to-visual map and personalities
+
+- **`avatar-events.js`**: the one table that says, for every state, how the figure moves, which projection the focus
+  view opens on its own, the one-off effect (the completion surge, the shield, the rebuild) and the sound cue for
+  later. The dashboard and both renderers read it; the old per-file lists are gone.
+- **Personalities** (ways of moving, never feelings): idle, listening, curious (researching, analyzing,
+  experimenting), concentrating (understanding, reasoning, writing, coding, planning, learning), explaining
+  (speaking), executing, waiting (your decision), confirming (a real completion), recovering (lifts its head as it
+  comes back), alert, and **disagreeing**. Glances happen only at rest.
+- **Disagreeing** has one real trigger: a new `permission.denied` or `egress.denied` entry in the audit log (your
+  rules or the privacy guard refused something). It shows for about 3 s (amber, never red): one small head shake,
+  the right hand up, the shield flares. Old refusals never replay on a reload. Your own "no" to an approval is not a
+  refusal.
+- Fix: a Music or system command refused by your rules now answers "Refused by your rules: …" (403) instead of an
+  internal error; a bad argument answers with the reason (400).
+
+### Avatar 2.5, phase 1: 360° inspection and projection presets
+
+- **Inspect in 360°** (focus view → Projection controls → Camera): drag or arrow keys orbit the projection, the
+  wheel, a pinch or +/− zooms, shift-drag, right-drag or two fingers pan, 0 resets. Six views (Front,
+  Three-quarter, Side, Back, Above, Close) and twelve inspection targets (helmet, reactor, each hand, shoulders,
+  chest armour, back, legs, neural network, orbitals, platform, projections). **Exit inspection** or Esc returns to
+  the resting view (a second Esc closes the focus view). Gestures are captured only while inspecting, so the page
+  scrolls and the chat types exactly as before. The camera eases while moving and jumps straight to the new view in
+  Low performance and Reduced motion modes.
+- New per-device settings: **Resting view** (Front, Three-quarter, Close), **Inspection speed** and **Diagnostics**.
+  Diagnostics shows the renderer's own numbers (measured frame time, draw calls, triangles, quality, camera); no
+  frame time is claimed while nothing is animating.
+- **Projection presets**: Standard, Cinematic, Focus, Diagnostic, Immersive (opens the focus view) and Performance.
+  Save the current settings as your own preset, then rename, update, duplicate or delete it (built-ins can only be
+  applied or duplicated). Changing a setting shows "Custom — changed from …". Stored in this browser only, validated
+  on load, at most 20; they change the look on this device and never what JARVIS can do.
+- New files `avatar3d-camera.js` (the camera rig: plain maths, no imports) and `avatar-presets.js`. No new
+  dependencies.
+
+### Music and system abilities
+
+- **Music** (`music` tool): what's playing (read), play / pause / skip / previous, play a playlist by name, Music's own
+  volume. **System** (`system` tool): battery, power, Wi-Fi on/off, free disk, macOS version, uptime and volume
+  (read, from macOS's own tools with fixed arguments); set the Mac's volume; Do Not Disturb on/off through two
+  Shortcuts you make once ("JARVIS Focus On" / "JARVIS Focus Off": macOS has no scripting command for Focus).
+- Reads never ask. Volume and Do Not Disturb always ask. Playback asks unless your policy has the new
+  **music-controls** allow rule (added to the example policy; add it to yours to skip the question).
+- **Say it in chat**: "pause the music", "skip", "play my Focus playlist", "what's playing", "how's my battery?", "set
+  volume to 30", "turn on do not disturb". Recognised by rules and run through the permission engine directly, no
+  model; changes that need your OK show the usual approval card; the reply is worded from the result.
+- Also listed in the Trust Contract and available to the planner. Tested with a stand-in for the Mac apps; the
+  scripts themselves run only on macOS.
+
+### smarter answers from your ratings
+
+- Your 👍/👎 now improves later answers: for a question similar to an earlier one (half of the meaningful words in
+  common), the answer you rated helpful joins the prompt as a reference, and one you rated unhelpful as an approach
+  not to repeat (at most one of each). Read from the conversation records on this Mac, so memory settings, exclusions
+  and `forget` apply; it joins as conversation, so the usual privacy rules decide whether a cloud model may see it.
+  The reply says "learned from an earlier answer you rated" when it happened (`learn.recalled` in the audit log).
+- Ratings are now stored against the exchange's own record id.
+
+### faster avatar loading
+
+- The figure's meshes (body, head, hands, wireframe) are built in a background module worker
+  (`avatar3d-worker.js`), so the dashboard stays responsive while the avatar loads. Measured on the cloud test
+  machine (software rendering): the longest main-thread freeze during load fell from about 25 s to about 7 s. On a
+  real GPU both are far smaller; what remains is shader compilation and cutting the armour plates. Without worker
+  support the renderer builds the meshes itself, as before.
+
+### Tier 7: autopilot (owner's choices)
+
+- **Nightly self-checks**: once a day after 03:00 local time, the routing replay, recovery drills and benchmark
+  comparison run in the simulation lab by themselves (sandboxed, no model calls).
+- **Acting on its own lessons**: a strong, uncontested lesson about a model's answers (≥60% confidence) nudges how
+  routing ranks the models already allowed for a request: −3 for one that keeps failing checks, +2 for a reliable one
+  (quality counts 10 per point, so a nudge only breaks near-ties). The router still applies every privacy, budget,
+  capability and availability rule first; in local-first mode a cloud model can never overtake a local one; a nudge
+  can't make a model appear. Every nudge is logged, listed in the Evolution center with **Undo**, and never re-applied
+  for the same lesson after you undo it. The emergency stop, tier 7 off or paused experiments clear all nudges.
+- **Daily digest**: "Done on its own" in the morning briefing.
+- Turn on from the Mac's terminal: `jarvis autonomy enable 6` then `jarvis autonomy enable 7` (stays on).
+- Changes to JARVIS's own code stay propose-only.
+
+### Tier 6: change trials
+
+- **Change trials** (`jarvis/learn/trial.py`): name a branch or commit and JARVIS checks it and your current code out
+  into two throwaway git worktrees under its data folder, runs the full test suite (results read from pytest's JUnit
+  report) and the linter in each, and records an experiment: tests newly failing, newly passing, lint, commits and
+  timings, with a recommendation. The worktrees are removed afterwards. A trial where the tests didn't run counts as
+  proving nothing. It never switches, merges, commits, pushes or edits the running code, installs anything, or calls
+  a model. Branch names are validated (no options, spaces or path tricks).
+- Needs **autonomy tier 6**, which can only be switched on from the Mac's terminal; pausing experiments stops trials.
+- **New terminal commands**: `jarvis autonomy [show | enable N | disable N | pause WHAT | resume WHAT]`,
+  `jarvis lessons`, `jarvis trial REF [--baseline REF]`. The Evolution center's lab has a "Run change trial" box.
+- Verified: a candidate that breaks a test is caught as "newly failing" and nothing is merged (tested on a throwaway
+  repository); on this repository a trial of the previous commit ran 679 vs 669 tests with no regressions.
+
+### E.V.O.L.V.E. visual and integration (phases F and G)
+
+- **Projection Director** (`avatar3d-projections.js`): eight data-driven projections built in the existing scene and
+  drawn by the existing render loop (no second renderer). Up to two at once (a pinned one stays; a data refresh
+  replaces a projection in place), the camera eases wider and the avatar turns toward them, drag rotates, pointing at
+  a node shows its label, closing disposes every geometry, material and texture. Modules: workflow map (missions,
+  steps, dependencies, approvals), software architecture (JARVIS's real modules, imports, API routes, tables),
+  knowledge network (memories, lessons, contradictions; the glow is labelled illustrative), globe (places named in
+  your conversations, matched to a built-in list; no map download, nothing looked up), data (answer checks per
+  model, verified outcomes per day, benchmark categories), timeline (real dates only; no invented forecasts),
+  security shield (what JARVIS does alone / asks / never does; pending approvals stay outside the shield, marked
+  not authorized; the emergency stop closes it), simulation (lab experiments, labelled as not real-world outcomes).
+- **Opening projections**: from what you say ("show me my architecture", "show me what you're doing", "show me
+  what you've learned", …: JARVIS opens it and describes it from its own data, no model), from Projection studio, and
+  automatically in the focus view from the real state (executing → workflow, approval or emergency stop → security,
+  experimenting → simulation, learning → knowledge). A caption bar under the avatar says where each one's data
+  comes from, with Pin and Close.
+- **Three new avatar states from real signals**: Learning (a lesson was just learned or reinforced; shown 4 s),
+  Experimenting (a lab experiment is running), Analyzing (JARVIS is reading its own data for a projection).
+- **Evolution center** (new section): last-30-day figures, lessons with evidence and confidence (confirm / reject /
+  delete), the tournament table, the simulation lab, improvements (proposals), capability discoveries, autonomy tiers
+  and pauses, and Projection studio. **👍/👎 on every answer.**
+
+### E.V.O.L.V.E. backend: continuous intelligence (phases D and E)
+
+- **Schema v9** (one migration, nothing existing changed): `outcomes`, `lessons`, `links`, `experiments`, `feedback`,
+  `autonomy`.
+- **Learning pipeline** (`jarvis/learn`), in the dashboard's existing maintenance loop. OBSERVE: new audit entries
+  become outcomes (chat replies judged by the answer check, missions by their verifier, with time, errors and
+  recovery); LEARN: fixed rules turn outcomes, your ratings and audit counts into **lessons** with evidence, a
+  confidence that grows with observations, first/last seen, contradictions (opposite conclusions about the same
+  subject → both "hypothesis") and expiry (no new evidence in 30 days → "outdated"). No model, nothing leaves the Mac,
+  lessons hold counts and names of models/tools, never your text. You can confirm, reject or delete a lesson.
+- **Feedback**: 👍/👎 per answer (`POST /api/feedback`), the main signal about quality.
+- **Autonomy tiers 1–7** with pauses for learning, experiments and initiative; a tier works only with every tier below
+  it; the emergency stop halts all of it. Tiers 6–7 are off and can't be switched on from a browser; changing
+  autonomy is Mac-only (like device pairing).
+- **Intelligence tournament**: per-model evidence (answer-check rate, median time, your ratings, benchmark categories).
+  Its recommendation is a suggestion; routing never changes by itself, and a bigger model is not assumed better.
+- **Simulation lab**: experiments with objective, hypothesis, baseline, criteria, environment, results and
+  recommendation; three kinds only — routing replay (recorded data, no model calls), recovery drills (throwaway
+  folders) and benchmark comparison (results on disk); one at a time.
+- **Initiative**: three new proposal detectors (well-supported negative lessons, missions waiting more than 3 days,
+  modules no test names), in the existing propose-only proposals; paused with "initiative".
+- **Capability discovery** (recommendations only), **self-inspection** (modules, imports, API routes and tables read
+  from JARVIS's own source), a **knowledge graph** (memories, lessons, missions, proposals, projects; near-duplicate
+  memories and contradictions linked), and real data for eight projections (`GET /api/projection/<module>`).
+- New tests (`tests/test_learn.py`), six of them added to the release gate.
+
+### HUD on every section page
+
+- **Section pages** (Command center, Missions, Decisions, Memory, Systems, Workspace) open with a HUD header: a large
+  title with a section code, a scale line, and real stat tiles (missions active / queued / needing you / completed /
+  failed; decisions waiting and how many are high-risk or send data out; memories, to confirm, records, memory on/off;
+  systems OK and needing attention). Command center and Systems add live gauges for CPU, memory and health checks
+  passing. Unknown values show "—". Pages use the full 1180 px width and sit flat (the 3D lean is Home only).
+- **Decisions are gold** instead of cyan (the owner's palette: gold, silver, green, red).
+- The model response trace fills from the right, so the newest call is always at the right edge.
+
+### HUD: activity, system readouts, missions and decisions
+
+- **Recent activity**: an icon ring per kind of event (problems in red, model events in silver), an **activity pulse**
+  (real audit events per 5 minutes over the last hour, with the count), and new entries slide in.
+- **System readouts around the projection** (desktop): bracketed HUD readouts with a turning status ring and a lit
+  connector toward the figure, with a light travelling along it.
+- **Missions**: a progress ring per mission on Home (real steps done of total; none when there are no steps).
+- **Decisions**: a pulsing risk ring (red for high-risk) and how long it has really been waiting. No countdown:
+  approvals have no deadline, so none is shown.
+- All of it holds still in Low performance and Reduced motion.
+
+### HUD module: Systems panel, 3D depth (Iron Man direction)
+
+- Chosen with the owner: Iron Man HUD direction, live visuals, 3D depth, HUD detail; constant motion in Normal
+  effects, none in Low performance or Reduced motion. Started with the Systems panel.
+- **Systems is a HUD module**: three radial gauges (CPU load per core, memory used, models online) with tick rings
+  and turning inner rings, values from real telemetry and model availability ("—" and no arc when unknown); a
+  **model response-time trace** of the recent real model calls from the audit log (cloud in gold, local in silver);
+  compact rows for health, missions, Claude usage and spend. Built once and updated in place, so the rings never jump.
+- **3D depth**: on wide screens the side columns lean toward the projection, with a slight mouse parallax in Normal
+  effects. The perspective lives on each column (not the page grid), so the focus view's projection stays in place.
+
+### automatic Ask / Research / Do
+
+- **No more mode buttons** (owner's choice): JARVIS works out what a message is (`jarvis/intent.py`). Instant rules on
+  this Mac handle the obvious cases ("remind me…", "latest news on…", "how do…"); only when they are unsure does one
+  tiny call go to a model **on this Mac** (`local_only`, never the cloud, free). Anything unclear or any failure is
+  answered as a question, which takes no action and sends nothing to the web.
+- **One tap before anything outward**: research ("Looks like it needs the web…") and tasks ("Looks like a task: JARVIS
+  drafts a plan, and nothing runs until you approve it") show *Research it / Plan it · Just answer · ✕* above the bar;
+  Esc closes it. Questions are answered straight away. Tasks still only become a plan that waits for approval, and
+  research keeps its existing consent rules.
+- New endpoint `POST /api/route` (same authentication and request checks as every other API call).
+
+### UI 5: frosted glass, short activity, docked command bar (owner's spec)
+
+- Chosen with the owner (Vision Pro calm + Marvel JARVIS fine lines + HUD structure, subtle glow, balanced layout,
+  moderate density): **rounded frosted-glass panels**, glow only on edges and titles, body text plain white, gold
+  first with silver secondary, green for healthy and red only for real problems. No blur in Low performance or
+  Reduced motion (solid dark glass instead).
+- **Recent activity on Home reads in short lines** ("Reply · Sonnet · 5.5 s", "Answer checked ✓"); the full log keeps
+  every detail, and hovering a line shows it.
+- **Bottom area**: "What matters now" is a slim banner at the top of the centre column; suggestions are one row of
+  small chips (swipeable on phones); the **command bar is docked at the bottom** — the field fills it, Ask / Research /
+  Do and Quick / Balanced / Deep are small pills inside it, Send at the end.
+- Replaces the UI 3 panel look and the UI 4 see-through draft (meters and the wider command center stay).
+
+### UI 3: holographic glass panels
+
+- **Panels** are lit glass that matches the projection: a gold hairline edge, depth and inner glow, a faint scan
+  texture, brighter corner brackets, a divider under each header, and a light that catches the top edge now and
+  then (Normal effects only; still in Low performance and Reduced motion).
+- **Meters** where a real ratio exists: models online, spend against the monthly budget, and CPU load, memory and
+  storage in the command center. Unknown values show no meter. Styled through coarse data attributes, no inline
+  styles (CSP unchanged).
+- **Command center**: the open system spans the full width, its readings in two columns on wide screens.
+- **Composer, mode controls and navigation** follow the same language: a lit console input with a focus glow, a gold
+  Send, glowing selected tabs and modes, and a glowing current section (a top bar on phones).
+
+### Avatar 3D, step 5: chamber, controls, stage 5, quality presets
+
+- **Projection chamber** (`avatar3d-environment.js`): platform markers and a turning segmented ring; orbital systems
+  around the knees (stage 1), diagonally around the torso (stage 2), around the chest (stage 3) and a counter-rotating
+  pair above the head (stage 5), their speed following the real activity level; a depth grid and projection boundary
+  (stage 3); ground light that follows the reactor, a soft contact shadow and a faint haze.
+- **Floating panels** in the focus view only, with the same real status lines as the systems bar (intelligence,
+  missions, health: counts and states, never message text or memories).
+- **Projection controls** in the focus view (saved per device with the display settings): intensity, quality
+  (Auto / High / Balanced / Low), particles, animation, reactor, orbit speed, orbitals on/off, environment holograms
+  on/off, motion; a list of visual modules and the stage each needs; **state preview** marked "PREVIEW — not live",
+  at most 10 s, ended by Esc or by any real alert.
+- **Quality presets**: High (sharper, wireframe, reflection), Balanced, Low (no reflection pass, no aura shell, fewer
+  particles); Auto starts Balanced and steps down when frames are slow, up when there is room. Every shader is
+  compiled at startup so a change never stalls an animation. Panels and settings redraw only when they change.
+- **Evolution: five stages** — Foundational, Advanced, Intelligence, Evolved, and **Signature Projection** (every one
+  of the 19 milestones verified, including 30 days reliable and 100 verified missions). Definitions v4 (audited);
+  the displayed stage can be capped at any earned stage on this device.
+
+### Avatar 3D, step 4: materialise and dematerialise
+
+- **Reconstruction particles** (`avatar3d-particles.js`): each particle belongs to a point on the body. During the
+  startup sequence and any reconstruction they stream in from a cloud over the platform and land as the build edge
+  reaches them; during the real emergency stop they lift off and disperse as the body erases from the head down.
+  Drawn only while a sequence runs (2,400 on desktop, 800 on phones).
+- **Startup order** now follows the brief: platform, scanning ring (riding the build edge), particles gather, legs,
+  torso and armour, head, then the circuitry lights, the sensors wake, the reactor ignites and the orbitals
+  synchronise.
+- **Dematerialisation on the real emergency stop** (Normal mode only): the figure leaves, the platform and orbitals
+  stay; releasing the stop rebuilds it. The 3D renderer reports these phases to the state machine (`lifecycle`).
+
+### Avatar 3D, step 3: the reactor and the neural network
+
+- **Reactor** (`avatar3d-reactor.js`), added in depth around the existing rings, rotor, hex cage and arcs: a plasma
+  core sphere, an inner ring of twelve segments, two tilted gyroscope rings (stage 2), eight radial energy pathways
+  with pulses travelling outward, six mechanical supports locking it into the chest plates (dark alloy with lit
+  edges), a swirl of energy particles (not on phones), and a golden confirmation ring that expands only when a task
+  really completes. Every level is the real reactor level of the current state.
+- **Neural network** (`avatar3d-neural.js`): nodes at the head, neck, sternum, shoulders, elbows, wrists, hips, knees
+  and ankles, linked from the reactor to the head, hands and feet; stage 3 adds branches and more nodes. Pulses run
+  along the links with the shared flow; brightness follows the real thinking level, and the reactor-to-limb links
+  light only while a mission is really executing, coding or verifying. It bends with the arms and turns with the head.
+
+### Avatar 3D, step 2: helmet, hands, layered armour, gold identity
+
+- **Gold identity restored** (owner's brief): warm gold, gold-white and amber for every state; red only for a genuine
+  error; teal removed from the projection, the dashboard and the background walls (dashboard tokens back to gold).
+- **Faceless adaptive helmet** replaces the sculpted face: a smooth faceplate with a centre keel, a recessed visor
+  band with raised rims, framed by the dark alloy shell. The visor holds a sensor array (nine sensors) and an
+  internal scanner: dim when idle, brighter when listening and speaking, a working pattern driven by the real
+  thinking level, the scanner while researching or verifying, a shutter for blinks and narrowing, warning and
+  error colours only from those states.
+- **Articulated hands**: their own fine mesh with four three-segment fingers and a thumb, joint knuckles, a heel
+  and wrist pistons; per-finger plating with gaps at every joint; fingers curl by the real pose (resting, working,
+  open on success) and flex slightly in Normal mode only; the hands turn naturally at the wrist.
+- **Layered armour**: pauldrons over the shoulder plates, upper-arm, hip, thigh and knee plates added to chest,
+  abdomen, forearm and shin; engraved micro-panels and small sensor points inside every plate; elbow and knee
+  hubs and wrist rings; a fine holographic wireframe over the body from stage 2 (not on phones).
+- Fixed: the joints now carry local changes, so plates really vent and fingers really curl on bent arms.
+
+### Avatar 3D, step 1: module split and the central state machine
+
+- **Central state machine** (`static/avatar-state.js`): every state the projection shows now passes through one
+  place, with priorities, minimum display times, a 4 s success, a fall-back to idle when activity stops being
+  reported, lifecycle phases (dormant, materializing, dematerializing) and flagged 10 s previews. Unit-tested in Node.
+- **Queued missions no longer look active**: they show the idle look and a "Queued — nothing is running yet" card.
+- `JarvisAvatar` gains `previewState`, `endPreview`, `profile`, `preview` and `lifecycle`.
+- The 3D renderer is split into modules: shaders and geometry move out of `avatar3d.js` (1,372 → 916 lines);
+  dead torso helpers removed. No visual change.
+
+### Avatar 3.5.2: a refined face
+
+- The face is reworked to read as an elegant sculpted mask rather than a crude one: almond-shaped eyes with lifted
+  outer corners, a slimmer nose with a soft tip, higher cheekbones with soft hollows, a cleaner jaw and chin, and a
+  fine drawn mouth line in place of sculpted lips (which broke up at this mesh resolution).
+- Lit as a form: soft wrap light and an even fill on the face, with the hologram rim softened there so small
+  features no longer get cartoon outlines; no panel grid across the face.
+- Fixed a dark patch under the nose (the helmet plate behind the head showed through; plates now draw before the
+  glowing body), a line down the forehead (the rear crest seam showing through), and a streak from the inner spine
+  reaching into the head. The helmet now sweeps behind the face instead of capping the forehead.
+
+### Avatar 3.5.1: the eyes, made visible
+
+- Glances now move the eye glow with the head (the shift was too small to see); a horizontal scan line with a moving
+  light crosses the eyes while researching or verifying.
+- On a genuine error the eyes turn deep red and narrow (the white-hot centre is dropped); the hexagon alert shield no
+  longer covers the face, so the eyes stay visible during warnings and errors.
+- `JarvisAvatar.eyes` (read-only) reports what the eyes show: glow level, openness (blinks, narrowing), glance offset,
+  scan and speech pulse, used by the browser checks.
+
+### Avatar 3.5: sculpted face
+
+- **A face, sculpted subtly in the light body** (owner's choice, replacing the smooth head): brow ridge, eye
+  sockets, cheekbones, nose bridge and tip, lips, chin and jaw line. The head is meshed at a finer resolution
+  than the body so the features hold up close.
+- **Eyes that glow with the real state**: brighter while listening and speaking, dimmer when idle, red only on a
+  genuine error; they blink, narrow on warnings and glance (from the existing idle-liveliness logic); a scan light
+  sweeps across them while researching or verifying.
+- **Speaking**: the face brightens on each spoken word, from the browser's real word-boundary events; nothing moves.
+- The aura shell is no longer drawn in the floor reflection (lighter frames); the head crest line no longer runs
+  down the face.
+
+### Avatar 3.4: character detail and alloy armour
+
+- **More detail, growing with evolution** (rich now, maximum at stage 4): helmet crest ridge, swept rear fin and temple
+  pods; finger grooves, knuckle points, forearm bands and a double wrist band; knee caps, thigh and shin lines;
+  glowing soles that light the floor; fine circuit traces with travelling pulses (a finer second layer from stage 3);
+  energy veins spreading from the core, pulsing with the reactor. The face stays smooth.
+- **Inner energy**: a faint skeleton and nerve network inside the translucent body that brightens only while JARVIS
+  is really thinking; it bends with the arms and the head.
+- **Particles and aura**: energy wisps peeling off the shoulders and head (Normal mode only), and a soft outline glow
+  around the whole figure (not on phones).
+- **Dark alloy armour, key plates** (owner's choice): chest (two plates around the core), abdomen, shoulders,
+  forearms, shins and a helmet shell over the crown and back. Cut from the figure's own surface so they hug the sleek
+  body, with smooth borders and glowing orange seams; they assemble during the startup sequence.
+  - Seams brighten while JARVIS is really working; plates part slightly to vent light during coding, executing and
+    reasoning (Normal mode only).
+  - A hexagon energy shield flares over the body on a real error or warning, and stays faint while an error lasts.
+
+### Avatar 3.3: gestures, live data wall, screen wall
+
+- **Gestures from real states only**: speaking opens the right hand toward you, coding and executing raise both hands
+  to work (a small alternating motion in Normal), waiting for approval raises the right hand, a completed mission
+  opens both hands; every other state rests. Arms bend at shoulder and elbow in the vertex shader; the suit seams and
+  panels stay attached. The unposed wireframe overlay and the arm energy tubes are removed.
+- **Live data wall**: the background streams now follow real signals: the orange stream is CPU load, the teal stream
+  memory use, the upper stream lights and pulses only while a model is answering, the left network brightens with
+  active missions. Unavailable values stay at a resting glow (never invented).
+- **Screen wall in the focus view**: seven glowing panels curving around the figure, like a command-centre video wall
+  (decoration only; its scan light stops in Low performance and Reduced motion; hidden on phones). The backdrop is
+  more opaque so the dashboard no longer shows through.
+- The focus view's evolution button no longer clips its label.
+
+### Avatar 3.2: athletic light body, suit contours, warmer dashboard
+
+- **Sculpt refined**: V-taper (lats, trapezius, deltoids), chest, abdominal wall, biceps and forearms, quadriceps,
+  knees, closed hands and a swept-back faceless head.
+- **Glowing suit contours** drawn in the shader along the body (sternum, collar, chest, flanks, waist, hip lines,
+  elbows, wrists, knees, ankles, leg seams, spine, crest over the head) with energy rising along them; they brighten
+  with each verified stage. The square panel grid on the body is toned down.
+- **More sparkles** (1600 on desktop, 600 on phones), some teal, a few brighter.
+- **Dashboard palette follows the figure**: headings and identity accents warm light-orange, healthy status teal-green
+  (all text still meets WCAG AA); the background data wall is brighter.
+
+### Avatar 3.1: light-body figure (from the owner's reference)
+
+- **Sleek figure made of light** replaces the armoured robot (owner feedback: "looks like a toy robot", "too much
+  gold/orange"): one smooth humanoid sculpted as a distance field in code and meshed once at load, glowing orange
+  with teal-green hands, fine surface panelling, flow lines along the body and sparkles drifting off the surface.
+- The metal armour, studio reflections and scene lights are gone (lighter startup on the Intel Mac); the reactor now
+  sits in the chest of the figure; halo, crown, thought constellation, aura, satellites, surge and startup assembly
+  are kept and re-placed around the new body.
+- **Floor light strips** (orange and teal arcs) on the platform, and a faint **data wall** behind the dashboard:
+  flowing orange/teal ribbons and network graphs (still in Low performance, Reduced motion and Subtle projection).
+- State colours re-tuned to the orange family; red stays reserved for genuine errors.
+
+### Avatar 3D (early step): real armour, startup assembly, live data aura
+
+- **Lit metal armour over the hologram** (owner's choice: sleek cinematic armour, metal + hologram): polished gold
+  and graphite plates (chest, abdomen, ribs, collar, layered shoulders, arm guards, helm with crest and guards) with
+  glowing seams; reflections from a small studio generated in code (no downloaded assets); key and rim lights and a
+  reactor light that follows activity; a gold surround framing the reactor.
+- **Startup assembly**: platform powers on, the hologram body forms, plates fly in and lock, the reactor ignites last,
+  the HUD powers up. Once per browser session, Normal mode only; any key or click skips it.
+- **Live data aura**: four bands filled by real CPU load, memory use, active missions and decisions waiting (hidden
+  when unavailable); explained in the focus view.
+- **Thought constellation**: one node per real stage of the current answer, linked in order, fading after the reply.
+- **Reactor surge**: a gold shockwave across the dashboard when a mission really completes (not in Low performance or
+  Reduced motion).
+- Free models were researched: no permissively licensed sleek full-body armour exists; the closest full-body pack
+  forbids redistribution, so the armour is sculpted in code.
+
+### Avatar 2.2: cinematic rendering
+
+- **Bloom**: a small post-processing pipeline written for JARVIS (no extra library): bright edges and cores glow,
+  with a slight lens fringe and fine grain. Falls back to direct drawing if the device can't do it.
+- **Machined armour**: procedural panel seams and fine detail lines on every armour surface, with light running
+  through them; far faces are drawn dimmer, so the figure reads in depth rather than as a flat glow.
+- **Gold-white grading**: darker gold interior, crisp pale-gold and white edges, much less orange.
+- **Sculpted faceless helm**: one forward-sloping faceplate with a recessed sensor band and a thin centre ridge
+  (the brow/cheek frame that read like a face is gone); a V-tapered torso; an inner frame with circuitry seen
+  through the armour; calmer shoulders and platform.
+
+### Avatar 2.1: livelier projection, more ways to evolve
+
+- **More alive at rest** (owner's choice): glances toward the message box or the side panels every ~6–11 s,
+  mechanical sensor blinks, sparks circling the optical sensors, deeper breathing. Only in the resting look; any
+  real activity takes over at once.
+- **Helm**: taller crest, forehead and temple plates, hexagonal sensor housings; sensors sweep while researching,
+  pulse while reasoning and narrow on warnings.
+- **Reactor**: hex frame and spokes; a distinct pattern per state (calm, counter-spin, scan, beat, surge, stutter).
+- **Body**: shoulder and elbow joint rings and actuators that work while executing, neck cables, side vents.
+- **Environment**: denser neural lattice, light shafts, a polar floor grid and a base glow (all behind the figure).
+- **New milestones** (definitions v3, 19 in all): benchmark pass (≥80% of scored tasks), 5 / 25 / 100 verified
+  missions, `jarvis doctor` all green and `jarvis mac check` passed (within 30 days), 30 days reliable (no health
+  failure or failed recovery drill). `jarvis doctor`, `jarvis mac check` and `jarvis drill` now record their
+  outcome for this. Stage thresholds: 5 / 10 / 15 milestones.
+
+### Avatar 2.0: living intelligence projection
+
+- **Faceless helm** with optical sensors, layered visor, internal gear rings and a visor scan line (no mouth).
+- **Reactor assembly**: independent rings, a rotor and discharge arcs around the chest core; brightness follows
+  real activity and pulses with each spoken word the speech engine reports.
+- **Living movement**: breathing, head that attends to the message box, scans while researching and tilts while
+  reasoning; arm actuators; smooth ~1 s transitions.
+- **Environment**: neural lattice (more of it at higher stages), research data streams, vertical scan ring,
+  platform energy pulses, rotating platform geometry, and eight system satellites showing live status.
+- **New states from real signals**: listening while you type, speaking, warning (amber), recovery, halted,
+  unknown; red only for a failed task, a lost connection, or a failing database/audit log.
+- **Projection focus view** (click or Enter on the projection; Esc to leave), clickable satellites, a task hologram
+  with the real current step, **Projection intensity** setting, and an **Evolution record** with a per-device
+  display stage.
+- **Evolution v2**: new stage names, versioned definitions, an earned stage holds 7 days after a capability stops
+  verifying (owner's choice), all changes audited.
+- Fix: the floor reflection now turns with the figure; satellite picking accounts for the reflection pass.
+
+### Armoured avatar: sentinel helm with knight elements
+
+- New helmet (owner's choice: sentinel faceplate + knight elements): crest blade over the crown, angled V-brow,
+  two glowing eye slits that brighten while JARVIS speaks or writes, nose guard, cheek plates with vents, jaw
+  plate, swept side guards with sensor discs. Faceted plates for a forged-armour look; calm, slow movement.
+- Full armour from the start: layered collar, cuirass with pectoral and abdominal plates, three-lame pauldrons,
+  bracers and elbow guards. Evolution now adds only light and energy (glowing seams, circuits, crest energy,
+  halo, crown of light), still unlocked only by verified milestones. The 2D fallback follows the same rule.
+
 ## 0.19.4 — Careful answers, premise and contradiction checks, nothing left out (owner-approved merge of `smarter-v2`)
 
 **Evidence, and its gap:** merged commit bb6d8b3. Core + extended on exactly bb6d8b3: 109 of 110 runs, all 22 scored
