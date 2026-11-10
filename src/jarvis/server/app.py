@@ -220,6 +220,11 @@ def _content_length(h: BaseHTTPRequestHandler) -> int:
     return length
 
 
+def _benchtest_status(k) -> dict[str, Any] | None:
+    from .. import benchtest
+    return benchtest.status(k)
+
+
 def _update_status(k) -> dict[str, Any] | None:
     from .. import update
     s = update.status(k.home)
@@ -413,6 +418,12 @@ class Dashboard:
                     self.kernel.audit.record("push.error", error=f"{type(exc).__name__}: {exc}"[:300])
             self._stop.wait(self._poll_s)
 
+    def benchtest_tick(self) -> str | None:
+        """A benchmark you asked for starts when the Mac is idle (and for "tonight", in quiet hours)."""
+        from .. import benchtest, proactive
+        quiet = proactive.Schedule.from_config(self.kernel.model_config.proactive).quiet(datetime.now())
+        return benchtest.tick(self.kernel, quiet=quiet)
+
     def _report_update(self) -> None:
         from .. import update
         try:
@@ -599,6 +610,7 @@ class Dashboard:
                 self.maybe_briefing()
                 self._evolution = self.evolution()
                 self.learn_cycle()
+                self.benchtest_tick()
             except Exception as exc:
                 if self._stop.is_set():
                     return  # shutting down: the database may already be closed
@@ -1087,6 +1099,7 @@ class Dashboard:
                        "devices": self.remote.devices.list() if self.remote else []},
             "touch_id": {"enabled": self.mac.enabled(), "keys": self.mac.keys()},
             "update": None if device else _update_status(k),
+            "benchtest": None if device else _benchtest_status(k),
             "briefing": {"last_date": _last_briefing(k)},
             "voice": self.voice.status(),
             "telemetry": self.telemetry.snapshot(),
@@ -1623,6 +1636,19 @@ class Dashboard:
             k.audit.record("backup.created", actor=actor, file=r.path.name, bytes=r.bytes, verified=r.verified)
             self._health = self.check_health()
             return {"ok": True, "file": r.path.name}
+        if path == "/api/benchtest":   # Mac only (LOCAL_ONLY): you ask; it runs when the Mac is idle
+            from .. import benchtest
+            try:
+                benchtest.request(k, by=actor, when=str(body.get("when", "tonight")), set_=str(body.get("set", "hard")),
+                                  repeat=int(body.get("repeat", 5)))
+            except (ValueError, TypeError) as exc:
+                raise HttpError(400, str(exc)) from None
+            self.benchtest_tick()
+            return benchtest.status(k)
+        if path == "/api/benchtest/cancel":
+            from .. import benchtest
+            benchtest.cancel(k, by=actor)
+            return benchtest.status(k)
         if path == "/api/update/check":   # Mac only (LOCAL_ONLY): fetches the branch, changes nothing
             from .. import update
             try:

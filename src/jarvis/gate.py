@@ -46,6 +46,7 @@ SECURITY: dict[str, tuple[str, list[str]]] = {
         "test_trial::trials_need_tier_6_from_the_terminal", "test_trial::refs_are_validated",
         "test_update::update_and_backup_routes_are_mac_only_and_update_needs_touch_id",
         "test_update::start_refuses_without_the_mac_service_or_from_jarvis",
+        "test_benchtest::only_you_can_ask_and_inputs_are_checked", "test_benchtest::routes_are_mac_only",
         "test_security_phase1::no_code_reaches_a_tool_without_the_permission_gateway",
         "test_security_phase1::mac_check_calls_only_read_actions",
         "test_security_phase1::every_server_path_that_runs_a_tool_uses_the_gateway",

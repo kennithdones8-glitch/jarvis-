@@ -1177,6 +1177,27 @@ function updateBlock(st) {
       } }, "Update") : null));
 }
 
+// "Test this version": the hard benchmark set ×5 on a throwaway folder, local models only, started when the Mac is idle
+// (tonight = in your quiet hours). The verdict compares it with the last run of the same tasks on another commit.
+const BENCH_WORD = { MERGE: "Better: meets the merge rule", "DON'T MERGE": "Not better", INCONCLUSIVE: "Too close to call",
+  "FIRST RUN": "Baseline recorded", "NO RESULT": "No result" };
+function benchBlock(bt) {
+  if (!bt) return null;
+  const r = bt.request, last = bt.last;
+  return h("div", { class: "updates" },
+    r ? h("div", { class: "ro" }, h("span", {}, bt.running ? "Testing now…" : r.when === "tonight" ? "Waiting for tonight (quiet hours, Mac idle)" : "Waiting for the Mac to be idle"),
+      h("b", {}, `${r.set} ×${r.repeat}`)) : null,
+    last ? h("div", { class: `ro ${last.verdict === "MERGE" ? "ok" : last.verdict === "DON'T MERGE" ? "bad" : ""}` },
+      h("span", {}, `Last test · ${clock(last.finished)}`),
+      h("b", {}, `${BENCH_WORD[last.verdict] || last.verdict}${last.scored ? ` · ${last.passed}/${last.scored} passed` : ""}`)) : null,
+    last && last.reasons && last.reasons.length ? h("div", { class: "d-why" }, last.reasons.join(" · ")) : null,
+    last && last.fixed && last.fixed.length ? h("div", { class: "d-why" }, `Fixed: ${last.fixed.join(", ")}`) : null,
+    last && last.new_failures && last.new_failures.length ? h("div", { class: "d-why" }, `New failures: ${last.new_failures.join(", ")}`) : null,
+    h("div", { class: "row mt" }, r ? h("button", { class: "btn btn-ghost btn-sm", type: "button", onclick: () => act("/api/benchtest/cancel", {}) }, bt.running ? "Stop the test" : "Cancel")
+      : [h("button", { class: "btn btn-sm", type: "button", onclick: () => act("/api/benchtest", { when: "tonight" }) }, "Test tonight"),
+         h("button", { class: "btn btn-ghost btn-sm", type: "button", onclick: () => act("/api/benchtest", { when: "now" }) }, "Test now")]));
+}
+
 function renderSystems(d) {
   const m = d.models || { providers: [], budget: {} };
   const lights = [];
@@ -1229,6 +1250,7 @@ function renderSystems(d) {
       h("button", { class: "btn btn-ghost btn-sm", type: "button", onclick: () => act("/api/health/check", {}) }, "Check again"),
       h("button", { class: "btn btn-ghost btn-sm", type: "button", onclick: () => act("/api/backup/now", {}) }, "Back up now")),
     onPhone() ? null : part("Updates"), onPhone() ? null : updateBlock(d.update),
+    onPhone() ? null : part("Test this version"), onPhone() ? null : benchBlock(d.benchtest),
     h("div", { class: "lights" }, lights.length ? lights : h("div", { class: "empty" }, "No models configured")),
     part("Setup"), touch, phone,
     part("Configuration"),
