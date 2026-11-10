@@ -1472,7 +1472,7 @@ class Dashboard:
                         "/static/avatar3d-worker.js", "/static/avatar3d-camera.js", "/static/avatar-presets.js",
                         "/static/avatar-events.js", "/static/avatar-sound.js",
                         "/static/avatar3d-transform.js", "/static/chess.js", "/static/chess-worker.js",
-                        "/static/games.js", "/static/games-worker.js", "/static/racer.js"):
+                        "/static/games.js", "/static/games-worker.js", "/static/racer.js", "/static/racer.css"):
             ctype = "text/javascript" if url.path.endswith(".js") else "text/css"
             return self._send(h, 200, (STATIC / url.path.rsplit("/", 1)[1]).read_bytes(), f"{ctype}; charset=utf-8")
         if url.path == "/static/vendor/three.module.min.js":  # Three.js r160, served from this Mac (MIT)

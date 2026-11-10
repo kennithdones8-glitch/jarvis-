@@ -37,14 +37,22 @@
 
 ### Games: Kerbside Grand Prix, a race against JARVIS
 
-- **Race** joins the Games page (◆ tab): a top-down, three-lap race on the Kerbside Circuit against JARVIS (#1) and
-  two other cars. Five red lights, then go; grass and gravel cost you speed, cars bump each other. A timing tower,
-  lap times, a minimap and "Wrong way" warnings; at the flag, your place, each lap and the full classification.
-  Easy, Medium and Hard set how fast JARVIS and the others drive. Arrow keys or WASD (P pauses); on an iPhone or
-  iPad, on-screen steering, brake and gas pads. Leaving the Games page pauses the race.
-- Laps count from continuous progress round the track, so reversing over the line never scores one (test). Best lap,
-  best race and wins are kept per level in this browser only. Written for JARVIS (`static/racer.js`): no library,
-  model or network; the CSP is unchanged.
+- **Race** joins the Games page (◆ tab): a top-down, three-lap race against JARVIS (#1) and two other cars. Five red
+  lights, then go; grass, gravel and water cost you speed, cars bump each other. A timing tower, lap times, a
+  minimap and "Wrong way" warnings; at the flag, your place, each lap and the full classification.
+- **Three tracks**, picked on the start screen: Kerbside Circuit (parkland, a hairpin), Harbour Loop (long straights
+  by the water, one chicane) and Ridge Hairpins (switchbacks among the rocks). A test checks no track runs into itself.
+- **Nitro.** The meter under your speed fills as you drive on the tarmac; hold Space (or the NOS pad) for about
+  2.5 seconds of extra speed. On Medium and Hard the other drivers use it on straights too; on Easy they don't.
+- **Ghost car.** A see-through replay of your best flying lap (lap 2 or 3, never the standing start) on each track,
+  from lap 2 on. A faster lap replaces it at once. On/off on the start screen.
+- Easy, Medium and Hard set how fast JARVIS and the others drive. Arrow keys or WASD, P pauses; on an iPhone or iPad,
+  on-screen steering, brake, gas and NOS pads. Leaving the Games page pauses the race.
+- Laps count from continuous progress round the track, so reversing over the line never scores one (test). Best lap
+  and best race (per track and level), wins and ghosts are kept in this browser only. Written for JARVIS
+  (`static/racer.js`, `static/racer.css`): no library, model or network; the CSP is unchanged.
+- **Standalone copy:** `python games/kerbside/make_zip.py` builds `kerbside-grand-prix.zip` (open `index.html`, no
+  JARVIS or internet needed), from the same game files.
 
 ### Games: Connect Four, Checkers, and a chess coach
 

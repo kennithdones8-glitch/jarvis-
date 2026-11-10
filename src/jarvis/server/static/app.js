@@ -1550,14 +1550,12 @@ function renderCK() {
 function renderRace() {
   const R = window.JarvisRacer, el = gameBody();
   if (!el || el.querySelector(".race-stage")) return;
-  const status = h("p", { class: "chess-turn", role: "status", "aria-live": "polite" }, "Three laps against JARVIS and two other cars.");
-  const stage = R.mount({ onStatus: (t) => { status.textContent = t; } }), lv = R.level();
+  const status = h("p", { class: "chess-turn", role: "status", "aria-live": "polite" }, "Pick a track and a level, then start.");
+  const stage = R.mount({ onStatus: (t) => { status.textContent = t; } });
   fill(el, h("div", { class: "race" }, stage, h("div", { class: "chess-side" }, status,
-    h("div", { class: "row" }, h("label", {}, "JARVIS drives ", h("select", { onchange: (e) => R.setLevel(e.target.value) },
-      Object.keys(R.LEVELS).map((v) => h("option", { value: v, selected: v === lv ? true : null }, v[0].toUpperCase() + v.slice(1)))))),
     h("div", { class: "row" }, h("button", { class: "btn btn-sm", type: "button", onclick: () => R.restart() }, "Restart race")),
-    h("p", { class: "d-why" }, "Arrow keys or WASD to drive, P to pause. On a phone or iPad, use the pads on the track."),
-    h("p", { class: "d-why" }, "The race runs in this browser: no model, nothing sent anywhere. Best times are saved here."))));
+    h("p", { class: "d-why" }, "Three tracks: Kerbside Circuit, Harbour Loop and Ridge Hairpins. Arrow keys or WASD to drive, Space for nitro, P to pause. On a phone or iPad, use the pads on the track."),
+    h("p", { class: "d-why" }, "Your ghost replays your best flying lap on each track. The race runs in this browser: no model, nothing sent anywhere. Best times and ghosts are saved here."))));
 }
 function openGames() {
   if (!GM.loaded) { gamesLoad(); GM.loaded = true; }
