@@ -1198,6 +1198,136 @@ function benchBlock(bt) {
          h("button", { class: "btn btn-ghost btn-sm", type: "button", onclick: () => act("/api/benchtest", { when: "now" }) }, "Test now")]));
 }
 
+// ---------------------------------------------------------------- Chess with JARVIS
+// The rules and the engine are in chess.js (written for JARVIS; nothing downloaded, no model, no network). JARVIS
+// thinks in a Web Worker so the page never freezes. The game is saved in this browser only (localStorage), as the
+// list of moves; nothing is sent to the server and nothing changes JARVIS's state.
+const CHESS_KEY = "jarvis-chess";
+const GLYPH = { k: "\u265A", q: "\u265B", r: "\u265C", b: "\u265D", n: "\u265E", p: "\u265F" };
+const PIECE_NAME = { k: "king", q: "queen", r: "rook", b: "bishop", n: "knight", p: "pawn" };
+const CH = { moves: [], you: "w", level: "medium", sel: -1, promo: null, thinking: false, worker: null, ask: 0 };
+function chessLoad() {
+  try { Object.assign(CH, JSON.parse(localStorage.getItem(CHESS_KEY) || "{}"), { sel: -1, promo: null, thinking: false }); } catch { /* fresh game */ }
+  if (!Array.isArray(CH.moves)) CH.moves = [];
+}
+function chessSave() {
+  try { localStorage.setItem(CHESS_KEY, JSON.stringify({ moves: CH.moves, you: CH.you, level: CH.level })); } catch { /* private window */ }
+}
+// replay the saved moves from the start: the position, the move list (SAN) and every position's key (repetition)
+function chessReplay() {
+  const C = window.JarvisChess;
+  let s = C.parseFEN(C.START);
+  const sans = [], keys = [C.positionKey(s)];
+  const good = [];
+  for (const u of CH.moves) {
+    const m = C.legalMoves(s).find((x) => x.from === u.from && x.to === u.to && (x.promo || null) === (u.promo || null));
+    if (!m) break;   // a damaged save: keep what was legal
+    sans.push(C.san(s, m)); s = C.make(s, m); keys.push(C.positionKey(s)); good.push(u);
+  }
+  CH.moves = good;
+  return { s, sans, keys, last: good[good.length - 1] || null };
+}
+function chessPlay(u) {
+  CH.moves.push(u); CH.sel = -1; CH.promo = null; chessSave(); renderChess();
+}
+function chessThink() {
+  const C = window.JarvisChess;
+  const g = chessReplay();
+  if (C.status(g.s, g.keys).over || g.s.turn === CH.you || CH.thinking) return;
+  if (!CH.worker) {
+    try { CH.worker = new Worker("/static/chess-worker.js"); } catch (e) { note(`Chess engine couldn't start: ${e.message}`); return; }
+    CH.worker.onmessage = (e) => {
+      if (e.data.id !== CH.ask) return;   // an answer to a position that has since changed (undo, new game)
+      CH.thinking = false;
+      if (e.data.move) chessPlay(e.data.move); else renderChess();
+    };
+  }
+  CH.thinking = true; CH.ask += 1;
+  CH.worker.postMessage({ id: CH.ask, fen: C.toFEN(g.s), level: CH.level });
+  renderChess();
+}
+function chessNew(color) {
+  CH.ask += 1; CH.thinking = false;
+  CH.moves = []; CH.sel = -1; CH.promo = null;
+  CH.you = color === "random" ? (Math.random() < 0.5 ? "w" : "b") : color;
+  chessSave(); renderChess(); chessThink();
+}
+function chessUndo() {
+  CH.ask += 1; CH.thinking = false;
+  const g = chessReplay();
+  // take back to your last turn: JARVIS's reply (if any) and your move
+  let n = g.s.turn === CH.you ? 2 : 1;
+  CH.moves = CH.moves.slice(0, Math.max(0, CH.moves.length - n));
+  if (CH.moves.length === 0 && CH.you === "b") { chessSave(); renderChess(); chessThink(); return; }
+  CH.sel = -1; CH.promo = null; chessSave(); renderChess();
+}
+function chessClick(sq) {
+  const C = window.JarvisChess;
+  const g = chessReplay();
+  if (CH.thinking || g.s.turn !== CH.you || C.status(g.s, g.keys).over) return;
+  const legal = C.legalMoves(g.s);
+  if (CH.sel >= 0) {
+    const options = legal.filter((m) => m.from === CH.sel && m.to === sq);
+    if (options.length === 1) { chessPlay({ from: CH.sel, to: sq, promo: null }); chessThink(); return; }
+    if (options.length > 1) { CH.promo = { from: CH.sel, to: sq }; renderChess(); return; }   // a promotion: choose the piece
+  }
+  CH.sel = legal.some((m) => m.from === sq) ? (CH.sel === sq ? -1 : sq) : -1;
+  CH.promo = null; renderChess();
+}
+function chessResult(st) {
+  if (!st.over) return null;
+  const youWin = (st.result === "1-0" && CH.you === "w") || (st.result === "0-1" && CH.you === "b");
+  return st.result === "½-½" ? `Draw by ${st.why}.` : youWin ? `You win by ${st.why}. Well played.` : `JARVIS wins by ${st.why}.`;
+}
+function renderChess() {
+  const el = $("#games"), C = window.JarvisChess;
+  if (!el) return;
+  if (!C) { fill(el, h("div", { class: "empty" }, "The chess engine didn't load.")); return; }
+  const g = chessReplay(), st = C.status(g.s, g.keys);
+  const legalFrom = CH.sel >= 0 ? C.legalMoves(g.s).filter((m) => m.from === CH.sel).map((m) => m.to) : [];
+  const checkSq = st.check || (st.over && st.why === "checkmate") ? g.s.board.indexOf(g.s.turn === "w" ? "K" : "k") : -1;
+  const order = [...Array(64).keys()];
+  if (CH.you === "b") order.reverse();
+  const board = h("div", { class: "chess-board", role: "grid", "aria-label": "Chess board" }, order.map((sq) => {
+    const p = g.s.board[sq], dark = ((sq >> 3) + (sq & 7)) % 2 === 1;
+    const cls = ["sq", dark ? "dark" : "light", sq === CH.sel ? "sel" : "", legalFrom.includes(sq) ? (p ? "hit" : "dot") : "",
+      g.last && (sq === g.last.from || sq === g.last.to) ? "last" : "", sq === checkSq ? "check" : ""].filter(Boolean).join(" ");
+    const label = `${C.sqName(sq)}${p ? `, ${C.colorOf(p) === "w" ? "white" : "black"} ${PIECE_NAME[p.toLowerCase()]}` : ""}`;
+    return h("button", { class: cls, type: "button", "aria-label": label, onclick: () => chessClick(sq) },
+      p ? h("span", { class: `pc ${C.colorOf(p)}` }, GLYPH[p.toLowerCase()]) : null);
+  }));
+  const pairs = [];
+  for (let i = 0; i < g.sans.length; i += 2) pairs.push(h("li", {}, `${g.sans[i]}${g.sans[i + 1] ? `  ${g.sans[i + 1]}` : ""}`));
+  const turnLine = st.over ? chessResult(st) : CH.thinking ? "JARVIS is thinking…"
+    : g.s.turn === CH.you ? `Your move${st.check ? " — you're in check" : ""}.` : "JARVIS to move.";
+  const sum = $("#chesssum");
+  if (sum) sum.textContent = CH.moves.length ? `move ${Math.floor(CH.moves.length / 2) + 1}` : "";
+  fill(el,
+    h("div", { class: "chess" },
+      board,
+      h("div", { class: "chess-side" },
+        h("p", { class: `chess-turn${st.over ? " over" : ""}`, role: "status", "aria-live": "polite" }, turnLine),
+        CH.promo ? h("div", { class: "row" }, "Promote to ", ["q", "r", "b", "n"].map((t) => h("button", { class: "btn btn-sm", type: "button",
+          onclick: () => { const pr = CH.you === "w" ? t.toUpperCase() : t; chessPlay({ ...CH.promo, promo: pr }); chessThink(); } },
+          `${GLYPH[t]} ${PIECE_NAME[t]}`))) : null,
+        h("div", { class: "row" },
+          h("label", {}, "JARVIS plays ", h("select", { onchange: (e) => { CH.level = e.target.value; chessSave(); } },
+            Object.entries(C.LEVELS).map(([v, l]) => h("option", { value: v, selected: v === CH.level ? true : null }, l.label))))),
+        h("div", { class: "row" },
+          h("button", { class: "btn btn-sm", type: "button", onclick: () => chessNew("w") }, "New game as White"),
+          h("button", { class: "btn btn-ghost btn-sm", type: "button", onclick: () => chessNew("b") }, "as Black"),
+          h("button", { class: "btn btn-ghost btn-sm", type: "button", onclick: () => chessNew("random") }, "random")),
+        h("div", { class: "row" },
+          h("button", { class: "btn btn-ghost btn-sm", type: "button", disabled: CH.moves.length ? null : true, onclick: chessUndo }, "Take back")),
+        h("ol", { class: "chess-moves", "aria-label": "Moves" }, pairs),
+        h("p", { class: "d-why" }, "JARVIS's chess engine runs in this browser: no model, nothing sent anywhere. The game is saved here."))));
+}
+function openChess() {
+  if (!CH.loaded) { chessLoad(); CH.loaded = true; }
+  renderChess();
+  chessThink();   // if it's JARVIS's turn (you play Black, or a game was left mid-thought)
+}
+
 // ---------------------------------------------------------------- Objectives (Evolution 4.0)
 // An outcome you want, pursued through ordinary missions. Progress counts real mission states only: done = completed,
 // confirmed = its checks found everything. Autopilot: suggest (feed only), prepare (plans the next mission for you to
@@ -2261,7 +2391,7 @@ const PROJ_MODULES = [["workflow", "Workflow map"], ["architecture", "Software a
 
 // ---------------------------------------------------------------- shell: sections, badges, sidebar, drafts
 // Sections are views of the same live page: switching never pauses, resumes or changes anything.
-const VIEWS = ["home", "command", "workspace", "missions", "objectives", "decisions", "memory", "systems", "evolution", "intelligence", "projects"];
+const VIEWS = ["home", "command", "workspace", "missions", "objectives", "decisions", "games", "memory", "systems", "evolution", "intelligence", "projects"];
 function viewFromHash() {
   const m = location.hash.match(/^#\/(\w+)/);
   return m && VIEWS.includes(m[1]) ? m[1] : null;
@@ -2274,7 +2404,7 @@ function setView(view) {
   document.querySelectorAll("#sidenav a[data-view]").forEach((a) => {
     if (a.dataset.view === view) a.setAttribute("aria-current", "page"); else a.removeAttribute("aria-current");
   });
-  if (changed) { window.scrollTo(0, 0); if (ui.data) renderMissions(ui.data.tasks); if (view === "intelligence") loadIntel(); if (view === "evolution") loadEvolution(); if (view === "projects") loadProjects(true); if (view === "command" && ui.data) { ui.ccKey = ""; renderCommand(ui.data); } }
+  if (changed) { window.scrollTo(0, 0); if (ui.data) renderMissions(ui.data.tasks); if (view === "intelligence") loadIntel(); if (view === "evolution") loadEvolution(); if (view === "projects") loadProjects(true); if (view === "games") openChess(); if (view === "command" && ui.data) { ui.ccKey = ""; renderCommand(ui.data); } }
 }
 function badge(name, n) {
   const el = $(`#badge-${name}`);

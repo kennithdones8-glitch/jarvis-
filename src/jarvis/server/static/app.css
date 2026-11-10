@@ -799,7 +799,7 @@ body.cinematic .cmd { position: sticky; bottom: calc(12px + env(safe-area-inset-
 body:not([data-view="workspace"]) .context-panel { display: none; }
 body[data-view="workspace"] .missions-panel, body[data-view="workspace"] .decision-panel, body[data-view="workspace"] .memory-panel,
 body[data-view="workspace"] .systems-panel, body[data-view="workspace"] .recent-panel, body[data-view="workspace"] .summary-panel,
-body[data-view="workspace"] .intel-panel, body[data-view="workspace"] .projects-panel, body[data-view="workspace"] .objectives-panel { display: none !important; }
+body[data-view="workspace"] .intel-panel, body[data-view="workspace"] .projects-panel, body[data-view="workspace"] .objectives-panel, body[data-view="workspace"] .games-panel { display: none !important; }
 body[data-view="workspace"] .hud > .center { display: flex !important; grid-area: auto; }
 body[data-view="workspace"] .matters { display: none; }
 body[data-view="workspace"] .hud > .center > .core-wrap { width: min(120px, 30vw); }
@@ -1611,3 +1611,26 @@ body[data-view="objectives"] .recent-panel, body[data-view="objectives"] .summar
 .obj-bar b { position: absolute; inset: 0 auto 0 0; background: var(--ok); }
 .obj-missions { margin: 0; padding-left: 18px; display: grid; gap: 2px; font-size: 12px; }
 .obj-missions .completed { color: var(--ok); } .obj-missions .failed { color: var(--red); }
+
+/* ---- games: chess with JARVIS ---- */
+body:not([data-view="games"]) .games-panel { display: none; }
+body[data-view="games"] .missions-panel, body[data-view="games"] .decision-panel, body[data-view="games"] .projects-panel,
+body[data-view="games"] .objectives-panel, body[data-view="games"] .memory-panel, body[data-view="games"] .systems-panel,
+body[data-view="games"] .intel-panel, body[data-view="games"] .recent-panel, body[data-view="games"] .summary-panel,
+body[data-view="games"] .context-panel { display: none; }
+.chess { display: flex; flex-wrap: wrap; gap: 18px; padding: 0 0 8px 10px; align-items: flex-start; }
+.chess-board { display: grid; grid-template-columns: repeat(8, 1fr); width: min(520px, 100%); aspect-ratio: 1; border: 1px solid var(--gold-line); }
+.chess-board .sq { all: unset; box-sizing: border-box; display: flex; align-items: center; justify-content: center; cursor: pointer;
+  aspect-ratio: 1; font-size: clamp(22px, 5.4vw, 46px); line-height: 1; position: relative; }
+.chess-board .sq.light { background: #c9b48a; } .chess-board .sq.dark { background: #7a6238; }
+.chess-board .sq.last { box-shadow: inset 0 0 0 999px rgba(255, 215, 0, .22); }
+.chess-board .sq.sel { box-shadow: inset 0 0 0 3px var(--gold-hi); }
+.chess-board .sq.check { box-shadow: inset 0 0 0 999px rgba(220, 40, 40, .55); }
+.chess-board .sq.dot::after { content: ""; width: 26%; height: 26%; border-radius: 50%; background: rgba(0, 0, 0, .35); }
+.chess-board .sq.hit { box-shadow: inset 0 0 0 4px rgba(0, 0, 0, .45); }
+.chess-board .sq:focus-visible { outline: 2px solid var(--gold-hi); outline-offset: -2px; }
+.chess-board .pc.w { color: #fffaf0; text-shadow: 0 0 2px #000, 0 1px 2px #000; }
+.chess-board .pc.b { color: #111; text-shadow: 0 0 1px rgba(255, 255, 255, .5); }
+.chess-side { display: grid; gap: 10px; flex: 1 1 220px; min-width: 0; }
+.chess-turn { font-weight: 700; margin: 0; } .chess-turn.over { color: var(--gold-hi); }
+.chess-moves { margin: 0; padding-left: 26px; max-height: 260px; overflow-y: auto; font: 13px var(--mono, monospace); columns: 2; }

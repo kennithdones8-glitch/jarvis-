@@ -6,6 +6,16 @@
   before planning, nothing left out, retries routed by the question, the first-event check). Both sides kept; one
   conflict: `Orchestrator.plan` runs main's premise check first and keeps this branch's replan history.
 
+### Games: chess with JARVIS
+
+- **Play chess against JARVIS** (new Games page, ♞). The full rules: castling, en passant, promotion (you choose the
+  piece), check, checkmate, stalemate, the 50-move rule, threefold repetition and insufficient material; the move
+  list in standard notation; take back; play White, Black or random; Easy, Medium or Hard.
+- JARVIS's engine is written for JARVIS (`static/chess.js`): alpha-beta search with a capture search and a time limit
+  (Hard thinks up to 3 s), running in a Web Worker so the board never freezes. No library, no model, nothing
+  downloaded or sent; the game is kept in this browser only. The move generator matches the published perft counts
+  on five standard test positions (tests run them).
+
 ### Objectives v1 (Evolution 4.0, first milestone) — schema v11
 
 - **Objectives** (new page, ◇ in the side bar): an outcome you want, what done means (optional), priority 1–5 and an
