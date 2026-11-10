@@ -266,6 +266,21 @@ def parse_junit(xml_text: str) -> dict[str, str]:
     return out
 
 
+def failure_reasons(xml_text: str) -> dict[str, str]:
+    """{"test_file::test_name": the first line of why it failed}, so a failure on another machine (CI) is readable."""
+    out: dict[str, str] = {}
+    for case in ET.fromstring(xml_text).iter("testcase"):
+        bad = case.find("failure")
+        bad = bad if bad is not None else case.find("error")
+        if bad is None:
+            continue
+        module = case.get("classname", "").split(".")[-1]
+        key = f"{module}::{case.get('name', '').split('[')[0].removeprefix('test_')}"
+        text = (bad.get("message") or bad.text or "").strip()
+        out.setdefault(key, " ".join(text.split())[:400])
+    return out
+
+
 def evaluate(results: dict[str, str], lint_ok: bool, lint_detail: str = "") -> GateResult:
     failed = sorted(k for k, v in results.items() if v == "failed")
     bad_skips = sorted(k for k, v in results.items() if v == "skipped" and k not in ALLOWED_SKIPS)
@@ -298,6 +313,7 @@ def run(root: Path = ROOT, timeout: float = 1800) -> GateResult:
         except subprocess.TimeoutExpired:
             raise RuntimeError(f"the test suite took longer than {timeout:.0f}s") from None
         results = parse_junit(report.read_text()) if report.exists() else {}
+        reasons = failure_reasons(report.read_text()) if report.exists() else {}
     try:
         lint = subprocess.run([sys.executable, "-m", "ruff", "check", "src", "tests"], cwd=root,
                               capture_output=True, text=True, timeout=300)
@@ -308,6 +324,7 @@ def run(root: Path = ROOT, timeout: float = 1800) -> GateResult:
     except (OSError, subprocess.TimeoutExpired) as exc:
         lint_ok, lint_detail = False, f"the linter didn't run: {exc}"
     result = evaluate(results, lint_ok, lint_detail)
+    result.suite["why"] = {k: v for k, v in reasons.items() if k in result.suite["failed"]}
     result.seconds = round(time.monotonic() - started, 1)
     return result
 
@@ -320,6 +337,8 @@ def report(r: GateResult) -> str:
              f"{'✓' if r.lint['ok'] else '✗'} Linter          {r.lint['detail'] if r.lint['ok'] else 'problems found'}", ""]
     for f in s["failed"]:
         lines.append(f"    failed: {f}")
+        if s.get("why", {}).get(f):
+            lines.append(f"      why: {s['why'][f]}")
     if not r.lint["ok"]:
         lines += ["    " + x for x in r.lint["detail"].splitlines()[-12:]]
     lines.append("Security items (each must pass; they can't be outweighed):")
