@@ -253,6 +253,44 @@ def test_a_lookup_of_the_wrong_day_is_corrected_to_the_day_asked_about(env):
     assert r["checked"][0].endswith(f"{(now + timedelta(days=1)):%a %d %b}")
 
 
+def test_spans_of_days_come_from_the_clock():
+    from datetime import date
+    from jarvis.orchestrator.lookup import span_days
+    tue = date(2026, 11, 10)  # a Tuesday
+    assert span_days("Any clashing appointments in the next three days?", tue) == [tue + timedelta(days=i) for i in range(4)]
+    assert span_days("what's on over the next 2 days", tue)[-1] == date(2026, 11, 12)
+    assert span_days("anything this week?", tue) == [tue + timedelta(days=i) for i in range(6)]  # to Sunday 15th
+    assert span_days("am I busy next week", tue) == [date(2026, 11, 16) + timedelta(days=i) for i in range(7)]
+    assert span_days("plans this weekend?", tue) == [date(2026, 11, 14), date(2026, 11, 15)]
+    assert span_days("plans this weekend?", date(2026, 11, 15)) == [date(2026, 11, 15)]  # Sunday: what's left of it
+    assert span_days("next weekend", tue) == [date(2026, 11, 21), date(2026, 11, 22)]
+    assert span_days("the week ahead", tue)[-1] == date(2026, 11, 17)
+    assert span_days("Explain how rainbows form", tue) == [] and span_days("Am I free tomorrow?", tue) == []
+
+
+def test_a_lookup_of_past_days_is_corrected_to_the_span_asked_about(env):
+    """Real failure (work branch on 0.19.4, planning-clash 0/5): asked about clashes "in the next three days" on
+    Tue 10 Nov, the small model looked up Sat 07–Mon 09, saw nothing and said there were none. JARVIS now works out
+    the span itself, and says so."""
+    d, script, seen, fake, _ = env
+    now = datetime.now().astimezone()
+    past = _days((now - timedelta(days=3)).date(), 3)
+    script["lookups"] = [{"tool": "calendar", "action": "events", "args": past}]
+    r = chat(d, "Do I have any clashing appointments in the next three days? If so, which ones?")
+    asked = fake.calls[0][1]
+    lo, hi = datetime.fromisoformat(asked["from"]).date(), datetime.fromisoformat(asked["to"]).date()
+    assert lo <= now.date() and hi >= (now + timedelta(days=4)).date()
+    assert any("corrected to cover" in n for n in r["lookup_notes"])
+
+
+def test_a_lookup_that_already_covers_the_span_is_left_alone(env):
+    d, script, seen, fake, _ = env
+    now = datetime.now().astimezone()
+    script["lookups"] = [{"tool": "calendar", "action": "events", "args": _days(now.date(), 5)}]
+    r = chat(d, "Do I have any clashing appointments in the next three days?")
+    assert not any("corrected" in n for n in r["lookup_notes"])
+
+
 def test_a_right_lookup_is_left_alone(env):
     d, script, seen, fake, _ = env
     script["lookups"] = [{"tool": "calendar", "action": "events", "args": week()}]

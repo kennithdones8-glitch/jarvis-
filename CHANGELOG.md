@@ -1,5 +1,18 @@
 # Changelog
 
+## Unreleased (branch `span-days-v1`): spans of days are worked out by JARVIS
+
+- **"The next three days", "this week", "next week", "this weekend" and "the week ahead" are now worked out from the
+  Mac's clock**, like "tomorrow" already was. If the small model's calendar lookup doesn't cover that span, JARVIS
+  widens it and says so ("calendar dates corrected to cover …"). "Next N days" means today plus the N days after it.
+- **Why:** on the work branch (e923810, `20261110-001353-local`) planning-clash went from 5/5 to 0/5. Asked on
+  Tue 10 Nov about clashes "in the next three days", the small model looked up Sat 07–Mon 09, past days. It saw
+  nothing and said there were no clashes. Main has the same weakness: the lookup code is the same on both, so the
+  fix is general and goes on main.
+- Tests: `test_spans_of_days_come_from_the_clock`, `test_a_lookup_of_past_days_is_corrected_to_the_span_asked_about`
+  (both fail without the change) and `test_a_lookup_that_already_covers_the_span_is_left_alone`.
+- **Not yet measured on the Mac.** Merge rule still applies: net ≥ +2 tasks, no new failures, ≥5 runs, on exactly the
+  tested commit.
 ## Unreleased — after 0.19.4 (work branch `claude/funny-allen-ygy8kk`, not yet released)
 
 - **Merged 0.19.4 from `main`** (careful answers on the 7B, the calendar premise check, contradictions asked about
