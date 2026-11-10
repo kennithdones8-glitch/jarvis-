@@ -1232,27 +1232,45 @@ function chessReplay() {
   return { s, sans, keys, last: good[good.length - 1] || null };
 }
 function chessPlay(u) {
-  CH.moves.push(u); CH.sel = -1; CH.promo = null; chessSave(); renderChess();
+  CH.moves.push(u); CH.sel = -1; CH.promo = null; CH.review = null; chessSave(); renderChess();
+}
+function chessReview() {
+  if (CH.thinking || CH.reviewing) return;
+  if (!chessWorker()) return;
+  CH.ask += 1; CH.review = null; CH.reviewing = [0, 1];
+  CH.worker.postMessage({ id: CH.ask, type: "review", moves: CH.moves, you: CH.you });
+  renderChess();
+}
+function chessWorker() {
+  if (CH.worker) return CH.worker;
+  chessThinkSetup();
+  return CH.worker;
 }
 function chessThink() {
   const C = window.JarvisChess;
   const g = chessReplay();
   if (C.status(g.s, g.keys).over || g.s.turn === CH.you || CH.thinking) return;
-  if (!CH.worker) {
-    try { CH.worker = new Worker("/static/chess-worker.js"); } catch (e) { note(`Chess engine couldn't start: ${e.message}`); return; }
-    CH.worker.onmessage = (e) => {
-      if (e.data.id !== CH.ask) return;   // an answer to a position that has since changed (undo, new game)
-      CH.thinking = false;
-      if (e.data.move) chessPlay(e.data.move); else renderChess();
-    };
-  }
+  chessThinkSetup();
+  if (!CH.worker) return;
   CH.thinking = true; CH.ask += 1;
   CH.worker.postMessage({ id: CH.ask, fen: C.toFEN(g.s), level: CH.level });
   renderChess();
 }
+function chessThinkSetup() {
+  if (!CH.worker) {
+    try { CH.worker = new Worker("/static/chess-worker.js"); } catch (e) { note(`Chess engine couldn't start: ${e.message}`); return; }
+    CH.worker.onmessage = (e) => {
+      if (e.data.id !== CH.ask) return;   // an answer to a position that has since changed (undo, new game)
+      if (e.data.progress) { CH.reviewing = e.data.progress; renderChess(); return; }
+      if (e.data.review) { CH.review = e.data.review; CH.reviewing = null; renderChess(); return; }
+      CH.thinking = false;
+      if (e.data.move) chessPlay(e.data.move); else renderChess();
+    };
+  }
+}
 function chessNew(color) {
   CH.ask += 1; CH.thinking = false;
-  CH.moves = []; CH.sel = -1; CH.promo = null;
+  CH.moves = []; CH.sel = -1; CH.promo = null; CH.review = null; CH.reviewing = null;
   CH.you = color === "random" ? (Math.random() < 0.5 ? "w" : "b") : color;
   chessSave(); renderChess(); chessThink();
 }
@@ -1284,7 +1302,7 @@ function chessResult(st) {
   return st.result === "½-½" ? `Draw by ${st.why}.` : youWin ? `You win by ${st.why}. Well played.` : `JARVIS wins by ${st.why}.`;
 }
 function renderChess() {
-  const el = $("#games"), C = window.JarvisChess;
+  const el = gameBody(), C = window.JarvisChess;
   if (!el) return;
   if (!C) { fill(el, h("div", { class: "empty" }, "The chess engine didn't load.")); return; }
   const g = chessReplay(), st = C.status(g.s, g.keys);
@@ -1322,14 +1340,155 @@ function renderChess() {
           h("button", { class: "btn btn-ghost btn-sm", type: "button", onclick: () => chessNew("b") }, "as Black"),
           h("button", { class: "btn btn-ghost btn-sm", type: "button", onclick: () => chessNew("random") }, "random")),
         h("div", { class: "row" },
-          h("button", { class: "btn btn-ghost btn-sm", type: "button", disabled: CH.moves.length ? null : true, onclick: chessUndo }, "Take back")),
+          h("button", { class: "btn btn-ghost btn-sm", type: "button", disabled: CH.moves.length ? null : true, onclick: chessUndo }, "Take back"),
+          h("button", { class: "btn btn-ghost btn-sm", type: "button", disabled: CH.moves.length >= 2 && !CH.thinking && !CH.reviewing ? null : true,
+            title: "JARVIS replays the game and marks where you could have played better", onclick: chessReview },
+            CH.reviewing ? `Reviewing ${CH.reviewing[0]}/${CH.reviewing[1]}…` : "Review my moves")),
+        CH.review ? chessReviewList(CH.review) : null,
         h("ol", { class: "chess-moves", "aria-label": "Moves" }, pairs),
         h("p", { class: "d-why" }, "JARVIS's chess engine runs in this browser: no model, nothing sent anywhere. The game is saved here."))));
+}
+const COACH_WORD = { blunder: "?? blunder", mistake: "? mistake", inaccuracy: "?! inaccuracy" };
+function chessReviewList(rev) {
+  const bad = rev.filter((x) => x.label !== "good");
+  const count = (l) => rev.filter((x) => x.label === l).length;
+  return h("div", { class: "chess-review" },
+    h("p", { class: "chess-turn" }, bad.length ? `${count("blunder")} blunder(s), ${count("mistake")} mistake(s), ${count("inaccuracy")} inaccuracy(ies) in ${rev.length} moves.`
+      : `No inaccuracies in your ${rev.length} moves. Well played.`),
+    bad.length ? h("ol", { class: "chess-coach" }, bad.map((x) => h("li", { class: x.label },
+      `${x.move}. ${x.san} ${COACH_WORD[x.label]}`, x.best ? h("small", {}, ` — better: ${x.best}`) : null))) : null,
+    h("p", { class: "d-why" }, "Graded by JARVIS's engine at a few moves' depth: a guide, not a grandmaster."));
 }
 function openChess() {
   if (!CH.loaded) { chessLoad(); CH.loaded = true; }
   renderChess();
   chessThink();   // if it's JARVIS's turn (you play Black, or a game was left mid-thought)
+}
+
+// ---------------------------------------------------------------- Connect Four and Checkers (games.js, games-worker.js)
+// Same promise as chess: rules and opponents written for JARVIS, thinking in a Web Worker, saved in this browser only.
+const GAMES_KEY = "jarvis-games";
+const GM = { game: "chess", c4: { moves: [], you: 1, level: "medium" }, ck: { moves: [], you: "b", level: "medium" },
+             worker: null, ask: 0, thinking: false, sel: -1 };
+function gamesLoad() {
+  try { const v = JSON.parse(localStorage.getItem(GAMES_KEY) || "{}"); for (const k of ["game", "c4", "ck"]) if (v[k]) GM[k] = v[k]; } catch { /* fresh */ }
+}
+function gamesSave() {
+  try { localStorage.setItem(GAMES_KEY, JSON.stringify({ game: GM.game, c4: GM.c4, ck: GM.ck })); } catch { /* private window */ }
+}
+function gameBody() {
+  const host = $("#games");
+  if (!host) return null;
+  let body = $("#game-body");
+  if (!body) {
+    host.replaceChildren(h("div", { class: "row game-tabs", role: "tablist", "aria-label": "Games" }), h("div", { id: "game-body" }));
+    body = $("#game-body");
+  }
+  const tabs = host.querySelector(".game-tabs");
+  fill(tabs, [["chess", "♞ Chess"], ["c4", "● Connect Four"], ["ck", "⛀ Checkers"]].map(([g, label]) =>
+    h("button", { class: `chip${GM.game === g ? " on" : ""}`, type: "button", role: "tab", "aria-selected": String(GM.game === g),
+      onclick: () => { GM.game = g; GM.sel = -1; gamesSave(); openGames(); } }, label)));
+  return body;
+}
+function gameState(game) {
+  const G = window.JarvisGames;
+  if (game === "c4") { let s = G.C4.empty(); for (const c of GM.c4.moves) s = G.C4.drop(s, c) || s; return s; }
+  let s = G.CK.start();
+  for (const m of GM.ck.moves) s = G.CK.play(s, m);
+  return s;
+}
+function gameThink() {
+  const G = window.JarvisGames, game = GM.game;
+  if (game === "chess" || GM.thinking) return;
+  const s = gameState(game);
+  const over = game === "c4" ? G.C4.winner(s) : G.CK.status(s).over;
+  const jarvisTurn = game === "c4" ? s.turn !== GM.c4.you : s.turn !== GM.ck.you;
+  if (over || !jarvisTurn) return;
+  if (!GM.worker) {
+    try { GM.worker = new Worker("/static/games-worker.js"); } catch (e) { note(`The game engine couldn't start: ${e.message}`); return; }
+    GM.worker.onmessage = (e) => {
+      if (e.data.id !== GM.ask) return;
+      GM.thinking = false;
+      if (e.data.move !== undefined && e.data.move !== null) GM[e.data.game || GM.game].moves.push(e.data.move);
+      gamesSave(); openGames();
+    };
+  }
+  GM.thinking = true; GM.ask += 1;
+  GM.worker.postMessage({ id: GM.ask, game, state: s, level: GM[game].level });
+}
+function gameNew(you) {
+  GM.ask += 1; GM.thinking = false; GM.sel = -1;
+  const g = GM[GM.game];
+  g.moves = [];
+  g.you = GM.game === "c4" ? (you === "first" ? 1 : 2) : (you === "first" ? "b" : "w");
+  gamesSave(); openGames();
+}
+function gameUndo() {
+  GM.ask += 1; GM.thinking = false; GM.sel = -1;
+  const g = GM[GM.game], s = gameState(GM.game);
+  const yourTurn = GM.game === "c4" ? s.turn === g.you : s.turn === g.you;
+  g.moves = g.moves.slice(0, Math.max(0, g.moves.length - (yourTurn ? 2 : 1)));
+  gamesSave(); openGames();
+}
+function gameControls(levels, firstLabel, secondLabel) {
+  const g = GM[GM.game];
+  return [
+    h("div", { class: "row" }, h("label", {}, "JARVIS plays ", h("select", { onchange: (e) => { g.level = e.target.value; gamesSave(); } },
+      Object.entries(levels).map(([v, l]) => h("option", { value: v, selected: v === g.level ? true : null }, l.label))))),
+    h("div", { class: "row" },
+      h("button", { class: "btn btn-sm", type: "button", onclick: () => gameNew("first") }, `New game, ${firstLabel}`),
+      h("button", { class: "btn btn-ghost btn-sm", type: "button", onclick: () => gameNew("second") }, secondLabel),
+      h("button", { class: "btn btn-ghost btn-sm", type: "button", disabled: g.moves.length ? null : true, onclick: gameUndo }, "Take back")),
+    h("p", { class: "d-why" }, "JARVIS's engine runs in this browser: no model, nothing sent anywhere. The game is saved here.")];
+}
+function renderC4() {
+  const G = window.JarvisGames.C4, el = gameBody(), s = gameState("c4"), w = G.winner(s), me = GM.c4.you;
+  const win = new Set(w ? w.line : []);
+  const turnLine = w ? (w.who === 0 ? "A draw: the board is full." : w.who === me ? "You win! Four in a row." : "JARVIS wins: four in a row.")
+    : GM.thinking ? "JARVIS is thinking…" : s.turn === me ? "Your move: pick a column." : "JARVIS to move.";
+  const canPlay = !w && !GM.thinking && s.turn === me;
+  const board = h("div", { class: "c4-board", role: "grid", "aria-label": "Connect Four board" },
+    [...Array(42).keys()].map((i) => {
+      const v = s.board[i], col = i % 7;
+      return h("button", { class: `c4-cell${v ? ` p${v === me ? "you" : "jarvis"}` : ""}${win.has(i) ? " win" : ""}${s.last === i ? " last" : ""}`,
+        type: "button", "aria-label": `column ${col + 1}${v ? (v === me ? ", yours" : ", JARVIS's") : ""}`, disabled: canPlay && s.board[col] === 0 ? null : true,
+        onclick: () => { GM.c4.moves.push(col); gamesSave(); openGames(); } });
+    }));
+  fill(el, h("div", { class: "chess" }, board, h("div", { class: "chess-side" },
+    h("p", { class: `chess-turn${w ? " over" : ""}`, role: "status", "aria-live": "polite" }, turnLine),
+    h("p", { class: "d-why" }, h("span", { class: "c4-key pyou" }), " you  ", h("span", { class: "c4-key pjarvis" }), " JARVIS"),
+    ...gameControls(G.LEVELS, "you start", "JARVIS starts"))));
+}
+function renderCK() {
+  const G = window.JarvisGames.CK, el = gameBody(), s = gameState("ck"), st = G.status(s), me = GM.ck.you;
+  const legal = !st.over && !GM.thinking && s.turn === me ? G.legal(s) : [];
+  const fromSquares = new Set(legal.map((m) => m.path[0]));
+  const targets = GM.sel >= 0 ? legal.filter((m) => m.path[0] === GM.sel) : [];
+  const turnLine = st.over ? (st.winner === null ? `A draw: ${st.why}.` : st.winner === me ? `You win: JARVIS has ${st.why}.` : `JARVIS wins: you have ${st.why}.`)
+    : GM.thinking ? "JARVIS is thinking…" : s.turn === me ? (legal[0] && legal[0].taken.length ? "Your move: you must capture." : "Your move.") : "JARVIS to move.";
+  const order = [...Array(64).keys()];
+  if (me === "b") order.reverse();   // your pieces at the bottom
+  const board = h("div", { class: "chess-board ck-board", role: "grid", "aria-label": "Checkers board" }, order.map((sq) => {
+    const p = s.board[sq], dark = ((sq >> 3) + (sq & 7)) % 2 === 1;
+    const target = targets.find((m) => m.path[m.path.length - 1] === sq);
+    const cls = ["sq", dark ? "dark" : "light", sq === GM.sel ? "sel" : "", target ? "dot" : "", fromSquares.has(sq) && GM.sel < 0 ? "can" : ""].filter(Boolean).join(" ");
+    return h("button", { class: cls, type: "button", "aria-label": `${"abcdefgh"[sq & 7]}${8 - (sq >> 3)}${p ? `, ${p.toLowerCase() === me ? "your" : "JARVIS's"} ${p === p.toUpperCase() ? "king" : "piece"}` : ""}`,
+      onclick: () => {
+        if (target) { GM.ck.moves.push(target); GM.sel = -1; gamesSave(); openGames(); return; }
+        GM.sel = fromSquares.has(sq) && GM.sel !== sq ? sq : -1; renderCK();
+      } }, p ? h("span", { class: `ck ${p.toLowerCase() === me ? "you" : "jarvis"}${p === p.toUpperCase() ? " king" : ""}` }) : null);
+  }));
+  fill(el, h("div", { class: "chess" }, board, h("div", { class: "chess-side" },
+    h("p", { class: `chess-turn${st.over ? " over" : ""}`, role: "status", "aria-live": "polite" }, turnLine),
+    h("p", { class: "d-why" }, "Captures are compulsory; keep jumping when you can. Reach the far row to crown a king."),
+    ...gameControls(G.LEVELS, "you start (dark)", "JARVIS starts"))));
+}
+function openGames() {
+  if (!GM.loaded) { gamesLoad(); GM.loaded = true; }
+  if (!window.JarvisGames && GM.game !== "chess") GM.game = "chess";
+  if (GM.game === "chess") { openChess(); return; }
+  if (GM.game === "c4") renderC4(); else renderCK();
+  gameThink();
 }
 
 // ---------------------------------------------------------------- Objectives (Evolution 4.0)
@@ -2463,7 +2622,7 @@ function setView(view) {
   document.querySelectorAll("#sidenav a[data-view]").forEach((a) => {
     if (a.dataset.view === view) a.setAttribute("aria-current", "page"); else a.removeAttribute("aria-current");
   });
-  if (changed) { window.scrollTo(0, 0); if (ui.data) renderMissions(ui.data.tasks); if (view === "intelligence") loadIntel(); if (view === "evolution") loadEvolution(); if (view === "projects") loadProjects(true); if (view === "games") openChess(); if (view === "command" && ui.data) { ui.ccKey = ""; renderCommand(ui.data); } }
+  if (changed) { window.scrollTo(0, 0); if (ui.data) renderMissions(ui.data.tasks); if (view === "intelligence") loadIntel(); if (view === "evolution") loadEvolution(); if (view === "projects") loadProjects(true); if (view === "games") openGames(); if (view === "command" && ui.data) { ui.ccKey = ""; renderCommand(ui.data); } }
 }
 function badge(name, n) {
   const el = $(`#badge-${name}`);

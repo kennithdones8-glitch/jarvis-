@@ -290,7 +290,7 @@
       const near = scores.filter((x) => x.v >= scores[0].v - opts.slack);
       best = near[Math.floor(rnd() * near.length)].m;
     }
-    return { move: best, score: scores.length ? scores[0].v : 0, nodes };
+    return { move: best, score: scores.length ? scores[0].v : 0, nodes, all: scores };
   }
   const LEVELS = {
     easy: { label: "Easy", depth: 1, timeMs: 400, slack: 250, wander: 0.6 },
@@ -298,8 +298,37 @@
     hard: { label: "Hard", depth: 5, timeMs: 3000, slack: 0, wander: 0 },
   };
 
+  // Coach: replay a game and grade each of your moves by how much it gave away compared with the engine's best move
+  // (centipawns, from your side). Labels: inaccuracy ≥ 60, mistake ≥ 150, blunder ≥ 300; a missed mate is a blunder.
+  function review(moves, you, opts = {}, onProgress) {
+    const think = { depth: opts.depth || 3, timeMs: opts.timeMs || 4000 };
+    let s = parseFEN(START);
+    const out = [];
+    const total = moves.filter((_, i) => (i % 2 === 0 ? "w" : "b") === you).length;
+    let done = 0;
+    moves.forEach((u, i) => {
+      const m = legalMoves(s).find((x) => x.from === u.from && x.to === u.to && (x.promo || null) === (u.promo || null));
+      if (!m) return;
+      if (s.turn === you) {
+        // one search scores every move at the same depth (full window), so yours and the best are comparable
+        const best = search(s, { ...think, slack: 1, wander: 0 });
+        const mine = best && best.all.find((x) => x.m.from === m.from && x.m.to === m.to && (x.m.promo || null) === (m.promo || null));
+        const played = mine ? mine.v : best ? best.score : 0;
+        const loss = Math.max(0, (best ? best.score : 0) - played);
+        const label = loss >= 300 || (best && best.score > MATE - 100 && played < MATE - 100) ? "blunder"
+          : loss >= 150 ? "mistake" : loss >= 60 ? "inaccuracy" : "good";
+        out.push({ ply: i, move: Math.floor(i / 2) + 1, san: san(s, m), label, loss: Math.min(loss, 9999),
+                   best: best && label !== "good" ? san(s, best.move) : null });
+        done += 1;
+        if (onProgress) onProgress(done, total);
+      }
+      s = make(s, m);
+    });
+    return out;
+  }
+
   const api = { START, parseFEN, toFEN, positionKey, legalMoves, make, perft, status, san, inCheck, search, evaluate,
-                LEVELS, sqName, sqOf, colorOf };
+                LEVELS, sqName, sqOf, colorOf, review };
   if (typeof module !== "undefined" && module.exports) module.exports = api;
   else root.JarvisChess = api;
 })(typeof self !== "undefined" ? self : globalThis);

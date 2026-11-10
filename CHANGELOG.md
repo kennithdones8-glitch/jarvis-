@@ -6,6 +6,16 @@
   before planning, nothing left out, retries routed by the question, the first-event check). Both sides kept; one
   conflict: `Orchestrator.plan` runs main's premise check first and keeps this branch's replan history.
 
+### Games: Connect Four, Checkers, and a chess coach
+
+- **Connect Four and Checkers** join chess on the Games page (tabs). Connect Four: drop discs, four in a row wins,
+  full board draws. Checkers (American rules): compulsory captures, multi-jumps, crowning on the far row (which ends
+  the move), 40 moves each without a capture draws. Easy, Medium and Hard opponents (search depth 2 / 5 / 9), take
+  back, play first or second; saved in this browser.
+- **Chess coach: "Review my moves"** replays your game and grades each of your moves against the engine's best at
+  the same depth (inaccuracy ≥ 0.6 pawns, mistake ≥ 1.5, blunder ≥ 3 or a missed mate), with the better move.
+- Same promise as chess: engines written for JARVIS, in a Web Worker, no model, nothing sent.
+
 ### Easier to use: iPhone setup, what's new, objectives in the briefing
 
 - **`jarvis remote setup`:** a guided check for using JARVIS on your iPhone: Tailscale installed, signed in,

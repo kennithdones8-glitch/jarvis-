@@ -98,3 +98,90 @@ def test_page_serves_the_engine_and_keeps_the_csp(dash):
     assert 'importScripts("/static/chess.js")' in worker and "fetch(" not in worker and "XMLHttpRequest" not in worker
     engine = (STATIC / "chess.js").read_text()
     assert "fetch(" not in engine and "XMLHttpRequest" not in engine and "WebSocket" not in engine
+
+
+def test_the_coach_finds_a_blunder_and_suggests_better():
+    r = js("""
+const sq = C.sqOf;
+const mv = (a, b) => ({ from: sq(a), to: sq(b), promo: null });
+// 1.e4 e5 2.Qh5 Nc6 3.Qxf7+?? (gives the queen away) Kxf7 4.Bc4+ Ke8
+const moves = [mv("e2","e4"), mv("e7","e5"), mv("d1","h5"), mv("b8","c6"), mv("h5","f7"), mv("e8","f7"), mv("f1","c4"), mv("f7","e8")];
+const out = C.review(moves, "w", { depth: 2, timeMs: 400 });
+console.log(JSON.stringify(out));""")
+    assert [x["move"] for x in r] == [1, 2, 3, 4]                          # only your (White's) moves are graded
+    q = next(x for x in r if x["move"] == 3)
+    assert q["san"] == "Qxf7+" and q["label"] == "blunder" and q["best"] and q["best"] != "Qxf7+"
+    assert r[0]["label"] == "good" and r[0]["best"] is None
+
+
+def test_the_worker_serves_reviews_off_the_page_thread():
+    worker = (STATIC / "chess-worker.js").read_text()
+    assert 'type === "review"' in worker and "progress" in worker
+
+
+GAMES = str(STATIC / "games.js")
+
+
+def gjs(code: str):
+    if not NODE:
+        pytest.skip("node not installed")
+    out = subprocess.run([NODE, "-e", f"const {{ C4, CK }} = require({json.dumps(GAMES)});\n{code}"], capture_output=True,
+                         text=True, timeout=120, check=True)
+    return json.loads(out.stdout)
+
+
+def test_connect_four_rules_and_opponent():
+    r = gjs("""
+const play = (cols) => cols.reduce((s, c) => C4.drop(s, c), C4.empty());
+const out = {};
+out.vertical = C4.winner(play([0, 1, 0, 1, 0, 1, 0])).who;            // first player, four down column 1
+out.diagonal = C4.winner(play([0, 1, 1, 2, 2, 3, 2, 3, 3, 6, 3])).who;
+out.notYet = C4.winner(play([0, 1, 0, 1])) === null;
+out.full = C4.drop(play([0, 0, 0, 0, 0, 0]), 0) === null;               // a full column takes nothing
+for (const lv of ["easy", "medium", "hard"]) {
+  out["block_" + lv] = C4.best(play([0, 6, 0, 6, 0]), C4.LEVELS[lv].depth);   // must block column 1
+  out["win_" + lv] = C4.best(play([0, 6, 0, 6, 0, 5]), C4.LEVELS[lv].depth);  // takes the win in column 1
+}
+console.log(JSON.stringify(out));""")
+    assert r["vertical"] == 1 and r["diagonal"] == 1 and r["notYet"] and r["full"]
+    for lv in ("easy", "medium", "hard"):
+        assert r[f"block_{lv}"] == 0 and r[f"win_{lv}"] == 0, lv
+
+
+def test_checkers_rules_and_opponent():
+    r = gjs("""
+const empty = () => ({ board: new Array(64).fill(""), turn: "b", quiet: 0 });
+const out = { startMoves: CK.legal(CK.start()).length };
+let s = empty(); s.board[2 * 8 + 1] = "b"; s.board[3 * 8 + 2] = "w"; s.board[0 * 8 + 7] = "b";
+out.forced = CK.legal(s).map((m) => m.taken.length);                     // the capture is compulsory
+s = empty(); s.board[1] = "b"; s.board[10] = "w"; s.board[26] = "w";
+out.double = CK.legal(s).map((m) => [m.path, m.taken]);                  // b1 → jumps twice
+s = empty(); s.board[6 * 8 + 1] = "b"; s.board[0] = "w";
+const crowned = CK.play(s, CK.legal(s)[0]);
+out.king = crowned.board.filter((p) => p === "B").length;
+out.backwardsMan = (() => { const t = empty(); t.board[3 * 8 + 2] = "b"; return CK.legal(t).every((m) => m.path[1] > m.path[0]); })();
+out.lost = CK.status({ board: (() => { const b = new Array(64).fill(""); b[0 * 8 + 1] = "w"; return b; })(), turn: "b", quiet: 0 });
+s = empty(); s.board[2 * 8 + 1] = "b"; s.board[3 * 8 + 2] = "w"; s.board[7 * 8 + 6] = "w";
+for (const lv of ["easy", "medium", "hard"]) out["takes_" + lv] = CK.best(s, CK.LEVELS[lv].depth).taken.length;
+console.log(JSON.stringify(out));""")
+    assert r["startMoves"] == 7 and r["forced"] == [1]
+    assert r["double"] == [[[1, 19, 33], [10, 26]]]
+    assert r["king"] == 1 and r["backwardsMan"] is True
+    assert r["lost"] == {"over": True, "winner": "w", "why": "no moves left"}
+    assert all(r[f"takes_{lv}"] == 1 for lv in ("easy", "medium", "hard"))
+
+
+def test_the_games_page_serves_both_engines():
+    for f in ("games.js", "games-worker.js"):
+        text = (STATIC / f).read_text()
+        assert "fetch(" not in text and "XMLHttpRequest" not in text and "WebSocket" not in text
+    assert 'importScripts("/static/games.js")' in (STATIC / "games-worker.js").read_text()
+
+
+def test_the_coach_does_not_call_good_openings_inaccurate():
+    # regression: scoring your move with a separate search (another horizon) once graded 1.e4 and 2.d4 "inaccuracies"
+    r = js("""
+const sq = C.sqOf; const mv = (a, b) => ({ from: sq(a), to: sq(b), promo: null });
+const moves = [mv("e2","e4"), mv("e7","e5"), mv("d2","d4"), mv("e5","d4"), mv("g1","f3"), mv("b8","c6")];
+console.log(JSON.stringify(C.review(moves, "w").map((x) => x.label)));""")
+    assert r == ["good", "good", "good"]
