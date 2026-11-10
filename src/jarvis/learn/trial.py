@@ -244,7 +244,8 @@ def _run_suite(tree: Path, root: Path | None = None, data: Path | None = None, r
             "seconds": round(time.monotonic() - started, 1), "exit": code, **({"stopped": stopped} if stopped else {})}
 
 
-def run(candidate: str, baseline: str = "HEAD", *, work: Path, repo: Path = REPO, data: Path | None = None) -> dict[str, Any]:
+def run(candidate: str, baseline: str = "HEAD", *, work: Path, repo: Path = REPO, data: Path | None = None,
+        patch: str | None = None) -> dict[str, Any]:
     """Run both sides in their own worktrees and compare. ``work`` is a folder JARVIS owns (under its data dir);
     ``data`` is JARVIS's data folder, which the sandboxed tests may not read."""
     if why := available(repo):
@@ -258,6 +259,14 @@ def run(candidate: str, baseline: str = "HEAD", *, work: Path, repo: Path = REPO
         for side, sha in (("baseline", base), ("candidate", cand)):
             trees[side] = root / side
             _git("worktree", "add", "--detach", str(trees[side]), sha, cwd=repo)
+        if patch is not None:   # a drafted change: applied to the candidate copy's files only (no commit, no index)
+            pf = root / "candidate.patch"
+            pf.write_text(patch)
+            try:
+                _git("apply", "--check", str(pf), cwd=trees["candidate"])
+                _git("apply", str(pf), cwd=trees["candidate"])
+            except TrialError as exc:
+                raise TrialError(f"the drafted patch doesn't apply cleanly: {exc}") from None
         res = {}
         for side, tree in trees.items():
             box = root / f"{side}-box"

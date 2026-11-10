@@ -1644,3 +1644,4 @@ body[data-view="games"] .context-panel { display: none; }
 .obj-node.waiting rect { stroke-dasharray: 4 3; }
 .review.disagree { color: var(--red); } .review.agree { color: var(--ok); }
 .review ul { margin: 4px 0 0; padding-left: 18px; }
+.patch { max-height: 360px; overflow: auto; font: 12px var(--mono, monospace); white-space: pre; padding: 8px; background: rgba(0, 0, 0, .35); }

@@ -81,6 +81,8 @@ KINDS = {
     "bench_compare": "Benchmark comparison: compare your two latest benchmark runs (results already on disk).",
     "trial": "Change trial (tier 6): run the full test suite and linter on a branch or commit in a throwaway copy of "
              "JARVIS and compare with your current code. Never merges or pushes.",
+    "draft": "Draft a fix (tier 6): JARVIS writes a patch for a problem you describe (its own src/ and tests/ only), "
+             "tests it in the sandbox against your current code, and a second model reviews it. Never applies it.",
 }
 
 
@@ -102,11 +104,23 @@ class Lab:
         rows = self.db.query("SELECT * FROM experiments ORDER BY created_at DESC LIMIT 50")
         return [{**dict(r), "results": json.loads(r["results"]) if r["results"] else None} for r in rows]
 
-    def start(self, kind: str, *, by: str, background: bool = True, ref: str | None = None, baseline: str = "HEAD") -> str:
+    def start(self, kind: str, *, by: str, background: bool = True, ref: str | None = None, baseline: str = "HEAD",
+              problem: str | None = None) -> str:
         if kind not in KINDS:
             raise LabError("unknown experiment kind")
         if not Autonomy(self.kernel).can("experiment"):
             raise LabError("experiments are paused or not allowed (autonomy settings or the emergency stop)")
+        if kind == "draft":
+            from . import trial
+            if not by.startswith("user"):
+                raise LabError("only you can ask JARVIS to draft a change to itself")
+            if not Autonomy(self.kernel).can("execute"):
+                raise LabError("drafting fixes needs autonomy tier 6 (Mac terminal: jarvis autonomy enable 6)")
+            if why := trial.available():
+                raise LabError(why)
+            if not problem or len(problem.strip()) < 10:
+                raise LabError("describe the problem in a sentence or two")
+            self._args = (problem.strip()[:2000],)
         if kind == "trial":
             from . import trial
             if not Autonomy(self.kernel).can("execute"):
@@ -137,6 +151,12 @@ class Lab:
         return eid
 
     def _spec(self, kind: str, args: tuple | None = None) -> dict[str, str]:
+        if kind == "draft":
+            return {"objective": f"Draft and test a fix: {args[0][:160]}",
+                    "hypothesis": "A small patch to JARVIS's src/ and tests/ fixes it without any test newly failing.",
+                    "baseline": "HEAD (your current committed code)",
+                    "criteria": "Patch applies; no test newly failing; linter clean; a second model's review.",
+                    "environment": "A throwaway copy in the hardened sandbox; the patch is never applied to your JARVIS."}
         if kind == "trial":
             ref, base = args
             return {"objective": f"Find out whether {ref} is safe to merge.",
@@ -165,6 +185,22 @@ class Lab:
 
     def _run(self, eid: str, kind: str, args: tuple | None = None) -> None:
         try:
+            if kind == "draft":
+                from . import drafts, trial
+                d = drafts.draft(self.kernel.models, args[0])
+                path = drafts.save(self.kernel.home, eid, d["patch"])
+                review = drafts.code_review(self.kernel.models, d["problem"], d["patch"], author=d["model"])
+                try:
+                    r = trial.run("HEAD", "HEAD", work=Path(self.kernel.home) / "trials", data=Path(self.kernel.home),
+                                  patch=d["patch"])
+                    err = None
+                except trial.TrialError as exc:
+                    r, err = None, str(exc)
+                results = {"draft": {k: d[k] for k in ("picked", "files", "sensitive", "model", "sha256")},
+                           "patch": d["patch"][:12000], "patch_file": str(path), "review": review, "trial": r}
+                ok = bool(r and r["ok"])
+                return self._finish(eid, "done" if ok else "failed", results,
+                                    drafts.recommendation(r, review, d, path, error=err))
             if kind == "trial":
                 from . import trial
                 r = trial.run(args[0], args[1], work=Path(self.kernel.home) / "trials", data=Path(self.kernel.home))

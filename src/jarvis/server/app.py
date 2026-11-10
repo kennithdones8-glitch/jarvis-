@@ -1595,7 +1595,7 @@ class Dashboard:
             actor = f"user:phone:{device['name']}"
             if any(re.fullmatch(p, path) for p in LOCAL_ONLY):
                 raise HttpError(403, "only possible from the Mac")
-            if path == "/api/experiments" and body.get("kind") == "trial":   # runs code: never started from the phone
+            if path == "/api/experiments" and body.get("kind") in ("trial", "draft"):   # runs code: never from the phone
                 self.kernel.audit.record("device.denied", path=path, reason="change trials can only be started from the Mac")
                 raise HttpError(403, "change trials can only be started from the Mac")
             if path == "/api/stepup/options":
@@ -1741,10 +1741,11 @@ class Dashboard:
             from ..learn import analysis
             try:
                 kind = text("kind", 40)
-                if kind == "trial" and not actor.startswith("user:dashboard"):   # second check: only the Mac's own dashboard
+                if kind in ("trial", "draft") and not actor.startswith("user:dashboard"):   # second check: only the Mac's own dashboard
                     raise HttpError(403, "change trials can only be started from the Mac")
                 return {"id": analysis.Lab(k).start(kind, by=actor, ref=body.get("ref") if isinstance(body.get("ref"), str) else None,
-                                                    baseline=body.get("baseline") if isinstance(body.get("baseline"), str) else "HEAD")}
+                                                    baseline=body.get("baseline") if isinstance(body.get("baseline"), str) else "HEAD",
+                                                    problem=body.get("problem") if isinstance(body.get("problem"), str) else None)}
             except analysis.LabError as exc:
                 raise HttpError(409, str(exc)) from None
         if path == "/api/command":   # a direct Mac command (Music, system), through the permission engine

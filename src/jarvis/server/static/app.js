@@ -2356,7 +2356,9 @@ async function loadEvolution() {
   const exp = (x) => h("li", { class: `exp ${x.state}` }, h("div", { class: "l-head" }, h("span", { class: `l-kind ${x.state}` }, x.state),
       h("span", {}, x.kind), h("span", { class: "l-when" }, since(x.created_at))),
     h("b", {}, x.objective), h("small", {}, `Hypothesis: ${x.hypothesis} · Baseline: ${x.baseline} · Criteria: ${x.criteria} · Environment: ${x.environment}`),
-    x.recommendation ? h("p", { class: "exp-rec" }, x.recommendation) : null);
+    x.recommendation ? h("p", { class: "exp-rec" }, x.recommendation) : null,
+    x.kind === "draft" && x.results && x.results.patch ? h("details", { class: "more" }, h("summary", {}, `The patch (${(x.results.draft.files || []).join(", ")})`),
+      h("pre", { class: "patch" }, x.results.patch)) : null);
   const tier = (t) => h("li", { class: `tier ${t.on ? "on" : ""}` },
     h("label", {}, h("input", { type: "checkbox", checked: t.on, disabled: t.tier > 5 && !t.on,
       onchange: async (e) => { try { await api("/api/autonomy", { tier: t.tier, on: e.target.checked }); loadEvolution(); } catch (err) { note(err.message); e.target.checked = !e.target.checked; } } }),
@@ -2401,7 +2403,14 @@ async function loadEvolution() {
         h("input", { id: "trialref", type: "text", placeholder: a.allowed.execute ? "Branch or commit to try (e.g. my-fix)" : "Change trials need tier 6 (Mac terminal: jarvis autonomy enable 6)",
                      disabled: !a.allowed.execute, maxlength: "120", autocomplete: "off" }),
         h("button", { class: "btn btn-sm", type: "submit", disabled: !a.allowed.execute || s.experiments_running > 0 }, "Run change trial")),
-      h("div", { class: "row" }, Object.entries(data.kinds).filter(([kind]) => kind !== "trial").map(([kind, about]) => h("button", { class: "btn btn-sm", type: "button", title: about,
+      h("form", { class: "row trial-form", onsubmit: async (e) => { e.preventDefault();
+          const problem = e.target.querySelector("textarea").value.trim();
+          try { await api("/api/experiments", { kind: "draft", problem }); e.target.reset(); setTimeout(loadEvolution, 400); } catch (err) { note(err.message); } } },
+        h("label", { class: "sr", for: "draftproblem" }, "What should JARVIS fix in itself?"),
+        h("textarea", { id: "draftproblem", rows: 2, maxlength: "2000", disabled: !a.allowed.execute,
+                        placeholder: a.allowed.execute ? "What should JARVIS fix in itself? (it drafts a patch, tests it in the sandbox, never applies it)" : "Drafting fixes needs tier 6 (Mac terminal: jarvis autonomy enable 6)" }),
+        h("button", { class: "btn btn-sm", type: "submit", disabled: !a.allowed.execute || s.experiments_running > 0 }, "Draft a fix")),
+      h("div", { class: "row" }, Object.entries(data.kinds).filter(([kind]) => kind !== "trial" && kind !== "draft").map(([kind, about]) => h("button", { class: "btn btn-sm", type: "button", title: about,
         disabled: !a.allowed.experiment || s.experiments_running > 0,
         onclick: async () => { try { await api("/api/experiments", { kind }); setTimeout(loadEvolution, 400); } catch (e) { note(e.message); } } },
         { replay: "Run routing replay", drill: "Run recovery drills", bench_compare: "Compare benchmarks" }[kind] || kind))),

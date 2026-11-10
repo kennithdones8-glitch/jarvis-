@@ -6,6 +6,20 @@
   before planning, nothing left out, retries routed by the question, the first-event check). Both sides kept; one
   conflict: `Orchestrator.plan` runs main's premise check first and keeps this branch's replan history.
 
+### JARVIS drafts a fix (tier 6, Evolution Lab "Invent")
+
+- **Evolution center → Simulation lab → "Draft a fix":** describe what JARVIS should fix in itself. It names up to
+  three of its own files, writes a patch, and that patch is applied to a throwaway copy and tested (full suite and
+  linter, in the hardened sandbox) against your current code; a second local model reviews the diff. You get the
+  patch (in the data folder, `drafts/<id>.patch`, private), the evidence, and the `git apply` command. JARVIS never
+  applies, commits, merges or pushes a draft.
+- Only `src/` and `tests/` may change; a patch touching anything else (settings, lockfile, CI) is refused untested.
+  Patches touching security-sensitive files (permissions, approvals, audit, egress, the sandbox, the gate, the
+  server, remote access, updates) are labelled.
+- Needs tier 6 (Mac terminal), only you can start it, never from the iPhone. It uses the best model you allow:
+  JARVIS's source counts as private project data, so sending it to Claude asks your consent; otherwise it drafts
+  on this Mac.
+
 ### A second opinion
 
 - **Deep-mode answers are checked by a different local model.** It reads your question and the answer; if it names a
