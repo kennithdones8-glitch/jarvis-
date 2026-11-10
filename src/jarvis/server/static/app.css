@@ -1642,3 +1642,5 @@ body[data-view="games"] .context-panel { display: none; }
 .obj-node.completed rect { stroke: var(--ok); } .obj-node.failed rect { stroke: var(--red); }
 .obj-node.running rect, .obj-node.awaiting_approval rect { stroke: var(--gold-hi); }
 .obj-node.waiting rect { stroke-dasharray: 4 3; }
+.review.disagree { color: var(--red); } .review.agree { color: var(--ok); }
+.review ul { margin: 4px 0 0; padding-left: 18px; }

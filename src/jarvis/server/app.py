@@ -811,6 +811,12 @@ class Dashboard:
             if plan.kind == "plan":   # how JARVIS will check it's done, shown before you press Run
                 from ..orchestrator.criteria import criteria_for
                 job["criteria"] = [{**c, "text": c["text"].replace(HOME, "~")} for c in criteria_for(plan.steps)]
+                if self._changes_something(plan):   # a second opinion before you Run a plan that changes things
+                    from ..orchestrator.review import plan_opinion
+                    op = plan_opinion(self.kernel.models, job["request"], job["steps"], author=plan.model)
+                    job["review"] = op.as_dict()
+                    self.kernel.audit.record("plan.second_opinion", verdict=op.verdict, problems=len(op.problems),
+                                             reviewer=op.model)
         except NoModelAvailable as exc:
             job.update(state="ready", kind="failed", message=f"No model can plan this: {exc}",
                        reasons=exc.reasons)
@@ -828,6 +834,15 @@ class Dashboard:
                 self.kernel.audit.record("objective.autorun_failed", objective=job.get("objective"), error=type(exc).__name__)
         if not self._stop.is_set():
             self._persist_job(job)
+
+    def _changes_something(self, plan) -> bool:
+        """Any step above a read-only look (risk tier READ, from the tool registry's own description of the action)."""
+        from ..core.permissions import Tier
+        for st in plan.steps:
+            spec = self.kernel.registry.action(st.tool, st.action)
+            if spec is None or spec.tier > Tier.READ:
+                return True
+        return False
 
     def _plan_with_consent(self, job: dict[str, Any]):
         """Plan with the best model. If that needs your approval to send the request to the cloud, wait
@@ -1047,6 +1062,25 @@ class Dashboard:
                     and wants_code(message) and code_of(r.text)):
                 stage({"stage": "checking", "code_test": True})
                 r, code_test = self._self_test(message, msgs, r, local_need, found.level)
+            second = None
+            if mode == "deep" and not wants_code(message):   # Deep: a different local model checks the answer
+                from ..orchestrator.review import answer_opinion, note_for
+                stage({"stage": "checking", "second_opinion": True})
+                op = answer_opinion(self.kernel.models, message, r.text, author=f"{r.provider}/{r.model}")
+                fixed = False
+                if op.verdict == "disagree" and r.provider in self.kernel.models.router.local:
+                    retry = msgs + [Message("assistant", r.text, Category.CONVERSATION),
+                                    Message("user", "A second check of your answer found:\n" + "\n".join(f"- {x}" for x in op.problems)
+                                            + "\nIf it's right, correct your answer; if not, keep it. Reply with the answer only.",
+                                            Category.CONVERSATION)]
+                    r = self.kernel.models.complete(local_need, ChatRequest(tuple(retry), max_tokens=max_tokens),
+                                                    purpose="dashboard chat (second opinion retry)", level=found.level,
+                                                    question=message)
+                    fixed = True
+                r = replace(r, note=((r.note + " ") if r.note else "") + note_for(op, fixed=fixed))
+                second = {**op.as_dict(), "revised": fixed}
+                self.kernel.audit.record("chat.second_opinion", verdict=op.verdict, problems=len(op.problems),
+                                         revised=fixed, reviewer=op.model)
         except NoModelAvailable as exc:
             return {"error": f"No model available: {exc}", "reasons": exc.reasons}
         except ApprovalRequired as exc:
@@ -1054,7 +1088,7 @@ class Dashboard:
             return {"needs_approval": True, "approval_id": exc.approval_id, "summary": appr["summary"]}
         record = memory.learn_from(session, message, r.text)
         memory.link_informed([m["id"] for m in recalled if m.get("id")], record)   # which memories this answer was given
-        return {"record": record, "past": past_n, "code_test": code_test, "text": r.text, "model": f"{r.provider}/{r.model}", "seconds": round(time.time() - started, 1),
+        return {"record": record, "past": past_n, "code_test": code_test, "second_opinion": second, "text": r.text, "model": f"{r.provider}/{r.model}", "seconds": round(time.time() - started, 1),
                 "tokens": r.usage.output_tokens, "note": r.note, "memories_used": len(recalled),
                 "checked": found.checked, "offer_plan": found.change, "grounded": grounded,
                 "lookup_notes": found.why + found.notes, "mode": mode,

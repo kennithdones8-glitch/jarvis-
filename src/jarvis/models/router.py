@@ -45,6 +45,8 @@ class Need:
     # instead. It never moves an answer to the cloud. Real failures (hard set, smarter-v2): the 3B dropped a
     # reminder JARVIS had listed as due today, and couldn't link two memories that were both in front of it.
     careful: bool = False
+    # A second opinion must come from a different model: "provider/model" (or just the model id) to leave out.
+    avoid: str = ""
 
     def __post_init__(self) -> None:
         if self.capability not in CAPABILITIES:
@@ -155,7 +157,9 @@ class ModelRouter:
             for mid, info in models.items():
                 key = f"{name}/{mid}"
                 reason = None
-                if need.capability not in info.capabilities:
+                if need.avoid and need.avoid in (key, mid):
+                    reason = "the model whose work is being checked"
+                elif need.capability not in info.capabilities:
                     reason = f"lacks capability '{need.capability}'"
                 elif info.quality < need.min_quality:
                     reason = f"quality {info.quality} below required {need.min_quality}"

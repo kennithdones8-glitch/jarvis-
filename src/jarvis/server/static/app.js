@@ -333,7 +333,7 @@ function stageLabel(e) {
     const where = e.location === "local" ? "on this Mac" : "in the cloud";
     return `${e.streams ? "Writing" : "Writing (this model sends its reply in one piece)"} · ${e.model.split("/").pop()} ${where}`;
   }
-  if (e.stage === "checking") return e.code_test ? "Testing the code" : "Checking the answer";
+  if (e.stage === "checking") return e.code_test ? "Testing the code" : e.second_opinion ? "Getting a second opinion" : "Checking the answer";
   return e.stage;
 }
 
@@ -584,6 +584,10 @@ function jobCard(j) {
       j.replan_of ? h("div", { class: "d-why" }, "Planned with what happened on the first attempt, so it doesn't redo what's done.") : null,
       h("div", { class: "job-title" }, j.goal || j.request),
       h("ol", { class: "plan-steps" }, j.steps.map((s) => h("li", {}, s.description))),
+      j.review ? h("div", { class: `d-why review ${j.review.verdict}` },
+        j.review.verdict === "unavailable" ? "Second opinion: not reviewed (no other local model is installed)."
+          : `Second opinion (${(j.review.model || "").split("/").pop()}): ${j.review.verdict === "agree" ? "the steps do what you asked" : j.review.verdict === "disagree" ? "check before you Run" : "unsure"}`,
+        j.review.problems && j.review.problems.length ? h("ul", {}, j.review.problems.map((x) => h("li", {}, x))) : null) : null,
       j.criteria && j.criteria.length ? h("details", { class: "more" }, h("summary", {}, "How JARVIS will check it's done"),
         h("ul", { class: "criteria" }, j.criteria.map((c) => h("li", { class: c.check }, c.text)))) : null,
       h("details", { class: "more" }, h("summary", {}, "Technical details"),

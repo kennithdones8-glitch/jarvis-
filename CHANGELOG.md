@@ -6,6 +6,17 @@
   before planning, nothing left out, retries routed by the question, the first-event check). Both sides kept; one
   conflict: `Orchestrator.plan` runs main's premise check first and keeps this branch's replan history.
 
+### A second opinion
+
+- **Deep-mode answers are checked by a different local model.** It reads your question and the answer; if it names a
+  concrete error, the answering model (when it answered on this Mac) gets one chance to revise, and the reply says
+  what the second opinion said ("agrees", "unsure", "disagrees: …", or "pointed out a problem; the answer was revised
+  once"). Never the same model (`Need.avoid`), never the cloud, never in Quick or Balanced.
+- **Plans that change something get a second opinion before you Run them**, shown on the plan: whether the steps do
+  what you asked, and what worries it. It only informs; it never approves, edits or blocks a plan.
+- With only one local model installed it says "not reviewed", never "checked". Audit: `chat.second_opinion`,
+  `plan.second_opinion` (verdict and counts only).
+
 ### Objectives v2: missions that follow one another, and the objective's map
 
 - **A mission can wait for another.** On an objective with a mission in progress, the button reads "Plan a mission to
