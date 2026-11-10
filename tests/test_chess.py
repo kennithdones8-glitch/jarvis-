@@ -33,15 +33,19 @@ def test_perft_matches_the_published_counts(fen, depth, nodes):
     assert js(f"console.log(JSON.stringify(C.perft(C.parseFEN({json.dumps(fen)}), {depth})))") == nodes
 
 
-def test_engine_finds_mate_in_one():
+def test_engine_finds_mate_in_one_at_every_level_every_time():
+    # Easy and Medium sometimes pick a near-best move on purpose; a mate is never "near" anything else (regression:
+    # a fail-hard bound once made other root moves tie with the mate, and Medium missed it ~1 time in 3).
     r = js("""
 const mv = (fen, lv) => { const m = C.search(C.parseFEN(fen), C.LEVELS[lv]).move; return C.sqName(m.from) + C.sqName(m.to); };
-console.log(JSON.stringify({
-  mate1: mv("6k1/5ppp/8/8/8/8/5PPP/R5K1 w - - 0 1", "medium"),
-  mate1b: mv("k7/8/1K6/8/8/8/8/7Q w - - 0 1", "hard"),
-}));""")
-    assert r["mate1"] == "a1a8"
-    assert r["mate1b"] in ("h1a1", "h1h8")   # both mate
+const out = { back: new Set(), queen: new Set() };
+for (let i = 0; i < 20; i++) for (const lv of ["easy", "medium", "hard"]) {
+  out.back.add(mv("6k1/5ppp/8/8/8/8/5PPP/R5K1 w - - 0 1", lv));
+  out.queen.add(mv("k7/8/1K6/8/8/8/8/7Q w - - 0 1", lv));
+}
+console.log(JSON.stringify({ back: [...out.back], queen: [...out.queen] }));""")
+    assert r["back"] == ["a1a8"]
+    assert set(r["queen"]) <= {"h1h8", "h1b7"}      # both are mate (Qb7 is guarded by the king on b6)
 
 
 def test_engine_moves_are_always_legal_and_games_end():

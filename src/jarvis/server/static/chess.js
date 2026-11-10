@@ -268,7 +268,11 @@
       const done = [];
       let alpha = -Infinity;
       for (const m of root) {
-        const v = -negamax(make(s, m), depth - 1, -Infinity, -alpha, 1);
+        // Levels that may pick a near-best move need every root move's real score (a full window); otherwise a move
+        // that isn't better than the best so far only gets a bound back, so it is marked as strictly worse.
+        const prev = alpha;
+        let v = -negamax(make(s, m), depth - 1, -Infinity, opts.slack ? Infinity : -alpha, 1);
+        if (!opts.slack && done.length && v <= prev) v = prev - 1;
         if (stopped) break;
         done.push({ m, v });
         if (v > alpha) alpha = v;
