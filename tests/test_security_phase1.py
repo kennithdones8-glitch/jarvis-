@@ -74,7 +74,9 @@ def test_the_macos_sandbox_rules_deny_network_writes_and_private_reads(tmp_path)
     p = trial.sandbox_profile(root, data, home, extra_reads=[tmp_path / "repo" / ".git"])
     lines = p.splitlines()
     assert lines[:3] == ["(version 1)", "(allow default)", "(deny network*)"]
-    assert '(allow network* (remote ip "localhost:*"))' in p                     # only this Mac (the tests' stand-ins)
+    assert '(allow network-outbound (remote ip "localhost:*"))' in p              # only this Mac (the tests' stand-ins)
+    assert '(allow network-bind network-inbound (local ip "localhost:*"))' in p
+    assert "(allow network* " not in p                                            # no broad network allow at all
     assert "(deny file-write*)" in p and f'(allow file-write* (subpath "{os.path.realpath(root)}")' in p
     # reads: every user folder and external drive denied, then only the trial, Python and the repo's history back
     deny_all = next(x for x in lines if x.startswith("(deny file-read-data"))

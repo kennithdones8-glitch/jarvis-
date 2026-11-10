@@ -109,12 +109,14 @@ def sandbox_profile(root: Path, data: Path | None, real_home: Path, *, extra_rea
         "(version 1)",
         "(allow default)",
         "(deny network*)",
-        '(allow network* (local ip "localhost:*"))',
-        '(allow network* (remote ip "localhost:*"))',
-        "(allow network* (remote unix-socket))",
-        '(deny network* (remote unix-socket (path-regex #"^/(private/)?var/run/docker")))',
-        f'(deny network* (remote unix-socket (path-regex #"^{_rx(home)}/")))',
-        f"(allow network* (remote unix-socket (subpath {_q(root)})))",
+        # the tests' own stand-in servers: listen on this Mac's loopback only, and connect out only to loopback
+        # (a broad `network*` allow on the local address also matched outbound connections to the internet:
+        # caught by the escape test on GitHub's macOS runners)
+        '(allow network-bind network-inbound (local ip "localhost:*"))',
+        '(allow network-outbound (remote ip "localhost:*"))',
+        f"(allow network-outbound (remote unix-socket (subpath {_q(root)})))",
+        '(deny network-outbound (remote unix-socket (path-regex #"^/(private/)?var/run/docker")))',
+        f'(deny network-outbound (remote unix-socket (path-regex #"^{_rx(home)}/")))',
         '(deny mach-lookup (global-name "com.apple.SecurityServer") (global-name "com.apple.securityd")'
         ' (global-name "com.apple.coreservices.appleevents") (global-name "com.apple.pasteboard.1"))',
         "(deny appleevent-send)",
