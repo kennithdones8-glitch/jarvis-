@@ -21,7 +21,7 @@ from typing import Any
 from .devices import DeviceError
 from .passkeys import STEP_UP, PasskeyRP
 
-MAC_STEP_UP = STEP_UP + (r"/api/update/start", r"/api/settings/coding", r"/api/devices/pair", r"/api/touchid/enroll/options", r"/api/touchid/[\w-]+/remove")
+MAC_STEP_UP = STEP_UP + (r"/api/update/start", r"/api/settings/coding", r"/api/settings/files", r"/api/devices/pair", r"/api/touchid/enroll/options", r"/api/touchid/[\w-]+/remove")
 SIGNIN_HOURS = 12
 
 

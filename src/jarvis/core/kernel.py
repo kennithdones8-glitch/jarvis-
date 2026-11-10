@@ -143,9 +143,12 @@ class Kernel:
         plans = [r["id"] for r in self.db.query("SELECT id, request FROM plan_jobs") if q and q in r["request"].lower()]
         out["plans"] = len(plans)
         from ..objectives import forget as forget_objectives
+        from ..files_index import forget as forget_files
         out["objectives"] = forget_objectives(self, query, by=by, dry_run=True)
+        out["indexed_files"] = forget_files(self, query, dry_run=True)
         if not dry_run:
             forget_objectives(self, query, by=by, dry_run=False)
+            forget_files(self, query, dry_run=False)
             for t in out["tasks"]:
                 if t["deletable"]:
                     self.tasks.delete(t["id"], by=by)

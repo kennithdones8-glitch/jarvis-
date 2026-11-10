@@ -1661,3 +1661,5 @@ body[data-view="games"] .context-panel { display: none; }
 .ck { width: 72%; height: 72%; border-radius: 50%; box-shadow: 0 2px 3px rgba(0, 0, 0, .5); }
 .ck.you { background: #f1e6d0; } .ck.jarvis { background: #b3261e; }
 .ck.king { box-shadow: 0 0 0 3px var(--gold-hi) inset, 0 2px 3px rgba(0, 0, 0, .5); }
+.mem-conflicts { display: grid; gap: 8px; margin-bottom: 10px; } .mem-conflict { display: grid; gap: 4px; padding-top: 6px; border-top: 1px solid var(--gold-faint); }
+.files-hits { margin: 0; padding-left: 18px; display: grid; gap: 6px; }

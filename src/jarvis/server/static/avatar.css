@@ -330,3 +330,6 @@ body.projection .projbar .pj-ctl { flex-wrap: nowrap; } body.projection .projbar
 @media (pointer: coarse) {
   input[type="text"], input[type="search"], input:not([type]), select { min-height: 44px; }
 }
+/* speed check results (focus view, Projection controls) */
+.speed-rows { font-size: 13px; margin: 6px 0; }
+.speed-rows div { display: flex; justify-content: space-between; gap: 12px; padding: 2px 0; }

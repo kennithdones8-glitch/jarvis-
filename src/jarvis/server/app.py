@@ -221,6 +221,14 @@ def _content_length(h: BaseHTTPRequestHandler) -> int:
     return length
 
 
+def _files_status(k) -> dict[str, Any] | None:
+    from .. import files_index
+    try:
+        return files_index.status(k)
+    except Exception:  # noqa: BLE001
+        return None
+
+
 def _whatsnew(k) -> dict[str, Any]:
     from .. import whatsnew
     try:
@@ -463,6 +471,10 @@ class Dashboard:
         quiet = proactive.Schedule.from_config(self.kernel.model_config.proactive).quiet(datetime.now())
         return benchtest.tick(self.kernel, quiet=quiet)
 
+    def files_tick(self) -> dict[str, int]:
+        from .. import files_index
+        return files_index.refresh(self.kernel)
+
     def _report_update(self) -> None:
         from .. import update
         try:
@@ -651,6 +663,7 @@ class Dashboard:
                 self.learn_cycle()
                 self.benchtest_tick()
                 self.objectives_tick()
+                self.files_tick()
             except Exception as exc:
                 if self._stop.is_set():
                     return  # shutting down: the database may already be closed
@@ -1244,6 +1257,7 @@ class Dashboard:
             "benchtest": None if device else _benchtest_status(k),
             "objectives": _objectives(k),
             "whatsnew": _whatsnew(k),
+            "files": None if device else _files_status(k),
             "coding": {"self_test": bool(k.model_config.coding.get("self_test")), "compute": bool(k.model_config.coding.get("compute")),
                        "sandbox": sys.platform == "darwin"},
             "briefing": {"last_date": _last_briefing(k)},
@@ -1479,7 +1493,11 @@ class Dashboard:
             q = parse_qs(url.query).get("q", [""])[0][:200]
             mem = self.kernel.memory
             items = mem.search(q) if q.strip() else mem.list(limit=50)
-            return self._json(h, 200, {"memories": items, "counts": mem.counts(),
+            from ..memory.conflicts import find as find_conflicts
+            conflicts = [{"subject": c["subject"], "a": {k: c["a"][k] for k in ("id", "text", "created_at")},
+                          "b": {k: c["b"][k] for k in ("id", "text", "created_at")}}
+                         for c in find_conflicts(mem.list(limit=500))][:5]
+            return self._json(h, 200, {"memories": items, "counts": mem.counts(), "conflicts": conflicts,
                                        "records": mem.search_records(q, limit=10) if q.strip() else []})
         if m := re.fullmatch(r"/api/tasks/([\w-]+)/timeline", url.path):
             from ..flight import timeline
@@ -1490,6 +1508,10 @@ class Dashboard:
             return self._json(h, 200, self.briefing())
         if url.path == "/api/objectives":
             return self._json(h, 200, {"objectives": _objectives(self.kernel)})
+        if url.path == "/api/files/search":   # your approved folders, if file search is on (Mac only)
+            from .. import files_index
+            q = parse_qs(url.query).get("q", [""])[0][:200]
+            return self._json(h, 200, {"results": files_index.search(self.kernel, q), **files_index.status(self.kernel)})
         if url.path == "/api/initiative":   # one ranked list of suggestions (suggests only; nothing runs)
             from .. import initiative
             return self._json(h, 200, initiative.feed(self.kernel, health=self._health or None))
@@ -1706,6 +1728,16 @@ class Dashboard:
             else:
                 mem.edit(m.group(1), text("text", 500), by=actor)
             return {"ok": True}
+        if path == "/api/memory/conflicts/resolve":   # keep one of two memories that disagree; the other is deleted
+            keep, drop = text("keep", 80), text("drop", 80)
+            try:
+                k.memory.get(keep)
+                k.memory.delete(drop, by=actor)
+                k.memory.confirm(keep, by=actor)
+            except KeyError:
+                raise HttpError(404, "no such memory") from None
+            k.audit.record("memory.conflict_resolved", actor=actor, kept=keep, dropped=drop)
+            return {"ok": True}
         if path == "/api/memory/forget":
             query, dry = text("query", 200), body.get("confirm") is not True
             out = self.kernel.forget(query, by=actor, dry_run=dry)
@@ -1821,6 +1853,11 @@ class Dashboard:
                 raise HttpError(404, "no such objective") from None
             except objectives.ObjectiveError as exc:
                 raise HttpError(400, str(exc)) from None
+        if path == "/api/settings/files":   # Mac only, Touch ID when set up: off deletes the whole index
+            from .. import files_index
+            if not isinstance(body.get("on"), bool):
+                raise HttpError(400, "on must be true or false")
+            return files_index.set_enabled(k, body["on"], by=actor)
         if path == "/api/settings/coding":   # Mac only, Touch ID when set up: code runs only in the macOS sandbox
             from ..cli import _write_section
             from ..models import load_model_config

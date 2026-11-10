@@ -61,8 +61,8 @@ const b64u = {
 // The fingerprint is for signing in. After that only the dangerous few ask again (must match the server's STEP_UP,
 // which enforces it regardless of what this page does): releasing the emergency stop, changing or forgetting
 // memories, removing a phone, plus approving a high-risk action (risk tier 4).
-const FACE_ID = [/^\/api\/release$/, /^\/api\/memory\/[\w-]+\/(delete|edit)$/, /^\/api\/devices\/[\w-]+\/revoke$/];
-const TOUCH_ID = [...FACE_ID, /^\/api\/update\/start$/, /^\/api\/settings\/coding$/, /^\/api\/devices\/pair$/, /^\/api\/touchid\/enroll\/options$/, /^\/api\/touchid\/[\w-]+\/remove$/];
+const FACE_ID = [/^\/api\/release$/, /^\/api\/memory\/conflicts\/resolve$/, /^\/api\/memory\/[\w-]+\/(delete|edit)$/, /^\/api\/devices\/[\w-]+\/revoke$/];
+const TOUCH_ID = [...FACE_ID, /^\/api\/update\/start$/, /^\/api\/settings\/(coding|files)$/, /^\/api\/devices\/pair$/, /^\/api\/touchid\/enroll\/options$/, /^\/api\/touchid\/[\w-]+\/remove$/];
 const HIGH_RISK = 4;
 const highRiskApproval = (path, body) => {
   const m = path.match(/^\/api\/approvals\/([\w-]+)$/);
@@ -1656,6 +1656,13 @@ function renderSystems(d) {
       ro("Budget", `$${(m.budget.spent_this_month_usd || 0).toFixed(2)} of $${(m.budget.monthly_limit_usd || 0).toFixed(2)}`),
       ro("Audit log", chain ? (chain.ok ? `Intact · ${chain.checked}` : `Broken at #${chain.first_bad_seq}`) : "Checking…", chain ? (chain.ok ? "ok" : "bad") : null),
       ro("Folders", d.roots.length ? d.roots.map(base).join(", ") : "None approved"),
+      ...(onPhone() || !d.files ? [] : [h("div", { class: "ro", title: "Search inside the folders you've approved (Mac only; off deletes the index)" },
+        h("span", {}, "File search"),
+        h("button", { class: `btn btn-ghost btn-xs${d.files.on ? " on" : ""}`, type: "button", disabled: d.files.folders.length ? null : true,
+          title: d.files.folders.length ? null : "Approve a folder first", onclick: async () => {
+            if (d.files.on && !(await ask("Turn file search off? The whole index is deleted (your files aren't touched).", { ok: "Turn off", danger: true }))) return;
+            act("/api/settings/files", { on: !d.files.on });
+          } }, d.files.on ? `On · ${plural(d.files.files, "file")}` : "Off"))]),
       ...(onPhone() || !d.coding ? [] : [["compute", "Work it out with code", "maths, dates and puzzles: a small program, run in the sandbox"],
         ["self_test", "Test code before answering", "coding answers run on test cases in the sandbox"]].map(([key, label, why]) =>
         h("div", { class: "ro", title: why }, h("span", {}, label),
@@ -1787,6 +1794,25 @@ async function loadMemory(force) {
                    observed: all.filter((m) => m.origin !== "explicit").length, starred: all.filter((m) => m.important).length };
   const shown = all.filter(MEM_FILTERS[ui.memFilter || "all"][1]);
   renderMemFilters(mc);
+  const fileBox = $("#memfiles");
+  if (fileBox) {
+    let files = [];
+    if (ui.memQ.trim() && ui.data && ui.data.files && ui.data.files.on) {
+      try { files = (await api(`/api/files/search?q=${encodeURIComponent(ui.memQ)}`)).results; } catch { files = []; }
+    }
+    fill(fileBox, files.length ? h("div", { class: "job" }, h("b", {}, "In your files"),
+      h("ul", { class: "files-hits" }, files.map((f) => h("li", {}, h("b", {}, f.name), h("small", {}, ` ${f.path}`), f.snippet ? h("div", { class: "d-why" }, f.snippet) : null)))) : null);
+  }
+  const conf = $("#memconflicts");
+  if (conf) fill(conf, (res.conflicts || []).length ? h("div", { class: "job mem-conflicts" },
+    h("b", {}, "These disagree: which is right?"),
+    res.conflicts.map((c) => h("div", { class: "mem-conflict" },
+      [c.a, c.b].map((m, i) => h("div", { class: "row" }, h("span", {}, m.text), h("small", {}, ` (${(m.created_at || "").slice(0, 10)})`),
+        h("button", { class: "btn btn-ghost btn-xs", type: "button", onclick: async () => {
+          if (!(await ask(`Keep “${m.text}” and delete “${(i ? c.a : c.b).text}”?`, { ok: "Keep this one" }))) return;
+          try { await call("/api/memory/conflicts/resolve", { keep: m.id, drop: (i ? c.a : c.b).id }); } catch (e) { note(cancelled(e)); }
+          loadMemory(true);
+        } }, "Keep this one")))))) : null);
   const items = shown.map((m) => {
     const confirmed = m.origin === "explicit";
     const day = (iso) => (iso || "").slice(0, 10);
@@ -3053,7 +3079,11 @@ function renderProjControls() {
     h("h3", { class: "sys-part" }, "3D view"),
     h("p", { class: "hl-sub" }, RENDER_STATUS[JarvisAvatar.status] || "3D view running."),
     h("div", { class: "row" }, h("button", { class: "btn btn-ghost btn-sm", type: "button", title: "Dispose the 3D view and build it again (open projections reopen)",
-      onclick: () => { JarvisAvatar.rebuild(); note("Rebuilding the 3D view…"); setTimeout(renderProjControls, 1500); } }, "Rebuild 3D view")),
+      onclick: () => { JarvisAvatar.rebuild(); note("Rebuilding the 3D view…"); setTimeout(renderProjControls, 1500); } }, "Rebuild 3D view"),
+      h("button", { class: "btn btn-ghost btn-sm", type: "button", disabled: three && !ui.speed ? null : true, onclick: speedCheck,
+        title: three ? "Draws the projection at each quality for a few seconds and measures the real frame time on this device" : "Needs the 3D view" },
+        ui.speed && ui.speed.running ? "Checking speed…" : "Speed check")),
+    ...speedResult(),
     ...choose("projection", "Intensity"), ...choose("quality", `Quality${JarvisAvatar.quality ? ` (now ${QUALITY_WORD[JarvisAvatar.quality] || JarvisAvatar.quality})` : ""}`),
     ...choose("particles", "Particles"), ...choose("animation", "Animation"), ...choose("reactor", "Reactor"),
     ...choose("orbit", "Orbit speed"), ...choose("orbitals", "Orbitals"), ...choose("env", "Environment holograms"),
@@ -3066,6 +3096,61 @@ function renderProjControls() {
     h("ul", { class: "pp-mods" }, mods.filter((m) => MODULE_LABEL[m.name]).map((m) =>
       h("li", { class: m.on ? "ok" : "no" }, `${m.on ? "✓" : "·"} ${MODULE_LABEL[m.name]}${m.on ? "" : ` (stage ${m.tier})`}`))),
     h("p", { class: "hl-sub" }, "Modules follow the displayed evolution stage. Settings here change only the look on this device; they never change what JARVIS can do."));
+}
+
+// Speed check (focus view): draws the projection at Quality, Balanced and Performance for a few seconds each and
+// measures the real frame time on this device (an older Intel Mac may not hold the frame cap at Quality). It
+// recommends the richest level that stays smooth; nothing changes unless you press Use. Your setting is restored after.
+const SPEED_LEVELS = ["high", "balanced", "low"], SPEED_OK_MS = 40;
+function speedCheck() {
+  if (!window.JarvisAvatar || JarvisAvatar.renderer !== "3d" || (ui.speed && ui.speed.running)) return;
+  const saved = effectiveDisplay(loadDisplay());
+  ui.speed = { running: true, results: [] };
+  renderProjControls();
+  const finish = (why) => {
+    JarvisAvatar.setOptions(avatarOptions(saved)); JarvisAvatar.refresh();
+    ui.speed.running = false; ui.speed.why = why || "";
+    const ok = ui.speed.results.filter((r) => r.ms && r.ms <= SPEED_OK_MS);
+    ui.speed.pick = why ? null : ok.length ? ok[0].level : "lowpower";
+    renderProjControls();
+  };
+  const run = (i) => {
+    if (i >= SPEED_LEVELS.length) return finish();
+    if (!document.body.classList.contains("projection") || document.hidden) return finish("stopped: the focus view was closed or the page hidden");
+    const level = SPEED_LEVELS[i], samples = [];
+    JarvisAvatar.setOptions({ ...avatarOptions(saved), quality: level }); JarvisAvatar.refresh();
+    setTimeout(() => {   // let the new level settle, then sample the measured frame time for 4 s
+      const timer = setInterval(() => {
+        const s = JarvisAvatar.stats;
+        if (s && s.frameMs) samples.push(s.frameMs);
+        if (samples.length < 16 && !document.hidden) return;
+        clearInterval(timer);
+        if (!samples.length) return finish("couldn't measure: the projection isn't animating (Motion must be Normal)");
+        ui.speed.results.push({ level, ms: +(samples.reduce((a, b) => a + b, 0) / samples.length).toFixed(1) });
+        renderProjControls();
+        run(i + 1);
+      }, 250);
+    }, 1500);
+  };
+  run(0);
+}
+function speedResult() {
+  const sp = ui.speed;
+  if (!sp) return [];
+  const rows = sp.results.map((r) => h("div", {}, h("span", {}, QUALITY_WORD[r.level]), h("span", {}, `${r.ms} ms a frame (${Math.round(1000 / r.ms)} fps)${r.ms <= SPEED_OK_MS ? " · smooth" : " · slow"}`)));
+  const out = [h("div", { class: "speed-rows", role: "status" }, ...rows, sp.running ? h("div", {}, h("span", {}, "…"), h("span", {}, "measuring")) : null)];
+  if (sp.running) return out;
+  if (sp.why) return [...out, h("p", { class: "hl-sub" }, `Speed check ${sp.why}. Nothing was changed.`)];
+  const cur = loadDisplay();
+  out.push(h("p", { class: "hl-sub" }, sp.pick === "lowpower"
+    ? "None of the levels stayed smooth on this device. Low Power draws the least."
+    : `${QUALITY_WORD[sp.pick]} is the richest level that stayed smooth here (${SPEED_OK_MS} ms a frame or less). Auto adjusts on its own as it goes; choosing a level fixes it.`));
+  out.push(h("div", { class: "row" },
+    h("button", { class: "btn btn-sm", type: "button", disabled: cur.quality === sp.pick ? true : null,
+      onclick: () => { cur.quality = sp.pick; saveDisplay(cur); applyDisplay(cur); ui.speed = null; renderProjControls(); note(`Quality set to ${QUALITY_WORD[sp.pick]} on this device.`); } },
+      `Use ${QUALITY_WORD[sp.pick]}`),
+    h("button", { class: "btn btn-ghost btn-sm", type: "button", onclick: () => { ui.speed = null; renderProjControls(); } }, "Dismiss")));
+  return out;
 }
 
 // 3D depth: the side columns lean toward the projection; the mouse adds a slight parallax (Normal effects only)

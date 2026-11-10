@@ -6,6 +6,22 @@
   before planning, nothing left out, retries routed by the question, the first-event check). Both sides kept; one
   conflict: `Orchestrator.plan` runs main's premise check first and keeps this branch's replan history.
 
+### Memories that disagree, search your own files, and a speed check — schema v12
+
+- **Memories that disagree.** The Memory page lists pairs of memories that contradict each other ("My dentist is
+  Dr Patel" vs "Dr Shah is my dentist", where you live, your age), found with plain rules, no model. You pick which
+  to keep; the other is deleted (behind the same Face ID / Touch ID as deleting a memory). Conflicts also show in
+  "Worth your attention".
+- **Search your own files** (off until you turn it on in Configuration, Mac only, Touch ID to switch). JARVIS indexes
+  text, Markdown, CSV, JSON, HTML, PDF and Word files inside the folders you've already approved, a few dozen at a
+  time in the background; every read is checked by the permission engine first. Hidden files and folders are skipped,
+  nothing leaves the Mac and no model is involved. Results appear on the Memory page under "In your files". Turning it
+  off deletes the whole index; `jarvis forget` drops matching files and keeps them out. Schema v12 adds the index.
+- **Speed check for the projection** (focus view → Projection controls). Draws the 3D projection at Quality,
+  Balanced and Performance for a few seconds each and shows the real frame time measured on this device — useful on
+  an older Intel Mac. It recommends the richest level that stays smooth (40 ms a frame or less); nothing changes
+  unless you press Use, and your setting is restored after the check. Auto still adjusts on its own.
+
 ### Games: Connect Four, Checkers, and a chess coach
 
 - **Connect Four and Checkers** join chess on the Games page (tabs). Connect Four: drop discs, four in a row wins,

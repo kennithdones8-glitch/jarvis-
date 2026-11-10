@@ -325,6 +325,17 @@ MIGRATIONS: list[str] = [
         updated_at  TEXT NOT NULL
     );
     """,
+    # v12: file search (off until you turn it on): what's in your approved folders, searchable. Turning it off
+    # deletes all of it; forget removes matching files' entries and keeps them out.
+    """
+    CREATE VIRTUAL TABLE file_index USING fts5(path UNINDEXED, name, body, tokenize = 'porter unicode61');
+    CREATE TABLE file_index_meta (
+        path        TEXT PRIMARY KEY,
+        mtime       REAL NOT NULL,
+        size        INTEGER NOT NULL,
+        indexed_at  TEXT NOT NULL
+    );
+    """,
 ]
 
 

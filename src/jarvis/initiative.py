@@ -95,6 +95,15 @@ def candidates(kernel, *, health: dict[str, Any] | None = None, now: datetime | 
     for p in db.query("SELECT id, title, body FROM project_ideas WHERE state = 'open' ORDER BY created_at DESC LIMIT 3"):
         out.append(_item(f"project-idea:{p['id']}", "project", p["title"], str(json.loads(p["body"]).get("why") or "")[:200],
                          value=2, urgency=1, confidence=0.5, href="#/projects"))
+    try:   # memories that disagree: ask which is right (Memory)
+        from .memory.conflicts import find as find_conflicts
+        for c in find_conflicts(kernel.memory.list(limit=500))[:3]:
+            out.append(_item(f"memory-conflict:{c['a']['id']}:{c['b']['id']}", "memory",
+                             f"Two memories disagree about {c['subject']}",
+                             f"“{c['a']['text'][:80]}” vs “{c['b']['text'][:80]}”. Keep the right one in Memory.",
+                             value=2, urgency=2, confidence=0.9, href="#/memory"))
+    except Exception:  # noqa: BLE001
+        pass
     try:
         from .objectives import feed_items
         out += feed_items(kernel)

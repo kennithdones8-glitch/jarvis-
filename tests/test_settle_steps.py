@@ -71,4 +71,5 @@ def test_page_offers_yes_no_with_honest_warnings(dash):
     settle = js.split("async function settleStep(t, s, happened) {")[1].split("\n}\n")[0]
     assert "JARVIS will do this step again" in settle and "it may happen twice" in settle
     assert "act(`/api/tasks/${t.id}/steps/${s.id}/resolve`, { happened })" in settle
-    assert "resolve$/" not in js  # one tap: not in the page's fingerprint list (owner's choice)
+    lists = [ln for ln in js.splitlines() if ln.startswith(("const FACE_ID", "const TOUCH_ID"))]
+    assert len(lists) == 2 and not any("steps" in ln for ln in lists)  # one tap: not in the fingerprint list (owner's choice)
