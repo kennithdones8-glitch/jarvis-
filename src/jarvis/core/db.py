@@ -317,6 +317,21 @@ class SchemaTooNew(RuntimeError):
     pass
 
 
+SCHEMA_VERSION = len(MIGRATIONS)
+
+
+def schema_of(path: str | Path) -> int:
+    """The schema version of a database file, read without changing it (0 if there is no file or it's empty)."""
+    p = Path(path)
+    if not p.is_file() or p.stat().st_size == 0:
+        return 0
+    conn = sqlite3.connect(f"file:{p}?mode=ro", uri=True)
+    try:
+        return conn.execute("PRAGMA user_version").fetchone()[0]
+    finally:
+        conn.close()
+
+
 class Database:
     """Thread-safe wrapper around a single SQLite connection.
 

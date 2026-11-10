@@ -22,6 +22,7 @@ import json
 import os
 import re
 import shutil
+import subprocess
 import sys
 import secrets
 import threading
@@ -219,6 +220,12 @@ def _content_length(h: BaseHTTPRequestHandler) -> int:
     return length
 
 
+def _update_status(k) -> dict[str, Any] | None:
+    from .. import update
+    s = update.status(k.home)
+    return {key: s.get(key) for key in ("state", "steps", "behind", "started", "finished")} if s else None
+
+
 def _last_briefing(kernel: Kernel) -> str | None:
     from ..proactive import last_briefing_date
 
@@ -336,6 +343,7 @@ class Dashboard:
     def start(self) -> None:
         """Run in background threads (used by tests)."""
         self._restore_jobs()
+        self._report_update()
         self.voice.start()
         self._runner.start()
         self._maint.start()
@@ -344,6 +352,7 @@ class Dashboard:
 
     def serve_forever(self) -> None:
         self._restore_jobs()
+        self._report_update()
         self.voice.start()
         self._runner.start()
         self._maint.start()
@@ -403,6 +412,13 @@ class Dashboard:
                 except Exception as exc:
                     self.kernel.audit.record("push.error", error=f"{type(exc).__name__}: {exc}"[:300])
             self._stop.wait(self._poll_s)
+
+    def _report_update(self) -> None:
+        from .. import update
+        try:
+            update.report(self.kernel)
+        except (OSError, ValueError, KeyError):
+            pass
 
     # ---- health & automatic backups --------------------------------------------------
     def backup_settings(self) -> dict[str, Any]:
@@ -1070,6 +1086,7 @@ class Dashboard:
                        "this_device": {"id": device["id"], "name": device["name"]} if device else None,
                        "devices": self.remote.devices.list() if self.remote else []},
             "touch_id": {"enabled": self.mac.enabled(), "keys": self.mac.keys()},
+            "update": None if device else _update_status(k),
             "briefing": {"last_date": _last_briefing(k)},
             "voice": self.voice.status(),
             "telemetry": self.telemetry.snapshot(),
@@ -1590,6 +1607,36 @@ class Dashboard:
             self.jobs.pop(m.group(1), None)
             self._forget_job(m.group(1))
             return {"ok": True}
+        if path == "/api/health/check":
+            self._health = self.check_health()
+            return self._health
+        if path == "/api/backup/now":   # Mac only (LOCAL_ONLY)
+            from ..backup import BackupError, create_backup, get_passphrase
+            if not get_passphrase():   # the first backup prints its passphrase once; that belongs in Terminal, not here
+                raise HttpError(400, "set up backups once in Terminal first: uv run jarvis backup now (save the passphrase it prints)")
+            b = self.backup_settings()
+            try:
+                r = create_backup(k.home, k.policy_path, k.config_path, dest_dir=b["dir"], keep=b["keep"])
+            except (BackupError, OSError, ValueError) as exc:
+                k.audit.record("backup.failed", error=str(exc)[:300])
+                raise HttpError(400, f"backup failed: {exc}") from None
+            k.audit.record("backup.created", actor=actor, file=r.path.name, bytes=r.bytes, verified=r.verified)
+            self._health = self.check_health()
+            return {"ok": True, "file": r.path.name}
+        if path == "/api/update/check":   # Mac only (LOCAL_ONLY): fetches the branch, changes nothing
+            from .. import update
+            try:
+                c = update.check()
+            except (update.UpdateError, OSError, subprocess.TimeoutExpired) as exc:
+                raise HttpError(400, f"couldn't check for updates: {exc}") from None
+            k.audit.record("update.checked", actor=actor, behind=c.get("behind", 0))
+            return c
+        if path == "/api/update/start":   # Mac only, and Touch ID when it's set up (MAC_STEP_UP)
+            from .. import update
+            try:
+                return update.start(k, port=self.port, by=actor)
+            except (update.UpdateError, OSError, subprocess.TimeoutExpired) as exc:
+                raise HttpError(400, str(exc)) from None
         if path == "/api/initiative/dismiss":
             from .. import initiative
             size = body.get("size") if isinstance(body.get("size"), int) else 1

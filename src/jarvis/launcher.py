@@ -5,8 +5,12 @@ and macOS doesn't flag it as coming from an unidentified developer. It runs exac
 with the same `uv`, repository and data folder as the background service:
 
 - no secret is stored in the app: the dashboard link is read from JARVIS's data folder each time it's opened;
-- if JARVIS isn't running it says so (and how to start it) instead of opening a broken page;
-- it never starts, stops, updates or changes JARVIS.
+- if JARVIS isn't running it says so and offers a "Start JARVIS" button, which (only when you click it) sets up the
+  background service again, `jarvis service install`, then opens the dashboard once it answers;
+- otherwise it never starts, stops, updates or changes JARVIS.
+
+`jarvis app install` also puts a small `jarvis` command in ~/.local/bin, so `jarvis doctor` works in Terminal
+without `uv run` (it runs this same repository with the same uv).
 
 `jarvis app install` creates or replaces it; `jarvis app uninstall` removes it. Both only touch an app that
 carries this launcher's marker file, never anything else with the same name.
@@ -39,20 +43,39 @@ def _as_text(value: str) -> str:
     return '"' + value.replace("\\", "\\\\").replace('"', '\\"') + '"'
 
 
+def _shell(args: list[str]) -> str:
+    return " & \" \" & ".join(f"quoted form of {_as_text(a)}" for a in args)
+
+
 def applescript(*, uv: str, repo: Path, home: Path, custom_home: bool, port: int = DEFAULT_PORT) -> str:
-    args = [uv, "run", "--project", str(repo), "--quiet", "jarvis"]
-    if custom_home:
-        args += ["--home", str(home)]
-    args += ["open", "--port", str(port)]
+    base = [uv, "run", "--project", str(repo), "--quiet", "jarvis"] + (["--home", str(home)] if custom_home else [])
     # `jarvis open` explains problems on stdout; send it to stderr so AppleScript's error message carries it
-    command = " & \" \" & ".join(f"quoted form of {_as_text(a)}" for a in args) + ' & " 1>&2"'
-    return f"""-- JARVIS launcher: opens the dashboard. Made by `jarvis app install`; changes nothing.
+    command = _shell(base + ["open", "--port", str(port)]) + ' & " 1>&2"'
+    start = _shell(base + ["service", "install", "--port", str(port)]) + ' & " 1>&2"'
+    return f"""-- JARVIS launcher: opens the dashboard. Made by `jarvis app install`. It starts JARVIS only when you click
+-- "Start JARVIS"; otherwise it changes nothing.
 on run
 \ttry
 \t\tdo shell script {command}
 \ton error errMsg number errNum
 \t\tif errMsg contains "isn't running" then
-\t\t\tdisplay dialog "JARVIS isn't running right now." & return & return & "It normally starts by itself when you log in. To start it now, open Terminal and run:" & return & return & "cd {_escape_dialog(str(repo))} && uv run jarvis service install" buttons {{"OK"}} default button "OK" with title "JARVIS" with icon caution
+\t\t\tset choice to button returned of (display dialog "JARVIS isn't running right now." & return & return & "It normally starts by itself when you log in. Start it now?" buttons {{"Cancel", "Start JARVIS"}} default button "Start JARVIS" cancel button "Cancel" with title "JARVIS" with icon caution)
+\t\t\tif choice is "Start JARVIS" then
+\t\t\t\ttry
+\t\t\t\t\tdo shell script {start}
+\t\t\t\ton error startMsg
+\t\t\t\t\tdisplay dialog "JARVIS couldn't start:" & return & return & startMsg buttons {{"OK"}} default button "OK" with title "JARVIS" with icon caution
+\t\t\t\t\treturn
+\t\t\t\tend try
+\t\t\t\trepeat 30 times
+\t\t\t\t\tdelay 2
+\t\t\t\t\ttry
+\t\t\t\t\t\tdo shell script {command}
+\t\t\t\t\t\treturn
+\t\t\t\t\tend try
+\t\t\t\tend repeat
+\t\t\t\tdisplay dialog "JARVIS was started but isn't answering yet. Give it a minute and open JARVIS again. If it still doesn't open, the log is in JARVIS's data folder (logs/dashboard.log)." buttons {{"OK"}} default button "OK" with title "JARVIS" with icon caution
+\t\t\tend if
 \t\telse
 \t\t\tdisplay dialog "JARVIS couldn't open the dashboard:" & return & return & errMsg buttons {{"OK"}} default button "OK" with title "JARVIS" with icon caution
 \t\tend if
@@ -61,8 +84,41 @@ end run
 """
 
 
-def _escape_dialog(text: str) -> str:
-    return text.replace("\\", "\\\\").replace('"', '\\"')
+COMMAND_MARK = "# Made by `jarvis app install`"
+
+
+def command_dir() -> Path:
+    return Path.home() / ".local" / "bin"
+
+
+def command_script(*, uv: str, repo: Path, home: Path, custom_home: bool) -> str:
+    import shlex
+    extra = f" --home {shlex.quote(str(home))}" if custom_home else ""
+    return (f"#!/bin/sh\n{COMMAND_MARK}: runs JARVIS from {repo} (`jarvis app uninstall` removes it).\n"
+            f"exec {shlex.quote(uv)} run --project {shlex.quote(str(repo))} --quiet jarvis{extra} \"$@\"\n")
+
+
+def install_command(home: Path, *, custom_home: bool, dest_dir: Path | None = None, repo: Path = REPO) -> Path:
+    """A `jarvis` command for Terminal (no `uv run` needed). Never replaces a `jarvis` file it didn't make."""
+    uv = shutil.which("uv")
+    if not uv:
+        raise LauncherError("couldn't find `uv` on your PATH")
+    dest_dir = Path(dest_dir) if dest_dir else command_dir()
+    target = dest_dir / "jarvis"
+    if target.exists() and COMMAND_MARK not in target.read_text(errors="ignore"):
+        raise LauncherError(f"{target} already exists and wasn't made by JARVIS; not touching it")
+    dest_dir.mkdir(parents=True, exist_ok=True)
+    target.write_text(command_script(uv=uv, repo=repo, home=home, custom_home=custom_home))
+    target.chmod(0o755)
+    return target
+
+
+def uninstall_command(dest_dir: Path | None = None) -> bool:
+    target = (Path(dest_dir) if dest_dir else command_dir()) / "jarvis"
+    if not target.exists() or COMMAND_MARK not in target.read_text(errors="ignore"):
+        return False
+    target.unlink()
+    return True
 
 
 def is_ours(app: Path) -> bool:

@@ -6,6 +6,29 @@
   before planning, nothing left out, retries routed by the question, the first-event check). Both sides kept; one
   conflict: `Orchestrator.plan` runs main's premise check first and keeps this branch's replan history.
 
+### Safe updates, and less Terminal
+
+- **A database upgrade is backed up first.** When new code would upgrade your database, JARVIS first makes an encrypted,
+  verified backup in `backups/before-upgrade` (the last 5 are kept, apart from the daily ones) and logs
+  `database.upgraded` with the file name. On a Mac it refuses to upgrade without that backup ("Nothing was changed");
+  `JARVIS_UPGRADE_WITHOUT_BACKUP=1` is the explicit way past a broken Keychain.
+- **A command that does nothing changes nothing.** `jarvis dashboard` while JARVIS is already running now stops before
+  opening your data. (Before, it upgraded the database and then said "already running", which is how the Mac ended up
+  with a v10 database that 0.19.4 couldn't open.)
+- **Update button** (Systems → Updates, Mac only, Touch ID when it's set up). "Check for updates" fetches your branch
+  and lists the new commits; "Update" runs a separate helper that backs up, fast-forwards (never merges or rewrites),
+  runs `uv sync` and the release gate, then restarts the service. If the tests fail the old commit comes back and
+  nothing restarts; if the new version doesn't answer within two minutes, the old code and the database as it was just
+  before the restart are put back and started again. It refuses local edits, diverged history, a running mission and
+  the emergency stop. JARVIS never starts an update itself. Progress survives the restart (`update/state.json`); the
+  outcome goes in the audit log (`update.started`, `update.finished`).
+- **Systems → Health** has "Check again" and "Back up now" (Mac only; the very first backup still happens in Terminal,
+  because it prints the passphrase once).
+- **JARVIS.app offers "Start JARVIS"** when JARVIS isn't running: only after you click it, it runs
+  `jarvis service install` and opens the dashboard once it answers.
+- **A `jarvis` command.** `jarvis app install` also writes `~/.local/bin/jarvis`, so `jarvis doctor` works without
+  `uv run`. It never replaces a `jarvis` file it didn't make; `jarvis app uninstall` removes both.
+
 ### iPhone layout (Evolution 3.0, phase 6)
 
 - **The focus view on iPhone is split into tabs** — Now (state, readiness, current work, systems), Modes (working

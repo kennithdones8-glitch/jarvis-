@@ -62,7 +62,7 @@ const b64u = {
 // which enforces it regardless of what this page does): releasing the emergency stop, changing or forgetting
 // memories, removing a phone, plus approving a high-risk action (risk tier 4).
 const FACE_ID = [/^\/api\/release$/, /^\/api\/memory\/[\w-]+\/(delete|edit)$/, /^\/api\/devices\/[\w-]+\/revoke$/];
-const TOUCH_ID = [...FACE_ID, /^\/api\/devices\/pair$/, /^\/api\/touchid\/enroll\/options$/, /^\/api\/touchid\/[\w-]+\/remove$/];
+const TOUCH_ID = [...FACE_ID, /^\/api\/update\/start$/, /^\/api\/devices\/pair$/, /^\/api\/touchid\/enroll\/options$/, /^\/api\/touchid\/[\w-]+\/remove$/];
 const HIGH_RISK = 4;
 const highRiskApproval = (path, body) => {
   const m = path.match(/^\/api\/approvals\/([\w-]+)$/);
@@ -1151,6 +1151,32 @@ function renderDecisions(list) {
 }
 
 // ---------------------------------------------------------------- systems & activity
+// Updates (Mac only): "Check" lists what's new; "Update" backs up, installs, runs the release gate, restarts, and puts
+// the old version back by itself if anything fails. Progress comes from the server's update/state.json, step by step.
+const UPDATE_WORD = { running: "Updating…", done: "Updated", failed: "The update didn't go ahead", rolled_back: "Update undone: the old version is back" };
+function updateBlock(st) {
+  const c = ui.updateCheck;
+  const steps = st && st.steps && st.steps.length ? h("ol", { class: "upd-steps" }, st.steps.map((x) =>
+    h("li", { class: x.ok ? "ok" : "bad" }, `${x.ok ? "✓" : "✗"} ${x.name}`, x.detail ? h("small", {}, ` ${x.detail}`) : null))) : null;
+  const recent = st && (st.state === "running" || (st.finished && Date.now() / 1000 - st.finished < 86400));
+  return h("div", { class: "updates" },
+    recent ? h("div", { class: `ro ${st.state === "done" ? "ok" : st.state === "running" ? "" : "bad"}` },
+      h("span", {}, UPDATE_WORD[st.state] || st.state), h("b", {}, st.behind ? plural(st.behind, "new commit") : "")) : null,
+    recent ? steps : null,
+    c ? h("div", { class: "d-why" }, c.can_update ? `${plural(c.behind, "update")} on ${c.branch}:` : `No update: ${c.why}.`) : null,
+    c && c.can_update ? h("ul", { class: "upd-commits" }, c.commits.slice(0, 8).map((x) => h("li", {}, x))) : null,
+    h("div", { class: "row mt" },
+      h("button", { class: "btn btn-ghost btn-sm", type: "button", disabled: st && st.state === "running", onclick: async () => {
+        try { ui.updateCheck = await api("/api/update/check", {}); } catch (e) { note(e.message); }
+        renderSystems(ui.data);
+      } }, "Check for updates"),
+      c && c.can_update && !(st && st.state === "running") ? h("button", { class: "btn btn-sm", type: "button", onclick: async () => {
+        if (!(await ask(`Update JARVIS (${plural(c.behind, "commit")})? It backs up first, runs the release gate, and restarts. If anything fails, the old version comes back by itself.`, { ok: "Update" }))) return;
+        ui.updateCheck = null;
+        await act("/api/update/start", {});
+      } }, "Update") : null));
+}
+
 function renderSystems(d) {
   const m = d.models || { providers: [], budget: {} };
   const lights = [];
@@ -1199,6 +1225,10 @@ function renderSystems(d) {
   const part = (title) => h("h3", { class: "sys-part" }, title);
   fill($("#system"),
     part("Health"), healthBlock || h("div", { class: "empty" }, "Checking…"),
+    onPhone() ? null : h("div", { class: "row mt" },
+      h("button", { class: "btn btn-ghost btn-sm", type: "button", onclick: () => act("/api/health/check", {}) }, "Check again"),
+      h("button", { class: "btn btn-ghost btn-sm", type: "button", onclick: () => act("/api/backup/now", {}) }, "Back up now")),
+    onPhone() ? null : part("Updates"), onPhone() ? null : updateBlock(d.update),
     h("div", { class: "lights" }, lights.length ? lights : h("div", { class: "empty" }, "No models configured")),
     part("Setup"), touch, phone,
     part("Configuration"),

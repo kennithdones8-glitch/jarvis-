@@ -89,3 +89,26 @@ def test_cli(mac, tmp_path, capsys):
     assert f'quoted form of "--home" & " " & quoted form of "{home}"' in source(apps / "JARVIS.app")
     assert main(["--home", str(home), "app", "uninstall", "--dir", str(apps)]) == 0
     assert "Removed JARVIS.app" in capsys.readouterr().out
+
+
+def test_start_button_runs_service_install_only_when_clicked():
+    s = launcher.applescript(uv="/u/uv", repo=Path("/r"), home=Path("/h"), custom_home=False)
+    assert '"Cancel", "Start JARVIS"' in s and 'cancel button "Cancel"' in s
+    start_line = next(line for line in s.splitlines() if 'quoted form of "service"' in line)
+    assert 'quoted form of "install"' in start_line
+    assert s.index('if choice is "Start JARVIS"') < s.index(start_line.strip())   # only after the click
+
+
+def test_jarvis_command(tmp_path, monkeypatch):
+    monkeypatch.setattr(launcher.shutil, "which", lambda name: f"/opt/{name}")
+    cmd = launcher.install_command(tmp_path / "home", custom_home=False, dest_dir=tmp_path / "bin",
+                                   repo=Path("/Users/k/my jarvis"))
+    text = cmd.read_text()
+    assert text.startswith("#!/bin/sh") and "exec /opt/uv run --project '/Users/k/my jarvis' --quiet jarvis \"$@\"" in text
+    assert cmd.stat().st_mode & 0o111 and "--home" not in text
+    assert launcher.uninstall_command(tmp_path / "bin") and not cmd.exists()
+    foreign = tmp_path / "bin" / "jarvis"
+    foreign.write_text("#!/bin/sh\necho someone else's\n")
+    with pytest.raises(launcher.LauncherError, match="wasn't made by JARVIS"):
+        launcher.install_command(tmp_path / "home", custom_home=False, dest_dir=tmp_path / "bin")
+    assert launcher.uninstall_command(tmp_path / "bin") is False and foreign.exists()

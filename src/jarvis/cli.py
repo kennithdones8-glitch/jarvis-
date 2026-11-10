@@ -163,6 +163,11 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("device_id", nargs="?")
     args = parser.parse_args(argv)
 
+    if args.cmd == "dashboard":
+        from .service import responding
+        if responding(args.port):  # before opening the data: a command that does nothing changes nothing
+            print(f"JARVIS is already running on port {args.port} (the background service?). Open it with `jarvis open`.")
+            return 0
     try:
         kernel = Kernel(args.home)
     except Exception as exc:  # settings or database unreadable: say which file, never a traceback
@@ -396,6 +401,9 @@ def _startup_problem(exc: Exception, home) -> str:
         backup = culprit.with_suffix(".toml.bak")
         undo = f" or put back the previous copy: cp \"{backup}\" \"{culprit}\"" if backup.exists() else ""
         return f"error: {culprit} has a problem: {exc}\nFix that line in a text editor{undo}."
+    from .core.kernel import UpgradeBlocked
+    if isinstance(exc, UpgradeBlocked):
+        return f"error: {exc}"
     if isinstance(exc, SchemaTooNew):
         return f"error: {exc}. This copy of JARVIS is older than your data: run `git pull && uv sync`."
     if isinstance(exc, sqlite3.Error):
@@ -608,9 +616,19 @@ def _app(kernel: Kernel, args) -> int:
             custom = bool(args.home) or "JARVIS_HOME" in __import__("os").environ
             app = launcher.install(kernel.home, custom_home=custom, dest_dir=dest, port=args.port)
             print(f"Made {app}. Double-click it (or drag it to your Dock) to open the dashboard.")
-            print("It runs `jarvis open` from this folder; it stores no link or password and changes nothing.")
+            print("It runs `jarvis open` from this folder and stores no link or password. If JARVIS isn't running it "
+                  "offers a Start JARVIS button; otherwise it changes nothing.")
+            try:
+                cmd = launcher.install_command(kernel.home, custom_home=custom, dest_dir=dest / "bin" if dest else None)
+                on_path = str(cmd.parent) in __import__("os").environ.get("PATH", "").split(__import__("os").pathsep)
+                print(f"Also made the `jarvis` command ({cmd}): `jarvis doctor` now works without `uv run`."
+                      + ("" if on_path else f" Open a new Terminal window first; if it isn't found, add {cmd.parent} to your PATH."))
+            except launcher.LauncherError as exc:
+                print(f"(No `jarvis` command: {exc}. `uv run jarvis …` still works.)")
         else:
             print("Removed JARVIS.app." if launcher.uninstall(dest) else "JARVIS.app wasn't installed there.")
+            if launcher.uninstall_command(dest / "bin" if dest else None):
+                print("Removed the `jarvis` command.")
     except launcher.LauncherError as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 1

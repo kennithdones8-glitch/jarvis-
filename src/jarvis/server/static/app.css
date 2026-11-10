@@ -1589,3 +1589,8 @@ body.projection .projbar { position: fixed; z-index: 66; left: 20px; bottom: 20p
   .ph-stat { min-width: 92px; padding: 6px 10px; scroll-snap-align: start; flex: 0 0 auto; }
   .ph-stat b { font-size: 20px; }
 }
+/* Updates (Systems → Health) */
+.updates { display: grid; gap: 6px; padding: 0 0 12px 10px; }
+.upd-steps, .upd-commits { margin: 0; padding-left: 18px; display: grid; gap: 3px; font-size: 12px; }
+.upd-steps li.ok { color: var(--ok); } .upd-steps li.bad { color: var(--red); }
+.upd-steps small, .upd-commits li { color: var(--muted, inherit); opacity: .85; }
