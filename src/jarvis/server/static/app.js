@@ -1447,7 +1447,7 @@ function gameBody() {
     body = $("#game-body");
   }
   const tabs = host.querySelector(".game-tabs");
-  fill(tabs, [["chess", "♞ Chess"], ["c4", "● Connect Four"], ["ck", "⛀ Checkers"]].map(([g, label]) =>
+  fill(tabs, [["chess", "♞ Chess"], ["c4", "● Connect Four"], ["ck", "⛀ Checkers"], ["race", "◆ Race"]].map(([g, label]) =>
     h("button", { class: `chip${GM.game === g ? " on" : ""}`, type: "button", role: "tab", "aria-selected": String(GM.game === g),
       onclick: () => { GM.game = g; GM.sel = -1; gamesSave(); openGames(); } }, label)));
   return body;
@@ -1545,10 +1545,26 @@ function renderCK() {
     h("p", { class: "d-why" }, "Captures are compulsory; keep jumping when you can. Reach the far row to crown a king."),
     ...gameControls(G.LEVELS, "you start (dark)", "JARVIS starts"))));
 }
+// Kerbside Grand Prix (racer.js): three laps against JARVIS and two other cars. The race keeps running while the
+// page re-renders; leaving the Games page pauses it, switching tab ends it.
+function renderRace() {
+  const R = window.JarvisRacer, el = gameBody();
+  if (!el || el.querySelector(".race-stage")) return;
+  const status = h("p", { class: "chess-turn", role: "status", "aria-live": "polite" }, "Three laps against JARVIS and two other cars.");
+  const stage = R.mount({ onStatus: (t) => { status.textContent = t; } }), lv = R.level();
+  fill(el, h("div", { class: "race" }, stage, h("div", { class: "chess-side" }, status,
+    h("div", { class: "row" }, h("label", {}, "JARVIS drives ", h("select", { onchange: (e) => R.setLevel(e.target.value) },
+      Object.keys(R.LEVELS).map((v) => h("option", { value: v, selected: v === lv ? true : null }, v[0].toUpperCase() + v.slice(1)))))),
+    h("div", { class: "row" }, h("button", { class: "btn btn-sm", type: "button", onclick: () => R.restart() }, "Restart race")),
+    h("p", { class: "d-why" }, "Arrow keys or WASD to drive, P to pause. On a phone or iPad, use the pads on the track."),
+    h("p", { class: "d-why" }, "The race runs in this browser: no model, nothing sent anywhere. Best times are saved here."))));
+}
 function openGames() {
   if (!GM.loaded) { gamesLoad(); GM.loaded = true; }
-  if (!window.JarvisGames && GM.game !== "chess") GM.game = "chess";
+  if ((GM.game === "c4" || GM.game === "ck") && !window.JarvisGames) GM.game = "chess";
+  if (GM.game === "race" && !window.JarvisRacer) GM.game = "chess";
   if (GM.game === "chess") { openChess(); return; }
+  if (GM.game === "race") { renderRace(); return; }
   if (GM.game === "c4") renderC4(); else renderCK();
   gameThink();
 }

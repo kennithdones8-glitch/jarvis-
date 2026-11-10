@@ -35,6 +35,17 @@
   an older Intel Mac. It recommends the richest level that stays smooth (40 ms a frame or less); nothing changes
   unless you press Use, and your setting is restored after the check. Auto still adjusts on its own.
 
+### Games: Kerbside Grand Prix, a race against JARVIS
+
+- **Race** joins the Games page (◆ tab): a top-down, three-lap race on the Kerbside Circuit against JARVIS (#1) and
+  two other cars. Five red lights, then go; grass and gravel cost you speed, cars bump each other. A timing tower,
+  lap times, a minimap and "Wrong way" warnings; at the flag, your place, each lap and the full classification.
+  Easy, Medium and Hard set how fast JARVIS and the others drive. Arrow keys or WASD (P pauses); on an iPhone or
+  iPad, on-screen steering, brake and gas pads. Leaving the Games page pauses the race.
+- Laps count from continuous progress round the track, so reversing over the line never scores one (test). Best lap,
+  best race and wins are kept per level in this browser only. Written for JARVIS (`static/racer.js`): no library,
+  model or network; the CSP is unchanged.
+
 ### Games: Connect Four, Checkers, and a chess coach
 
 - **Connect Four and Checkers** join chess on the Games page (tabs). Connect Four: drop discs, four in a row wins,
