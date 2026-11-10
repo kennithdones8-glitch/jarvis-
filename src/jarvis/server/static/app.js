@@ -1198,6 +1198,74 @@ function benchBlock(bt) {
          h("button", { class: "btn btn-ghost btn-sm", type: "button", onclick: () => act("/api/benchtest", { when: "now" }) }, "Test now")]));
 }
 
+// ---------------------------------------------------------------- Objectives (Evolution 4.0)
+// An outcome you want, pursued through ordinary missions. Progress counts real mission states only: done = completed,
+// confirmed = its checks found everything. Autopilot: suggest (feed only), prepare (plans the next mission for you to
+// Run), pursue (Mac only: runs it too; every step still asks you whenever the rules say it must).
+const AUTOPILOT_WORD = { suggest: "Suggest only", prepare: "Prepare next mission", pursue: "Pursue (runs missions)" };
+const OBJ_STATE = { active: "Active", paused: "Paused", achieved: "Achieved", abandoned: "Abandoned" };
+async function newObjective(form) {
+  const outcome = form.querySelector("[name=outcome]").value.trim();
+  if (!outcome) return;
+  const criteria = form.querySelector("[name=criteria]").value.split("\n").map((x) => x.trim()).filter(Boolean);
+  try {
+    await api("/api/objectives", { outcome, criteria, priority: Number(form.querySelector("[name=priority]").value),
+      deadline: form.querySelector("[name=deadline]").value || null });
+    form.reset();
+  } catch (e) { note(e.message); }
+  await refresh();
+}
+// CSP allows no style attributes, so widths are set through the DOM, not markup
+const widthOf = (el, pct) => { el.style.width = `${pct}%`; return el; };
+function objCard(o) {
+  const p = o.progress || { missions: 0, done: 0, confirmed: 0, in_flight: 0 };
+  const pct = (n) => (p.missions ? Math.round((100 * n) / p.missions) : 0);
+  const objAct = (op, body) => act(`/api/objectives/${o.id}/${op}`, body || {});
+  return h("li", { class: `obj ${o.state}` },
+    h("div", { class: "obj-head" }, h("b", {}, o.outcome),
+      h("small", {}, `${OBJ_STATE[o.state]} · priority ${o.priority}${o.deadline ? ` · due ${o.deadline}${o.days_left !== undefined && o.days_left !== null ? ` (${o.days_left < 0 ? "overdue" : `${o.days_left}d`})` : ""}` : ""}`)),
+    o.criteria && o.criteria.length ? h("div", { class: "d-why" }, "Done means: ", o.criteria.join(" · ")) : null,
+    h("div", { class: "obj-bar", title: `${p.done} of ${p.missions} missions done, ${p.confirmed} confirmed` },
+      widthOf(h("i"), pct(p.done)), widthOf(h("b"), pct(p.confirmed))),
+    h("small", {}, p.missions ? `${p.done} of ${plural(p.missions, "mission")} done · ${p.confirmed} confirmed${p.in_flight ? ` · ${p.in_flight} in progress` : ""}` : "No missions yet"),
+    o.missions && o.missions.length ? h("ol", { class: "obj-missions" }, o.missions.map((m) =>
+      h("li", { class: m.state }, h("a", { href: `#/missions/${m.id}` }, m.goal), ` · ${m.state === "completed" ? (m.confirmed ? "done, confirmed" : "done, not confirmed") : m.state.replace("_", " ")}`))) : null,
+    h("div", { class: "row mt" },
+      o.state === "active" ? h("button", { class: "btn btn-sm", type: "button", disabled: p.in_flight ? true : null, onclick: () => objAct("plan") }, "Plan next mission") : null,
+      o.state === "active" ? h("button", { class: "btn btn-ghost btn-sm", type: "button", onclick: () => objAct("state", { state: "achieved" }) }, "Achieved") : null,
+      o.state === "active" ? h("button", { class: "btn btn-ghost btn-sm", type: "button", onclick: () => objAct("state", { state: "paused" }) }, "Pause") : null,
+      o.state !== "active" ? h("button", { class: "btn btn-ghost btn-sm", type: "button", onclick: () => objAct("state", { state: "active" }) }, "Resume") : null,
+      o.state === "active" || o.state === "paused" ? h("button", { class: "btn btn-ghost btn-sm", type: "button", onclick: async () =>
+        (await ask("Abandon this objective? Its missions stay in your history.", { ok: "Abandon", danger: true })) && objAct("state", { state: "abandoned" }) }, "Abandon") : null,
+      h("button", { class: "btn btn-ghost btn-sm", type: "button", onclick: async () =>
+        (await ask("Delete this objective? Its missions stay in your history.", { ok: "Delete", danger: true })) && objAct("delete") }, "Delete")),
+    onPhone() ? h("small", {}, `Autopilot: ${AUTOPILOT_WORD[o.autopilot]} (change it on the Mac)`)
+      : h("label", { class: "row" }, "Autopilot ",
+        h("select", { onchange: async (ev) => {
+          const level = ev.target.value;
+          if (level === "pursue" && !(await ask("Let JARVIS run this objective's missions on its own? Every step still asks you whenever your rules say it must, and it stops after two failures in a row.", { ok: "Pursue" }))) { ev.target.value = o.autopilot; return; }
+          objAct("autopilot", { level });
+        } }, Object.entries(AUTOPILOT_WORD).map(([v, label]) => h("option", { value: v, selected: v === o.autopilot ? true : null }, label)))));
+}
+function renderObjectives(d) {
+  const list = d.objectives || [];
+  const open = list.filter((o) => o.state === "active" || o.state === "paused");
+  const sum = $("#objsum");
+  if (sum) sum.textContent = open.length ? String(open.length) : "";
+  const el = $("#objectives");
+  if (!el || (document.activeElement && el.contains(document.activeElement) && document.activeElement.matches("input, textarea, select"))) return;
+  fill(el,
+    h("form", { class: "obj-new", onsubmit: (ev) => { ev.preventDefault(); newObjective(ev.target); } },
+      h("p", { class: "d-why" }, "An outcome you want. JARVIS plans one mission at a time towards it, with the same planner and approvals as everything else."),
+      h("input", { name: "outcome", maxlength: 400, placeholder: "e.g. Home office set up by 15 December", "aria-label": "Outcome" }),
+      h("textarea", { name: "criteria", rows: 2, placeholder: "Done means… (one per line, optional)", "aria-label": "Done means" }),
+      h("div", { class: "row" },
+        h("label", {}, "Priority ", h("select", { name: "priority" }, [1, 2, 3, 4, 5].map((n) => h("option", { value: n, selected: n === 3 ? true : null }, n)))),
+        h("label", {}, "Deadline ", h("input", { name: "deadline", type: "date" })),
+        h("button", { class: "btn btn-sm", type: "submit" }, "Add objective"))),
+    list.length ? h("ul", { class: "obj-list" }, list.map(objCard)) : h("div", { class: "empty" }, "No objectives yet."));
+}
+
 function renderSystems(d) {
   const m = d.models || { providers: [], budget: {} };
   const lights = [];
@@ -2078,6 +2146,7 @@ function render() {
   renderMissions(d.tasks);
   renderDecisions(d.approvals);
   renderSystems(d);
+  renderObjectives(d);
   renderActivity(d.audit);
   loadMemory(false);
 }
@@ -2192,7 +2261,7 @@ const PROJ_MODULES = [["workflow", "Workflow map"], ["architecture", "Software a
 
 // ---------------------------------------------------------------- shell: sections, badges, sidebar, drafts
 // Sections are views of the same live page: switching never pauses, resumes or changes anything.
-const VIEWS = ["home", "command", "workspace", "missions", "decisions", "memory", "systems", "evolution", "intelligence", "projects"];
+const VIEWS = ["home", "command", "workspace", "missions", "objectives", "decisions", "memory", "systems", "evolution", "intelligence", "projects"];
 function viewFromHash() {
   const m = location.hash.match(/^#\/(\w+)/);
   return m && VIEWS.includes(m[1]) ? m[1] : null;

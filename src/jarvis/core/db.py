@@ -310,6 +310,21 @@ MIGRATIONS: list[str] = [
     );
     CREATE INDEX plan_jobs_replan ON plan_jobs(replan_of);
     """,
+    # v11: Objectives (Evolution 4.0) — an outcome you want, pursued through missions. Missions stay ordinary tasks,
+    # tied to their objective in `links` (rel "mission of"); nothing about a mission is copied here.
+    """
+    CREATE TABLE objectives (
+        id          TEXT PRIMARY KEY,
+        outcome     TEXT NOT NULL,
+        criteria    TEXT NOT NULL DEFAULT '[]',      -- JSON list: what "done" means, in your words
+        priority    INTEGER NOT NULL DEFAULT 3 CHECK (priority BETWEEN 1 AND 5),
+        deadline    TEXT,                            -- YYYY-MM-DD, optional
+        state       TEXT NOT NULL DEFAULT 'active' CHECK (state IN ('active', 'paused', 'achieved', 'abandoned')),
+        autopilot   TEXT NOT NULL DEFAULT 'suggest' CHECK (autopilot IN ('suggest', 'prepare', 'pursue')),
+        created_at  TEXT NOT NULL,
+        updated_at  TEXT NOT NULL
+    );
+    """,
 ]
 
 

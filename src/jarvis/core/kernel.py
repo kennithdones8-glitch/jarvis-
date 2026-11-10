@@ -142,7 +142,10 @@ class Kernel:
         # saved plans (Mission Control) whose request mentions it
         plans = [r["id"] for r in self.db.query("SELECT id, request FROM plan_jobs") if q and q in r["request"].lower()]
         out["plans"] = len(plans)
+        from ..objectives import forget as forget_objectives
+        out["objectives"] = forget_objectives(self, query, by=by, dry_run=True)
         if not dry_run:
+            forget_objectives(self, query, by=by, dry_run=False)
             for t in out["tasks"]:
                 if t["deletable"]:
                     self.tasks.delete(t["id"], by=by)

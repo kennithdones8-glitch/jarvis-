@@ -799,7 +799,7 @@ body.cinematic .cmd { position: sticky; bottom: calc(12px + env(safe-area-inset-
 body:not([data-view="workspace"]) .context-panel { display: none; }
 body[data-view="workspace"] .missions-panel, body[data-view="workspace"] .decision-panel, body[data-view="workspace"] .memory-panel,
 body[data-view="workspace"] .systems-panel, body[data-view="workspace"] .recent-panel, body[data-view="workspace"] .summary-panel,
-body[data-view="workspace"] .intel-panel, body[data-view="workspace"] .projects-panel { display: none !important; }
+body[data-view="workspace"] .intel-panel, body[data-view="workspace"] .projects-panel, body[data-view="workspace"] .objectives-panel { display: none !important; }
 body[data-view="workspace"] .hud > .center { display: flex !important; grid-area: auto; }
 body[data-view="workspace"] .matters { display: none; }
 body[data-view="workspace"] .hud > .center > .core-wrap { width: min(120px, 30vw); }
@@ -1594,3 +1594,20 @@ body.projection .projbar { position: fixed; z-index: 66; left: 20px; bottom: 20p
 .upd-steps, .upd-commits { margin: 0; padding-left: 18px; display: grid; gap: 3px; font-size: 12px; }
 .upd-steps li.ok { color: var(--ok); } .upd-steps li.bad { color: var(--red); }
 .upd-steps small, .upd-commits li { color: var(--muted, inherit); opacity: .85; }
+
+/* ---- objectives ---- */
+body:not([data-view="objectives"]) .objectives-panel { display: none; }
+body[data-view="objectives"] .missions-panel, body[data-view="objectives"] .decision-panel, body[data-view="objectives"] .projects-panel,
+body[data-view="objectives"] .memory-panel, body[data-view="objectives"] .systems-panel, body[data-view="objectives"] .intel-panel,
+body[data-view="objectives"] .recent-panel, body[data-view="objectives"] .summary-panel, body[data-view="objectives"] .context-panel { display: none; }
+.obj-new { display: grid; gap: 8px; padding: 0 0 14px 10px; border-bottom: 1px solid var(--gold-faint); margin-bottom: 14px; }
+.obj-new input, .obj-new select, .obj-new textarea { font: inherit; }
+.obj-list { list-style: none; margin: 0; padding: 0 0 0 10px; display: grid; gap: 14px; }
+.obj { border: 1px solid var(--gold-faint); padding: 10px 12px; display: grid; gap: 6px; }
+.obj.paused, .obj.achieved, .obj.abandoned { opacity: .7; }
+.obj-head { display: flex; justify-content: space-between; gap: 10px; align-items: baseline; }
+.obj-bar { height: 6px; background: rgba(255, 255, 255, .06); position: relative; }
+.obj-bar i { position: absolute; inset: 0 auto 0 0; background: var(--gold); }
+.obj-bar b { position: absolute; inset: 0 auto 0 0; background: var(--ok); }
+.obj-missions { margin: 0; padding-left: 18px; display: grid; gap: 2px; font-size: 12px; }
+.obj-missions .completed { color: var(--ok); } .obj-missions .failed { color: var(--red); }

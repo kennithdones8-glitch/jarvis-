@@ -221,6 +221,14 @@ def _content_length(h: BaseHTTPRequestHandler) -> int:
     return length
 
 
+def _objectives(k) -> list[dict[str, Any]]:
+    from .. import objectives
+    return [{key: o.get(key) for key in ("id", "outcome", "criteria", "priority", "deadline", "days_left", "state",
+                                         "autopilot", "progress")}
+            | {"missions": [{x: m[x] for x in ("id", "goal", "state", "confirmed")} for m in o["missions"][-8:]]}
+            for o in objectives.list_all(k)]
+
+
 def _benchtest_status(k) -> dict[str, Any] | None:
     from .. import benchtest
     return benchtest.status(k)
@@ -299,6 +307,7 @@ class Dashboard:
         self._proposals_checked = -1e9
         self.token = token or secrets.token_urlsafe(32)
         self.jobs: dict[str, dict[str, Any]] = {}
+        self._autoplanned: dict[str, float] = {}   # objective id → when autopilot last asked for a plan
         self._lock = threading.Lock()
         self._inflight: set[str] = set()
         self._pool = cf.ThreadPoolExecutor(max_workers=workers, thread_name_prefix="jarvis-runner")
@@ -612,6 +621,7 @@ class Dashboard:
                 self._evolution = self.evolution()
                 self.learn_cycle()
                 self.benchtest_tick()
+                self.objectives_tick()
             except Exception as exc:
                 if self._stop.is_set():
                     return  # shutting down: the database may already be closed
@@ -633,11 +643,14 @@ class Dashboard:
                 self._inflight.discard(tid)
 
     # ---- planning jobs (planning takes ~1 min on CPU, so it runs in the background) ----
-    def start_plan(self, request: str, *, replan_of: str | None = None, earlier: str | None = None) -> str:
+    def start_plan(self, request: str, *, replan_of: str | None = None, earlier: str | None = None,
+                   objective: str | None = None, auto_run: bool = False) -> str:
         job_id = secrets.token_hex(6)
         job = {"id": job_id, "request": request, "state": "planning", "started": time.time()}
         if replan_of:
             job.update(replan_of=replan_of, earlier=earlier)
+        if objective:
+            job.update(objective=objective, auto_run=auto_run)
         with self._lock:
             self.jobs = {k: v for k, v in self.jobs.items() if v["state"] in ("planning", "waiting_approval")
                          or time.time() - v["started"] < 3600}
@@ -783,6 +796,15 @@ class Dashboard:
         except Exception as exc:
             job.update(state="ready", kind="failed", message=f"Planning failed: {type(exc).__name__}: {exc}")
         job["seconds"] = round(time.time() - job["started"], 1)
+        if (job.get("auto_run") and job.get("kind") == "plan" and job.get("plan") is not None
+                and not self._stop.is_set() and not self.kernel.killswitch.engaged()):
+            # pursue: run it as if you'd pressed Run; each step still asks you whenever the rules say it must
+            try:
+                job["task_id"] = self.orch.submit(job["request"], job["plan"], actor="jarvis:objective", runner=RUNNER)
+                job["state"] = "submitted"
+                self._link_objective(job, source="jarvis:objective")
+            except Exception as exc:  # noqa: BLE001 - it then simply waits in Missions for you
+                self.kernel.audit.record("objective.autorun_failed", objective=job.get("objective"), error=type(exc).__name__)
         if not self._stop.is_set():
             self._persist_job(job)
 
@@ -828,8 +850,36 @@ class Dashboard:
         job["task_id"] = self.orch.submit(job["request"], job["plan"], actor="user:dashboard", runner=RUNNER,
                                           replan_of=job.get("replan_of"))
         job["state"] = "submitted"
+        self._link_objective(job, source="user:dashboard")
         self._persist_job(job)
         return job["task_id"]
+
+    def _link_objective(self, job: dict[str, Any], *, source: str) -> None:
+        if job.get("objective") and job.get("task_id"):
+            from .. import objectives
+            try:
+                objectives.link_mission(self.kernel, job["objective"], job["task_id"], source=source)
+            except KeyError:
+                pass   # the objective was deleted meanwhile: the mission stays an ordinary mission
+
+    def objectives_tick(self) -> int:
+        """Autopilot (prepare / pursue): plan the next mission of an objective that has nothing in flight. At most one
+        attempt per objective every 30 minutes; the plan goes through the same planner and, when run, the same
+        approvals as anything you start yourself."""
+        from .. import objectives
+        with self._lock:
+            pending = {j.get("objective") for j in self.jobs.values()
+                       if j.get("objective") and (j["state"] in ("planning", "waiting_approval")
+                                                  or (j["state"] == "ready" and j.get("kind") == "plan"))}
+        started = 0
+        for o, run in objectives.due_for_autopilot(self.kernel, pending=pending):
+            if time.time() - self._autoplanned.get(o["id"], 0) < 1800:
+                continue
+            self._autoplanned[o["id"]] = time.time()
+            self.start_plan(objectives.next_request(o), objective=o["id"], auto_run=run)
+            self.kernel.audit.record("objective.autoplanned", objective=o["id"], run=run)
+            started += 1
+        return started
 
     # ---- chat --------------------------------------------------------------------------
     def _compute(self, message: str, stage) -> "Computed":
@@ -1128,6 +1178,7 @@ class Dashboard:
             "touch_id": {"enabled": self.mac.enabled(), "keys": self.mac.keys()},
             "update": None if device else _update_status(k),
             "benchtest": None if device else _benchtest_status(k),
+            "objectives": _objectives(k),
             "coding": {"self_test": bool(k.model_config.coding.get("self_test")), "compute": bool(k.model_config.coding.get("compute")),
                        "sandbox": sys.platform == "darwin"},
             "briefing": {"last_date": _last_briefing(k)},
@@ -1371,6 +1422,8 @@ class Dashboard:
             return self._json(h, 200, self.kernel.audit.entries(task_id=m.group(1), limit=300))
         if url.path == "/api/briefing":
             return self._json(h, 200, self.briefing())
+        if url.path == "/api/objectives":
+            return self._json(h, 200, {"objectives": _objectives(self.kernel)})
         if url.path == "/api/initiative":   # one ranked list of suggestions (suggests only; nothing runs)
             from .. import initiative
             return self._json(h, 200, initiative.feed(self.kernel, health=self._health or None))
@@ -1666,6 +1719,33 @@ class Dashboard:
             k.audit.record("backup.created", actor=actor, file=r.path.name, bytes=r.bytes, verified=r.verified)
             self._health = self.check_health()
             return {"ok": True, "file": r.path.name}
+        if path == "/api/objectives":
+            from .. import objectives
+            try:
+                pr = body.get("priority", 3)
+                return objectives.create(k, text("outcome"), criteria=body.get("criteria") if isinstance(body.get("criteria"), list) else [],
+                                         priority=pr if isinstance(pr, int) else 3, deadline=body.get("deadline") or None, by=actor)
+            except objectives.ObjectiveError as exc:
+                raise HttpError(400, str(exc)) from None
+        if m := re.fullmatch(r"/api/objectives/(obj-[0-9a-f]{10})/(state|autopilot|plan|delete)", path):
+            from .. import objectives
+            oid, op = m.groups()
+            try:
+                if op == "state":
+                    return objectives.set_state(k, oid, str(body.get("state", "")), by=actor)
+                if op == "autopilot":   # Mac only (LOCAL_ONLY)
+                    return objectives.set_autopilot(k, oid, str(body.get("level", "")), by=actor)
+                if op == "delete":
+                    objectives.delete(k, oid, by=actor)
+                    return {"ok": True}
+                o = objectives.get(k, oid)
+                if o["state"] != "active":
+                    raise HttpError(409, "resume the objective first")
+                return {"job_id": self.start_plan(objectives.next_request(o), objective=oid)}
+            except KeyError:
+                raise HttpError(404, "no such objective") from None
+            except objectives.ObjectiveError as exc:
+                raise HttpError(400, str(exc)) from None
         if path == "/api/settings/coding":   # Mac only, Touch ID when set up: code runs only in the macOS sandbox
             from ..cli import _write_section
             from ..models import load_model_config

@@ -6,6 +6,26 @@
   before planning, nothing left out, retries routed by the question, the first-event check). Both sides kept; one
   conflict: `Orchestrator.plan` runs main's premise check first and keeps this branch's replan history.
 
+### Objectives v1 (Evolution 4.0, first milestone) — schema v11
+
+- **Objectives** (new page, ◇ in the side bar): an outcome you want, what done means (optional), priority 1–5 and an
+  optional deadline. Missions stay ordinary tasks, planned by the usual planner and run by the usual engine with every
+  step through the permission gateway; an objective only ties them together (`links`, rel "mission of"), so nothing
+  about a mission is copied. **Plan next mission** asks the planner for one mission, telling it what's done, what
+  failed and the deadline; the plan waits in Missions for you to Run, as always.
+- **Progress counts real states:** done = completed; confirmed = completed and its checks found everything (a check
+  that couldn't run is "not confirmed"). Achieved is yours to say; the feed asks when every mission is done.
+- **Autopilot per objective:** suggest (default: the feed says when a next mission is worth planning), prepare (plans
+  the next mission when nothing of it is in flight, for you to Run), pursue (Mac only, with a confirmation: also runs
+  it, recorded as `jarvis:objective`; each step still asks you whenever your rules say it must). At most one autopilot
+  plan per objective every 30 minutes; it stops after two failed missions in a row (the objective is paused and the
+  feed says why), under the emergency stop and the autonomy initiative pause.
+- **Suggestions feed:** stuck, due within 3 days, all missions done, and "next step?", weighted by priority (×1.0–1.5).
+- **Forget** includes objectives whose outcome or criteria mention it; deleting an objective keeps its missions.
+- The audit log has ids and counts only (`objective.*`), never the outcome text.
+- **Upgrading needs schema v11**: the first start backs up your database automatically (`backups/before-upgrade`).
+- Not yet: mission dependencies, the Strategy-mode objective map, independent review, the hardened Lab (next).
+
 ### Work it out with code (from branch `compute-v1`), and "Test this version"
 
 - **Maths, dates and puzzles are worked out by a program** (merged from `compute-v1`). Off unless you turn it on

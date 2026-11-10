@@ -95,6 +95,11 @@ def candidates(kernel, *, health: dict[str, Any] | None = None, now: datetime | 
     for p in db.query("SELECT id, title, body FROM project_ideas WHERE state = 'open' ORDER BY created_at DESC LIMIT 3"):
         out.append(_item(f"project-idea:{p['id']}", "project", p["title"], str(json.loads(p["body"]).get("why") or "")[:200],
                          value=2, urgency=1, confidence=0.5, href="#/projects"))
+    try:
+        from .objectives import feed_items
+        out += feed_items(kernel)
+    except Exception:  # noqa: BLE001 - one broken source never empties the feed
+        pass
     return out
 
 
