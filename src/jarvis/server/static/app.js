@@ -543,7 +543,10 @@ async function sendChat(payload, endpoint = "/api/chat") {
     render();
   }
   const last = ui.convo[ui.convo.length - 1];
-  if (last && last.role === "assistant" && !last.error && !last.consent) say(last.text);
+  if (last && last.role === "assistant" && !last.error && !last.consent) {
+    // conversation mode without an on-device voice: the reply is on screen, and it's your turn again
+    if (!(await say(last.text)) && voice.live && !voice.rec && !document.hidden) toggleMic({ auto: true });
+  } else if (voice.live) endConvo(last && last.consent ? "Conversation paused: this needs your answer on screen." : "");
 }
 
 async function consent(m, approve) {
@@ -660,7 +663,13 @@ function renderFeed(d) {
 // ---------------------------------------------------------------- voice
 // Speech → text runs on the Mac (whisper.cpp, loopback only). Replies are read with on-device voices only
 // (voices that would send text to a server are skipped). Interrupting speech never cancels a task.
-const voice = { rec: null, stream: null, chunks: [], timer: null, started: 0, speak: false, warned: false };
+// Conversation mode (hands-free, off by default): after each spoken reply the microphone opens again on its own and
+// the recording ends by itself when you pause. It ends when you say "stop" or "goodbye", stay quiet for 8 seconds,
+// tap Talk, or hide the page. There is no always-listening wake word: the microphone is only ever open while the
+// Talk button shows it recording, and what you say is ordinary chat text that can't approve anything.
+const voice = { rec: null, stream: null, chunks: [], timer: null, started: 0, speak: false, warned: false, convo: false, live: false, auto: null };
+const CONVO_END = /^(stop|goodbye|bye|that's all|that is all|end conversation|thanks,? jarvis|thank you,? jarvis)[.!]?$/i;
+const PAUSE_MS = 1300, QUIET_MS = 8000, LOUD = 0.08;
 try { voice.speak = localStorage.getItem("jarvis-speak") === "1"; } catch (e) { /* default off */ }
 
 function renderVoice(d) {
@@ -675,6 +684,28 @@ function renderVoice(d) {
   sp.hidden = !("speechSynthesis" in window);
   sp.setAttribute("aria-pressed", String(voice.speak));
   sp.textContent = `Voice replies: ${voice.speak ? "on" : "off"}`;
+  const cv = $("#convo");
+  cv.hidden = mic.hidden || sp.hidden;
+  cv.disabled = !(v && v.available);
+  cv.setAttribute("aria-pressed", String(voice.convo));
+  cv.textContent = `Conversation: ${voice.convo ? "on" : "off"}`;
+}
+
+async function toggleConvo() {
+  voice.convo = !voice.convo;
+  renderVoice(ui.data);
+  if (!voice.convo) { endConvo(); if (voice.rec) voice.rec.stop(); return; }
+  voice.speak = true;   // a conversation needs spoken replies
+  try { localStorage.setItem("jarvis-speak", "1"); } catch (e) { /* this session only */ }
+  voice.live = true;
+  renderVoice(ui.data);
+  // speaking inside the tap also unlocks audio on iPhone; the microphone opens when this line ends
+  if (!(await say("I'm listening.")) && voice.live && !voice.rec) toggleMic({ auto: true });
+}
+function endConvo(why) {
+  voice.live = false; voice.convo = false;   // never left on: each conversation starts with your tap
+  if (why) note(why);
+  renderVoice(ui.data);
 }
 
 function stopSpeaking() { if ("speechSynthesis" in window) speechSynthesis.cancel(); delete $("#core").dataset.speaking; duckSound(); }
@@ -691,25 +722,34 @@ async function localVoices() {
 }
 
 async function say(text) {
-  if (!voice.speak || !("speechSynthesis" in window) || !text) return;
+  if (!voice.speak || !("speechSynthesis" in window) || !text) return false;
   const voices = await localVoices();
   if (!voices.length) {
     if (!voice.warned) { voice.warned = true; note("This browser has no on-device voice, so replies aren't read aloud."); }
-    return;
+    return false;
   }
   const lang = navigator.language || "en-US";
-  const pick = voices.find((v) => v.lang === lang && v.default) || voices.find((v) => v.lang === lang)
+  // The most natural on-device voice first: macOS and iOS name their downloadable higher-quality voices
+  // "(Premium)" or "(Enhanced)"; then the default voice for your language.
+  const natural = (v) => /premium|enhanced|neural/i.test(`${v.name} ${v.voiceURI}`);
+  const pick = voices.find((v) => v.lang === lang && natural(v)) || voices.find((v) => v.lang.startsWith(lang.slice(0, 2)) && natural(v))
+    || voices.find((v) => v.lang === lang && v.default) || voices.find((v) => v.lang === lang)
     || voices.find((v) => v.lang.startsWith(lang.slice(0, 2))) || voices[0];
   const u = new SpeechSynthesisUtterance(text.replace(/https?:\/\/\S+/g, "a link").slice(0, 1500));
   u.voice = pick; u.lang = pick.lang;
   const core = $("#core");
   u.onstart = () => { core.dataset.speaking = "1"; duckSound(); };
-  u.onend = u.onerror = () => { delete core.dataset.speaking; duckSound(); };
+  u.onend = u.onerror = () => {
+    delete core.dataset.speaking; duckSound();
+    // conversation mode: your turn again (only after a real reply, while the page is in front of you)
+    if (voice.convo && voice.live && !voice.rec && !document.hidden) setTimeout(() => { if (voice.live && !voice.rec) toggleMic({ auto: true }); }, 350);
+  };
   // The reactor pulses on each word the speech engine reports (no lip sync on a faceless helm). Browsers that
   // don't report word boundaries simply show the steady speaking look.
   u.onboundary = (e) => { if (e.name === "word" && window.JarvisAvatar) JarvisAvatar.pulse(1); };
   stopSpeaking();
   speechSynthesis.speak(u);
+  return true;
 }
 
 function toggleSpeak() {
@@ -721,13 +761,16 @@ function toggleSpeak() {
 
 function micLabel(text, busy) { const m = $("#mic"); m.textContent = text; m.classList.toggle("rec", !!busy); }
 
-async function toggleMic() {
-  stopSpeaking();  // barge in: interrupting JARVIS's voice doesn't cancel anything it's doing
-  if (voice.rec) { voice.rec.stop(); return; }
+async function toggleMic(opts) {
+  const auto = !!(opts && opts.auto === true);
+  if (!auto) stopSpeaking();  // barge in: interrupting JARVIS's voice doesn't cancel anything it's doing
+  if (voice.rec) { voice.rec.stop(); return; }   // in a conversation too: tapping sends what you've said now
+  voice.auto = auto || voice.live ? { opened: Date.now(), heard: 0, loudAt: 0 } : null;
   try {
     voice.stream = await navigator.mediaDevices.getUserMedia({ audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true } });
   } catch (e) {
     note(e.name === "NotAllowedError" ? "Microphone access is blocked for this page (check the browser's site settings)." : `Microphone unavailable: ${e.message}`);
+    if (voice.live) endConvo();
     return;
   }
   voice.chunks = [];
@@ -760,9 +803,21 @@ function startMicLevel(stream) {
     voice.level = { ctx, timer: setInterval(() => {
       an.getFloatTimeDomainData(buf);
       let sum = 0; for (let i = 0; i < buf.length; i++) sum += buf[i] * buf[i];
-      JarvisAvatar.voiceLevel(Math.min(1, Math.sqrt(sum / buf.length) * 5));
+      const lvl = Math.min(1, Math.sqrt(sum / buf.length) * 5);
+      JarvisAvatar.voiceLevel(lvl);
+      autoStop(lvl);
     }, 50) };
   } catch (e) { voice.level = null; }   // no analyser: the projection still shows "listening"
+}
+// Conversation mode only: the recording ends a moment after you stop talking, or, if you never start, after 8 s
+// (and the conversation ends, with nothing sent).
+function autoStop(lvl) {
+  const a = voice.auto, now = Date.now();
+  if (!a || !voice.rec) return;
+  if (lvl > LOUD) { a.loudAt = now; a.heard += 1; }
+  if (document.hidden) { a.cancel = true; voice.rec.stop(); return; }
+  if (a.heard >= 3 && now - a.loudAt > PAUSE_MS) voice.rec.stop();
+  else if (!a.heard || a.heard < 3) { if (now - a.opened > QUIET_MS) { a.cancel = true; voice.rec.stop(); } }
 }
 function stopMicLevel() {
   if (!voice.level) return;
@@ -778,6 +833,8 @@ async function finishRecording(type) {
   delete $("#core").dataset.listening; duckSound();
   const blob = new Blob(voice.chunks, { type });
   voice.chunks = [];
+  const auto = voice.auto; voice.auto = null;
+  if (auto && auto.cancel) { micLabel("Talk", false); endConvo(document.hidden ? "" : "Conversation ended (no one spoke)."); return; }
   micLabel("Listening…", false);
   $("#mic").disabled = true;
   try {
@@ -786,7 +843,12 @@ async function finishRecording(type) {
       headers: { "Content-Type": "audio/wav", "X-Requested-By": "jarvis" }, body });
     const data = await r.json().catch(() => ({ error: `HTTP ${r.status}` }));
     if (!r.ok) throw new Error(data.error || `HTTP ${r.status}`);
-    if (!data.text) { note("I didn't catch that — try again a little closer to the microphone."); return; }
+    if (!data.text) {
+      note("I didn't catch that — try again a little closer to the microphone.");
+      if (voice.live) setTimeout(() => { if (voice.live && !voice.rec) toggleMic({ auto: true }); }, 300);
+      return;
+    }
+    if (voice.live && CONVO_END.test(data.text.trim())) { endConvo("Conversation ended."); return; }
     $("#cmd").value = data.text;
     $("#cmdform").requestSubmit();
   } catch (e) {
@@ -2774,6 +2836,8 @@ document.addEventListener("DOMContentLoaded", () => {
   $("#helpbtn").addEventListener("click", showHelp);
   $("#mic").addEventListener("click", toggleMic);
   $("#speak").addEventListener("click", toggleSpeak);
+  $("#convo").addEventListener("click", toggleConvo);
+  document.addEventListener("visibilitychange", () => { if (document.hidden && voice.live && !voice.rec) endConvo(); });
   document.addEventListener("keydown", (e) => { if (e.key === "Escape") { $("#routeconfirm").hidden = true; stopSpeaking(); stopReply(); cancelEdit(); if (!stopInspect()) closeProjection(); } });
   window.addEventListener("hashchange", () => maybeAutoBriefing(ui.data));
   $("#release").addEventListener("click", () => {

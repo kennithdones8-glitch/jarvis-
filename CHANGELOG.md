@@ -6,6 +6,19 @@
   before planning, nothing left out, retries routed by the question, the first-event check). Both sides kept; one
   conflict: `Orchestrator.plan` runs main's premise check first and keeps this branch's replan history.
 
+### Talk with JARVIS hands-free
+
+- **Conversation mode** (the "Conversation" button under the chat, needs voice set up). Tap it once and talk: the
+  recording ends by itself when you pause, JARVIS answers aloud, and the microphone opens again for your next turn.
+  It ends when you say "stop" or "goodbye", stay quiet for 8 seconds, hide the page, or tap the button. It is never
+  remembered between visits, and a reply that needs your answer on screen (a consent question) pauses it. What you
+  say is ordinary chat text: it can't approve anything.
+- **A more natural voice.** Spoken replies now prefer the Mac's and iPhone's higher-quality on-device voices
+  ("Premium" / "Enhanced"; free to download in System Settings → Accessibility → Spoken Content → System voice →
+  Manage Voices). Still on-device only.
+- **No "Hey JARVIS" wake word, on purpose.** A wake word means the microphone is open all the time and a speech model
+  runs constantly on the Mac. JARVIS keeps the microphone closed unless you've just tapped.
+
 ### Memories that disagree, search your own files, and a speed check — schema v12
 
 - **Memories that disagree.** The Memory page lists pairs of memories that contradict each other ("My dentist is
