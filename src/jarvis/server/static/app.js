@@ -1463,7 +1463,7 @@ function renderSystems(d) {
         (await ask(`Remove ${x.name}? It will be signed out immediately and can't reconnect without pairing again.`, { ok: "Remove", danger: true })) &&
         act(`/api/devices/${x.id}/revoke`, {}) }, "Remove"))),
     !rem.this_device && rem.enabled ? h("button", { class: "btn btn-sm mt", type: "button", onclick: pairPhone }, "Pair a phone") : null,
-    !rem.enabled && !rem.this_device ? h("div", { class: "d-why" }, "Run `uv run jarvis remote enable` on the Mac to use JARVIS from your iPhone.") : null,
+    !rem.enabled && !rem.this_device ? h("div", { class: "d-why" }, "To use JARVIS from your iPhone, run `uv run jarvis remote setup` in Terminal on this Mac: it checks Tailscale step by step and turns sharing on when everything is ready.") : null,
     rem.this_device ? h("div", { class: "row mt" },
       "PushManager" in window ? h("button", { class: "btn btn-sm", type: "button", onclick: enableNotifications }, "Enable notifications") : null,
       h("button", { class: "btn btn-ghost btn-sm", type: "button", onclick: async () => { await api("/api/logout", {}); location.reload(); } }, "Sign out")) : null);
@@ -2166,6 +2166,18 @@ async function forgetMatching() {
 const DAY_MS = 24 * 3600 * 1000;
 // replaceChildren with optional parts: leaves out null/false instead of printing "null"
 const fill = (el, ...kids) => el.replaceChildren(...kids.flat(Infinity).filter((k) => k !== null && k !== undefined && k !== false));
+// What's new (after an update): the newest CHANGELOG section's headings, until you dismiss them.
+function whatsNewCard(w) {
+  if (!w || !w.unseen || !w.items.length) return null;
+  return h("div", { class: "job whatsnew", role: "status" },
+    h("b", {}, "New in this version"),
+    h("ul", {}, w.items.map((x) => h("li", {}, x))),
+    h("div", { class: "row" },
+      h("a", { class: "btn btn-sm", href: "#/games" }, "Play chess"),
+      h("a", { class: "btn btn-ghost btn-sm", href: "#/objectives" }, "Objectives"),
+      h("button", { class: "btn btn-ghost btn-sm", type: "button", onclick: () => act("/api/whatsnew/seen", {}) }, "Got it")));
+}
+
 function renderMatters(d) {
   const items = [];
   const go = (hash) => () => { location.hash = hash; };
@@ -2187,12 +2199,13 @@ function renderMatters(d) {
     }
   }
   const box = $("#matters");
-  document.body.classList.toggle("has-matters", items.length > 0);
+  const fresh = whatsNewCard(d.whatsnew);
+  document.body.classList.toggle("has-matters", items.length > 0 || !!fresh);
   if (!items.length) {
-    box.replaceChildren(h("p", { class: "matters-quiet" }, d.approvals.length ? "Nothing else needs you." : "Nothing needs you right now."));
+    fill(box, fresh, h("p", { class: "matters-quiet" }, d.approvals.length ? "Nothing else needs you." : "Nothing needs you right now."));
     return;
   }
-  fill(box, h("h2", { class: "matters-h" }, "What matters now"),
+  fill(box, fresh, h("h2", { class: "matters-h" }, "What matters now"),
     h("ul", { class: "matters-list" }, items.slice(0, 3).map((x) => h("li", { class: `matter ${x.cls}` },
       h("span", { class: "m-icon", "aria-hidden": "true" }, x.icon),
       h("div", { class: "m-text" }, h("small", {}, x.label), h("b", {}, x.title), h("span", {}, x.sub)),

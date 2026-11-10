@@ -6,6 +6,15 @@
   before planning, nothing left out, retries routed by the question, the first-event check). Both sides kept; one
   conflict: `Orchestrator.plan` runs main's premise check first and keeps this branch's replan history.
 
+### Easier to use: iPhone setup, what's new, objectives in the briefing
+
+- **`jarvis remote setup`:** a guided check for using JARVIS on your iPhone: Tailscale installed, signed in,
+  MagicDNS and HTTPS on, an iPhone in the same account. It says exactly what to fix, and turns sharing on (inside
+  your Tailscale network only) only when everything is ready, then tells you how to pair.
+- **What's new:** after an update, the home screen lists what arrived (this changelog's newest headings) until you
+  press "Got it". A fresh install sees nothing "new".
+- **The morning briefing lists your objectives:** missions done, in progress, due dates, paused.
+
 ### JARVIS drafts a fix (tier 6, Evolution Lab "Invent")
 
 - **Evolution center → Simulation lab → "Draft a fix":** describe what JARVIS should fix in itself. It names up to

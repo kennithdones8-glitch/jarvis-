@@ -221,6 +221,14 @@ def _content_length(h: BaseHTTPRequestHandler) -> int:
     return length
 
 
+def _whatsnew(k) -> dict[str, Any]:
+    from .. import whatsnew
+    try:
+        return whatsnew.state(k)
+    except Exception:  # noqa: BLE001 - never let this break the dashboard
+        return {"items": [], "unseen": False}
+
+
 def _objectives(k) -> list[dict[str, Any]]:
     from .. import objectives
     return [{key: o.get(key) for key in ("id", "outcome", "criteria", "priority", "deadline", "days_left", "state",
@@ -1235,6 +1243,7 @@ class Dashboard:
             "update": None if device else _update_status(k),
             "benchtest": None if device else _benchtest_status(k),
             "objectives": _objectives(k),
+            "whatsnew": _whatsnew(k),
             "coding": {"self_test": bool(k.model_config.coding.get("self_test")), "compute": bool(k.model_config.coding.get("compute")),
                        "sandbox": sys.platform == "darwin"},
             "briefing": {"last_date": _last_briefing(k)},
@@ -1759,6 +1768,10 @@ class Dashboard:
                 return {"task_id": self.run_plan(m.group(1))}
             self.jobs.pop(m.group(1), None)
             self._forget_job(m.group(1))
+            return {"ok": True}
+        if path == "/api/whatsnew/seen":
+            from .. import whatsnew
+            whatsnew.mark_seen(k)
             return {"ok": True}
         if path == "/api/health/check":
             self._health = self.check_health()

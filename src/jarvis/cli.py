@@ -100,8 +100,8 @@ def main(argv: list[str] | None = None) -> int:
     p = sub.add_parser("revoke-egress")
     p.add_argument("grant_id")
     sub.add_parser("grants", help="list egress grants")
-    p = sub.add_parser("remote", help="use JARVIS from your iPhone over Tailscale: enable | disable | status")
-    p.add_argument("op", choices=["enable", "disable", "status"])
+    p = sub.add_parser("remote", help="use JARVIS from your iPhone over Tailscale: setup | enable | disable | status")
+    p.add_argument("op", choices=["setup", "enable", "disable", "status"])
     p.add_argument("--port", type=int, default=8765)
     p.add_argument("--hostname", help="this Mac's Tailscale name (default: asked from the Tailscale app)")
     p = sub.add_parser("voice", help="local speech recognition (whisper.cpp): setup | enable | disable | status | test FILE")
@@ -684,6 +684,25 @@ def _remote(kernel: Kernel, args) -> int:
             _print({"enabled": bool(cfg.get("enabled")), "hostname": cfg.get("hostname"),
                     "phone_url": f"https://{cfg['hostname']}" if cfg.get("enabled") else None,
                     "paired_devices": len(devices)})
+        elif args.op == "setup":   # a guided check: says what's missing; turns sharing on only when all is ready
+            print("Setting up JARVIS on your iPhone (private: only your own devices, through Tailscale).\n")
+            steps = ts.checklist()
+            for st in steps:
+                print(f"{'✓' if st['ok'] else '✗'} {st['name']}" + ("" if st["ok"] else f"\n    → {st['fix']}"))
+            needed = [st for st in steps if not st["ok"] and not st["name"].startswith("An iPhone")]
+            if needed or len(steps) < 4:
+                print("\nFix the ✗ line above, then run `jarvis remote setup` again.")
+                return 1
+            host = ts.hostname().rstrip(".")
+            _write_remote_config(kernel, enabled=True, hostname=host)
+            ts.serve(args.port)
+            if svc.is_loaded():
+                svc.restart()
+            print(f"\n✓ Sharing the dashboard inside your Tailscale network only: https://{host}")
+            if not steps[-1]["ok"]:
+                print("  (Install Tailscale on the iPhone and sign in with the same account before pairing.)")
+            print("\nLast step, on this Mac: open JARVIS → Systems → Phone → Pair a phone, and scan the code with the\n"
+                  "iPhone's camera. Then on the iPhone: Share → Add to Home Screen, and sign in with Face ID.")
         elif args.op == "enable":
             host = (args.hostname or ts.hostname()).rstrip(".")
             _write_remote_config(kernel, enabled=True, hostname=host)

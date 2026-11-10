@@ -149,6 +149,24 @@ def build_briefing(kernel, *, health: dict[str, Any] | None = None, now: float |
     n = len(needs)
     headline = (f"{n} thing{'s' if n != 1 else ''} need{'s' if n == 1 else ''} you." if n
                 else "Nothing needs you." if not systems else "Nothing needs a decision, but check Systems.")
+    try:   # your objectives: real progress (done / confirmed), what's in flight, what's due or stuck
+        from .objectives import list_all
+        lines = []
+        for o in list_all(kernel, include_closed=False)[:6]:
+            p = o["progress"]
+            bits = [f"{p['done']}/{p['missions']} missions done" if p["missions"] else "no missions yet"]
+            if p["in_flight"]:
+                bits.append(f"{p['in_flight']} in progress")
+            if o.get("days_left") is not None:
+                d = o["days_left"]
+                bits.append("overdue" if d < 0 else "due today" if d == 0 else f"due in {d} day{'s' if d != 1 else ''}")
+            if o["state"] == "paused":
+                bits.append("paused")
+            lines.append(f"{o['outcome']}: " + ", ".join(bits))
+        if lines:
+            sections.append({"title": "Objectives", "items": lines})
+    except Exception:  # noqa: BLE001 - an older database: no objectives yet
+        pass
     try:   # what JARVIS did on its own (tier 7) in the last day: one digest
         from .learn import autopilot
         if auto := autopilot.digest(kernel):

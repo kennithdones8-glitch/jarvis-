@@ -238,3 +238,13 @@ def test_plan_while_one_is_in_flight_queues_a_follower(dash):
     m = {x["id"]: x for x in objectives.missions(d.kernel, oid)}
     assert m[tid]["after"] == first
     assert call(d, f"/api/objectives/{oid}/plan", {"after": "t-not-mine"})[0] == 400
+
+
+def test_the_morning_briefing_shows_objective_progress(k):
+    from jarvis.proactive import build_briefing
+    o = objectives.create(k, "Move the home office", deadline=(date.today() + timedelta(days=4)).isoformat(),
+                          by="user:dashboard")
+    objectives.link_mission(k, o["id"], _mission(k, "Book movers"), source="test")
+    objectives.link_mission(k, o["id"], _mission(k, "Block the week", "running"), source="test")
+    sec = next(s for s in build_briefing(k)["sections"] if s["title"] == "Objectives")
+    assert sec["items"] == ["Move the home office: 1/2 missions done, 1 in progress, due in 4 days"]
