@@ -164,11 +164,14 @@ def test_dashboard_routes_and_plan_link(dash):
 def test_pursue_runs_the_plan_through_the_same_engine(dash):
     d, script, root = dash
     oid = json.loads(call(d, "/api/objectives", {"outcome": "Keep the notes tidy"})[2])["id"]
-    assert call(d, f"/api/objectives/{oid}/autopilot", {"level": "pursue"})[0] == 200
     script["plan"] = {"goal": "List the notes folder", "steps": [
         {"description": "List the folder", "tool": "fs", "action": "list", "args": {"path": str(root)}}]}
-    assert d.objectives_tick() == 1
+    assert call(d, f"/api/objectives/{oid}/autopilot", {"level": "pursue"})[0] == 200
+    # the dashboard's own maintenance loop may get there first on a slow machine: count attempts, not who made them
+    d.objectives_tick()
     assert d.objectives_tick() == 0                                                # one at a time, rate-limited
+    planned = [e for e in d.kernel.audit.entries(limit=100) if e["event"] == "objective.autoplanned"]
+    assert len(planned) == 1
     import time
     for _ in range(100):
         if objectives.missions(d.kernel, oid):
@@ -178,7 +181,6 @@ def test_pursue_runs_the_plan_through_the_same_engine(dash):
     assert len(ms) == 1
     created = [e for e in d.kernel.audit.entries(task_id=ms[0]["id"], limit=50) if e["event"] == "task.created"]
     assert created and created[0]["actor"] == "jarvis:objective"     # recorded as JARVIS's, not yours
-    assert any(e["event"] == "objective.autoplanned" for e in d.kernel.audit.entries(limit=50))
 
 
 def test_a_mission_can_follow_another_of_the_same_objective(k):
