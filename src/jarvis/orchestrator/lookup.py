@@ -292,10 +292,45 @@ def named_days(message: str, today: date | None = None) -> list[date]:
     return days
 
 
+SPAN_WORDS = {"two": 2, "three": 3, "four": 4, "five": 5, "six": 6, "seven": 7, "ten": 10, "fourteen": 14}
+DAY_SPAN = re.compile(r"\b(?:next|coming|following)\s+(\d{1,2}|" + "|".join(SPAN_WORDS) + r")\s+days?\b"
+                      r"|\b(?P<week>this|next|the coming|the following)\s+week\b|\bweek ahead\b"
+                      r"|\b(?:within|in)\s+(?:a|one|the next)\s+week\b|\bthis weekend\b|\bnext weekend\b", re.I)
+
+
+def span_days(message: str, today: date | None = None) -> list[date]:
+    """The days a span names ("the next three days", "this week", "next week", "this weekend"), worked out from
+    the Mac's clock. Real failure (0.19.4 work branch, planning-clash 0/5): asked about clashes "in the next three
+    days" on Tue 10 Nov, the small model looked up Sat 07–Mon 09, saw nothing and said there were no clashes.
+    "Next N days" covers today and the N days after it, so an event later today isn't missed."""
+    today = today or datetime.now().astimezone().date()
+    days: list[date] = []
+    for m in DAY_SPAN.finditer(message or ""):
+        text = m.group(0).lower()
+        if m.group(1):
+            n = int(m.group(1)) if m.group(1).isdigit() else SPAN_WORDS[m.group(1).lower()]
+            span = [today + timedelta(days=i) for i in range(min(n, 31) + 1)]
+        elif "weekend" in text:
+            sat = today - timedelta(days=1) if today.weekday() == 6 else today + timedelta(days=(5 - today.weekday()) % 7)
+            if text.startswith("next"):
+                sat += timedelta(days=7)
+            span = [d for d in (sat, sat + timedelta(days=1)) if d >= today]
+        elif m.group("week") and m.group("week").lower() == "this":
+            span = [today + timedelta(days=i) for i in range(7 - today.weekday())]  # today to Sunday
+        elif m.group("week") and m.group("week").lower() == "next":
+            monday = today + timedelta(days=7 - today.weekday())
+            span = [monday + timedelta(days=i) for i in range(7)]
+        else:  # "the coming week", "week ahead", "within a week"
+            span = [today + timedelta(days=i) for i in range(8)]
+        days += [d for d in span if d not in days]
+    return days
+
+
 def cover_named_days(args: dict, message: str, today: date | None = None) -> dict:
-    """A calendar lookup that also covers every day the message names (whole local days). Returns ``args`` itself
-    when they already do, so a caller can tell nothing changed."""
+    """A calendar lookup that also covers every day the message names (whole local days), including spans like
+    "the next three days". Returns ``args`` itself when they already do, so a caller can tell nothing changed."""
     days = named_days(message, today)
+    days += [d for d in span_days(message, today) if d not in days]
     if not days:
         return args
     try:
