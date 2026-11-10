@@ -179,3 +179,62 @@ def test_pursue_runs_the_plan_through_the_same_engine(dash):
     created = [e for e in d.kernel.audit.entries(task_id=ms[0]["id"], limit=50) if e["event"] == "task.created"]
     assert created and created[0]["actor"] == "jarvis:objective"     # recorded as JARVIS's, not yours
     assert any(e["event"] == "objective.autoplanned" for e in d.kernel.audit.entries(limit=50))
+
+
+def test_a_mission_can_follow_another_of_the_same_objective(k):
+    o = objectives.create(k, "Move the home office", by="user:dashboard")
+    first = _mission(k, "Book movers", "running")
+    objectives.link_mission(k, o["id"], first, source="test")
+    o = objectives.get(k, o["id"])
+    assert objectives.follow_on(o, None) == first                      # the latest mission still in progress
+    assert objectives.follow_on(o, first) == first
+    done = _mission(k, "Old one")
+    objectives.link_mission(k, o["id"], done, source="test")
+    with pytest.raises(objectives.ObjectiveError):
+        objectives.follow_on(objectives.get(k, o["id"]), done)         # can't wait for a finished one
+    second = _mission(k, "Block the week", "queued")
+    objectives.link_mission(k, o["id"], second, source="test", after=first)
+    m = {x["id"]: x for x in objectives.get(k, o["id"])["missions"]}
+    assert m[second]["after"] == first and m[second]["waiting"] is True
+    objectives.delete(k, o["id"], by="user:dashboard")
+    assert k.db.one("SELECT COUNT(*) FROM links WHERE rel = ?", (objectives.AFTER,))[0] == 0
+
+
+def test_the_runner_waits_for_the_mission_before_and_never_builds_on_a_failure(dash):
+    d, *_ = dash
+    k = d.kernel
+    dep = _mission(k, "Foundation", "running")
+    follower = k.tasks.create("Next", goal="Next", steps=[StepSpec("Note", "fs", "list", {"path": "."})], actor="user:cli",
+                              context={"after": dep, "runner": "dashboard"})
+    task = k.tasks.get(follower)
+    assert d._dependency_met(task) is False                             # still running: wait
+    with k.db.tx() as c:
+        c.execute("UPDATE tasks SET state = 'completed' WHERE id = ?", (dep,))
+    assert d._dependency_met(task) is True
+    with k.db.tx() as c:
+        c.execute("UPDATE tasks SET state = 'failed' WHERE id = ?", (dep,))
+    assert d._dependency_met(task) is False
+    assert k.tasks.get(follower)["state"] == "paused"                   # paused with the reason, never run
+    assert "waits for a mission that failed" in (k.tasks.get(follower)["error"] or "")
+    assert d._dependency_met({"context": {}}) is True                   # ordinary missions are unaffected
+
+
+def test_plan_while_one_is_in_flight_queues_a_follower(dash):
+    d, script, root = dash
+    oid = json.loads(call(d, "/api/objectives", {"outcome": "Tidy my notes folder"})[2])["id"]
+    first = _mission(d.kernel, "First tidy", "running")
+    objectives.link_mission(d.kernel, oid, first, source="test")
+    script["plan"] = {"goal": "List the notes folder", "steps": [
+        {"description": "List the folder", "tool": "fs", "action": "list", "args": {"path": str(root)}}]}
+    r = json.loads(call(d, f"/api/objectives/{oid}/plan", {})[2])
+    assert r["after"] == first
+    import time
+    for _ in range(100):
+        if d.jobs[r["job_id"]]["state"] != "planning":
+            break
+        time.sleep(0.05)
+    tid = json.loads(call(d, f"/api/plan/{r['job_id']}/run", {})[2])["task_id"]
+    assert d.kernel.tasks.get(tid)["context"]["after"] == first
+    m = {x["id"]: x for x in objectives.missions(d.kernel, oid)}
+    assert m[tid]["after"] == first
+    assert call(d, f"/api/objectives/{oid}/plan", {"after": "t-not-mine"})[0] == 400

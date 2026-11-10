@@ -6,6 +6,15 @@
   before planning, nothing left out, retries routed by the question, the first-event check). Both sides kept; one
   conflict: `Orchestrator.plan` runs main's premise check first and keeps this branch's replan history.
 
+### Objectives v2: missions that follow one another, and the objective's map
+
+- **A mission can wait for another.** On an objective with a mission in progress, the button reads "Plan a mission to
+  follow": the new mission is planned now, and when you Run it, it waits (queued) until that one has completed. If
+  that one fails or is cancelled, the follower is paused with the reason; it never runs on a failed foundation.
+  Recorded as a `follows` link (removed with the objective; part of forget).
+- **The objective's map:** missions as boxes with an arrow from the one each waits for, coloured by their real state
+  (done, failed, in progress, waiting). Only from the missions' states and links; nothing estimated.
+
 ### Level 6 trial sandbox hardened (Evolution 4.0, M2)
 
 - **Reads are now an allow-list:** nothing in any user folder or external drive (`/Users`, `/Volumes`) can be read

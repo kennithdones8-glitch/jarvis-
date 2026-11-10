@@ -1634,3 +1634,11 @@ body[data-view="games"] .context-panel { display: none; }
 .chess-side { display: grid; gap: 10px; flex: 1 1 220px; min-width: 0; }
 .chess-turn { font-weight: 700; margin: 0; } .chess-turn.over { color: var(--gold-hi); }
 .chess-moves { margin: 0; padding-left: 26px; max-height: 260px; overflow-y: auto; font: 13px var(--mono, monospace); columns: 2; }
+.obj-map-wrap { overflow-x: auto; }
+.obj-map { display: block; max-width: 100%; height: auto; font: 12px var(--mono, monospace); }
+.obj-edge { stroke: var(--gold-line); stroke-width: 1.5; }
+.obj-node rect { fill: rgba(255, 255, 255, .04); stroke: var(--gold-faint); }
+.obj-node text { fill: currentColor; }
+.obj-node.completed rect { stroke: var(--ok); } .obj-node.failed rect { stroke: var(--red); }
+.obj-node.running rect, .obj-node.awaiting_approval rect { stroke: var(--gold-hi); }
+.obj-node.waiting rect { stroke-dasharray: 4 3; }

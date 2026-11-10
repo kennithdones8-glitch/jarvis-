@@ -109,6 +109,7 @@ SECURITY: dict[str, tuple[str, list[str]]] = {
         "test_upgrade_safety::upgrade_is_backed_up_first", "test_upgrade_safety::a_mac_refuses_to_upgrade_without_a_backup",
         "test_upgrade_safety::dashboard_already_running_never_opens_the_data",
         "test_objectives::two_failures_in_a_row_pause_it_and_the_feed_says_so",
+        "test_objectives::the_runner_waits_for_the_mission_before_and_never_builds_on_a_failure",
         "test_update::failing_tests_put_the_old_code_back_without_a_restart",
         "test_update::a_new_version_that_doesnt_answer_is_rolled_back_with_its_database",
         "test_audit::tampering_detected_even_if_triggers_removed", "test_audit::deleted_middle_entry_detected",

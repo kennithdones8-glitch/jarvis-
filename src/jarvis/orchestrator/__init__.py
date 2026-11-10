@@ -179,7 +179,7 @@ class Orchestrator:
         return found.context
 
     def submit(self, request: str, plan: Plan, *, actor: str = "user", runner: str = "cli",
-               replan_of: str | None = None) -> str:
+               replan_of: str | None = None, after: str | None = None) -> str:
         """``runner`` names the process that drives the task, so two processes never run the same one.
         The mission's definition of success (one criterion per step) is decided now, from the plan itself."""
         from .criteria import criteria_for
@@ -188,6 +188,8 @@ class Orchestrator:
         context = {"verifier": "mission_verified", "planner": plan.model, "runner": runner, "criteria": criteria_for(plan.steps)}
         if replan_of:
             context["replan_of"] = replan_of
+        if after:
+            context["after"] = after   # waits until that mission has completed (the runner checks)
         return self.kernel.tasks.create(request, goal=plan.goal or request, steps=plan.steps, actor=actor, context=context)
 
     @staticmethod

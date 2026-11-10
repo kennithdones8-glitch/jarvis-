@@ -225,7 +225,7 @@ def _objectives(k) -> list[dict[str, Any]]:
     from .. import objectives
     return [{key: o.get(key) for key in ("id", "outcome", "criteria", "priority", "deadline", "days_left", "state",
                                          "autopilot", "progress")}
-            | {"missions": [{x: m[x] for x in ("id", "goal", "state", "confirmed")} for m in o["missions"][-8:]]}
+            | {"missions": [{x: m[x] for x in ("id", "goal", "state", "confirmed", "after", "waiting")} for m in o["missions"][-12:]]}
             for o in objectives.list_all(k)]
 
 
@@ -412,6 +412,8 @@ class Dashboard:
                             continue
                         if task["state"] == TaskState.AWAITING_APPROVAL and self.kernel.approvals.pending(task_id=tid):
                             continue
+                        if task["state"] == TaskState.QUEUED and not self._dependency_met(task):
+                            continue
                         with self._lock:
                             if tid in self._inflight:
                                 continue
@@ -427,6 +429,25 @@ class Dashboard:
                 except Exception as exc:
                     self.kernel.audit.record("push.error", error=f"{type(exc).__name__}: {exc}"[:300])
             self._stop.wait(self._poll_s)
+
+    def _dependency_met(self, task: dict[str, Any]) -> bool:
+        """A mission planned to follow another waits until that one has completed. If it ended any other way, the
+        follower is paused with the reason, for you to decide (it never runs on a failed foundation)."""
+        after = task["context"].get("after")
+        if not after:
+            return True
+        dep = self.kernel.db.one("SELECT state FROM tasks WHERE id = ?", (after,))
+        state = dep["state"] if dep else "cancelled"
+        if state == TaskState.COMPLETED:
+            return True
+        if state in (TaskState.FAILED, TaskState.CANCELLED):
+            try:
+                self.kernel.tasks.transition(task["id"], TaskState.PAUSED, actor="system",
+                                             reason="the mission it follows didn't complete",
+                                             error=f"waits for a mission that {state}: cancel this one or plan it again")
+            except Exception:  # noqa: BLE001 - someone else moved it meanwhile
+                pass
+        return False
 
     def benchtest_tick(self) -> str | None:
         """A benchmark you asked for starts when the Mac is idle (and for "tonight", in quiet hours)."""
@@ -848,7 +869,7 @@ class Dashboard:
         if not job or job.get("kind") != "plan" or job.get("task_id"):
             raise HttpError(409, "this plan cannot be run")
         job["task_id"] = self.orch.submit(job["request"], job["plan"], actor="user:dashboard", runner=RUNNER,
-                                          replan_of=job.get("replan_of"))
+                                          replan_of=job.get("replan_of"), after=job.get("after"))
         job["state"] = "submitted"
         self._link_objective(job, source="user:dashboard")
         self._persist_job(job)
@@ -858,7 +879,8 @@ class Dashboard:
         if job.get("objective") and job.get("task_id"):
             from .. import objectives
             try:
-                objectives.link_mission(self.kernel, job["objective"], job["task_id"], source=source)
+                objectives.link_mission(self.kernel, job["objective"], job["task_id"], source=source,
+                                        after=job.get("after"))
             except KeyError:
                 pass   # the objective was deleted meanwhile: the mission stays an ordinary mission
 
@@ -1741,7 +1763,11 @@ class Dashboard:
                 o = objectives.get(k, oid)
                 if o["state"] != "active":
                     raise HttpError(409, "resume the objective first")
-                return {"job_id": self.start_plan(objectives.next_request(o), objective=oid)}
+                after = objectives.follow_on(o, body.get("after") if isinstance(body.get("after"), str) else None)
+                job_id = self.start_plan(objectives.next_request(o), objective=oid)
+                if after:
+                    self.jobs[job_id]["after"] = after   # it will wait for that mission when you press Run
+                return {"job_id": job_id, "after": after}
             except KeyError:
                 raise HttpError(404, "no such objective") from None
             except objectives.ObjectiveError as exc:

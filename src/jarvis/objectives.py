@@ -13,6 +13,9 @@ Autopilot, chosen per objective by you:
 Autopilot stops by itself after two failed missions in a row (the objective is paused and the feed says why), while
 the emergency stop is on, and while the autonomy "initiative" pause is on. Achieved is yours to say.
 
+Missions can follow one another: one planned while another of the same objective is in progress waits (queued)
+until that one has completed; if it fails or is cancelled, the follower is paused with the reason instead of running.
+
 Progress is counted from the missions' real states: done = completed; confirmed = completed and its checks found
 everything (a check that couldn't run is "not confirmed", never counted as confirmed).
 """
@@ -32,6 +35,7 @@ TRANSITIONS = {"active": {"paused", "achieved", "abandoned"}, "paused": {"active
                "achieved": {"active"}, "abandoned": {"active"}}
 AUTOPILOT = ("suggest", "prepare", "pursue")
 REL = "mission of"
+AFTER = "follows"   # mission → the mission it waits for
 MAX_FAILS = 2
 OPEN_TASK_STATES = ("queued", "planning", "awaiting_approval", "running", "paused", "blocked", "recovering", "verifying")
 
@@ -104,16 +108,21 @@ def delete(kernel, oid: str, *, by: str) -> None:
     _user(by)
     _row(kernel, oid)
     with kernel.db.tx() as c:
+        mission_ids = [r["src"] for r in c.execute("SELECT src FROM links WHERE dst = ? AND rel = ?", (oid, REL)).fetchall()]
+        c.executemany("DELETE FROM links WHERE src = ? AND rel = ?", [(t, AFTER) for t in mission_ids])
         c.execute("DELETE FROM links WHERE dst = ? AND rel = ?", (oid, REL))
         c.execute("DELETE FROM objectives WHERE id = ?", (oid,))
     kernel.audit.record("objective.deleted", actor=by, objective=oid)
 
 
-def link_mission(kernel, oid: str, task_id: str, *, source: str) -> None:
+def link_mission(kernel, oid: str, task_id: str, *, source: str, after: str | None = None) -> None:
     _row(kernel, oid)
     with kernel.db.tx() as c:
         c.execute("INSERT OR IGNORE INTO links (src, dst, rel, source, created_at) VALUES (?,?,?,?,?)",
                   (task_id, oid, REL, source, now_iso()))
+        if after:
+            c.execute("INSERT OR IGNORE INTO links (src, dst, rel, source, created_at) VALUES (?,?,?,?,?)",
+                      (task_id, after, AFTER, source, now_iso()))
         c.execute("UPDATE objectives SET updated_at = ? WHERE id = ?", (now_iso(), oid))
 
 
@@ -134,8 +143,22 @@ def missions(kernel, oid: str) -> list[dict[str, Any]]:
     for r in rows:
         m = dict(r)
         m["confirmed"] = m["state"] == "completed" and _confirmed(kernel, m["id"])
+        dep = kernel.db.one("SELECT dst FROM links WHERE src = ? AND rel = ?", (m["id"], AFTER))
+        m["after"] = dep["dst"] if dep else None
+        m["waiting"] = bool(m["after"]) and m["state"] == "queued"
         out.append(m)
     return out
+
+
+def follow_on(o: dict[str, Any], after: str | None) -> str | None:
+    """Which mission a newly planned one should wait for: the one you named (it must be this objective's and not
+    finished), else the latest mission still in progress, else none."""
+    open_ids = [m["id"] for m in o["missions"] if m["state"] in OPEN_TASK_STATES]
+    if after:
+        if after not in open_ids:
+            raise ObjectiveError("a mission can only follow one of this objective's missions that hasn't finished")
+        return after
+    return open_ids[-1] if open_ids else None
 
 
 def get(kernel, oid: str) -> dict[str, Any]:

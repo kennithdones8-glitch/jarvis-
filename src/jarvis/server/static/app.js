@@ -1345,6 +1345,36 @@ async function newObjective(form) {
   } catch (e) { note(e.message); }
   await refresh();
 }
+// The objective's map: missions as boxes, an arrow from the mission each one waits for, coloured by its real state.
+// Drawn only from the missions' states and links; nothing is estimated.
+function objMap(o) {
+  const ms = o.missions || [];
+  if (ms.length < 2) return null;
+  const NS = "http://www.w3.org/2000/svg";
+  const svg = (tag, attrs) => { const el = document.createElementNS(NS, tag); for (const [k, v] of Object.entries(attrs)) el.setAttribute(k, v); return el; };
+  const depth = {}, byId = Object.fromEntries(ms.map((m) => [m.id, m]));
+  const d = (m) => (depth[m.id] !== undefined ? depth[m.id] : (depth[m.id] = m.after && byId[m.after] ? d(byId[m.after]) + 1 : 0));
+  ms.forEach(d);
+  const rows = {}, W = 150, H = 34, GX = 28, GY = 12;
+  const pos = {};
+  ms.forEach((m) => { const c = depth[m.id]; rows[c] = (rows[c] || 0) + 1; pos[m.id] = { x: c * (W + GX), y: (rows[c] - 1) * (H + GY) }; });
+  const width = (Math.max(...Object.keys(rows).map(Number)) + 1) * (W + GX), height = Math.max(...Object.values(rows)) * (H + GY);
+  const root = svg("svg", { class: "obj-map", viewBox: `0 0 ${width} ${height}`, role: "img", "aria-label": "How this objective's missions follow one another" });
+  for (const m of ms) if (m.after && pos[m.after]) {
+    const a = pos[m.after], b = pos[m.id];
+    root.append(svg("line", { class: "obj-edge", x1: a.x + W, y1: a.y + H / 2, x2: b.x, y2: b.y + H / 2 }));
+  }
+  for (const m of ms) {
+    const g = svg("g", { class: `obj-node ${m.waiting ? "waiting" : m.state}` });
+    g.append(svg("rect", { x: pos[m.id].x, y: pos[m.id].y, width: W, height: H, rx: 3 }));
+    const t = svg("text", { x: pos[m.id].x + 8, y: pos[m.id].y + H / 2 + 4 });
+    t.textContent = m.goal.length > 22 ? `${m.goal.slice(0, 21)}…` : m.goal;
+    const title = svg("title", {}); title.textContent = `${m.goal} — ${m.waiting ? "waiting" : m.state.replace("_", " ")}`;
+    g.append(t, title);
+    root.append(g);
+  }
+  return h("div", { class: "obj-map-wrap" }, root);
+}
 // CSP allows no style attributes, so widths are set through the DOM, not markup
 const widthOf = (el, pct) => { el.style.width = `${pct}%`; return el; };
 function objCard(o) {
@@ -1359,9 +1389,12 @@ function objCard(o) {
       widthOf(h("i"), pct(p.done)), widthOf(h("b"), pct(p.confirmed))),
     h("small", {}, p.missions ? `${p.done} of ${plural(p.missions, "mission")} done · ${p.confirmed} confirmed${p.in_flight ? ` · ${p.in_flight} in progress` : ""}` : "No missions yet"),
     o.missions && o.missions.length ? h("ol", { class: "obj-missions" }, o.missions.map((m) =>
-      h("li", { class: m.state }, h("a", { href: `#/missions/${m.id}` }, m.goal), ` · ${m.state === "completed" ? (m.confirmed ? "done, confirmed" : "done, not confirmed") : m.state.replace("_", " ")}`))) : null,
+      h("li", { class: m.state }, h("a", { href: `#/missions/${m.id}` }, m.goal),
+        ` · ${m.state === "completed" ? (m.confirmed ? "done, confirmed" : "done, not confirmed") : m.waiting ? "waiting for the mission before it" : m.state.replace("_", " ")}`))) : null,
+    objMap(o),
     h("div", { class: "row mt" },
-      o.state === "active" ? h("button", { class: "btn btn-sm", type: "button", disabled: p.in_flight ? true : null, onclick: () => objAct("plan") }, "Plan next mission") : null,
+      o.state === "active" ? h("button", { class: "btn btn-sm", type: "button", title: p.in_flight ? "It will wait until the mission in progress has completed" : null,
+        onclick: () => objAct("plan") }, p.in_flight ? "Plan a mission to follow" : "Plan next mission") : null,
       o.state === "active" ? h("button", { class: "btn btn-ghost btn-sm", type: "button", onclick: () => objAct("state", { state: "achieved" }) }, "Achieved") : null,
       o.state === "active" ? h("button", { class: "btn btn-ghost btn-sm", type: "button", onclick: () => objAct("state", { state: "paused" }) }, "Pause") : null,
       o.state !== "active" ? h("button", { class: "btn btn-ghost btn-sm", type: "button", onclick: () => objAct("state", { state: "active" }) }, "Resume") : null,
