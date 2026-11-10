@@ -42,6 +42,7 @@ from ..core.killswitch import EmergencyStop
 from ..core.tasks import InvalidTransition, TaskState
 from ..core.tools import ApprovalRequired
 from ..core.util import now_iso
+from ..compute import NOTE as COMPUTE_NOTE, PROGRAM_PROMPT, Computed, program_of, result_message_text, run_program, wants_compute
 from ..codecheck import MAX_CASES, TEST_PROMPT, SandboxUnavailable, code_of, parse_cases, run_cases, wants_code
 from ..orchestrator.answer_checks import chat_problems, facts_left_out, first_event_left_out
 from ..orchestrator.lookup import FACTS_HEAD, lenient_json
@@ -831,6 +832,24 @@ class Dashboard:
         return job["task_id"]
 
     # ---- chat --------------------------------------------------------------------------
+    def _compute(self, message: str, stage) -> "Computed":
+        """F: the local model writes a short program for a maths/date/logic question; it is vetted and run in the
+        sandbox (see jarvis.compute). Always local; never raises."""
+        stage({"stage": "computing"})
+        try:
+            r = self.kernel.models.complete(
+                Need("chat", prefer="quality", local_only=True),
+                ChatRequest((Message("system", PROGRAM_PROMPT, Category.SYSTEM_PROMPT),
+                             Message("user", message, Category.CONVERSATION, local_only=True)),
+                            max_tokens=700, temperature=0.0), purpose="chat: work it out with code")
+            code = program_of(r.text)
+            computed = run_program(code) if code else Computed(error="no program in the reply")
+        except Exception as exc:  # no local model, emergency stop...: answer the usual way
+            computed = Computed(error=f"{type(exc).__name__}"[:80])
+        self.kernel.audit.record("chat.computed", ok=computed.ok, error=(computed.error or "")[:160],
+                                 output_chars=len(computed.output or ""))
+        return computed
+
     def chat(self, message: str, history: list[dict[str, str]], *, local_only: bool = False,
              session: str = "dashboard", on_token=None, mode: str = "balanced", on_event=None) -> dict[str, Any]:
         """``mode`` (see ``INTELLIGENCE``): quick = fastest local model, no pre-call unless a lookup could help;
@@ -877,6 +896,13 @@ class Dashboard:
         past, past_n = recall.context_message(self.kernel, message)   # answers you rated, for a similar question
         if past:
             msgs.append(past)
+        computed = None
+        if (self.kernel.model_config.coding.get("compute") and mode in ("balanced", "deep") and stays_here
+                and wants_compute(message)):
+            computed = self._compute(message, stage)
+            if computed.ok:
+                msgs.append(Message("system", result_message_text(computed), Category.CONVERSATION, local_only=True))
+                careful = True
         msgs.append(Message("user", message, Category.CONVERSATION))
         stage({"stage": "context", "memories": len(recalled), "turns": turns, "past": past_n})
         max_tokens = INTELLIGENCE[mode]["max_tokens"]
@@ -907,6 +933,8 @@ class Dashboard:
                 self.kernel.audit.record("chat.mode_fallback", mode=mode, model=f"{r.provider}/{r.model}")
             if mode_note:
                 r = replace(r, note=((r.note + " ") if r.note else "") + mode_note)
+            if computed is not None and computed.ok:
+                r = replace(r, note=((r.note + " ") if r.note else "") + COMPUTE_NOTE)
             # Retries and fixes are local-only at any quality: they must never become a consent question.
             local_need = replace(need, local_only=True, min_quality=1)
             grounded, retried = None, False
@@ -1100,6 +1128,8 @@ class Dashboard:
             "touch_id": {"enabled": self.mac.enabled(), "keys": self.mac.keys()},
             "update": None if device else _update_status(k),
             "benchtest": None if device else _benchtest_status(k),
+            "coding": {"self_test": bool(k.model_config.coding.get("self_test")), "compute": bool(k.model_config.coding.get("compute")),
+                       "sandbox": sys.platform == "darwin"},
             "briefing": {"last_date": _last_briefing(k)},
             "voice": self.voice.status(),
             "telemetry": self.telemetry.snapshot(),
@@ -1636,6 +1666,22 @@ class Dashboard:
             k.audit.record("backup.created", actor=actor, file=r.path.name, bytes=r.bytes, verified=r.verified)
             self._health = self.check_health()
             return {"ok": True, "file": r.path.name}
+        if path == "/api/settings/coding":   # Mac only, Touch ID when set up: code runs only in the macOS sandbox
+            from ..cli import _write_section
+            from ..models import load_model_config
+            values = dict(k.model_config.coding)
+            for key in ("self_test", "compute"):
+                if key in body:
+                    if not isinstance(body[key], bool):
+                        raise HttpError(400, f"{key} must be true or false")
+                    values[key] = body[key]
+            try:
+                _write_section(k, "coding", values)
+                k.model_config = load_model_config(k.config_path)
+            except (ValueError, OSError) as exc:
+                raise HttpError(400, f"couldn't save the setting: {exc}") from None
+            k.audit.record("config.coding", actor=actor, **{key: bool(values.get(key)) for key in ("self_test", "compute")})
+            return {"coding": dict(k.model_config.coding)}
         if path == "/api/benchtest":   # Mac only (LOCAL_ONLY): you ask; it runs when the Mac is idle
             from .. import benchtest
             try:

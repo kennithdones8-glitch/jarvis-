@@ -62,7 +62,7 @@ const b64u = {
 // which enforces it regardless of what this page does): releasing the emergency stop, changing or forgetting
 // memories, removing a phone, plus approving a high-risk action (risk tier 4).
 const FACE_ID = [/^\/api\/release$/, /^\/api\/memory\/[\w-]+\/(delete|edit)$/, /^\/api\/devices\/[\w-]+\/revoke$/];
-const TOUCH_ID = [...FACE_ID, /^\/api\/update\/start$/, /^\/api\/devices\/pair$/, /^\/api\/touchid\/enroll\/options$/, /^\/api\/touchid\/[\w-]+\/remove$/];
+const TOUCH_ID = [...FACE_ID, /^\/api\/update\/start$/, /^\/api\/settings\/coding$/, /^\/api\/devices\/pair$/, /^\/api\/touchid\/enroll\/options$/, /^\/api\/touchid\/[\w-]+\/remove$/];
 const HIGH_RISK = 4;
 const highRiskApproval = (path, body) => {
   const m = path.match(/^\/api\/approvals\/([\w-]+)$/);
@@ -1262,6 +1262,12 @@ function renderSystems(d) {
       ro("Budget", `$${(m.budget.spent_this_month_usd || 0).toFixed(2)} of $${(m.budget.monthly_limit_usd || 0).toFixed(2)}`),
       ro("Audit log", chain ? (chain.ok ? `Intact · ${chain.checked}` : `Broken at #${chain.first_bad_seq}`) : "Checking…", chain ? (chain.ok ? "ok" : "bad") : null),
       ro("Folders", d.roots.length ? d.roots.map(base).join(", ") : "None approved"),
+      ...(onPhone() || !d.coding ? [] : [["compute", "Work it out with code", "maths, dates and puzzles: a small program, run in the sandbox"],
+        ["self_test", "Test code before answering", "coding answers run on test cases in the sandbox"]].map(([key, label, why]) =>
+        h("div", { class: "ro", title: why }, h("span", {}, label),
+          h("button", { class: `btn btn-ghost btn-xs${d.coding[key] ? " on" : ""}`, type: "button", disabled: !d.coding.sandbox,
+            title: d.coding.sandbox ? why : "needs the macOS sandbox", onclick: () => act("/api/settings/coding", { [key]: !d.coding[key] }) },
+          d.coding[key] ? "On" : "Off")))),
       ro("Version", d.version)));
 }
 

@@ -6,6 +6,21 @@
   before planning, nothing left out, retries routed by the question, the first-event check). Both sides kept; one
   conflict: `Orchestrator.plan` runs main's premise check first and keeps this branch's replan history.
 
+### Work it out with code (from branch `compute-v1`), and "Test this version"
+
+- **Maths, dates and puzzles are worked out by a program** (merged from `compute-v1`). Off unless you turn it on
+  (`[coding] compute = true`; benchmark: `--compute`). For a question that needs working out and isn't a request for
+  code, in Balanced or Deep, when the answer stays on this Mac, the local model writes a short program; JARVIS checks it
+  (only maths/date/logic modules; no files, network, os, subprocess, open/exec/eval/__import__, no double-underscore
+  names) and runs it in the coding self-test's macOS sandbox (no network, no writes outside a temp folder, no reading
+  your home folder, no other programs, 10 s). The answer is written from what it printed, and says so. Never in Quick,
+  never when the answer may go to Claude, never without the sandbox.
+- **"What time does it arrive?" and "on which weekday…?" with numbers count as maths**, so the 14B answers them.
+- **Test this version** (Systems, Mac only): "Test tonight" or "Test now" runs the hard set ×5 on a throwaway folder
+  (`bench-home`, only a copy of your model settings), local models only, when the Mac is idle (tonight: in your quiet
+  hours), with no mission running and the emergency stop off. The result is compared with the last run of the same
+  tasks on another commit; the verdict and its reasons are shown and logged (`benchtest.*`). It never runs unasked.
+
 ### Safe updates, and less Terminal
 
 - **A database upgrade is backed up first.** When new code would upgrade your database, JARVIS first makes an encrypted,

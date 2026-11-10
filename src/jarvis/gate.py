@@ -117,6 +117,7 @@ SECURITY: dict[str, tuple[str, list[str]]] = {
         "test_stop::run_tracked_deadline_kills_process_group", "test_remote::unauthenticated_challenges_are_bounded",
         "test_dashboard::bad_content_length_refused_quickly", "test_voice::transcribe_endpoint_defences",
         "test_bench::code_is_only_run_when_asked", "test_chat_intelligence::streaming_respects_the_deadline",
+        "test_compute::an_endless_program_is_stopped",
         "test_orchestrator::validator_rejects_oversized_and_forward_references"]),
     "Privacy and data disclosure": ("Private data leaves the Mac only with permission; logs hold no content", [
         "test_models::quality_floor_selects_cloud_but_private_data_needs_approval",
@@ -125,6 +126,9 @@ SECURITY: dict[str, tuple[str, list[str]]] = {
         "test_models::approval_is_bound_to_exact_request", "test_models::secret_content_blocked",
         "test_models::audit_never_contains_message_content",
         "test_codecheck::off_by_default",
+        "test_compute::off_by_default", "test_compute::never_runs_when_the_answer_goes_to_claude",
+        "test_compute::nothing_runs_without_the_sandbox", "test_compute::unsafe_programs_are_never_run",
+        "test_compute::never_in_quick_mode",
         "test_fileperms::an_open_data_folder_is_made_private_on_start_and_recorded",
         "test_checkup::cli_records_counts_only", "test_checkup::only_fixed_read_only_commands_are_run",
         "test_fileperms::a_new_data_folder_starts_private", "test_fileperms::a_symlink_is_not_followed",

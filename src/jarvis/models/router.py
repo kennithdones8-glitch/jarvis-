@@ -104,7 +104,10 @@ def hard_signals(text: str) -> bool:
     return bool(HARD_SIGNALS.search(text)) or text.count("?") >= 3 or len(text) > 1200 or is_puzzle(text)
 
 
-WORD_PROBLEM = re.compile(r"\b(how (many|much|long|far|old)|calculate|work out|what is the (total|difference|average))\b",
+# Hard set (smarter-v2): "what time does it arrive?" and "on which weekday ...?" weren't seen as maths, so the
+# 14B never got them. Still needs two or more numbers, so "what time is my dentist?" isn't caught.
+WORD_PROBLEM = re.compile(r"\b(how (many|much|long|far|old)|calculate|work out|what is the (total|difference|average)"
+                          r"|what time (does|do|will|is|would)|(which|what) (week)?day|(which|what) date|when (does|will))\b",
                           re.I)
 NUMBER = re.compile(r"\d+(?:[.,]\d+)?")
 

@@ -93,3 +93,21 @@ def test_routes_are_mac_only(dash, monkeypatch):
     assert json.loads(call(d, "/api/state")[2])["benchtest"]["request"]
     assert json.loads(call(d, "/api/benchtest/cancel", {})[2])["request"] is None
     shutil.rmtree(benchtest.bench_home(d.kernel), ignore_errors=True)
+
+
+def test_coding_switches_save_validated_settings(dash):
+    import re
+    import tomllib
+
+    from jarvis.remote import LOCAL_ONLY
+    from jarvis.remote.mac import MAC_STEP_UP
+    assert any(re.fullmatch(p, "/api/settings/coding") for p in LOCAL_ONLY)
+    assert any(re.fullmatch(p, "/api/settings/coding") for p in MAC_STEP_UP)
+    d, *_ = dash
+    assert call(d, "/api/settings/coding", {"compute": "yes"})[0] == 400
+    status, _, body = call(d, "/api/settings/coding", {"compute": True})
+    assert status == 200 and json.loads(body)["coding"]["compute"] is True
+    assert tomllib.loads(d.kernel.config_path.read_text())["coding"]["compute"] is True
+    assert d.kernel.model_config.coding["compute"] is True
+    assert json.loads(call(d, "/api/state")[2])["coding"]["compute"] is True
+    assert any(e["event"] == "config.coding" for e in d.kernel.audit.entries(limit=10))
