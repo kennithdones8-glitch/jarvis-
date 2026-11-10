@@ -114,9 +114,9 @@ def sandbox_profile(root: Path, data: Path | None, real_home: Path, *, extra_rea
         # caught by the escape test on GitHub's macOS runners)
         '(allow network-bind network-inbound (local ip "localhost:*"))',
         '(allow network-outbound (remote ip "localhost:*"))',
-        f"(allow network-outbound (remote unix-socket (subpath {_q(root)})))",
         '(deny network-outbound (remote unix-socket (path-regex #"^/(private/)?var/run/docker")))',
         f'(deny network-outbound (remote unix-socket (path-regex #"^{_rx(home)}/")))',
+        f"(allow network-outbound (remote unix-socket (subpath {_q(root)})))",   # after: the trial is inside home
         '(deny mach-lookup (global-name "com.apple.SecurityServer") (global-name "com.apple.securityd")'
         ' (global-name "com.apple.coreservices.appleevents") (global-name "com.apple.pasteboard.1"))',
         "(deny appleevent-send)",

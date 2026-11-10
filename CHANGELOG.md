@@ -37,6 +37,10 @@
   or to Docker are refused.
 - **Limits:** 2 GB per file, 2,048 open files, 30 CPU minutes, and the whole trial folder at most 6 GB; on the time
   limit or a full folder the whole process group is stopped (before, only the first process was).
+- **Internet access is actually blocked now.** The escape test found that the old rules letting the tests run their
+  own local servers (`network*` on a localhost address) also let a trial connect to the internet; they predate this
+  release, so earlier trials were not as offline as described. Now only listening on loopback and connecting to
+  loopback (or a socket inside the trial folder) are allowed.
 - **Proved on GitHub's macOS runners:** a program inside the real sandbox tries each escape (home file, outside
   write, internet, home socket, osascript) and must be blocked, while the trial's own files, localhost and ordinary
   programs still work (`test_macos_only::trial_sandbox_escape_attempts_all_fail`, required on a Mac).

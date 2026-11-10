@@ -235,3 +235,10 @@ def test_every_server_path_that_runs_a_tool_uses_the_gateway():
         assert "gateway.invoke(" in src, name
         for cls in ("MacTool", "FsTool", "DocumentTool", "WebTool"):
             assert f"{cls}(" not in src, (name, cls)
+
+
+def test_socket_rules_deny_home_then_allow_the_trial(tmp_path):
+    p = trial.sandbox_profile(tmp_path / "home" / "data" / "trial", None, tmp_path / "home").splitlines()
+    deny_home = next(i for i, x in enumerate(p) if "unix-socket (path-regex" in x and "docker" not in x)
+    allow_trial = next(i for i, x in enumerate(p) if x.startswith("(allow network-outbound (remote unix-socket"))
+    assert deny_home < allow_trial          # the trial folder lives inside home: its allow must come after (last wins)
