@@ -32,7 +32,7 @@ for (let i = 0; i < v.length; i++) for (let j = i + 1; j < v.length; j++) { cons
 const voices = new Set(cars.map(([, c]) => JSON.stringify({ ...A.VOICES[c.shape], ...c.voice }))).size;
 const looks = new Set(cars.map(([, c]) => c.shape + JSON.stringify(c.art))).size;
 const liveries = new Set(cars.map(([, c]) => JSON.stringify(c.factory))).size;
-console.log(JSON.stringify({ n: cars.length, min, pair, voices, looks, liveries, missing: cars.filter(([, c]) => !c.handling || c.band === undefined || !c.factory || !c.voice || !c.voice.cyl).map(([id]) => id) }));""")
+console.log(JSON.stringify({ n: cars.length, min, pair, voices, looks, liveries, missing: cars.filter(([, c]) => !c.handling || c.band === undefined || !c.factory || !c.voice || !(c.voice.cyl || c.voice.electric)).map(([id]) => id) }));""")
     assert r["missing"] == []
     assert r["min"] >= 1.0, r["pair"]                  # no two cars handle alike (in standard deviations across 11 traits)
     assert r["voices"] == r["n"] and r["looks"] == r["n"] and r["liveries"] == r["n"]
@@ -91,3 +91,34 @@ const hear = (id) => { const c = D.CARS[id]; a.voice(c.shape, c.voice); log.targ
 const sounds = cars.map(([id]) => hear(id));
 console.log(JSON.stringify({ distinct: new Set(sounds).size, n: cars.length }));""")
     assert r["distinct"] == r["n"]                     # no two cars produce the same engine settings
+
+
+def test_the_new_cars_are_earned_the_way_they_say():
+    r = js("""
+const avail = (s, id) => C.carAvailable(s, id).ok;
+const s = C.fresh(), before = ["kurogane", "tsubame", "thunderbolt", "bulldozer", "volta", "vecchia"].map((id) => avail(s, id));
+s.achievements.drifter = 1; s.medals = { kerbside: "gold", ridge: "gold" }; C.hire(s, "otto"); s.records.pursuit.heat = 3;
+s.story.flags.grudge_valentina_won = true;
+const t = C.fresh(); t.story.chapter = 3; C.startTourney(t, "dragkings");
+const sum = (o) => ({ mode: "drag", track: "harbour", laps: 1, place: 1, of: 2, finished: true, eliminated: false, total: 5, best: 5, lapTimes: [5], drift: 0, contacts: 0, damage: 0, order: ["YOU", "x"], beat: ["x"], rivals: {}, ...o });
+let n = 0, notes = [];
+for (let i = 0; i < 3; i++) { const ev = C.tourneyEvent(t); const out = C.applyResult(t, { kind: "tourney", event: ev, raceId: "t" + (++n) }, sum({})); notes.push(...out.notes); }
+const again = C.applyResult(t, { kind: "side", event: { id: "e", tier: 1, goal: { type: "place", max: 3 } }, raceId: "t9" }, sum({ mode: "circuit" })).notes;
+const after = ["kurogane", "tsubame", "thunderbolt", "bulldozer", "vecchia"].map((id) => avail(s, id));
+const k = C.fresh(); k.money = 1e7; const got = [];
+for (const [id, c] of cars) { if (c.price === null || k.garage.owned[id]) continue; k.garage.unlocked.push(id); const r = C.buyCar(k, id); got.push(...r.achievements); }
+k.garage.owned.countess = C.carState("countess"); got.push(...C.collectionCheck(k));
+console.log(JSON.stringify({ before, after, volta: avail(t, "volta"), notes: notes.filter((x) => x.includes("Volta")).length, again: again.filter((x) => x.includes("Volta")).length,
+  ach: [...new Set(got)].filter((a) => ["collector", "every_class", "full_garage"].includes(a)), col: C.collection(k) }));""")
+    assert r["before"] == [False] * 6 and r["after"] == [True] * 5
+    assert r["volta"] is True and r["notes"] == 1 and r["again"] == 0          # announced once
+    assert set(r["ach"]) == {"collector", "every_class", "full_garage"} and r["col"]["owned"] == r["col"]["total"]
+
+
+def test_the_pickup_and_the_electric_car_are_their_own_kind():
+    r = js("""
+const truck = D.CARS.bulldozer, ev = D.CARS.volta, heaviest = Math.max(...cars.map(([, c]) => c.mass)), lightest = Math.min(...cars.map(([, c]) => c.mass));
+console.log(JSON.stringify({ truck: [truck.shape, truck.mass === heaviest, truck.offroad > 0], ev: [ev.band, !!ev.voice.electric, ev.voice.cyl], light: D.CARS.feather.mass === lightest,
+  kinds: new Set(cars.map(([, c]) => c.cat)).size, n: cars.length }));""")
+    assert r["truck"] == ["truck", True, True] and r["ev"] == [-1, True, 0] and r["light"]
+    assert r["n"] == 38 and r["kinds"] >= 28

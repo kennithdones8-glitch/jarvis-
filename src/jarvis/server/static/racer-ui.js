@@ -595,10 +595,14 @@
       const shown = st || C.carState(id), spec = C.carStats(id, shown, save.sponsor), stock = C.carStats(id, C.carState(id));
       const curId = save.garage.current, cur = C.carStats(curId, save.garage.owned[curId], save.sponsor);
       const filter = el("div", "race-tabs", ...["all", "C", "B", "A", "S"].map((k) => { const b = el("button", "race-tab" + (k === gClass ? " on" : ""), k === "all" ? "All" : "Class " + k); b.type = "button"; b.addEventListener("click", () => { gClass = k; show(garage, { replace: true }); }); return b; }));
+      const col = C.collection(save), colBar = el("div", "race-bar"), colI = el("i", "up"); colI.style.width = Math.round(col.owned / col.total * 100) + "%"; colBar.append(colI);
+      const collectionPanel = el("div", "race-panel race-collection", el("div", "race-barrow", el("span", "race-lbl", `Collection ${col.owned} / ${col.total}`), colBar),
+        el("p", "race-note", ["C", "B", "A", "S"].map((k) => `Class ${k}: ${col.by[k].owned}/${col.by[k].total}`).join("  ·  ") + ". Some cars can't be bought until you earn them: a drift score, gold medals, a pursuit, a tournament, a grudge match, a crew member."));
       const cars = el("div", "race-carlist", ...Object.entries(D.CARS).filter(([, c]) => !c.police && (gClass === "all" || c.cls === gClass)).map(([k, c]) => {
         const o = !!save.garage.owned[k], a = C.carAvailable(save, k);
         const b = el("button", "race-carbtn" + (k === id ? " on" : "") + (o ? " owned" : a.ok ? "" : " locked"), el("b", "", o || a.ok ? c.name : "???"),
-          el("span", "", `${c.cls} · ${c.cat}`), el("span", "", o ? (k === curId ? "Driving" : "Owned") : c.price === null ? "Story reward" : a.ok ? money(c.price) : a.why));
+          el("span", "", `${c.cls} · ${c.cat}`), el("span", "", o ? (k === curId ? "Driving" : "Owned") : c.price === null ? "Story reward" : a.ok ? money(c.price) : a.why),
+          c.unlock && !c.unlock.chapter && !c.unlock.rep && !c.unlock.ended && !o ? el("span", "race-earn", a.ok ? "Earned · now for sale" : "Earn it") : null);
         b.type = "button"; b.addEventListener("click", () => { gSel = k; if (audio) audio.click(); show(garage, { replace: true }); }); return b;
       }));
       const preview = el("canvas", "race-preview"); preview.width = 720; preview.height = 400;
@@ -631,7 +635,7 @@
         const b = el("button", "race-tab" + (t === gTab ? " on" : ""), n); b.type = "button"; b.setAttribute("aria-pressed", String(t === gTab)); b.disabled = !owned;
         b.addEventListener("click", () => { gTab = t; show(garage, { replace: true }); }); return b;
       }));
-      return frame("Garage", `Okafor Motors · ${Object.keys(save.garage.owned).length} cars`, [wallet(), el("div", "race-garage", el("div", "race-garage-l", filter, cars),
+      return frame("Garage", `${save.team.name} · ${Object.keys(save.garage.owned).length} cars`, [wallet(), collectionPanel, el("div", "race-garage", el("div", "race-garage-l", filter, cars),
         el("div", "race-garage-r", el("b", "race-title", owned || av.ok ? car.name : "Locked car"), el("p", "race-note", owned || av.ok ? car.blurb : av.why), preview, facts, owned || av.ok ? handling : null, barBox,
           el("p", "race-note", id === curId ? "Grey: stock. Gold: as built. The line marks your car." : "Grey: stock. Gold: as built. The line and the numbers compare it with the car you drive."),
           el("div", "race-stack row", action, testBtn, repairBtn), owned ? tabs : null, owned ? tabBody(id, st, drawBars) : null))]);

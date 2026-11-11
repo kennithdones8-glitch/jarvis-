@@ -77,6 +77,27 @@
     // ---- Police (pursuit mode only)
     interceptor: { name: "PKPD Interceptor", cls: "A", cat: "Police", shape: "sedan", price: null, police: true, blurb: "Port Kerbside Police. Heavy, fast, relentless.",
       acc: 492, drag: 0.645, grip: 6.9, brake: 1000, steer: 2.8, mass: 1.5, nitro: N(420, 0.4, 0.06, 1.3) },
+    // the new generation: Japanese tuners, European exotics, American muscle and a pickup, a classic and an electric
+    kurogane: { name: "Kurogane Drift Spec", cls: "B", cat: "Japanese drift special", shape: "coupe", price: 8200, unlock: { achievement: "drifter" }, blurb: "Built in a Ridge garage for one thing: going sideways. Earned by drifters only.",
+      acc: 452, drag: 0.655, grip: 6.0, brake: 960, steer: 3.05, mass: 1.0, turbo: 0.08, slide: 0.6, nitro: N(360, 0.42, 0.06, 1.26) },
+    tsubame: { name: "Tsubame Time Attack", cls: "A", cat: "Japanese time-attack", shape: "coupe", price: 15500, unlock: { medals: 2 }, blurb: "A time-attack car with a wing like a dining table. For people who collect gold medals.",
+      acc: 468, drag: 0.652, grip: 7.6, brake: 1040, steer: 2.95, mass: 1.05, turbo: 0.1, nitro: N(380, 0.4, 0.056, 1.28) },
+    valkyrie: { name: "Valkyrie SV", cls: "A", cat: "European mid-engined", shape: "super", price: 15200, unlock: { chapter: 4 }, blurb: "A mid-engined V10 that screams past nine thousand revs. Balanced and exotic.",
+      acc: 482, drag: 0.64, grip: 7.1, brake: 1030, steer: 3.02, mass: 1.02, slide: 0.12, nitro: N(390, 0.38, 0.058, 1.29) },
+    montecarlo: { name: "Montecarlo GT12", cls: "S", cat: "European V12 tourer", shape: "gt", price: 29000, unlock: { ended: true }, blurb: "Twelve cylinders, two seats, all the torque in the world. Arrives, never hurries.",
+      acc: 515, drag: 0.633, grip: 7.2, brake: 1050, steer: 2.62, mass: 1.4, wet: 0.05, nitro: N(420, 0.37, 0.058, 1.31) },
+    feather: { name: "Feather 7", cls: "B", cat: "European lightweight", shape: "roadster", price: 7600, unlock: { rep: 120 }, blurb: "Weighs less than a motorbike and a friend. Barely any power, almost endless grip.",
+      acc: 422, drag: 0.64, grip: 7.6, brake: 1020, steer: 3.1, mass: 0.7, nitro: N(350, 0.42, 0.058, 1.26) },
+    thunderbolt: { name: "Thunderbolt '69", cls: "B", cat: "Classic muscle", shape: "muscle", price: 7000, unlock: { crew: "otto" }, blurb: "Otto Brandt's championship car. He kept it under a sheet for twenty years and only sells it to his own driver.",
+      acc: 470, drag: 0.665, grip: 5.6, brake: 800, steer: 2.45, mass: 1.4, slide: 0.4, nitro: N(380, 0.42, 0.05, 1.27) },
+    bulldozer: { name: "Bulldozer Street Truck", cls: "B", cat: "Street pickup truck", shape: "truck", price: 8800, unlock: { pursuitHeat: 3 }, blurb: "Built by Port Kerbside's tow-truck crews to outrun the police. Sold only to people who already have.",
+      acc: 476, drag: 0.67, grip: 6.1, brake: 900, steer: 2.5, mass: 1.65, offroad: 0.45, wet: 0.04, nitro: N(370, 0.42, 0.054, 1.27) },
+    vanguard: { name: "Vanguard SC", cls: "A", cat: "Modern muscle", shape: "muscle", price: 14200, unlock: { chapter: 4 }, blurb: "Modern muscle: a supercharged V8, real brakes and a chassis that finally keeps up.",
+      acc: 498, drag: 0.652, grip: 6.6, brake: 980, steer: 2.65, mass: 1.35, slide: 0.15, nitro: N(395, 0.4, 0.056, 1.29) },
+    volta: { name: "Volta EV", cls: "S", cat: "Electric hypercar", shape: "super", price: 31000, unlock: { flag: "tourney_dragkings" }, blurb: "Four motors, no gears, no noise but a whine. The Drag Kings' prize, and the quickest thing off the line in Port Kerbside.",
+      acc: 528, drag: 0.632, grip: 7.4, brake: 1080, steer: 2.85, mass: 1.25, nitro: N(400, 0.36, 0.06, 1.3) },
+    vecchia: { name: "Corsa Vecchia '58", cls: "B", cat: "Vintage single-seater", shape: "open", price: 9800, unlock: { flag: "grudge_valentina_won" }, blurb: "Valentina's grandfather raced this in 1958. She'll only sell it to someone who beat her fair.",
+      acc: 455, drag: 0.655, grip: 6.6, brake: 900, steer: 2.9, mass: 0.85, slide: 0.3, nitro: N(360, 0.42, 0.055, 1.26) },
   };
   // Each car's identity: how its power arrives (band: −1 all low-down torque … +1 all top-end revs; top speed is
   // unchanged), small stat changes that keep near-twins apart, a one-line handling note, its own body details (art)
@@ -140,6 +161,26 @@
       art: { len: 1.05, head: "slant", add: ["fenderVents", "louvresRear"] }, voice: { cyl: 12, idle: 56, span: 170, rasp: 0.3 } },
     interceptor: { band: -0.5, handling: "Port Kerbside Police: heavy, fast, built to shove.",
       art: { add: ["pushbar", "aerial"] }, voice: { cyl: 8, idle: 40, span: 100, lope: 0.25, drive: 0.6 } },
+    kurogane: { factory: { paint: "#f2f2f2", paint2: "#d23c3c", decal: "sash", wheels: "bronze" }, band: 0.4, handling: "The loosest car in the game: kick the tail out on entry and steer it on the throttle.",
+      art: { wid: 1.03, add: ["wingFactory", "fenderVents", "canards"] }, voice: { cyl: 6, idle: 56, span: 150, rasp: 0.45, whoosh: 1 } },
+    tsubame: { factory: { paint: "#ffd23a", paint2: "#14161a", decal: "stripe", wheels: "black" }, band: 0.6, handling: "Huge wing, sticky tyres, a rev-happy turbo: fastest through the corners in A class, needs revs to pull.",
+      art: { len: 1.04, add: ["wingFactory", "canards", "fenderVents", "hoodPins"] }, voice: { cyl: 4, idle: 62, span: 172, rasp: 0.55, whoosh: 1 } },
+    valkyrie: { factory: { paint: "#ff7a1a", finish: "metallic", wheels: "black" }, band: 0.55, handling: "Mid-engined and balanced: rotates neatly into corners, punishes a clumsy lift.",
+      art: { wid: 1.02, add: ["fenderVents"] }, voice: { cyl: 10, idle: 58, span: 180, rasp: 0.35 } },
+    montecarlo: { factory: { paint: "#14325c", finish: "metallic", wheels: "gold" }, band: -0.55, handling: "A V12 grand tourer: effortless torque, heavy in the bends, unstoppable on the straights.",
+      art: { len: 1.06, head: "slant", add: ["louvresRear"] }, voice: { cyl: 12, idle: 50, span: 150, drive: 0.3 } },
+    feather: { factory: { paint: "#e8e8e8", paint2: "#1d9a6c", decal: "stripe", wheels: "gold" }, band: 0.5, handling: "The lightest car in the game: sublime grip and steering, and you'll be overtaken on every straight.",
+      art: { len: 0.95, add: ["canards"] }, voice: { cyl: 4, idle: 66, span: 160, rasp: 0.4 } },
+    thunderbolt: { factory: { paint: "#1f6b4a", decal: "stripe", wheels: "steel" }, band: -0.9, handling: "1969 muscle: a mountain of torque, drum brakes and a tail that wants to lead. Brake early, exit smoking.",
+      art: { head: "round", remove: ["scoop"], add: ["chrome", "hoodPins"] }, voice: { cyl: 8, idle: 33, span: 80, lope: 0.6, drive: 0.8 } },
+    bulldozer: { factory: { paint: "#9a1b1b", wheels: "black" }, band: -0.7, handling: "The heaviest car in the game: shoves anything out of its way, shrugs off gravel, needs a long run at a corner.",
+      art: { add: ["pushbar"] }, voice: { cyl: 8, idle: 36, span: 86, lope: 0.35, drive: 0.7, sc: 0.02 } },
+    vanguard: { factory: { paint: "#3a3f48", paint2: "#d23c3c", decal: "stripe", finish: "metallic" }, band: -0.4, handling: "Modern muscle: a supercharged shove with brakes and a chassis that can finally use it.",
+      art: { len: 1.03, head: "slit", remove: ["scoop"], add: ["fenderVents", "louvresRear", "hoodPins"] }, voice: { cyl: 8, idle: 38, span: 98, lope: 0.25, drive: 0.65, sc: 0.03 } },
+    volta: { factory: { paint: "#e2ecf5", paint2: "#38e8ff", decal: "stripe", finish: "pearl" }, band: -1, handling: "Electric: every bit of torque from a standstill, no gears, no turbo lag. Fades a little at the very top.",
+      art: { len: 1.04, add: ["canards"], remove: ["louvres", "intakes"] }, voice: { cyl: 0, electric: true, idle: 90, span: 260 } },
+    vecchia: { factory: { paint: "#b0122a", wheels: "steel" }, band: -0.2, handling: "A 1958 racer: skinny tyres, no wings, a straight-eight. It drifts through every corner whether you want it to or not.",
+      art: { len: 0.97, remove: ["wings", "airbox"], add: ["headrest"] }, voice: { cyl: 8, idle: 52, span: 130, rasp: 0.55, drive: 0.4 } },
   };
   for (const [id, x] of Object.entries(IDENTITY)) { const c = CARS[id]; Object.assign(c, x.set || {}); c.band = x.band; c.handling = x.handling; c.art = x.art || {}; c.voice = x.voice || {}; c.factory = x.factory || null; }
   const CLASS_COST = { C: 1, B: 1.45, A: 2.05, S: 2.9 };
@@ -184,12 +225,12 @@
     exhaust: { single: { name: "Single", price: 0 }, dual: { name: "Dual", price: 150 }, quad: { name: "Quad", price: 300 } },
     numpos: { bonnet: { name: "On the bonnet", price: 0 }, roof: { name: "On the roof", price: 0 }, none: { name: "No number", price: 0 } },
     // body parts (looks only); fits: the body styles each part can be fitted to
-    bumper: { stock: { name: "Stock", price: 0 }, lip: { name: "Splitter lip", price: 220, fits: ["kei", "hatch", "rally", "coupe", "roadster", "sedan", "wagon", "muscle", "gt", "super"] },
-      pushbar: { name: "Push bar", price: 260, fits: ["kei", "hatch", "rally", "sedan", "wagon", "muscle"] }, canards: { name: "Canards", price: 300, fits: ["coupe", "gt", "super", "proto", "open", "rally"] } },
-    bonnet: { stock: { name: "Stock", price: 0 }, vented: { name: "Vented", price: 200, fits: ["kei", "hatch", "rally", "coupe", "roadster", "sedan", "wagon", "muscle", "gt"] },
+    bumper: { stock: { name: "Stock", price: 0 }, lip: { name: "Splitter lip", price: 220, fits: ["kei", "hatch", "rally", "coupe", "roadster", "sedan", "wagon", "muscle", "gt", "super", "truck"] },
+      pushbar: { name: "Push bar", price: 260, fits: ["kei", "hatch", "rally", "sedan", "wagon", "muscle", "truck"] }, canards: { name: "Canards", price: 300, fits: ["coupe", "gt", "super", "proto", "open", "rally"] } },
+    bonnet: { stock: { name: "Stock", price: 0 }, vented: { name: "Vented", price: 200, fits: ["kei", "hatch", "rally", "coupe", "roadster", "sedan", "wagon", "muscle", "gt", "truck"] },
       carbon: { name: "Carbon", price: 380, fits: ["kei", "hatch", "rally", "coupe", "roadster", "sedan", "wagon", "muscle", "gt", "super", "proto"] },
-      scoop: { name: "Scoop", price: 300, fits: ["hatch", "rally", "coupe", "sedan", "wagon", "gt"] }, pins: { name: "Bonnet pins", price: 90, fits: ["kei", "hatch", "rally", "coupe", "roadster", "sedan", "wagon", "muscle", "gt"] } },
-    tyres: { road: { name: "Road tyres", price: 0 }, lettered: { name: "Raised white letters", price: 180 }, offroad: { name: "Chunky off-road tread", price: 220, fits: ["kei", "hatch", "rally", "wagon", "muscle"] },
+      scoop: { name: "Scoop", price: 300, fits: ["hatch", "rally", "coupe", "sedan", "wagon", "gt", "truck"] }, pins: { name: "Bonnet pins", price: 90, fits: ["kei", "hatch", "rally", "coupe", "roadster", "sedan", "wagon", "muscle", "gt"] } },
+    tyres: { road: { name: "Road tyres", price: 0 }, lettered: { name: "Raised white letters", price: 180 }, offroad: { name: "Chunky off-road tread", price: 220, fits: ["kei", "hatch", "rally", "wagon", "muscle", "truck"] },
       slick: { name: "Shaved slick look", price: 160, fits: ["open", "proto", "super", "gt", "coupe", "roadster", "hatch"] } },
   };
   const LOOK_KEYS = ["decal", "wheels", "body", "spoiler", "finish", "tint", "lights", "exhaust", "numpos", "bumper", "bonnet", "tyres"];
@@ -620,6 +661,9 @@
     contract: { name: "Signed and Delivered", how: "Complete a sponsor contract." },
     team_champ: { name: "Team Champions", how: "Win a team championship season." },
     new_game_plus: { name: "Once More, Faster", how: "Start New Game+." },
+    collector: { name: "Collector", how: "Own ten cars." },
+    every_class: { name: "C to S", how: "Own a car in every class." },
+    full_garage: { name: "Full Garage", how: "Own every car in Port Kerbside." },
   };
 
   const MODES = {

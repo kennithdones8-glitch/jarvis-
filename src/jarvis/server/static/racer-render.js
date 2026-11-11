@@ -595,6 +595,9 @@
       proto: { o: [[-24, 0], [-24.6, -10.6], [-22, -11.6], [-15, -11.7], [-9, -10], [0, -7.6], [8, -8.6], [13, -11.5], [19, -11.7], [23.6, -9], [26, -4], [26.4, 0]], arch: [2, 3, 7, 8],
         glass: { type: "canopy", cx: 2.6, rx: 9, ry: 5.8 }, head: { k: "cluster", x: 24.4, y: 8.4, r: 1.2 }, tail: { k: "strip", x: -24.4, y: 6, w: 1, h: 12 },
         wheels: { rw: -16, fw: 16, y: 11.1, l: 9.6, w: 4.8 }, feat: ["fin", "roofIntake", "splitter"] },
+      truck: { o: [[-26, 0], [-26.2, -10.6], [-25.2, -11.8], [-18, -12.4], [-9, -12.1], [2, -11.8], [9, -12.1], [16, -12.4], [22.6, -11.6], [25.6, -9.4], [26.1, 0]], arch: [3, 7],
+        glass: { type: "closed", ws: 12, rf: 8, rr: 0.5, rb: -1, wb: 9.8, w: 9.2 }, head: { k: "box", x: 25, y: 8, w: 2.2, h: 3.8 }, tail: { k: "vert", x: -25.6, y: 9.4, w: 1.2, h: 3 },
+        wheels: { rw: -16, fw: 15.5, y: 12, l: 10, w: 5 }, feat: ["wipers", "bed"] },
       open: { o: [[-21, 0], [-21.4, -3.6], [-18, -6], [-10, -8.6], [-3, -8.6], [2, -6], [8, -4], [16, -3.1], [22, -2], [23.6, 0]], arch: [],
         glass: { type: "formula", cx: -3 }, head: null, tail: { k: "rain", x: -23.2, y: 0, w: 1.2, h: 2.4 },
         wheels: { rw: -15, fw: 13, y: 12.6, l: 8.6, w: 5, exposed: true }, feat: ["wings", "airbox"] },
@@ -766,6 +769,14 @@
       if (F.includes("airbox")) { g.fillStyle = shade(paint, 0.8); rr(g, -12, -2.4, 7, 4.8, 2); g.fill(); g.fillStyle = blk; g.beginPath(); g.ellipse(-5.6, 0, 0.9, 1.6, 0, 0, 7); g.fill(); }
       // more details: each car's own (art) and the body parts you fit (bumper, bonnet)
       const wn = Math.abs(B.o[B.o.length - 2][1]) + wide * 0.3, closed = Gl.type === "closed", bon0 = closed ? Gl.ws + 1.6 : nose - 13, bonW = closed ? Gl.wb - 1.2 : 4;
+      if (F.includes("bed") && closed) {   // a pickup's load bed: dark floor, ribs, a tailgate edge
+        const x0 = rear + 1.6, x1 = Gl.rb - 1.4, hw = Gl.wb + 0.6;
+        g.fillStyle = "#1c1d20"; rr(g, x0, -hw, x1 - x0, hw * 2, 1.2); g.fill();
+        g.fillStyle = "rgba(255,255,255,0.08)"; for (let y = -hw + 2; y < hw - 1; y += 2.6) g.fillRect(x0 + 0.8, y, x1 - x0 - 1.6, 0.7);
+        g.fillStyle = shade(paint, 0.7); g.fillRect(x0 - 1.2, -hw, 1.2, hw * 2);
+      }
+      if (F.includes("chrome")) { g.fillStyle = "#d9dde2"; g.fillRect(nose - 1.6, -wn + 0.6, 1.2, (wn - 0.6) * 2); g.fillRect(rear + 0.3, -wn + 0.8, 1.2, (wn - 0.8) * 2); g.fillStyle = "rgba(255,255,255,0.6)"; g.fillRect(nose - 1.6, -wn + 0.6, 0.4, (wn - 0.6) * 2); }
+      if (F.includes("headrest")) { g.fillStyle = shade(paint, 0.75); g.beginPath(); g.ellipse(Gl.cx - 6, 0, 4, 2.6, 0, 0, 7); g.fill(); g.fillStyle = "#e8e4d8"; g.beginPath(); g.arc(nose - 7, 0, 3.2, 0, 7); g.fill(); g.fillStyle = "#14120f"; g.font = '700 4.4px "Rajdhani", system-ui, sans-serif'; g.textAlign = "center"; g.textBaseline = "middle"; g.fillText("58", nose - 7, 0.3); }
       if (F.includes("towhook")) { g.fillStyle = "#d23c3c"; g.fillRect(nose - 0.4, 4.6, 1.8, 1.4); }
       if (F.includes("lightbar") && closed) { g.fillStyle = "#151515"; rr(g, Gl.rf - 1.8, -Gl.w + 0.8, 1.6, (Gl.w - 0.8) * 2, 0.5); g.fill(); g.fillStyle = "#fff3c4"; for (let y = -Gl.w + 1.8; y < Gl.w - 1.2; y += 2.1) g.fillRect(Gl.rf - 1.5, y, 1, 1.3); }
       if (F.includes("snorkel") && closed) { g.fillStyle = "#151515"; g.fillRect(Gl.ws - 1.2, Gl.wb + 0.2, nose - Gl.ws - 8, 1.3); g.fillRect(Gl.ws - 1.2, Gl.wb - 2, 1.5, 3.4); }

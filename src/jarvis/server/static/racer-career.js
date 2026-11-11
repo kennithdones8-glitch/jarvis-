@@ -255,8 +255,20 @@
     if (U.rep && save.rep >= U.rep) return { ok: true };
     if (U.ended && save.story.ended) return { ok: true };
     if (U.rival && (save.rivals[U.rival] || {}).wins >= U.wins) return { ok: true };
+    // cars you earn by doing something
+    const golds = Object.values(save.medals).filter((m) => m === "gold").length;
+    if (U.achievement && save.achievements[U.achievement]) return { ok: true };
+    if (U.medals && golds >= U.medals) return { ok: true };
+    if (U.crew && hired(save, U.crew)) return { ok: true };
+    if (U.pursuitHeat && save.records.pursuit.heat >= U.pursuitHeat) return { ok: true };
+    if (U.flag && save.story.flags[U.flag]) return { ok: true };
     return { ok: false, why: U.chapter ? `Opens in chapter ${U.chapter}.` : U.rep ? `Needs ${U.rep} reputation (you have ${save.rep}).` : U.ended ? "Opens after the story ends." :
-      U.rival ? `Beat ${D.DRIVERS[U.rival].name} ${U.wins} times (${(save.rivals[U.rival] || {}).wins || 0} so far).` : "Locked." };
+      U.rival ? `Beat ${D.DRIVERS[U.rival].name} ${U.wins} times (${(save.rivals[U.rival] || {}).wins || 0} so far).` :
+      U.achievement ? `Earn “${D.ACHIEVEMENTS[U.achievement].name}”: ${D.ACHIEVEMENTS[U.achievement].how.toLowerCase()}` :
+      U.medals ? `Win gold medals on ${U.medals} time-trial tracks (${golds} so far).` :
+      U.crew ? `${D.CREW[U.crew].name} has to join your crew first.` :
+      U.pursuitHeat ? `Escape a police pursuit at heat ${U.pursuitHeat} or higher (your best: ${save.records.pursuit.heat || "none"}).` :
+      U.flag ? ({ tourney_dragkings: "The prize for winning the Drag Kings tournament.", grudge_valentina_won: "Beat Valentina Corsa in a grudge match." }[U.flag] || "Locked.") : "Locked." };
   }
   // Tuning is free: a preset, or custom sliders (gearing −1…1, aero 0…1, diff 0…1) and a tyre compound.
   function setTune(save, id, patch) {
@@ -279,6 +291,29 @@
   }
   const round10 = (v) => Math.round(v / 10) * 10;
   const upgradeCost = (id, part, lv) => (lv >= 3 ? null : round10(D.UPGRADES[part].cost[lv] * D.CLASS_COST[(D.CARS[id] || D.CARS.pacer).cls]));
+  // Collection: achievements for owning ten cars, a car in every class, and every car.
+  function collectionCheck(save) {
+    const owned = Object.keys(save.garage.owned).filter((id) => D.CARS[id]), all = Object.entries(D.CARS).filter(([, c]) => !c.police).map(([k]) => k), out = [];
+    if (owned.length >= 10) out.push(...grant(save, "collector"));
+    if (["C", "B", "A", "S"].every((k) => owned.some((id) => D.CARS[id].cls === k))) out.push(...grant(save, "every_class"));
+    if (all.every((id) => save.garage.owned[id])) out.push(...grant(save, "full_garage"));
+    return out;
+  }
+  // Cars that became available since the last check (earned ones especially), announced once each.
+  function newlyAvailable(save) {
+    const out = [];
+    for (const [id, c] of Object.entries(D.CARS)) {
+      const U = c.unlock;
+      if (c.police || !U || U.chapter || U.rep || U.ended || save.garage.owned[id] || save.discovered["car-" + id]) continue;   // only cars you earn
+      if (carAvailable(save, id).ok) { save.discovered["car-" + id] = Date.now(); out.push({ type: "car", id, name: c.name, earned: true }); }
+    }
+    return out;
+  }
+  function collection(save) {
+    const all = Object.entries(D.CARS).filter(([, c]) => !c.police), owned = all.filter(([id]) => save.garage.owned[id]);
+    const by = {}; for (const [id, c] of all) { const k = c.cls; (by[k] = by[k] || { owned: 0, total: 0 }).total++; if (save.garage.owned[id]) by[k].owned++; }
+    return { owned: owned.length, total: all.length, by };
+  }
   function buyCar(save, id) {
     const c = D.CARS[id];
     if (!c) return { ok: false, error: "No such car." };
@@ -288,7 +323,7 @@
     if (!av.ok) return { ok: false, error: av.why === "Unlocks as the story goes on." ? "Not unlocked yet: keep going in the story." : av.why };
     if (save.money < c.price) return { ok: false, error: `You need ${(c.price - save.money).toLocaleString()} more.` };
     save.money -= c.price; save.garage.owned[id] = carState(id); save.garage.current = id;
-    return { ok: true, achievements: grant(save, "new_car") };
+    return { ok: true, achievements: [...grant(save, "new_car"), ...collectionCheck(save)] };
   }
   function buyUpgrade(save, id, part) {
     const st = save.garage.owned[id];
@@ -722,7 +757,7 @@
     }
     if (kind !== "quick" && kind !== "free") { contractTick(save, s, out); teamPoints(save, s, out); }
     worldTick(save, s, ev, kind, passed, out);
-    // achievements
+    for (const u of newlyAvailable(save)) { out.unlocked.push(u); out.notes.push(`New car available: ${u.name}. It's in the garage.`); }
     if (s.finished && s.place === 1 && s.of > 1) {
       out.achievements.push(...grant(save, "first_win"));
       if (!s.contacts) out.achievements.push(...grant(save, "clean_win"));
@@ -849,6 +884,7 @@
       if (car.dmg > 0.05) out.notes.push(`Your car took damage (${Math.round(car.dmg * 100)}%). Repair it in the garage.`);
     }
     contractTick(save, s, out);
+    for (const u of newlyAvailable(save)) { out.unlocked.push(u); out.notes.push(`New car available: ${u.name}. It's in the garage.`); }
     save.history.push({ at: Date.now(), kind: "pursuit", title: (ctx.event && ctx.event.title) || "Police pursuit", track: s.track, mode: "pursuit", place: s.place, of: s.of, total: s.total, drift: 0, passed: out.passed, money: out.money - (out.fine || 0) });
     save.history = save.history.slice(-60);
     return out;
@@ -871,7 +907,7 @@
     const t = save.tourney, def = D.TOURNAMENTS.find((x) => x.id === t.id), stage = def.stages[t.stage];
     if (!passed) { save.tourney = null; return { done: true, out: true, name: def.name, stage: stage.title }; }
     if (t.stage + 1 >= def.stages.length) {
-      save.tourney = null; save.money += def.prize; save.records.tournament.wins++;
+      save.tourney = null; save.money += def.prize; save.records.tournament.wins++; save.story.flags["tourney_" + def.id] = true;
       return { done: true, won: true, name: def.name, prize: def.prize, achievements: grant(save, "knockout") };
     }
     t.stage++;
@@ -905,7 +941,7 @@
     return { done: false, round: c.round, table, name: def.name };
   }
 
-  const api = { influence, runs, weekday, featured, secretEvents, turfEvents, rivalSim, worldTick, hire, hired, loyal, crewLoyalty, rivalStage, rivalReaction, endingFor, carAvailable, setTune, repair, repairCost, lookOf, fits, VERSION, KEY, BAK, CORRUPT, LEGACY, fresh, carState, validate, migrateV2, load, persist, exportSave, importSave,
+  const api = { influence, runs, weekday, featured, secretEvents, turfEvents, rivalSim, worldTick, hire, hired, loyal, crewLoyalty, rivalStage, rivalReaction, endingFor, carAvailable, setTune, repair, repairCost, lookOf, fits, collection, newlyAvailable, collectionCheck, VERSION, KEY, BAK, CORRUPT, LEGACY, fresh, carState, validate, migrateV2, load, persist, exportSave, importSave,
     level, xpFor, carStats, bars, upgradeCost, buyCar, buyUpgrade, setLook, driver, playerRacer, config, missions, nextMission, mission,
     lines, needsChoice, choose, goalMet, goalText, sideEvents, grudgeCheck, pursuitHeats, pursuitEvent, policeSpec, carAllowed, teammate, classCar,
     tourneyOpen, startTourney, tourneyEvent, wagerOptions, placeWager, setTeam, teamLivery, contractOffers, signContract, dropContract, contractTick, teamTable, newGamePlus, rivalEvents, champOpen, champEvent, startChamp, champTable, applyResult, medal, grant };

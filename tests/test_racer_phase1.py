@@ -87,7 +87,7 @@ def test_every_car_body_has_art_and_lights():
     body = src[src.index("const BODY = {"):src.index("// a smooth closed outline")]
     for shape in r:
         assert f"\n      {shape}: {{ o: [" in body, shape
-    assert body.count("wheels: {") == 12 and body.count("glass: {") == 12
+    assert body.count("wheels: {") == len(r) and body.count("glass: {") == len(r)   # one body per style in use
 
 
 BROWSER = r"""
@@ -105,6 +105,7 @@ const page = process.argv[2];
     }
     return n;
   });
+  out.shapes = await p.evaluate(() => new Set(Object.values(window.KerbsideData.CARS).map((c) => c.shape)).size);
   const scenes = [];
   for (const track of ['kerbside', 'harbour', 'ridge', 'oldtown']) for (const [time, weather] of [['day', 'dry'], ['night', 'rain'], ['dusk', 'fog'], ['dawn', 'dry']]) scenes.push([track, time, weather]);
   out.frames = 0;
@@ -145,5 +146,5 @@ def test_the_graphics_draw_everything_in_a_real_browser(tmp_path):
     assert out.returncode == 0, out.stderr[-2000:]
     r = json.loads(out.stdout.strip().splitlines()[-1])
     assert r["errs"] == [], r["errs"]
-    assert r["cars"] == 12 * 16 and r["frames"] == 16 * 20
+    assert r["cars"] == r["shapes"] * 16 and r["frames"] == 16 * 20
     assert r["phoneOverflow"] is False and r["studio"][:2] == [720, 400] and r["studio"][2]

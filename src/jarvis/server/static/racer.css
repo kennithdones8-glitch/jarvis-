@@ -326,3 +326,5 @@ a.race-go { text-decoration: none; display: inline-block; text-align: center; }
 .race-plate span { font-size: 13px; color: #d8cdb2; }
 @media (max-width: 560px) { .race-face { width: 88px; height: 88px; } .race-convo-p:not(.on) .race-face { width: 68px; height: 68px; } .race-convo { min-height: 90px; } }
 @media (prefers-reduced-motion: reduce) { .race-convo-p { transition: none; } }
+.race-earn { justify-self: start; margin-top: 2px; padding: 1px 6px; font: 700 12px var(--r-display); letter-spacing: .06em; text-transform: uppercase; color: #14100a; background: var(--r-gold); }
+.race-collection { margin-bottom: 8px; }

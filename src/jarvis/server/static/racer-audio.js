@@ -27,6 +27,7 @@
     gt: { idle: 48, span: 130, sub: 0.5, drive: 0.4, gears: 6, cut: 3200 },
     super: { idle: 60, span: 170, sub: 0.35, drive: 0.35, gears: 7, cut: 4200 },
     proto: { idle: 68, span: 190, sub: 0.25, drive: 0.2, gears: 7, cut: 4800, whine: 0.04 },
+    truck: { idle: 36, span: 84, sub: 0.75, drive: 0.6, gears: 5, cut: 1700 },
   };
   function create(settings = {}) {
     const AC = root.AudioContext || root.webkitAudioContext;
@@ -79,6 +80,7 @@
       nodes.shaper.curve = curve(voice.drive); nodes.sub.gain.value = voice.sub;
       nodes.pk.gain.value = (voice.rasp || 0) * 12;
       // the second oscillator sets the character: an octave down for fours and V8s, a fifth for sixes, an octave up (smooth) for V10s and V12s
+      if (voice.electric) { voice.gears = 1; voice.whine = 0.06; voice.drive = 0.05; voice.sub = 0.1; voice.cut = 6000; nodes.shaper.curve = curve(0.05); nodes.sub.gain.value = 0.1; }
       const cyl = voice.cyl || 4; voice.ratio = cyl >= 10 ? 2 : cyl === 6 || cyl === 5 ? 1.5 : cyl === 3 ? 0.75 : 0.5;
       nodes.o2.type = cyl >= 10 ? "sawtooth" : "square";
     }
@@ -154,14 +156,14 @@
         nodes.o1.frequency.setTargetAtTime(f, t, 0.03); nodes.o2.frequency.setTargetAtTime(f * (V.ratio || 0.5), t, 0.03); nodes.o3.frequency.setTargetAtTime(f / 4, t, 0.03);
         nodes.lfo2.frequency.setTargetAtTime(Math.max(3, f / 5), t, 0.05); nodes.lope.gain.setTargetAtTime((V.lope || 0) * 0.6 * Math.max(0, 1 - r * 1.6), t, 0.08);
         nodes.lp.frequency.setTargetAtTime(350 + V.cut * (0.25 + 0.75 * Math.min(1, r)) * (p.thr === false ? 0.6 : 1), t, 0.05);
-        nodes.eg.gain.setTargetAtTime((0.05 + 0.1 * Math.min(1, r)) * (shiftDip > 0 ? 0.35 : 1) * (p.thr === false ? 0.75 : 1), t, 0.03);
+        nodes.eg.gain.setTargetAtTime((V.electric ? 0.012 : (0.05 + 0.1 * Math.min(1, r)) * (shiftDip > 0 ? 0.35 : 1)) * (p.thr === false ? 0.75 : 1), t, 0.03);
         nodes.tyre.g.gain.setTargetAtTime(p.on && p.slip > 90 ? Math.min(0.12, (p.slip - 90) / 900) : 0, t, 0.04);
         nodes.nitro.g.gain.setTargetAtTime(p.boost ? 0.09 : 0, t, 0.06);
         // turbo: whistles as it spools, blows off when you lift
         const tb = p.turbo || 0;
         spool = Math.max(0, Math.min(1, spool + (p.thr ? 0.035 : -0.08)));
         // a supercharger whines with the revs; a turbo whistles with the boost
-        nodes.tw.frequency.setTargetAtTime(V.sc ? 1800 + 3000 * within : 1600 + 2400 * spool, t, 0.05);
+        nodes.tw.frequency.setTargetAtTime(V.electric ? 600 + 5200 * Math.min(1, r) : V.sc ? 1800 + 3000 * within : 1600 + 2400 * spool, t, 0.05);
         nodes.twg.gain.setTargetAtTime(V.sc ? V.sc * Math.min(1, r * 1.4) : tb > 0 ? 0.012 * tb * spool * (p.thr ? 1 : 0.3) : V.whine ? V.whine * Math.min(1, r) : 0, t, 0.05);
         if ((tb > 0 || V.whoosh) && lastThr && !p.thr && spool > 0.5) burst("bandpass", 3800, 900, 0.35, 0.12 * Math.min(1, Math.max(tb, 0.25) * 2), "sfx", 2);
         lastThr = !!p.thr;
