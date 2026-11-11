@@ -345,6 +345,44 @@
     "k-endurance": { sponsor: "Halden Tyres", title: "Long Haul", goal: { type: "endurance", n: 1 }, races: 4, pay: 4500, rep: 15, minRep: 80, blurb: "A podium in an endurance race within four races." },
     "k-elite": { sponsor: "Corsa Group", title: "Elite Series", goal: { type: "wins", n: 4 }, races: 8, pay: 9000, rep: 30, minRep: 250, blurb: "Four wins in eight races." },
   };
+  // What the city says when a turning point happens.
+  const WORLD_NEWS = {
+    benny_saved: "The Brickyard stays open. Someone paid Benny Kale's last debt to Harlan Holdings.", benny_lost: "The Brickyard closes. Harlan Holdings will build flats on the site.",
+    mara_home: "Tidewater crew moves into Okafor Motors. Harlan's marina will have to wait.", mara_alone: "Tidewater scatters. Bulldozers clear the old boathouse for Harlan's marina.",
+    sora_shared: "Summit Works saved: new investors back Sora Lind's designs.", sora_kept: "Summit Works sells its designs to Harlan Holdings.",
+    dex_free: "Dex Varga walks out of Ironclad. 'No contract, no Harlan.'", dex_signed: "Dex Varga signs with Harlan's Ironclad.",
+    harlan_exposed: "Grand Prix stewards replaced after leaked emails. Victor Harlan 'unavailable for comment'.", harlan_hidden: "Harlan Holdings confirms its stewards for the Grand Prix.",
+    harlan_signed: "{name} signs with Harlan Holdings. Okafor Motors' debt cleared.", harlan_refused: "{name} turns down Harlan Holdings. 'Okafor Motors isn't for sale.'",
+    nia_steal: "Break-in at Harlan's harbour repo yard. Police have no leads. Harlan has several.", nia_buy: "Okafor V8 sold at Harlan's auction race. The winner: {name}.",
+    route_league: "{name} joins the League's elite programme.", route_underground: "{name} goes underground. The League is not amused.",
+  };
+  // Reputation, as the city sees you.
+  const REP_TITLES = [[0, "Unknown"], [50, "Local name"], [150, "Street regular"], [300, "Known across the city"], [600, "Port Kerbside star"], [1000, "City legend"]];
+  // Crew matters: two people who don't agree, and you decide. Each appears once its conditions are met.
+  const MATTERS = [
+    { id: "nia-dex", who: ["nia", "dex"], need: { hired: ["dex"] }, prompt: "Dex wants the garage's best bay. Nia says he still owes her for the first car he rolled, ten years ago.", options: [
+      { label: "Nia's right: Dex pays his old debt first.", loyalty: { nia: 2, dex: -1 }, money: 600, text: "Dex pays up, grumbling. Nia frames the cheque." },
+      { label: "Let it go. Dex is family now.", loyalty: { nia: -2, dex: 2 }, text: "Dex gets the bay. Nia gets very quiet." },
+      { label: "Dex pays, and he gets the bay.", loyalty: { nia: 1, dex: 1 }, money: 600, text: "Both of them think they won. Perfect." }] },
+    { id: "lio-priya", who: ["lio", "priya"], need: { hired: ["lio", "priya"] }, prompt: "Lio wants to keep racing underground on the side. Priya says the sponsors will walk if they find out.", options: [
+      { label: "Lio's right: the night crews are where we came from.", loyalty: { lio: 2, priya: -2 }, rep: 15, text: "The night crews hear about it. Your name goes up on another wall." },
+      { label: "Priya's right: we can't risk the sponsors.", loyalty: { priya: 2, lio: -2 }, money: 1500, text: "Priya lands a bonus from a happy sponsor." }] },
+    { id: "nia-harlan", who: ["nia", "harlan"], need: { flag: "harlan_signed" }, prompt: "Nia found Harlan's lawyers measuring the garage for 'brand improvements'.", options: [
+      { label: "Buy back the garage's independence. (−₭5,000)", loyalty: { nia: 3 }, money: -5000, text: "Harlan's lawyers leave. The Okafor sign stays." },
+      { label: "A contract's a contract.", loyalty: { nia: -2 }, text: "The new sign says HARLAN in very large letters." }] },
+    { id: "mara-benny", who: ["mara", "benny"], need: { flags: ["mara_home", "benny_saved"] }, prompt: "Tidewater and the Brickyard both want Friday nights at your garage.", options: [
+      { label: "Alternate weeks. Everyone shares.", respect: { mara: 1, benny: 1 }, text: "It's chaos. It's wonderful." },
+      { label: "Tidewater were here first.", respect: { mara: 2, benny: -1 }, text: "Benny takes it badly, then takes Saturdays." },
+      { label: "The Brickyard needs it more.", respect: { benny: 2, mara: -1 }, text: "Mara shrugs. Tidewater trains at dawn anyway." }] },
+  ];
+  // Tonight-only events: a few appear every three race days and then they're gone.
+  const TONIGHT = [
+    { kind: "callout", title: "{rival} calls you out", mode: "rival", laps: 3, time: "night", blurb: "On their own streets, tonight only." },
+    { kind: "sweep", title: "Police sweep: {district}", mode: "pursuit", heat: 2, time: "night", blurb: "The police are out in force. Lose them." },
+    { kind: "drag", title: "Waterfront drag night", mode: "drag", laps: 1, time: "night", blurb: "Quarter mile, side by side, cash on the line." },
+    { kind: "storm", title: "Storm run: {district}", mode: "sprint", laps: 1, time: "dusk", weather: "dry", weatherChange: { at: 6, to: "rain" }, blurb: "A storm's coming in. Race it." },
+    { kind: "parts", title: "Midnight parts run", mode: "delivery", stops: 4, laps: 1, time: "night", blurb: "A garage across town needs parts before morning." },
+  ];
   // Team levels: your team's reputation (from wins, podiums, contracts and seasons) moves Okafor Motors up; each
   // level adds a perk on top of the last.
   const TEAM_LEVELS = [
@@ -570,7 +608,7 @@
     { id: "s-harb-drift", district: "harbour", title: "Dockside Drift", track: "harbour", mode: "drift", laps: 2, field: [], tier: 2, rep: 60, goal: { type: "drift", min: 3000 } },
     { id: "s-old-sprint", district: "oldtown", title: "Canal Sprint", track: "oldtown", mode: "sprint", laps: 1, field: ["benny", "mara", "dex"], tier: 3, rep: 80, time: "dusk" },
     { id: "s-old-drift", district: "oldtown", title: "Cobblestone Drift", track: "oldtown", mode: "drift", laps: 2, field: [], tier: 3, rep: 90, weather: "rain", time: "night", goal: { type: "drift", min: 3500 } },
-    { id: "s-old-night", district: "oldtown", title: "Midnight Circuit", track: "oldtown", mode: "circuit", laps: 3, field: ["benny", "dex", "mara", "otto", "pip"], tier: 3, rep: 110, time: "night" },
+    { id: "s-old-night", district: "oldtown", hideFlag: "benny_lost", title: "Midnight Circuit", track: "oldtown", mode: "circuit", laps: 3, field: ["benny", "dex", "mara", "otto", "pip"], tier: 3, rep: 110, time: "night" },
     { id: "s-ridge-tt", district: "ridge", title: "Ridge Time Trial", track: "ridge", mode: "timetrial", laps: 3, field: [], tier: 4, rep: 130 },
     { id: "s-ridge-drift", district: "ridge", title: "Switchback Drift", track: "ridge", mode: "drift", laps: 2, field: [], tier: 4, rep: 150, goal: { type: "drift", min: 4000 } },
     { id: "s-crew-lio", district: "harbour", title: "The Scout's Test", track: "harbour", mode: "timetrial", laps: 2, field: [], tier: 2, rep: 30, crew: "lio", goal: { type: "time", max: 30 } },
@@ -588,6 +626,21 @@
     { id: "s-old-drag", district: "oldtown", title: "Brickyard Drag Night", track: "harbour", mode: "drag", laps: 1, field: ["benny"], tier: 3, rep: 95, goal: { type: "place", max: 1 }, time: "night", weather: "rain" },
     { id: "s-old-class", district: "oldtown", title: "B-Class Night Cup", track: "oldtown", mode: "circuit", laps: 3, cls: "B", field: ["benny", "mara", "dex", "otto"], tier: 3, rep: 100, time: "night", goal: { type: "place", max: 2 } },
     { id: "s-ridge-touge", district: "ridge", title: "Summit Touge", track: "ridge", mode: "touge", laps: 1, field: ["sora"], tier: 4, rep: 140, goal: { type: "place", max: 1 }, time: "dawn" },
+    // the city reacts: events that open (needFlag) or close (hideFlag) with your decisions
+    { id: "s-old-revival", district: "oldtown", title: "Brickyard Revival Night", track: "oldtown", mode: "circuit", laps: 3, field: ["benny", "dex", "mara", "pip"], tier: 4, rep: 0, needFlag: "benny_saved",
+      time: "night", goal: { type: "place", max: 2 }, respectOnWin: { benny: 1 }, blurb: "The Brickyard's back, and the whole of Old Town turned up." },
+    { id: "s-old-flats", district: "oldtown", title: "Harlan Heights Opening Sprint", track: "oldtown", mode: "sprint", laps: 1, field: ["rook", "valentina", "sora"], tier: 4, rep: 0, needFlag: "benny_lost",
+      time: "day", goal: { type: "place", max: 1 }, blurb: "Harlan's new flats stand where the Brickyard was. He's holding a race to open them." },
+    { id: "s-harb-tidewater", district: "harbour", title: "Tidewater Training Run", track: "harbour", mode: "team", team: true, mate: "mara", laps: 3, field: ["otto", "pip"], tier: 3, rep: 0, needFlag: "mara_home",
+      time: "dawn", goal: { type: "team" }, respectOnWin: { mara: 1 }, blurb: "Tidewater trains out of your garage now. Mara wants a teammate for the morning session." },
+    { id: "s-harb-marina", district: "harbour", title: "Marina Grand Opening", track: "harbour", mode: "circuit", laps: 3, field: ["rook", "otto", "pip", "dex"], tier: 4, rep: 0, needFlag: "mara_alone",
+      time: "day", goal: { type: "place", max: 1 }, blurb: "Where Tidewater's boathouse stood, Harlan's marina opens with a race. Rook is the favourite." },
+    { id: "s-ridge-summit", district: "ridge", title: "Summit Works Test Day", track: "ridge", mode: "timetrial", laps: 2, field: [], tier: 4, rep: 0, needFlag: "sora_shared",
+      time: "dusk", goal: { type: "time", max: 41 }, blurb: "Sora's new investors want to see your line again. Two laps for the sensors." },
+    { id: "s-park-harlancup", district: "park", title: "The Harlan Cup", track: "kerbside", mode: "circuit", laps: 3, field: ["rook", "valentina", "sora", "dex"], tier: 5, rep: 0, needFlag: "harlan_signed",
+      time: "night", goal: { type: "place", max: 1 }, blurb: "Your sponsor's own trophy. It pays very well, and everyone knows who's paying." },
+    { id: "s-park-crews", district: "park", title: "Crews' League Opener", track: "kerbside", mode: "circuit", laps: 3, field: ["dex", "mara", "benny", "sora"], tier: 5, rep: 0, needFlag: "harlan_exposed",
+      time: "dusk", goal: { type: "place", max: 2 }, blurb: "The first race of a League the crews own. Everyone you've raced is here." },
     { id: "s-old-charity", district: "oldtown", title: "Youth Club Charity Sprint", track: "oldtown", mode: "sprint", laps: 1, field: ["benny", "pip", "mara"], tier: 3, rep: 0, needFlag: "benny_kind",
       time: "dusk", goal: { type: "place", max: 1 }, respectOnWin: { benny: 2 }, blurb: "The kids you helped are racing for a new roof. Benny's driving for them." },
     { id: "s-ridge-endur", district: "ridge", title: "Ridge 12 Laps", track: "ridge", mode: "endurance", laps: 12, field: ["sora", "valentina", "benny", "mara", "otto"], tier: 5, rep: 190, goal: { type: "place", max: 3 }, weatherChange: { at: 90, to: "rain" } },
@@ -838,6 +891,8 @@
     every_ending: { name: "Every Road", how: "See three different endings (New Game+ counts)." },
     turf: { name: "Running the Streets", how: "Take over a district." },
     rumours: { name: "Ear to the Ground", how: "Win two secret events from rumours." },
+    tonight: { name: "Night Owl", how: "Win five tonight-only events." },
+    showdown: { name: "Gatecrasher", how: "Win a showdown between two rivals." },
     gold_all: { name: "Gold Standard", how: "Gold medal in every time trial track." },
     escape_artist: { name: "Escape Artist", how: "Escape a pursuit at heat 5." },
     first_escape: { name: "Clean Getaway", how: "Escape a police pursuit." },
@@ -869,7 +924,7 @@
     team: { name: "Team", blurb: "Two teams, points by finishing position." },
   };
 
-  const api = { CARS, CLASS_COST, UPGRADES, AI_PARTS, TYRES, PRESETS, LOOK_KEYS, LOOKS, DRIVERS, CAST, CREW, RIVAL_LINES, ENDINGS, SPONSORS, DISTRICTS, PAR, CHAPTERS, SIDE, RIVAL_CHALLENGES, GRUDGE, ARCS, TURNING_POINTS, CHAMPIONSHIPS, TOURNAMENTS, POINTS, CONTRACTS, TEAM_LEVELS, ACH_REWARDS, TEAM_SEASON, SEASON_PRIZE, CREWS, ACHIEVEMENTS, MODES, TURF, WEEKDAYS, TURF_EVENTS, RUMORS };
+  const api = { CARS, CLASS_COST, UPGRADES, AI_PARTS, TYRES, PRESETS, LOOK_KEYS, LOOKS, DRIVERS, CAST, CREW, RIVAL_LINES, ENDINGS, SPONSORS, DISTRICTS, PAR, CHAPTERS, SIDE, RIVAL_CHALLENGES, GRUDGE, ARCS, TURNING_POINTS, CHAMPIONSHIPS, TOURNAMENTS, POINTS, CONTRACTS, WORLD_NEWS, REP_TITLES, MATTERS, TONIGHT, TEAM_LEVELS, ACH_REWARDS, TEAM_SEASON, SEASON_PRIZE, CREWS, ACHIEVEMENTS, MODES, TURF, WEEKDAYS, TURF_EVENTS, RUMORS };
   if (typeof module !== "undefined" && module.exports) module.exports = api;
   else root.KerbsideData = api;
 })(typeof self !== "undefined" ? self : globalThis);

@@ -71,4 +71,5 @@ const s2 = C.fresh(); for (const id of ["dex", "mara", "benny"]) s2.rivals[id] =
 console.log(JSON.stringify({ res, again, wire: s.world.news.map((x) => x.text) }));""")
     assert len(r["res"]) >= 2 and all(x["winner"] != x["loser"] for x in r["res"])
     assert r["again"] == r["res"][0]                                       # decided by the simulation, reproducibly
-    assert all(" beat " in t and " on " in t for t in r["wire"])
+    results = [t for t in r["wire"] if "demands a rematch" not in t]          # a close loss can also start a showdown (phase 6)
+    assert len(results) == len(r["res"]) and all(" beat " in t and " on " in t for t in results)

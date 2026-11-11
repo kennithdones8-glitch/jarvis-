@@ -38,7 +38,7 @@
       story: { chapter: 1, done: {}, flags: {}, choices: {}, ended: false },
       rivals: {}, achievements: {}, districts: ["park"], discovered: {}, sideDone: {}, champ: null, champWins: {},
       sponsor: null, claimed: [], interrupted: null, quick: { track: "kerbside", level: "medium" },
-      crew: { members: { nia: { hired: true, loyalty: 6, level: 1, xp: 0, mission: true } } }, world: { day: 1, influence: {}, rumors: {}, news: [] },
+      crew: { members: { nia: { hired: true, loyalty: 6, level: 1, xp: 0, mission: true } } }, world: { day: 1, influence: {}, rumors: {}, news: [], ranks: {}, matters: {}, tonightWins: 0, showdown: null },
       team: { name: "Okafor Motors", color: "#e9c44a", color2: "#14100a", rep: 0, points: 0, rivals: {}, season: 1, days: 0, titles: 0 },
       contracts: [], records: { drag: { best: 0, wins: 0 }, pursuit: { best: 0, escapes: 0, busts: 0, heat: 0, fines: 0 }, touge: { wins: 0 }, endurance: { wins: 0 }, tournament: { wins: 0 }, delivery: { done: 0 } },
       tourney: null, wager: null,
@@ -100,6 +100,11 @@
       if (isObj(raw.world.influence)) for (const [d, v] of Object.entries(raw.world.influence)) if (D.DISTRICTS[d]) s.world.influence[d] = num(v, 0, 0, 100);
       if (isObj(raw.world.rumors)) for (const [k, v] of Object.entries(raw.world.rumors)) if (["heard", "done"].includes(v)) s.world.rumors[k] = v;
       if (Array.isArray(raw.world.news)) s.world.news = raw.world.news.filter((n) => isObj(n) && typeof n.text === "string").slice(-12).map((n) => ({ day: num(n.day, 1) | 0, text: n.text.slice(0, 160) }));
+      if (isObj(raw.world.ranks)) for (const [id, v] of Object.entries(raw.world.ranks)) if (D.DRIVERS[id] && isObj(v)) s.world.ranks[id] = { w: num(v.w, 0, 0, 1e6) | 0, l: num(v.l, 0, 0, 1e6) | 0 };
+      if (isObj(raw.world.matters)) for (const [id, v] of Object.entries(raw.world.matters)) { const M = D.MATTERS.find((m) => m.id === id); if (M && Number.isInteger(v) && M.options[v]) s.world.matters[id] = v; }
+      s.world.tonightWins = num(raw.world.tonightWins, 0, 0, 1e6) | 0;
+      const sd = raw.world.showdown;
+      if (isObj(sd) && D.DRIVERS[sd.a] && D.DRIVERS[sd.b] && sd.a !== sd.b) s.world.showdown = { a: sd.a, b: sd.b, win: num(sd.win, 0, 0, 1e6) | 0 };
     }
     if (isObj(raw.team)) {
       s.team.name = str(raw.team.name, s.team.name, 24).trim() || "Okafor Motors";
@@ -491,6 +496,7 @@
     if (save.story.choices[missionId] !== undefined) return { ok: false, error: "Already chosen." };
     if (opt.money < 0 && save.money < -opt.money) return { ok: false, error: `You need ₭${(-opt.money).toLocaleString()} for that.` };
     save.story.choices[missionId] = i;
+    for (const k of Object.keys(opt.flags || {})) if (opt.flags[k] && !save.story.flags[k] && D.WORLD_NEWS[k]) news(save, D.WORLD_NEWS[k].replace(/\{name\}/g, save.profile.name));
     Object.assign(save.story.flags, opt.flags || {});
     if (opt.sponsor) save.sponsor = opt.sponsor;
     if (opt.respect) for (const [id, v] of Object.entries(opt.respect)) { const r = rival(save, id); r.respect = Math.max(-10, Math.min(10, r.respect + v)); }
@@ -590,12 +596,86 @@
     const [w, l] = r.cars[1].done && (!r.cars[2].done || r.cars[1].finish <= r.cars[2].finish) ? [r.cars[1], r.cars[2]] : [r.cars[2], r.cars[1]];
     const gap = l.done ? (l.finish - w.finish).toFixed(1) + "s" : "a lap";
     news(save, `${D.DRIVERS[w.id].name} beat ${D.DRIVERS[l.id].name} on ${R.TRACKS[track].name} by ${gap}.`);
+    const rk = (id) => save.world.ranks[id] || (save.world.ranks[id] = { w: 0, l: 0 });
+    rk(w.id).w++; rk(l.id).l++;
+    // a loser who keeps losing to the same rival wants a rematch, and you're invited: a showdown for the next few nights
+    if (!save.world.showdown && l.done && (parseFloat(gap) < 2.5 || rk(l.id).l >= 3)) { save.world.showdown = { a: w.id, b: l.id, win: window3(save) }; news(save, `${D.DRIVERS[l.id].name} demands a rematch with ${D.DRIVERS[w.id].name}. Word is you're invited.`); }
     const home = Object.entries(D.TURF).find(([, T]) => T.rival === w.id);
     if (home) save.world.influence[home[0]] = Math.max(0, influence(save, home[0]) - 1);   // a winning home crew pushes back
     return { winner: w.id, loser: l.id, track };
   }
+  // ---------------------------------------------------------------- The city moves on without you
+  // Tonight-only events: a new set every three race days, picked from the day itself (so they're the same on reload),
+  // gone when the window closes.
+  const window3 = (save) => Math.floor((save.world.day - 1) / 3);
+  const hash = (n) => { let x = (n * 2654435761) >>> 0; x ^= x >>> 15; x = Math.imul(x, 2246822519) >>> 0; x ^= x >>> 13; return x >>> 0; };
+  function tonight(save) {
+    const w = window3(save), ds = save.districts, out = [], tier = Math.max(1, Math.min(5, save.story.chapter));
+    const met = Object.keys(D.RIVAL_LINES).filter((id) => save.rivals[id]), track = (d) => ({ park: "kerbside", harbour: "harbour", oldtown: "oldtown", ridge: "ridge" })[d] || "kerbside";
+    const n = Math.min(2, D.TONIGHT.length), used = new Set();
+    for (let i = 0; out.length < n && i < 12; i++) {
+      const T = D.TONIGHT[hash(w * 31 + i) % D.TONIGHT.length]; if (used.has(T.kind)) continue;
+      if (T.kind === "callout" && !met.length) continue;
+      if (T.kind === "drag" && !ds.includes("harbour")) continue;
+      used.add(T.kind);
+      const d = T.kind === "drag" ? "harbour" : ds[hash(w * 7 + i) % ds.length], rv = met.length ? met[hash(w + i * 13) % met.length] : null;
+      const field = T.mode === "rival" ? [rv] : T.mode === "drag" ? [rv || "dex"] : ["sprint", "circuit"].includes(T.mode) ? met.slice(0, 3).concat(["pip", "otto"]).slice(0, 3) : [];
+      const goal = T.mode === "pursuit" ? { type: "escape" } : T.mode === "delivery" ? { type: "delivery", cargo: 0.5 } : { type: "place", max: T.mode === "sprint" ? 2 : 1 };
+      out.push({ ...T, id: `t${w}-${T.kind}`, tonight: true, district: d, track: track(d), field, tier, rep: 0, goal,
+        title: T.title.replace("{rival}", rv ? D.DRIVERS[rv].name : "").replace("{district}", D.DISTRICTS[d].name) });
+    }
+    const sd = save.world.showdown;
+    if (sd && sd.win >= w - 1) out.push({ id: `t${sd.win}-showdown-${sd.a}-${sd.b}`, tonight: true, showdown: true, kind: "showdown", title: `Showdown: ${D.DRIVERS[sd.a].name} v ${D.DRIVERS[sd.b].name}`,
+      mode: "circuit", laps: 3, field: [sd.a, sd.b], tier: Math.min(5, tier + 1), rep: 0, district: ds[sd.win % ds.length],
+      track: null, time: "night", goal: { type: "place", max: 1 }, respectOnWin: { [sd.a]: 1, [sd.b]: 1 }, blurb: "Two rivals settling a score. Beat them both." });
+    for (const e of out) if (!e.track) e.track = track(e.district);
+    return out.map((e) => ({ ...e, done: !!save.sideDone[e.id] }));
+  }
+  function tonightResult(save, ev, passed, out) {
+    if (!ev.tonight || !passed) return;
+    save.world.tonightWins++;
+    if (save.world.tonightWins >= 5) out.achievements.push(...grant(save, "tonight"));
+    if (ev.showdown) { out.achievements.push(...grant(save, "showdown")); save.world.showdown = null; news(save, `${save.profile.name} gatecrashes the showdown and beats ${ev.field.map((id) => D.DRIVERS[id].name).join(" and ")}.`); }
+  }
+  function worldExpire(save) {
+    const w = window3(save);
+    for (const k of Object.keys(save.sideDone)) { const m = /^t(\d+)-/.exec(k); if (m && +m[1] < w - 1) delete save.sideDone[k]; }   // old tonight-only results aren't needed
+    if (save.world.showdown && save.world.showdown.win < w - 1) { news(save, `The ${D.DRIVERS[save.world.showdown.a].name}–${D.DRIVERS[save.world.showdown.b].name} rematch happened without you.`); save.world.showdown = null; }
+  }
+  // Street rankings: your record against the named rivals, beside theirs against each other.
+  function rankings(save) {
+    const rows = Object.keys(D.RIVAL_LINES).filter((id) => save.rivals[id] || save.world.ranks[id]).map((id) => {
+      const r = save.rivals[id] || {}, k = save.world.ranks[id] || { w: 0, l: 0 };
+      return { id, name: D.DRIVERS[id].name, w: k.w + (r.losses || 0), l: k.l + (r.wins || 0) };   // their losses to you count for you
+    });
+    const me = Object.keys(D.RIVAL_LINES).reduce((a, id) => { const r = save.rivals[id]; if (r) { a.w += r.wins || 0; a.l += r.losses || 0; } return a; }, { id: "YOU", name: save.profile.name, w: 0, l: 0, you: true });
+    return [...rows, me].map((x) => ({ ...x, pts: x.w * 3 - x.l })).sort((a, b) => b.pts - a.pts || b.w - a.w);
+  }
+  const repTitle = (save) => { let t = D.REP_TITLES[0][1]; for (const [min, name] of D.REP_TITLES) if (save.rep >= min) t = name; return t; };
+  // Crew matters: open once their conditions are met, and stay settled the way you settled them.
+  function matterOpen(save, M) {
+    if (save.world.matters[M.id] !== undefined) return false;
+    const n = M.need || {};
+    if (n.hired && !n.hired.every((id) => hired(save, id))) return false;
+    if (n.flag && !save.story.flags[n.flag]) return false;
+    if (n.flags && !n.flags.every((f) => save.story.flags[f])) return false;
+    return true;
+  }
+  const matters = (save) => D.MATTERS.filter((M) => matterOpen(save, M));
+  function settle(save, id, i) {
+    const M = D.MATTERS.find((m) => m.id === id), opt = M && M.options[i];
+    if (!opt || !matterOpen(save, M)) return { ok: false, error: "Nothing to settle." };
+    if (opt.money < 0 && save.money < -opt.money) return { ok: false, error: `You need ₭${(-opt.money).toLocaleString()} for that.` };
+    save.world.matters[id] = i;
+    if (opt.money) save.money += opt.money;
+    if (opt.rep) save.rep += opt.rep;
+    if (opt.loyalty) for (const [k, v] of Object.entries(opt.loyalty)) loyal(save, k, v);
+    if (opt.respect) for (const [k, v] of Object.entries(opt.respect)) { const r = rival(save, k); r.respect = Math.max(-10, Math.min(10, r.respect + v)); }
+    return { ok: true, text: opt.text };
+  }
   function worldTick(save, s, ev, kind, passed, out) {
     save.world.day++;
+    worldExpire(save);
     const d = ev.district || TRACK_DISTRICT[s.track];
     if (d && D.TURF[d] && kind !== "quick" && kind !== "free") {
       const before = influence(save, d), delta = passed && s.place === 1 ? 8 : s.finished && s.place <= 3 ? 3 : -2, after = Math.max(0, Math.min(100, before + delta));
@@ -612,6 +692,7 @@
       if (D.RUMORS.filter((x) => save.world.rumors[x.id] === "done").length >= 2) out.achievements.push(...grant(save, "rumours"));
     }
     out.news = rivalSim(save);
+    tonightResult(save, ev, passed, out);   // after the rivals' race, so a settled showdown doesn't restart the same night
     if (kind !== "quick" && kind !== "free") crewDay(save, out);
   }
   // Which ending your story earns: the first in data order whose conditions you meet.
@@ -629,7 +710,7 @@
   }
   function sideEvents(save) {
     const scout = hired(save, "lio") ? 0.7 : 1;
-    return D.SIDE.filter((e) => save.districts.includes(e.district) && !(e.crew && hired(save, e.crew)) && !(e.needFlag && !save.story.flags[e.needFlag])).map((e) => {
+    return D.SIDE.filter((e) => save.districts.includes(e.district) && !(e.crew && hired(save, e.crew)) && !(e.needFlag && !save.story.flags[e.needFlag]) && !(e.hideFlag && save.story.flags[e.hideFlag])).map((e) => {
       const open = save.rep >= Math.round(e.rep * scout);
       if (open && !save.discovered[e.id]) save.discovered[e.id] = Date.now();
       return { ...e, open, done: !!save.sideDone[e.id], fresh: open && !save.sideDone[e.id] };
@@ -710,7 +791,8 @@
     mult(practice, 0.35, "Practice pays 35%");
     mult(kind === "story" && passed && !save.story.done[ev.id], 1.5, "First win of this mission (+50%)");
     mult(kind === "story" && save.story.done[ev.id], 0.5, "Replaying a finished mission (half pay)");
-    if (kind === "side" && passed && !save.sideDone[ev.id]) { mult(true, 1.5, "First completion (+50%)"); out.notes.push("First completion bonus."); }
+    if (kind === "side" && passed && !save.sideDone[ev.id] && !ev.tonight) { mult(true, 1.5, "First completion (+50%)"); out.notes.push("First completion bonus."); }
+    mult(kind === "side" && passed && ev.tonight && !save.sideDone[ev.id], ev.showdown ? 2 : 1.6, ev.showdown ? "Showdown (×2)" : "Tonight only (+60%)");
     if (save.sponsor) { const sp = D.SPONSORS[save.sponsor]; mult(save.sponsor === "bluewater" || s.place <= 3, 1 + sp.bonus, `${sp.name} (+${Math.round(sp.bonus * 100)}%)`); }
     mult(hired(save, "priya"), 1.1, "Priya's deals (+10%)");
     mult(save.ng && !practice, 1 + 0.25 * Math.min(4, save.ng), `New Game+ (+${25 * Math.min(4, save.ng)}%)`);
@@ -939,6 +1021,7 @@
     const heat = Math.max(1, Math.min(pursuitHeats(save), o.heat | 0 || 1));
     return { id: "pursuit", title: `Police pursuit · heat ${heat}`, track: R_TRACK(o.track), mode: "pursuit", heat, tier: Math.min(5, heat), time: o.time || "night", weather: o.weather || "dry", field: [], goal: { type: "escape" } };
   }
+  const ev0 = (ctx) => ctx.event || {};
   const R_TRACK = (t) => (D.PAR[t] !== undefined ? t : "kerbside");
   function applyPursuit(save, ctx, s, out) {
     const P = s.pursuit || { result: "chase", heat: 1, bounty: 0, fine: 0 }, rec = save.records.pursuit;
@@ -962,6 +1045,7 @@
       if (car.dmg > 0.05) out.notes.push(`Your car took damage (${Math.round(car.dmg * 100)}%). Repair it in the garage.`);
     }
     contractTick(save, s, out);
+    if (ev0(ctx).tonight && out.passed) { save.sideDone[ctx.event.id] = 1; tonightResult(save, ctx.event, true, out); }
     for (const u of newlyAvailable(save)) { out.unlocked.push(u); out.notes.push(`New car available: ${u.name}. It's in the garage.`); }
     save.history.push({ at: Date.now(), kind: "pursuit", title: (ctx.event && ctx.event.title) || "Police pursuit", track: s.track, mode: "pursuit", place: s.place, of: s.of, total: s.total, drift: 0, passed: out.passed, money: out.money - (out.fine || 0) });
     save.history = save.history.slice(-60);
@@ -1019,7 +1103,7 @@
     return { done: false, round: c.round, table, name: def.name };
   }
 
-  const api = { influence, runs, weekday, featured, secretEvents, turfEvents, rivalSim, worldTick, hire, hired, loyal, crewLoyalty, rivalStage, rivalReaction, endingFor, carAvailable, setTune, repair, repairCost, lookOf, fits, collection, teamLevel, rating, recommended, contractSlots, newlyAvailable, collectionCheck, VERSION, KEY, BAK, CORRUPT, LEGACY, fresh, carState, validate, migrateV2, load, persist, exportSave, importSave,
+  const api = { tonight, rankings, repTitle, matters, settle, influence, runs, weekday, featured, secretEvents, turfEvents, rivalSim, worldTick, hire, hired, loyal, crewLoyalty, rivalStage, rivalReaction, endingFor, carAvailable, setTune, repair, repairCost, lookOf, fits, collection, teamLevel, rating, recommended, contractSlots, newlyAvailable, collectionCheck, VERSION, KEY, BAK, CORRUPT, LEGACY, fresh, carState, validate, migrateV2, load, persist, exportSave, importSave,
     level, xpFor, carStats, bars, upgradeCost, buyCar, buyUpgrade, setLook, driver, playerRacer, config, missions, nextMission, mission,
     lines, needsChoice, choose, arcs, arcOpen, resolve, goalMet, goalText, sideEvents, grudgeCheck, pursuitHeats, pursuitEvent, policeSpec, carAllowed, teammate, classCar,
     tourneyOpen, startTourney, tourneyEvent, wagerOptions, placeWager, setTeam, teamLivery, contractOffers, signContract, dropContract, contractTick, teamTable, newGamePlus, rivalEvents, champOpen, champEvent, startChamp, champTable, applyResult, medal, grant };

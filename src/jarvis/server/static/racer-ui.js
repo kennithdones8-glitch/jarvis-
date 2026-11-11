@@ -69,7 +69,7 @@
     }
     // The title wordmark: KERBSIDE in heavy italic, GRAND PRIX on a gold chevron band.
     const wordmark = () => el("h3", "race-wordmark", el("span", "k", "Kerbside"), el("span", "gp", "Grand Prix"));
-    const wallet = () => el("p", "race-wallet", chip(`Level ${C.level(save.xp)}`), chip(money(save.money), "gold"), chip(`${save.rep} rep`));
+    const wallet = () => el("p", "race-wallet", chip(`Level ${C.level(save.xp)}`), chip(money(save.money), "gold"), chip(`${save.rep} rep · ${C.repTitle(save)}`));
 
     // ---------------------------------------------------------------- main menu
     function mainMenu() {
@@ -115,7 +115,20 @@
         el("div", "race-grid2", btn("World map", () => show(worldMap), "alt"), btn("Garage", () => show(garage), "alt"), btn("Team and sponsors", () => show(teamScreen), "alt")),
         save.sponsor ? el("p", "race-note", `Sponsor: ${D.SPONSORS[save.sponsor].name}. ${D.SPONSORS[save.sponsor].blurb}`) : null,
         chapters,
-        storiesPanel(), crewPanel(), rivalPanel()]);
+        mattersPanel(), storiesPanel(), crewPanel(), rivalPanel()]);
+    }
+    // Crew matters: two of your people disagree, and you settle it. Each stays settled the way you chose.
+    function mattersPanel() {
+      const list = C.matters(save);
+      if (!list.length) return null;
+      return el("div", "race-panel mission", el("p", "race-lbl", "Garage matters"), ...list.map((M) => el("div", "race-matter",
+        el("div", "race-matterfaces", ...M.who.map((w) => portraitOf(w, 64))),
+        el("div", "", el("b", "", M.who.map((w) => ((D.CAST[w] || {}).name || w).split(" ")[0]).join(" and ")), el("p", "race-note", M.prompt),
+          el("div", "race-choices", ...M.options.map((o, i) => btn(o.label, () => {
+            const r = C.settle(save, M.id, i);
+            if (!r.ok) { toast(r.error, "warn"); return; }
+            persist(); toast(r.text, "info"); show(hq, { replace: true });
+          }, "small alt")))))));
     }
     // Character stories: one card per person, their next mission or what opens it.
     function storiesPanel() {
@@ -473,21 +486,27 @@
       const extra = [...C.secretEvents(save).filter((e) => e.district === sel).map((e) => row((e.done ? "✓ " : "Secret · ") + e.title, `${MODE_NAME[e.mode]} · ${C.goalText(e.goal)} · ${e.reward.text}`, e.done ? chip("Won", "done") : btn("Race", () => brief({ kind: "side", event: e }), "small"), "story")),
         ...C.turfEvents(save).filter((e) => e.district === sel).map((e) => row(e.title, "Crew battle: beat the home crew on their own streets", btn("Race", () => brief({ kind: "side", event: e }), "small"), "story"))];
       for (const x of extra) list.append(x);
-      const fe = C.featured(save);
+      const fe = C.featured(save), tn = C.tonight(save), left = 3 - ((save.world.day - 1) % 3);
+      const tonightBox = tn.length ? el("div", "race-panel mission", el("p", "race-eyebrow", `Tonight only · gone in ${left} race day${left > 1 ? "s" : ""}`),
+        el("ul", "race-list", ...tn.map((e) => row((e.done ? "✓ " : "") + e.title, `${D.DISTRICTS[e.district].name} · ${MODE_NAME[e.mode]} · ${C.goalText(e.goal)} · ${e.blurb}`,
+          e.done ? chip("Won", "done") : btn("Race", () => brief({ kind: "side", event: e }), "small"), e.showdown ? "story" : "")))) : null;
+      const ranks = C.rankings(save);
+      const rankBox = ranks.length > 1 ? el("div", "race-panel", el("p", "race-lbl", "Street rankings"), el("ol", "race-list", ...ranks.map((x, k) => el("li", "race-li" + (x.you ? " story" : ""),
+        el("span", "", `${k + 1}. ${x.name}`), el("span", "race-sub", `${x.w} won · ${x.l} lost`), chip(`${x.pts} pts`))))) : null;
       const special = fe ? el("div", "race-panel mission", el("p", "race-eyebrow", `${C.weekday(save)} · day ${save.world.day} · weekly special`), el("b", "race-title", fe.title),
         el("p", "race-note", `${D.DISTRICTS[fe.district].name} · ${MODE_NAME[fe.mode]} · pays 50% more today.`), btn("Race it", () => brief({ kind: "side", event: { ...fe, goal: fe.goal || (fe.mode === "timetrial" ? { type: "time", max: D.PAR[fe.track] * fe.laps * 1.12 } : { type: "place", max: fe.mode === "elimination" ? 2 : 3 }) } }), "small")) : null;
       const heard = D.RUMORS.filter((r) => save.world.rumors[r.id]);
       const rumours = el("div", "race-panel", el("p", "race-lbl", "Rumours"), heard.length ? el("ul", "race-list", ...heard.map((r) => el("li", "race-li" + (save.world.rumors[r.id] === "done" ? " done" : ""),
         el("span", "", `${(D.CAST[r.from] || {}).name || r.from}: “${r.text}”`), el("span", "race-sub", `${D.DISTRICTS[r.event.district].name} · ${r.event.title}${save.world.rumors[r.id] === "done" ? " · won" : ""}`)))) : el("p", "race-note", C.hired(save, "lio") ? "Nothing yet. Lio is listening." : "Nothing yet. Win races and people talk. (A scout would hear things sooner.)"));
       const wire = save.world.news.length ? el("div", "race-panel", el("p", "race-lbl", "Port Kerbside news wire"), el("ul", "race-list", ...save.world.news.slice(-5).reverse().map((n) => el("li", "race-li", el("span", "", n.text), el("span", "race-sub", `Day ${n.day}`))))) : null;
-      return frame("Port Kerbside", `World map · ${C.weekday(save)}, day ${save.world.day}`, [wallet(), map, special,
+      return frame("Port Kerbside", `World map · ${C.weekday(save)}, day ${save.world.day}`, [wallet(), map, tonightBox, special,
         el("div", "race-panel", el("b", "race-title", d.name), el("p", "race-note", d.blurb),
           el("div", "race-barrow", el("span", "race-lbl", `You ${inf}%`), infBar, el("span", "race-delta", T.crew)),
           el("p", "race-note", C.runs(save, sel) ? `You run ${d.name}: +10% prize money here, and ${T.crew} wants a turf war.` : `${T.crew} runs ${d.name}. Win here to take it over (75%).`), list),
-        rumours, wire]);
+        rumours, rankBox, wire]);
     }
     function countEvents(id) {
-      const n = C.sideEvents(save).filter((e) => e.district === id && e.open && !e.done).length + C.rivalEvents(save).filter((r) => r.district === id).length
+      const n = C.sideEvents(save).filter((e) => e.district === id && e.open && !e.done).length + C.rivalEvents(save).filter((r) => r.district === id).length + C.tonight(save).filter((e) => e.district === id && !e.done).length
         + C.missions(save).flatMap((c) => c.missions).filter((m) => m.state === "available" && m.track === D.DISTRICTS[id].track).length;
       return n ? `${n} to race` : "All done";
     }

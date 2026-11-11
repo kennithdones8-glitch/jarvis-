@@ -337,3 +337,11 @@ a.race-go { text-decoration: none; display: inline-block; text-align: center; }
 .race-endrow { display: flex; flex-wrap: wrap; gap: 12px; }
 .race-endperson { display: grid; justify-items: center; gap: 2px; min-width: 76px; }
 .race-endperson .race-face { width: 64px; height: 64px; }
+
+/* garage matters: two faces, the dispute, your answers */
+.race-matter { display: grid; grid-template-columns: auto 1fr; gap: 12px; align-items: start; padding: 10px 0; border-top: 1px solid rgba(255,255,255,0.08); }
+.race-matter:first-of-type { border-top: 0; }
+.race-matterfaces { display: flex; gap: 4px; }
+.race-matterfaces canvas { width: 48px; height: 48px; }
+.race-choices { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 6px; }
+@media (max-width: 520px) { .race-matter { grid-template-columns: 1fr; } }
