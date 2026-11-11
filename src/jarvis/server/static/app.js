@@ -1553,7 +1553,7 @@ function renderRace() {
   const status = h("p", { class: "chess-turn", role: "status", "aria-live": "polite" }, "Kerbside Grand Prix: pick a mode.");
   const stage = R.mount({ onStatus: (t) => { status.textContent = t; } });
   fill(el, h("div", { class: "race" }, stage, h("div", { class: "chess-side" }, status,
-    h("p", { class: "d-why" }, "A racing career in five chapters across four districts, 28 cars to collect and tune, police pursuits, drag, touge, endurance, deliveries, team races, championships, tournaments, sponsors, Quick Race against JARVIS and Free Play, with replays and a photo mode. Arrow keys or WASD to drive, Space for nitro, E to shift in a drag race, P to pause; on a phone or iPad, use the pads."),
+    h("p", { class: "d-why" }, "A racing career in five chapters across four districts, 38 cars to collect and tune, police pursuits, drag, touge, endurance, deliveries, team races, championships, tournaments, sponsors, Quick Race against JARVIS and Free Play, with replays and a photo mode. Arrow keys or WASD to drive, Space for nitro, E to shift in a drag race, P to pause; on a phone or iPad, use the pads."),
     h("p", { class: "d-why" }, "The game runs in this browser: no model, nothing sent anywhere. Your career is saved here; export it from the game's Settings to keep a copy."))));
 }
 function openGames() {

@@ -27,7 +27,9 @@
     if (audio) view.setAudio(audio);
     view.applySettings(save.settings);
     const toastBox = el("div", "race-toasts"); toastBox.setAttribute("aria-live", "polite"); view.stage.append(toastBox);
+    let toastSnd = 0;
     function toast(text, kind) {
+      if (audio && audio.ui && Date.now() - toastSnd > 350 && (kind === "warn" || kind === "gold")) { toastSnd = Date.now(); audio.ui(kind === "warn" ? "error" : "achievement"); }
       const t = el("div", "race-toast" + (kind ? " " + kind : ""), text); toastBox.append(t);
       setTimeout(() => t.remove(), 4200);
     }
@@ -47,12 +49,13 @@
     const btn = (label, fn, cls = "", attrs = {}) => {
       const b = el("button", "race-go" + (cls ? " " + cls : ""), label); b.type = "button";
       for (const [k, v] of Object.entries(attrs)) b.setAttribute(k, v);
-      b.addEventListener("click", (e) => { if (audio) audio.click(); fn(e); });
+      // menu sounds: Back steps down, a main action confirms, everything else clicks
+      const snd = label === "Back" ? "back" : /\b(alt|small)\b/.test(cls) ? null : "confirm";
+      b.addEventListener("click", (e) => { if (audio) { if (snd && audio.ui) audio.ui(snd); else audio.click(); } fn(e); });
       return b;
     };
     const chip = (text, cls = "") => el("span", "race-tag" + (cls ? " " + cls : ""), text);
     const swatch = (color) => { const s = el("span", "race-sw"); s.style.background = color; return s; };
-    const portrait = (who) => { const c = D.CAST[who] || { initials: "?", color: "#888888" }, p = el("span", "race-portrait", who === "you" ? (save.profile.name[0] || "Y").toUpperCase() : c.initials); p.style.background = c.color; return p; };
     function show(fn, opts = {}) {
       cancelAnimationFrame(previewRaf);
       if (screen && !opts.replace && screen !== fn) history.push(screen);
@@ -70,7 +73,7 @@
     }
     // The title wordmark: KERBSIDE in heavy italic, GRAND PRIX on a gold chevron band.
     const wordmark = () => el("h3", "race-wordmark", el("span", "k", "Kerbside"), el("span", "gp", "Grand Prix"));
-    const wallet = () => el("p", "race-wallet", chip(`Level ${C.level(save.xp)}`), chip(money(save.money), "gold"), chip(`${save.rep} rep`));
+    const wallet = () => el("p", "race-wallet", chip(`Level ${C.level(save.xp)}`), chip(money(save.money), "gold"), chip(`${save.rep} rep · ${C.repTitle(save)}`));
 
     // ---------------------------------------------------------------- main menu
     function mainMenu() {
@@ -79,7 +82,7 @@
       view.backdrop(D.DISTRICTS[ch ? ch.district : "park"].track, "dusk");
       view.status("Kerbside Grand Prix: pick a mode.");
       const career = save.story.ended ? "Career: champion. Free roam" : next ? `Career · Chapter ${save.story.chapter}: ${ch.title}` : "Career";
-      const hero = el("canvas", "race-hero"); hero.width = 360; hero.height = 200; hero.setAttribute("aria-hidden", "true");
+      const hero = el("canvas", "race-hero"); hero.width = 720; hero.height = 400; hero.setAttribute("aria-hidden", "true");
       startPreview(hero, save.garage.current, save.garage.owned[save.garage.current], true);
       return frame("Kerbside Grand Prix", `${save.profile.name} · ${D.CARS[save.garage.current].name}`, [hero,
         wallet(),
@@ -94,7 +97,7 @@
           btn("Profile and stats", () => show(profile), "alt"),
           btn("Achievements", () => show(achievements), "alt"),
           btn("Settings", () => show(settings), "alt")),
-        el("p", "race-note", "Arrow keys or WASD to drive, Space for nitro, P to pause. On a phone or iPad, use the pads.")], { noBack: true, hero: true });
+        el("p", "race-note", "Arrow keys or WASD to drive, Space for nitro, X for the handbrake, P to pause. On a phone or iPad, use the pads: slide your thumb across the arrows to steer gently.")], { noBack: true, hero: true });
     }
 
     // ---------------------------------------------------------------- career HQ
@@ -116,9 +119,39 @@
         el("div", "race-grid2", btn("World map", () => show(worldMap), "alt"), btn("Garage", () => show(garage), "alt"), btn("Team and sponsors", () => show(teamScreen), "alt")),
         save.sponsor ? el("p", "race-note", `Sponsor: ${D.SPONSORS[save.sponsor].name}. ${D.SPONSORS[save.sponsor].blurb}`) : null,
         chapters,
-        crewPanel(), rivalPanel()]);
+        mattersPanel(), storiesPanel(), crewPanel(), rivalPanel()]);
+    }
+    // Crew matters: two of your people disagree, and you settle it. Each stays settled the way you chose.
+    function mattersPanel() {
+      const list = C.matters(save);
+      if (!list.length) return null;
+      return el("div", "race-panel mission", el("p", "race-lbl", "Garage matters"), ...list.map((M) => el("div", "race-matter",
+        el("div", "race-matterfaces", ...M.who.map((w) => portraitOf(w, 64))),
+        el("div", "", el("b", "", M.who.map((w) => ((D.CAST[w] || {}).name || w).split(" ")[0]).join(" and ")), el("p", "race-note", M.prompt),
+          el("div", "race-choices", ...M.options.map((o, i) => btn(o.label, () => {
+            const r = C.settle(save, M.id, i);
+            if (!r.ok) { toast(r.error, "warn"); return; }
+            persist(); toast(r.text, "info"); show(hq, { replace: true });
+          }, "small alt")))))));
+    }
+    // Character stories: one card per person, their next mission or what opens it.
+    function storiesPanel() {
+      const list = C.arcs(save);
+      return el("div", "race-panel", el("p", "race-lbl", "Character stories"), el("div", "race-stories", ...list.map((a) => {
+        const face = portraitOf(a.who, 96), state = a.complete ? "Complete" : a.open ? `${a.done} of ${a.total}` : a.why;
+        return el("div", "race-story" + (a.open && !a.complete ? "" : " dim"), face, el("div", "", el("b", "", a.title), el("span", "race-sub", `${(D.CAST[a.who] || {}).name || a.who} · ${state}`),
+          el("p", "race-note", a.blurb), a.next ? btn(`Race: ${a.next.title}`, () => brief({ kind: "arc", event: a.next }), "small") : null));
+      })));
     }
     // ---------------------------------------------------------------- team, sponsors, New Game+
+    function teamLevelPanel() {
+      const lv = C.teamLevel(save), bar = el("div", "race-bar"), i = el("i", "up"), nx = lv.next;
+      i.style.width = (nx ? Math.round(Math.min(1, (save.team.rep - lv.rep) / (nx.rep - lv.rep)) * 100) : 100) + "%"; bar.append(i);
+      return el("div", "race-panel", el("p", "race-lbl", `${save.team.name}: ${lv.name}`),
+        el("div", "race-barrow", el("span", "race-lbl", `Team reputation ${save.team.rep}`), bar, el("span", "race-delta", nx ? `${nx.rep} for ${nx.name}` : "Top level")),
+        el("ul", "race-list", ...D.TEAM_LEVELS.slice(1).map((L, k) => el("li", "race-li" + (k + 1 <= lv.i ? " done" : " locked"), el("span", "", (k + 1 <= lv.i ? "✓ " : "") + L.name), el("span", "race-sub", `${L.rep} team reputation · ${L.perk}`)))),
+        el("p", "race-note", "Team reputation comes from wins (+2), podiums (+1), sponsor contracts and team championship seasons."));
+    }
     function teamScreen() {
       const T = save.team, name = el("input", "race-select"); name.id = "t-name"; name.maxLength = 24; name.value = T.name; name.autocomplete = "off";
       const sw = (key) => el("div", "race-swatches", ...D.LOOKS.paint.map((c) => { const b = el("button", "race-swbtn" + (T[key] === c ? " on" : "")); b.type = "button"; b.style.background = c;
@@ -130,24 +163,25 @@
           confirmBtn("Walk away", "Walk away (−5 rep)?", () => { C.dropContract(save, c.id); persist(); show(teamScreen, { replace: true }); }));
       });
       const offers = C.contractOffers(save).map((k) => el("li", "race-li", el("span", "", `${k.sponsor}: ${k.title}`), el("span", "race-sub", `${k.blurb} Pays ${money(k.pay)} and ${k.rep} rep.`),
-        save.contracts.length < 3 ? btn("Sign", () => { const r = C.signContract(save, k.id); if (!r.ok) return toast(r.error, "warn"); persist(); toast(`Signed with ${k.sponsor}.`, "info"); show(teamScreen, { replace: true }); }, "small") : null));
+        save.contracts.length < C.contractSlots(save) ? btn("Sign", () => { const r = C.signContract(save, k.id); if (!r.ok) return toast(r.error, "warn"); persist(); toast(`Signed with ${k.sponsor}.`, "info"); show(teamScreen, { replace: true }); }, "small") : null));
       const locked = Object.values(D.CONTRACTS).filter((k) => k.minRep > save.rep).length;
       const ng = save.story.ended ? el("div", "race-panel", el("p", "race-lbl", `New Game+${save.ng ? ` (you're on cycle ${save.ng})` : ""}`),
         el("p", "race-note", "Start the story again from chapter 1. You keep your cars and upgrades, money, level, crew, team, records, medals, best laps, ghosts, endings and achievements. The story, districts, rivals' memory, the map, championships in progress and contracts start over. The field is 1% quicker and prizes are 25% bigger for each cycle."),
         confirmBtn("Start New Game+", "Start New Game+? (a copy of this save is kept)", () => {
           const r = C.newGamePlus(save); if (!r.ok) return toast(r.error, "warn");
           try { store.setItem(C.KEY + "-before-ngplus", C.exportSave(save)); } catch { /* best effort, like a reset */ }
-          save = r.save; persist(); r.achievements.forEach((a) => toast(`Achievement unlocked: ${D.ACHIEVEMENTS[a].name}`, "gold")); toast(`New Game+ ${save.ng}: chapter 1 again.`, "gold"); show(hq, { replace: true });
+          save = r.save; persist(); r.achievements.forEach((a) => toast(`Achievement unlocked: ${D.ACHIEVEMENTS[a].name}${D.ACH_REWARDS[a] ? " · reward: " + D.ACH_REWARDS[a].text : ""}`, "gold")); toast(`New Game+ ${save.ng}: chapter 1 again.`, "gold"); show(hq, { replace: true });
         })) : null;
       return frame("Team and sponsors", `${T.name} · season ${T.season}`, [wallet(),
         el("div", "race-fields", el("label", "race-field", el("span", "race-lbl", "Team name"), name),
           btn("Save name", () => { const r = C.setTeam(save, { name: name.value }); if (!r.ok) return toast(r.error, "warn"); persist(); toast("Team name saved.", "info"); show(teamScreen, { replace: true }); }, "small")),
         el("p", "race-lbl", "Team colour"), sw("color"), el("p", "race-lbl", "Second colour"), sw("color2"),
         btn("Paint my car in team colours", () => { C.teamLivery(save); persist(); toast("Your car wears the team colours.", "info"); }, "alt small"),
+        teamLevelPanel(),
         el("p", "race-lbl", `Team championship · season ${T.season}, race day ${T.days} of ${D.TEAM_SEASON}`),
         el("table", "race-classif", el("tbody", "", ...table.map((r, i) => el("tr", r.you ? "me" : "", el("td", "", `P${i + 1}`), el("td", "", r.name), el("td", "", `${r.points} pts`))))),
         el("p", "race-note", `Your finishes score ${D.POINTS.join("/")} (team races: the team's points). Prizes at the end of a season: ${D.SEASON_PRIZE.filter(Boolean).map(money).join(", ")} for the top three. Titles won: ${T.titles}.`),
-        el("p", "race-lbl", `Sponsor contracts (${save.contracts.length} of 3)`),
+        el("p", "race-lbl", `Sponsor contracts (${save.contracts.length} of ${C.contractSlots(save)})`),
         active.length ? el("ul", "race-list", ...active) : el("p", "race-note", "No contracts signed. Quick races and free play don't count toward them."),
         offers.length ? el("ul", "race-list", ...offers) : null,
         locked ? el("p", "race-note", `${locked} more sponsor${locked > 1 ? "s want" : " wants"} more reputation first.`) : null,
@@ -187,13 +221,15 @@
         const allowed = C.carAllowed(save, ev), stakes = ctx.kind === "rival" ? C.wagerOptions(save) : [];
         const wagerSel = stakes.length > 1 ? select("b-wager", "Wager (win pays double)", ctx.wager || 0, stakes.map((v) => [v, v ? money(v) : "No bet"]), (v) => { ctx.wager = Number(v); }) : null;
         const medalLine = ev.mode === "timetrial" ? el("p", "race-note", `Medals: gold ${fmt(D.PAR[ev.track] * cfg.laps)}, silver ${fmt(D.PAR[ev.track] * cfg.laps * 1.05)}, bronze ${fmt(D.PAR[ev.track] * cfg.laps * 1.12)}.`) : null;
-        return frame(ev.title || "Race", `${{ story: "Story mission", champ: "Championship", side: "Event", rival: "Rival challenge", tourney: "Tournament", pursuit: "Police pursuit" }[ctx.kind] || "Race"} · ${R.TRACKS[cfg.track].name}`, [
+        return frame(ev.title || "Race", `${{ story: "Story mission", arc: "Character story", champ: "Championship", side: "Event", rival: "Rival challenge", tourney: "Tournament", pursuit: "Police pursuit" }[ctx.kind] || "Race"} · ${R.TRACKS[cfg.track].name}`, [
           el("div", "race-tags", chip(MODE_NAME[ev.mode]), LAPLESS.includes(ev.mode) ? null : chip(`${cfg.laps} lap${cfg.laps > 1 ? "s" : ""}`), chip(TOD[cfg.time]), chip(WX[cfg.weather]),
             cfg.weatherChange ? chip(`then ${WX[cfg.weatherChange.to].toLowerCase()}`) : null, ev.cls ? chip(`Class ${ev.cls} only`, allowed.ok ? "" : "bad") : null, chip(`AI ${cfg.level}`)),
           el("p", "race-note", D.MODES[ev.mode] ? D.MODES[ev.mode].blurb : ""),
           el("p", "race-goal", "Goal: " + (ctx.kind === "quick" || ctx.kind === "free" ? "win" : C.goalText(ev.goal))), medalLine,
           el("p", "race-lbl", "Field"), field,
           el("p", "race-note", `Your car: ${car.name} (class ${car.cls}). ${save.best[ev.track] && !LAPLESS.includes(ev.mode) ? "Your best lap here: " + fmt(save.best[ev.track]) + "." : ""}`),
+          (() => { const mine = C.rating(cfg.player.spec), rec = C.recommended(save, ev), gap = mine - rec;
+            return el("p", "race-goal " + (gap < -60 ? "bad" : ""), `Rating ${mine} · ${cfg.field.length ? "the field averages" : "suggested"} ${rec}${gap < -60 ? ". You're well short: an upgrade or a quicker car would help." : gap > 80 ? ". You have the faster car." : "."}`); })(),
           allowed.ok ? null : el("p", "race-goal bad", allowed.why + (allowed.owned.length ? ` You own: ${allowed.owned.map((id) => D.CARS[id].name).join(", ")}. Switch in the garage.` : " Buy one in the garage.")),
           wagerSel, ev.mode === "drag" ? el("p", "race-note", "Hold the throttle during the lights to rev (launch in the green), then E or the SHIFT pad to change up near the top of the revs.") : null,
           ev.mode === "endurance" ? el("p", "race-note", "Tyres wear as you go. Stop in the yellow pit box just before the line for fresh tyres and repairs (about 2.5 s).") : null,
@@ -202,20 +238,94 @@
     }
     function go(ctx) {
       const m = ctx.event;
-      if (ctx.kind === "story" && C.needsChoice(save, m)) return show(() => choiceScreen(m, () => intro(ctx)), { replace: true });
+      if ((ctx.kind === "story" || ctx.kind === "arc") && C.needsChoice(save, m)) return show(() => choiceScreen(m, () => intro(ctx)), { replace: true });
       intro(ctx);
     }
     function intro(ctx) {
-      const lines = ctx.kind === "story" ? C.lines(save, ctx.event.intro) : [];
-      if (lines.length) dialogue(lines, () => run(ctx)); else run(ctx);
+      const lines = ctx.kind === "story" || ctx.kind === "arc" ? C.lines(save, ctx.event.intro) : [];
+      if (lines.length) dialogue(lines, () => run(ctx), ctx.kind === "story" || ctx.kind === "arc" ? ctx.event.scene : null); else run(ctx);
     }
-    function dialogue(lines, done) {
-      let i = 0;
+    // A drawn portrait: head and shoulders in the speaker's colours, with their hair, jacket and one detail.
+    function portraitOf(who, size = 160) {
+      const c = D.CAST[who] || D.CAST.you, F = c.face || { skin: "#c68863", hair: "#2a1d14", style: "short", jacket: c.color || "#888888", extra: "" };
+      const cv = el("canvas", "race-face"); cv.width = cv.height = size; cv.setAttribute("aria-hidden", "true");
+      const g = cv.getContext("2d"), s = size / 160, sh = (hex, f) => { const n = parseInt(hex.slice(1), 16), m = (v) => Math.max(0, Math.min(255, Math.round(v * f))); return `rgb(${m(n >> 16)},${m((n >> 8) & 255)},${m(n & 255)})`; };
+      g.scale(s, s);
+      const bg = g.createRadialGradient(80, 60, 10, 80, 80, 90); bg.addColorStop(0, sh(c.color || "#888888", 0.75)); bg.addColorStop(1, sh(c.color || "#888888", 0.22));
+      g.fillStyle = bg; g.beginPath(); g.arc(80, 80, 80, 0, 7); g.fill();
+      g.save(); g.beginPath(); g.arc(80, 80, 79, 0, 7); g.clip();
+      const back = { long: true, braid: true, bob: true, puff: true }[F.style];
+      if (back) { g.fillStyle = F.hair; g.beginPath(); F.style === "puff" ? g.arc(80, 58, 44, 0, 7) : g.ellipse(80, 82, F.style === "bob" ? 38 : 40, F.style === "long" ? 56 : 44, 0, 0, 7); g.fill(); }
+      // shoulders and jacket
+      g.fillStyle = sh(F.jacket, 1); g.beginPath(); g.ellipse(80, 168, 66, 44, 0, 0, 7); g.fill();
+      g.fillStyle = sh(F.jacket, 0.7); g.beginPath(); g.moveTo(58, 132); g.lineTo(80, 158); g.lineTo(102, 132); g.lineTo(96, 128); g.lineTo(80, 146); g.lineTo(64, 128); g.closePath(); g.fill();
+      g.fillStyle = sh(F.skin, 0.85); g.fillRect(70, 104, 20, 28);   // neck
+      // head
+      const hg = g.createLinearGradient(52, 0, 108, 0); hg.addColorStop(0, sh(F.skin, 1.08)); hg.addColorStop(1, sh(F.skin, 0.82));
+      g.fillStyle = hg; g.beginPath(); g.ellipse(80, 78, 27, 33, 0, 0, 7); g.fill();
+      g.fillStyle = sh(F.skin, 0.9); g.beginPath(); g.ellipse(53, 82, 4, 7, 0, 0, 7); g.ellipse(107, 82, 4, 7, 0, 0, 7); g.fill();   // ears
+      // face
+      if (F.style !== "visor") {
+        g.fillStyle = "#1a1210"; g.beginPath(); g.ellipse(70, 78, 3.2, 3.8, 0, 0, 7); g.ellipse(90, 78, 3.2, 3.8, 0, 0, 7); g.fill();
+        g.fillStyle = "rgba(255,255,255,0.8)"; g.fillRect(70.5, 76, 1.4, 1.4); g.fillRect(90.5, 76, 1.4, 1.4);
+        g.strokeStyle = sh(F.hair === "#e6e2da" || F.hair === "#f2f2f2" ? "#8a8070" : F.hair, 0.9); g.lineWidth = 2.4; g.beginPath(); g.moveTo(64, 70); g.lineTo(75, 69); g.moveTo(85, 69); g.lineTo(96, 70); g.stroke();
+        g.strokeStyle = sh(F.skin, 0.68); g.lineWidth = 2; g.beginPath(); g.moveTo(80, 80); g.lineTo(77, 92); g.lineTo(81, 93); g.stroke();
+        g.strokeStyle = sh(F.skin, 0.55); g.lineWidth = 2.2; g.beginPath(); g.moveTo(72, 101); g.quadraticCurveTo(80, 105, 88, 101); g.stroke();
+      }
+      // hair on top
+      g.fillStyle = F.hair;
+      const top = { short: () => { g.beginPath(); g.ellipse(80, 56, 28, 16, 0, Math.PI, 0); g.fill(); g.fillRect(52, 54, 6, 14); g.fillRect(102, 54, 6, 14); },
+        buzz: () => { g.globalAlpha = 0.7; g.beginPath(); g.ellipse(80, 58, 27, 14, 0, Math.PI, 0); g.fill(); g.globalAlpha = 1; },
+        long: () => { g.beginPath(); g.ellipse(80, 54, 30, 18, 0, Math.PI, 0); g.fill(); g.beginPath(); g.moveTo(52, 56); g.quadraticCurveTo(62, 60, 70, 50); g.lineTo(52, 50); g.fill(); },
+        bob: () => { g.beginPath(); g.ellipse(80, 55, 30, 18, 0, Math.PI, 0); g.fill(); g.fillRect(50, 54, 9, 40); g.fillRect(101, 54, 9, 40); },
+        bun: () => { g.beginPath(); g.ellipse(80, 54, 28, 15, 0, Math.PI, 0); g.fill(); g.beginPath(); g.arc(80, 34, 11, 0, 7); g.fill(); },
+        braid: () => { g.beginPath(); g.ellipse(80, 54, 29, 16, 0, Math.PI, 0); g.fill(); for (let i = 0; i < 5; i++) { g.beginPath(); g.ellipse(106, 88 + i * 9, 5, 5.5, 0, 0, 7); g.fill(); } },
+        puff: () => { g.beginPath(); g.arc(80, 50, 30, Math.PI, 0); g.fill(); },
+        curly: () => { for (let i = 0; i < 9; i++) { g.beginPath(); g.arc(56 + i * 6, 52 - Math.sin(i / 8 * Math.PI) * 8, 7, 0, 7); g.fill(); } },
+        slick: () => { g.beginPath(); g.ellipse(80, 55, 28, 15, 0, Math.PI, 0); g.fill(); g.strokeStyle = "rgba(255,255,255,0.35)"; g.lineWidth = 2; g.beginPath(); g.moveTo(62, 50); g.quadraticCurveTo(78, 42, 98, 48); g.stroke(); },
+        messy: () => { g.beginPath(); for (let i = 0; i < 8; i++) { const x = 54 + i * 7; g.moveTo(x, 58); g.lineTo(x + 4, 36 + (i % 3) * 5); g.lineTo(x + 8, 58); } g.fill(); g.beginPath(); g.ellipse(80, 56, 27, 13, 0, Math.PI, 0); g.fill(); },
+        bald: () => { g.globalAlpha = 0.9; g.fillRect(52, 64, 5, 18); g.fillRect(103, 64, 5, 18); g.globalAlpha = 1; g.fillStyle = "rgba(255,255,255,0.25)"; g.beginPath(); g.ellipse(72, 52, 9, 5, -0.4, 0, 7); g.fill(); },
+        visor: () => { g.fillStyle = "#0b2a33"; rrect(g, 52, 68, 56, 18, 8); g.fill(); g.fillStyle = F.skin; g.fillRect(56, 75, 48, 3); },
+      }[F.style];
+      if (top) top();
+      // one detail
+      const X = F.extra;
+      if (X === "glasses") { g.strokeStyle = "#141414"; g.lineWidth = 2.2; g.beginPath(); g.arc(70, 78, 7.5, 0, 7); g.moveTo(97.5, 78); g.arc(90, 78, 7.5, 0, 7); g.moveTo(77.5, 78); g.lineTo(82.5, 78); g.stroke(); }
+      else if (X === "cap") { g.fillStyle = sh(F.jacket, 0.8); g.beginPath(); g.ellipse(80, 52, 30, 14, 0, Math.PI, 0); g.fill(); g.fillRect(80, 48, 36, 6); }
+      else if (X === "headset") { g.strokeStyle = "#1a1a1a"; g.lineWidth = 4; g.beginPath(); g.arc(80, 76, 31, Math.PI * 1.05, Math.PI * 1.95); g.stroke(); g.fillStyle = "#1a1a1a"; g.fillRect(48, 76, 8, 14); g.lineWidth = 2; g.beginPath(); g.moveTo(52, 90); g.quadraticCurveTo(58, 104, 72, 103); g.stroke(); }
+      else if (X === "scar") { g.strokeStyle = sh(F.skin, 0.6); g.lineWidth = 1.6; g.beginPath(); g.moveTo(93, 68); g.lineTo(99, 88); g.stroke(); }
+      else if (X === "earring") { g.fillStyle = "#ffd23a"; g.beginPath(); g.arc(107, 92, 2.6, 0, 7); g.fill(); }
+      else if (X === "chain") { g.strokeStyle = "#ffd23a"; g.lineWidth = 2.4; g.beginPath(); g.arc(80, 126, 18, 0.25, Math.PI - 0.25); g.stroke(); }
+      else if (X === "moustache") { g.fillStyle = "#e6e2da"; g.beginPath(); g.ellipse(74, 97, 8, 3.4, 0.2, 0, 7); g.ellipse(86, 97, 8, 3.4, -0.2, 0, 7); g.fill(); }
+      else if (X === "wrench") { g.save(); g.translate(118, 136); g.rotate(-0.7); g.fillStyle = "#b8bcc4"; g.fillRect(-4, -26, 8, 40); g.beginPath(); g.arc(0, -28, 9, 0, 7); g.fill(); g.fillStyle = sh(F.jacket, 1); g.fillRect(-3, -40, 6, 10); g.restore(); }
+      else if (X === "helmet") { g.fillStyle = "#e9c44a"; g.beginPath(); g.arc(122, 136, 20, 0, 7); g.fill(); g.fillStyle = "#14100a"; rrect(g, 108, 128, 26, 10, 4); g.fill(); }
+      else if (X === "glow") { g.globalCompositeOperation = "lighter"; const gl = g.createRadialGradient(80, 77, 2, 80, 77, 40); gl.addColorStop(0, "rgba(168,236,255,0.5)"); gl.addColorStop(1, "rgba(168,236,255,0)"); g.fillStyle = gl; g.fillRect(30, 30, 100, 100); g.globalCompositeOperation = "source-over"; }
+      g.restore();
+      g.strokeStyle = sh(c.color || "#888888", 1.15); g.lineWidth = 3; g.beginPath(); g.arc(80, 80, 78.5, 0, 7); g.stroke();
+      return cv;
+    }
+    function rrect(g, x, y, w, h, r) { g.beginPath(); g.moveTo(x + r, y); g.arcTo(x + w, y, x + w, y + h, r); g.arcTo(x + w, y + h, x, y + h, r); g.arcTo(x, y + h, x, y, r); g.arcTo(x, y, x + w, y, r); g.closePath(); }
+    // A conversation: the speaker's portrait lit, the person they're talking to dimmed, a name plate, and the line
+    // typed out (instantly with reduced motion). A scene can set a place and point the backdrop's camera at a car.
+    function dialogue(lines, done, scene) {
+      let i = 0, typing = 0;
+      if (scene && scene.focus) view.focus(scene.focus);
+      const finish = () => { if (scene && scene.focus) view.focus(null); done(); };
       const render = () => {
-        const L = lines[i];
-        const box = frame(L.name, L.cast.role || "", [el("div", "race-dialog", portrait(L.who), el("p", "race-line", L.text)),
-          el("div", "race-grid2", btn(i < lines.length - 1 ? "Next" : "Continue", () => { i++; if (i < lines.length) view.overlay(render(), true); else done(); }, "", { "data-autofocus": "" }),
-            lines.length > 1 && i < lines.length - 1 ? btn("Skip", () => done(), "alt") : null),
+        const L = lines[i], prev = lines.slice(0, i).reverse().find((x) => x.who !== L.who) || lines.slice(i + 1).find((x) => x.who !== L.who);
+        const other = prev ? prev.who : L.who === "jarvis" || L.who === "you" ? null : "you";
+        const speaker = el("div", "race-convo-p on", portraitOf(L.who)), listener = other ? el("div", "race-convo-p", portraitOf(other)) : null;
+        const text = el("p", "race-line", ""), full = L.text;
+        const reduce = root.matchMedia && root.matchMedia("(prefers-reduced-motion: reduce)").matches;
+        clearInterval(typing);
+        if (reduce) text.textContent = full;
+        else { let n = 0; typing = setInterval(() => { n = Math.min(full.length, n + 2); text.textContent = full.slice(0, n); if (n >= full.length) clearInterval(typing); }, 16); }
+        const next = () => { if (text.textContent !== full) { clearInterval(typing); text.textContent = full; return; } i++; if (i < lines.length) view.overlay(render(), true); else { clearInterval(typing); finish(); } };
+        const box = frame(L.name, (scene && scene.place) || L.cast.role || "", [
+          el("div", "race-convo" + (L.who === "you" ? " right" : ""), speaker, listener),
+          el("div", "race-plate", el("b", "", L.name), L.cast.role ? el("span", "", L.cast.role) : null), text,
+          el("div", "race-grid2", btn(i < lines.length - 1 ? "Next" : "Continue", next, "", { "data-autofocus": "" }),
+            lines.length > 1 && i < lines.length - 1 ? btn("Skip", () => { clearInterval(typing); finish(); }, "alt") : null),
           el("p", "race-note", `${i + 1} of ${lines.length}`)], { noBack: true });
         return box;
       };
@@ -224,9 +334,14 @@
     function choiceScreen(m, done) {
       const ch = m.choice;
       return frame("Your call", m.title, [el("p", "race-line", ch.prompt),
-        el("div", "race-stack", ...ch.options.map((o, i) => btn(o.label, () => { const r = C.choose(save, m.id, i); persist(); if (r.ok && r.lines.length) dialogue(r.lines, done); else done(); }, "alt")))], { noBack: true });
+        el("div", "race-stack", ...ch.options.map((o, i) => btn(o.label, () => {
+          const r = C.choose(save, m.id, i); if (!r.ok) return toast(r.error, "warn"); persist();
+          if (r.ok && r.consequence) toast(`This will be remembered: ${r.consequence}`, "gold");
+          if (r.ok && r.lines.length) dialogue(r.lines, done); else done();
+        }, "alt"))), el("p", "race-note", "Choices change what happens later: who races you, how they race, what people say and which events open.")], { noBack: true });
     }
     function run(ctx) {
+      ctx.event = C.resolve(save, ctx.event);
       const cfg = C.config(save, ctx.event, ctx.kind), raceId = uid();
       if (ctx.kind === "rival") { const w = C.placeWager(save, ctx.event, ctx.wager || 0); if (!w.ok) { toast(w.error, "warn"); ctx.wager = 0; } }
       history = [mainMenu]; screen = null;   // after a race, Back always leads home rather than to stale screens
@@ -244,7 +359,7 @@
         el("div", "race-stack", btn("Resume", () => view.resume(), "", { "data-autofocus": "" }), btn("Restart", () => { view.quit(); run(ctx); }, "alt"),
           view.photo ? btn("Photo mode", () => view.photo(() => pauseMenu(ctx)), "alt") : null,
           btn(save.settings.sound ? "Sound: on" : "Sound: off", (e) => { save.settings.sound = !save.settings.sound; audio && audio.settings(save.settings); persist(); e.target.textContent = save.settings.sound ? "Sound: on" : "Sound: off"; }, "alt"),
-          btn(save.wager ? `Quit (forfeits your ${money(save.wager.amount)} stake)` : "Quit to menu (no result)", () => { view.quit(); save.interrupted = null; save.wager = null; persist(); show(ctx.kind === "story" ? hq : ctx.kind === "pursuit" ? pursuitScreen : mainMenu, { replace: true }); }, "alt"))],
+          btn(save.wager ? `Quit (forfeits your ${money(save.wager.amount)} stake)` : "Quit to menu (no result)", () => { view.quit(); save.interrupted = null; save.wager = null; persist(); show(ctx.kind === "story" || ctx.kind === "arc" ? hq : ctx.kind === "pursuit" ? pursuitScreen : mainMenu, { replace: true }); }, "alt"))],
         { noBack: true }), true);
     }
 
@@ -259,11 +374,12 @@
         : s.eliminated ? "Eliminated" : s.mode === "timetrial" ? (out.medal ? `${out.medal[0].toUpperCase() + out.medal.slice(1)} medal` : "Time trial")
         : s.mode === "drift" ? `${s.drift.toLocaleString()} points` : s.team ? (s.team.won ? `Team win · ${s.team.you}–${s.team.them}` : `Team loss · ${s.team.you}–${s.team.them}`)
         : s.place === 1 ? "Victory · P1" : `P${s.place} of ${s.of}`;
-      const passLine = ctx.kind === "story" || ctx.kind === "side" || ctx.kind === "rival" || ctx.kind === "champ" || ctx.kind === "tourney"
+      const passLine = ctx.kind === "story" || ctx.kind === "arc" || ctx.kind === "side" || ctx.kind === "rival" || ctx.kind === "champ" || ctx.kind === "tourney"
         ? el("p", "race-goal " + (out.passed ? "ok" : "bad"), (out.passed ? "Goal met: " : "Goal missed: ") + C.goalText(ev.goal)) : null;
+      if (audio && audio.ui && (out.unlocked.length || out.levelUp)) setTimeout(() => audio.ui("unlock"), 1200);   // after the finish fanfare
       const unlocks = out.unlocked.map((u) => el("li", "race-li", u.type === "district" ? `New district: ${u.name}` : u.gift ? `New car in your garage: ${u.name}` : `Car unlocked to buy: ${u.name}`));
       const ach = out.achievements.map((id) => el("li", "race-li", `Achievement: ${D.ACHIEVEMENTS[id].name}`));
-      for (const id of out.achievements) toast(`Achievement unlocked: ${D.ACHIEVEMENTS[id].name}`, "gold");
+      for (const id of out.achievements) toast(`Achievement unlocked: ${D.ACHIEVEMENTS[id].name}${D.ACH_REWARDS[id] ? " · reward: " + D.ACH_REWARDS[id].text : ""}`, "gold");
       const champ = out.champ ? el("div", "race-panel", el("p", "race-lbl", out.champ.done ? `${out.champ.name}: final standings` : `${out.champ.name}: standings after round ${out.champ.round}`),
         el("table", "race-classif", el("tbody", "", ...out.champ.table.map((r, i) => el("tr", r.id === "YOU" ? "me" : "", el("td", "", `P${i + 1}`), el("td", "", r.name), el("td", "", `${r.points} pts`))))),
         out.champ.done ? el("p", "race-note", `You finished P${out.champ.place}. Prize ${money(out.champ.prize)}.`) : null) : null;
@@ -275,7 +391,7 @@
       const cont = () => {
         if (out.ending) return show(() => endingScreen(out.ending), { replace: true });
         if (out.chapter) return show(() => chapterScreen(out.chapter), { replace: true });
-        show(ctx.kind === "story" ? hq : ctx.kind === "champ" || ctx.kind === "tourney" ? champs : ctx.kind === "side" || ctx.kind === "rival" ? worldMap : ctx.kind === "pursuit" ? pursuitScreen : mainMenu, { replace: true });
+        show(ctx.kind === "story" || ctx.kind === "arc" ? hq : ctx.kind === "champ" || ctx.kind === "tourney" ? champs : ctx.kind === "side" || ctx.kind === "rival" ? worldMap : ctx.kind === "pursuit" ? pursuitScreen : mainMenu, { replace: true });
       };
       const next = () => {
         if (out.choice) return show(() => choiceScreen(ev, () => cont()), { replace: true });
@@ -292,9 +408,11 @@
       const extraLines = [
         out.wager ? el("p", "race-goal " + (out.wager.won ? "ok" : "bad"), out.wager.won ? `Wager won: ${money(out.wager.amount * 2)} back.` : `Wager lost: ${money(out.wager.amount)}.`) : null,
         out.tourney ? el("p", "race-goal " + (out.tourney.out ? "bad" : "ok"), out.tourney.out ? `Out of the ${out.tourney.name} at the ${out.tourney.stage.toLowerCase()}.` : out.tourney.won ? `You won the ${out.tourney.name}: ${money(out.tourney.prize)}.` : `Through to the ${out.tourney.next.toLowerCase()}.`) : null];
-      if (out.tourney && out.tourney.achievements) for (const id of out.tourney.achievements) toast(`Achievement unlocked: ${D.ACHIEVEMENTS[id].name}`, "gold");
+      if (out.tourney && out.tourney.achievements) for (const id of out.tourney.achievements) toast(`Achievement unlocked: ${D.ACHIEVEMENTS[id].name}${D.ACH_REWARDS[id] ? " · reward: " + D.ACH_REWARDS[id].text : ""}`, "gold");
       const body = [
         el("div", "race-stats", ...stats), ...extraLines,
+        out.breakdown && out.breakdown.length > 1 ? el("div", "race-panel", el("p", "race-lbl", "Prize money"), el("ul", "race-list", ...out.breakdown.map((b) => el("li", "race-li", el("span", "", b.label), el("span", "race-sub", (b.amount >= 0 ? "+" : "−") + money(Math.abs(b.amount))))))) : null,
+        out.teamRep ? el("p", "race-note", `${save.team.name}: +${out.teamRep} team reputation.`) : null,
         passLine, s.lapTimes.length && !LAPLESS.includes(s.mode) ? el("div", "race-laps", ...s.lapTimes.map((t, i) => el("span", t === s.best ? "best" : "", `L${i + 1} ${fmt(t)}`))) : null,
         out.levelUp ? el("p", "race-goal ok", `Level up: you're level ${out.levelUp}.`) : null,
         ...(out.rumours || []).map((r) => el("p", "race-note", `Rumour from ${(D.CAST[r.from] || {}).name || r.from}: “${r.text}” New secret event on the map.`)),
@@ -324,9 +442,19 @@
       const f = save.story.flags, E = D.ENDINGS.find((e) => e.id === id) || D.ENDINGS[D.ENDINGS.length - 1];
       const epilogue = [f.dex_respect ? "Dex Varga now runs Ironclad's junior programme. He tells every rookie about club night." : "Dex Varga still won't say your name. He watches every one of your races.",
         f.crew_pip ? "Pip Hollis races for Okafor Motors, and blocks for you like a wall." : "Otto Brandt coaches at Okafor Motors and swears your tyres were his idea.",
+        f.nia_engine ? "Samuel Okafor's V8 sits on a stand in the garage window. Nia polishes it on Sundays." : "",
+        f.harlan_exposed ? "Victor Harlan sold the League at a loss. The new owners are the crews." : f.harlan_signed ? "Harlan Holdings owns the League, the circuit and your next three seasons." : f.harlan_refused ? "Victor Harlan still owns the circuit. He never comes to watch any more." : "",
+        f.mara_home ? "Tidewater still works out of your garage. Nobody mentions moving." : "", f.benny_saved ? "The Brickyard runs night races again, every Friday." : f.benny_lost ? "The Brickyard is flats now. Benny drives a taxi past it every night." : "",
         save.sponsor ? `${D.SPONSORS[save.sponsor].name} renewed your contract for three years.` : "", "Valentina Corsa has asked for a rematch. Next season."].filter(Boolean);
       const seen = Object.keys(save.endings).length;
-      return frame(E.title, `Ending ${D.ENDINGS.indexOf(E) + 1} of ${D.ENDINGS.length} · the end of the story, not of the racing`, [...E.lines.map((t) => el("p", "race-line", t)), ...epilogue.map((t) => el("p", "race-note", t)),
+      const turns = D.TURNING_POINTS.filter(([k]) => f[k]).map(([, t]) => t);
+      const people = ["dex", "mara", "benny", "sora", "valentina"].filter((id) => save.rivals[id]).map((id) => {
+        const st = C.rivalStage(save, id); return el("div", "race-endperson", portraitOf(id, 72), el("b", "", D.DRIVERS[id].name.split(" ")[0]), el("span", "race-sub", { feud: "Feud", rival: "Rival", respect: "Respect", ally: "Ally", stranger: "" }[st])); });
+      const crew = Object.entries(save.crew.members).filter(([, m]) => m.hired).map(([id, m]) => el("div", "race-endperson", portraitOf(id, 72), el("b", "", D.CREW[id].name.split(" ")[0]), el("span", "race-sub", `Loyalty ${m.loyalty}/10`)));
+      const look = el("div", "race-panel", el("p", "race-lbl", "How you got here"), el("ul", "race-list", ...turns.map((t) => el("li", "race-li", t))),
+        el("p", "race-lbl", "The rivals"), el("div", "race-endrow", ...people), el("p", "race-lbl", "Your crew"), el("div", "race-endrow", ...crew),
+        el("p", "race-note", `${save.stats.wins} wins in ${save.stats.races} races · ${Object.keys(save.garage.owned).length} cars · ${Object.values(save.champWins).reduce((a, b) => a + b, 0)} championship titles`));
+      return frame(E.title, `Ending ${D.ENDINGS.indexOf(E) + 1} of ${D.ENDINGS.length} · the end of the story, not of the racing`, [...E.lines.map((t) => el("p", "race-line", t)), ...epilogue.map((t) => el("p", "race-note", t)), look,
         el("p", "race-note", `You've seen ${seen} of ${D.ENDINGS.length} endings. Other roads: ${D.ENDINGS.filter((e) => e.id !== E.id).map((e) => `${e.title} (${e.needs})`).join(" ")}`),
         el("p", "race-note", "Every district and event stays open. The Champions' Masters is now open."),
         el("div", "race-grid2", btn("Main menu", () => show(mainMenu, { replace: true }), "", { "data-autofocus": "" }), btn("Championships", () => show(champs, { replace: true }), "alt"))], { noBack: true });
@@ -363,21 +491,27 @@
       const extra = [...C.secretEvents(save).filter((e) => e.district === sel).map((e) => row((e.done ? "✓ " : "Secret · ") + e.title, `${MODE_NAME[e.mode]} · ${C.goalText(e.goal)} · ${e.reward.text}`, e.done ? chip("Won", "done") : btn("Race", () => brief({ kind: "side", event: e }), "small"), "story")),
         ...C.turfEvents(save).filter((e) => e.district === sel).map((e) => row(e.title, "Crew battle: beat the home crew on their own streets", btn("Race", () => brief({ kind: "side", event: e }), "small"), "story"))];
       for (const x of extra) list.append(x);
-      const fe = C.featured(save);
+      const fe = C.featured(save), tn = C.tonight(save), left = 3 - ((save.world.day - 1) % 3);
+      const tonightBox = tn.length ? el("div", "race-panel mission", el("p", "race-eyebrow", `Tonight only · gone in ${left} race day${left > 1 ? "s" : ""}`),
+        el("ul", "race-list", ...tn.map((e) => row((e.done ? "✓ " : "") + e.title, `${D.DISTRICTS[e.district].name} · ${MODE_NAME[e.mode]} · ${C.goalText(e.goal)} · ${e.blurb}`,
+          e.done ? chip("Won", "done") : btn("Race", () => brief({ kind: "side", event: e }), "small"), e.showdown ? "story" : "")))) : null;
+      const ranks = C.rankings(save);
+      const rankBox = ranks.length > 1 ? el("div", "race-panel", el("p", "race-lbl", "Street rankings"), el("ol", "race-list", ...ranks.map((x, k) => el("li", "race-li" + (x.you ? " story" : ""),
+        el("span", "", `${k + 1}. ${x.name}`), el("span", "race-sub", `${x.w} won · ${x.l} lost`), chip(`${x.pts}% won`))))) : null;
       const special = fe ? el("div", "race-panel mission", el("p", "race-eyebrow", `${C.weekday(save)} · day ${save.world.day} · weekly special`), el("b", "race-title", fe.title),
         el("p", "race-note", `${D.DISTRICTS[fe.district].name} · ${MODE_NAME[fe.mode]} · pays 50% more today.`), btn("Race it", () => brief({ kind: "side", event: { ...fe, goal: fe.goal || (fe.mode === "timetrial" ? { type: "time", max: D.PAR[fe.track] * fe.laps * 1.12 } : { type: "place", max: fe.mode === "elimination" ? 2 : 3 }) } }), "small")) : null;
       const heard = D.RUMORS.filter((r) => save.world.rumors[r.id]);
       const rumours = el("div", "race-panel", el("p", "race-lbl", "Rumours"), heard.length ? el("ul", "race-list", ...heard.map((r) => el("li", "race-li" + (save.world.rumors[r.id] === "done" ? " done" : ""),
         el("span", "", `${(D.CAST[r.from] || {}).name || r.from}: “${r.text}”`), el("span", "race-sub", `${D.DISTRICTS[r.event.district].name} · ${r.event.title}${save.world.rumors[r.id] === "done" ? " · won" : ""}`)))) : el("p", "race-note", C.hired(save, "lio") ? "Nothing yet. Lio is listening." : "Nothing yet. Win races and people talk. (A scout would hear things sooner.)"));
       const wire = save.world.news.length ? el("div", "race-panel", el("p", "race-lbl", "Port Kerbside news wire"), el("ul", "race-list", ...save.world.news.slice(-5).reverse().map((n) => el("li", "race-li", el("span", "", n.text), el("span", "race-sub", `Day ${n.day}`))))) : null;
-      return frame("Port Kerbside", `World map · ${C.weekday(save)}, day ${save.world.day}`, [wallet(), map, special,
+      return frame("Port Kerbside", `World map · ${C.weekday(save)}, day ${save.world.day}`, [wallet(), map, tonightBox, special,
         el("div", "race-panel", el("b", "race-title", d.name), el("p", "race-note", d.blurb),
           el("div", "race-barrow", el("span", "race-lbl", `You ${inf}%`), infBar, el("span", "race-delta", T.crew)),
           el("p", "race-note", C.runs(save, sel) ? `You run ${d.name}: +10% prize money here, and ${T.crew} wants a turf war.` : `${T.crew} runs ${d.name}. Win here to take it over (75%).`), list),
-        rumours, wire]);
+        rumours, rankBox, wire]);
     }
     function countEvents(id) {
-      const n = C.sideEvents(save).filter((e) => e.district === id && e.open && !e.done).length + C.rivalEvents(save).filter((r) => r.district === id).length
+      const n = C.sideEvents(save).filter((e) => e.district === id && e.open && !e.done).length + C.rivalEvents(save).filter((r) => r.district === id).length + C.tonight(save).filter((e) => e.district === id && !e.done).length
         + C.missions(save).flatMap((c) => c.missions).filter((m) => m.state === "available" && m.track === D.DISTRICTS[id].track).length;
       return n ? `${n} to race` : "All done";
     }
@@ -504,7 +638,8 @@
     // a test lap run on the spot, and tabs: upgrades (with a preview of the next level), tuning, and looks.
     let gSel = null, gTab = "upgrades", gClass = "all", gTest = {};
     const KMH = (spec) => Math.round(spec.acc * (1 + (spec.turbo || 0)) / spec.drag * 0.34);
-    const TRAITS = (c) => [c.turbo && "Turbo", c.slide && "Drifts easily", c.offroad && "Shrugs off gravel", c.wet && "Wet-weather grip", c.mass >= 1.3 && "Heavy: wins the shoving", c.mass <= 0.85 && "Featherweight"].filter(Boolean);
+    const TRAITS = (c) => [c.band <= -0.4 && "Torque monster", c.band >= 0.5 && "High-revving", c.turbo && "Turbo", c.voice && c.voice.sc && "Supercharged", c.slide && "Drifts easily",
+      c.offroad && "Shrugs off gravel", c.wet && "Wet-weather grip", c.mass >= 1.3 && "Heavy: wins the shoving", c.mass <= 0.85 && "Featherweight", c.voice && c.voice.cyl && `${{ 3: "Three", 4: "Four", 5: "Five", 6: "Six", 8: "V8", 10: "V10", 12: "V12" }[c.voice.cyl]}${c.voice.cyl < 8 ? "-cylinder" : ""}`].filter(Boolean);
     function testLap(spec, track) {   // one standing lap and one flying lap, driven by the AI line, timed on the flying one
       const r = R.newRace({ track, mode: "timetrial", laps: 2, player: { spec } }); let t = 0;
       while (!r.cars[0].done && t < 120) { R.step(r, 1 / 120, null); t += 1 / 120; }
@@ -517,13 +652,22 @@
       const shown = st || C.carState(id), spec = C.carStats(id, shown, save.sponsor), stock = C.carStats(id, C.carState(id));
       const curId = save.garage.current, cur = C.carStats(curId, save.garage.owned[curId], save.sponsor);
       const filter = el("div", "race-tabs", ...["all", "C", "B", "A", "S"].map((k) => { const b = el("button", "race-tab" + (k === gClass ? " on" : ""), k === "all" ? "All" : "Class " + k); b.type = "button"; b.addEventListener("click", () => { gClass = k; show(garage, { replace: true }); }); return b; }));
+      const col = C.collection(save), colBar = el("div", "race-bar"), colI = el("i", "up"); colI.style.width = Math.round(col.owned / col.total * 100) + "%"; colBar.append(colI);
+      const collectionPanel = el("div", "race-panel race-collection", el("div", "race-barrow", el("span", "race-lbl", `Collection ${col.owned} / ${col.total}`), colBar),
+        el("p", "race-note", ["C", "B", "A", "S"].map((k) => `Class ${k}: ${col.by[k].owned}/${col.by[k].total}`).join("  ·  ") + ". Some cars can't be bought until you earn them: a drift score, gold medals, a pursuit, a tournament, a grudge match, a crew member."));
+      // the cars you're closest to unlocking, and what it takes
+      const progress = (cid) => { const U = D.CARS[cid].unlock || {}, golds = Object.values(save.medals).filter((m) => m === "gold").length;
+        return U.rep ? save.rep / U.rep : U.chapter ? save.story.chapter / U.chapter : U.medals ? golds / U.medals : U.rival ? ((save.rivals[U.rival] || {}).wins || 0) / U.wins : 0.1; };
+      const near = Object.entries(D.CARS).filter(([cid, c]) => !c.police && c.price !== null && !save.garage.owned[cid] && !C.carAvailable(save, cid).ok).sort((a, b) => progress(b[0]) - progress(a[0])).slice(0, 3);
+      const nearPanel = near.length ? el("div", "race-panel", el("p", "race-lbl", "Close to unlocking"), el("ul", "race-list", ...near.map(([cid, c]) => el("li", "race-li", el("span", "", `${c.name} · ${c.cls}`), el("span", "race-sub", C.carAvailable(save, cid).why))))) : null;
       const cars = el("div", "race-carlist", ...Object.entries(D.CARS).filter(([, c]) => !c.police && (gClass === "all" || c.cls === gClass)).map(([k, c]) => {
         const o = !!save.garage.owned[k], a = C.carAvailable(save, k);
         const b = el("button", "race-carbtn" + (k === id ? " on" : "") + (o ? " owned" : a.ok ? "" : " locked"), el("b", "", o || a.ok ? c.name : "???"),
-          el("span", "", `${c.cls} · ${c.cat}`), el("span", "", o ? (k === curId ? "Driving" : "Owned") : c.price === null ? "Story reward" : a.ok ? money(c.price) : a.why));
+          el("span", "", `${c.cls} · ${c.cat}`), el("span", "", o ? (k === curId ? "Driving" : "Owned") : c.price === null ? "Story reward" : a.ok ? money(c.price) : a.why),
+          c.unlock && !c.unlock.chapter && !c.unlock.rep && !c.unlock.ended && !o ? el("span", "race-earn", a.ok ? "Earned · now for sale" : "Earn it") : null);
         b.type = "button"; b.addEventListener("click", () => { gSel = k; if (audio) audio.click(); show(garage, { replace: true }); }); return b;
       }));
-      const preview = el("canvas", "race-preview"); preview.width = 360; preview.height = 200;
+      const preview = el("canvas", "race-preview"); preview.width = 720; preview.height = 400;
       startPreview(preview, id, shown);
       const barBox = el("div", "race-bars");
       const drawBars = (sp2) => {
@@ -542,26 +686,27 @@
         const mine = testLap(spec, "ridge"), c2 = id === curId ? mine : testLap(cur, "ridge");
         gTest[id + JSON.stringify(shown.upgrades) + JSON.stringify(shown.tune)] = { mine, cur: c2 }; show(garage, { replace: true });
       }, "alt small");
-      const facts = el("div", "race-tags", chip(`${car.cls} · ${car.cat}`), chip(`Top ≈ ${KMH(spec)} km/h`), chip(`${Math.round((spec.mass || 1) * 1000)} kg`), ...TRAITS(car).map((t) => chip(t, "small")));
+      const handling = car.handling ? el("p", "race-note race-handling", car.handling) : null;
+      const facts = el("div", "race-tags", chip(`Rating ${car.cls} ${C.rating(spec)}`, "gold"), chip(`${car.cls} · ${car.cat}`), chip(`Top ≈ ${KMH(spec)} km/h`), chip(`${Math.round((spec.mass || 1) * 1000)} kg`), chip({ F: "Front-drive", R: "Rear-drive", A: "All-wheel drive" }[car.drive || "R"]), ...TRAITS(car).map((t) => chip(t, "small")));
       const action = owned ? (id === curId ? chip("Driving this car", "gold") : btn("Drive this car", () => { save.garage.current = id; persist(); show(garage, { replace: true }); }))
-        : av.ok && car.price !== null ? btn(`Buy for ${money(car.price)}`, () => { const r = C.buyCar(save, id); if (!r.ok) return toast(r.error, "warn"); persist(); toast(`${car.name} is yours.`, "gold"); r.achievements.forEach((a) => toast(`Achievement unlocked: ${D.ACHIEVEMENTS[a].name}`, "gold")); show(garage, { replace: true }); }, save.money >= car.price ? "" : "alt")
+        : av.ok && car.price !== null ? btn(`Buy for ${money(car.price)}`, () => { const r = C.buyCar(save, id); if (!r.ok) return toast(r.error, "warn"); if (audio && audio.ui) audio.ui("buy"); persist(); toast(`${car.name} is yours.`, "gold"); r.achievements.forEach((a) => toast(`Achievement unlocked: ${D.ACHIEVEMENTS[a].name}${D.ACH_REWARDS[a] ? " · reward: " + D.ACH_REWARDS[a].text : ""}`, "gold")); show(garage, { replace: true }); }, save.money >= car.price ? "" : "alt")
           : el("p", "race-note", av.why);
       const repairBtn = owned && st.dmg > 0.01 ? btn(`Repair ${Math.round(st.dmg * 100)}% damage · ${money(C.repairCost(id, st) * (save.crew.members.nia && save.crew.members.nia.hired ? 0.7 : 1))}`, () => { const r = C.repair(save, id); if (!r.ok) return toast(r.error, "warn"); persist(); toast(`Repaired for ${money(r.cost)}.`, "info"); show(garage, { replace: true }); }, "alt small") : null;
-      const TABS = { upgrades: "Upgrades", tune: "Tuning", paint: "Paint", decal: "Decals", wheels: "Wheels", body: "Body kit", spoiler: "Spoiler", finish: "Finish", tint: "Glass", lights: "Lights", exhaust: "Exhaust", number: "Number" };
+      const TABS = { upgrades: "Upgrades", tune: "Tuning", paint: "Paint", decal: "Decals", wheels: "Wheels", tyres: "Tyres", body: "Arches", bumper: "Bumper", bonnet: "Bonnet", spoiler: "Spoiler", finish: "Finish", tint: "Glass", lights: "Lights", exhaust: "Exhaust", number: "Number" };
       const tabs = el("div", "race-tabs", ...Object.entries(TABS).map(([t, n]) => {
         const b = el("button", "race-tab" + (t === gTab ? " on" : ""), n); b.type = "button"; b.setAttribute("aria-pressed", String(t === gTab)); b.disabled = !owned;
         b.addEventListener("click", () => { gTab = t; show(garage, { replace: true }); }); return b;
       }));
-      return frame("Garage", `Okafor Motors · ${Object.keys(save.garage.owned).length} cars`, [wallet(), el("div", "race-garage", el("div", "race-garage-l", filter, cars),
-        el("div", "race-garage-r", el("b", "race-title", owned || av.ok ? car.name : "Locked car"), el("p", "race-note", owned || av.ok ? car.blurb : av.why), preview, facts, barBox,
+      return frame("Garage", `${save.team.name} · ${Object.keys(save.garage.owned).length} car${Object.keys(save.garage.owned).length === 1 ? "" : "s"}`, [wallet(), collectionPanel, nearPanel, el("div", "race-garage", el("div", "race-garage-l", filter, cars),
+        el("div", "race-garage-r", el("b", "race-title", owned || av.ok ? car.name : "Locked car"), el("p", "race-note", owned || av.ok ? car.blurb : av.why), preview, facts, owned || av.ok ? handling : null, barBox,
           el("p", "race-note", id === curId ? "Grey: stock. Gold: as built. The line marks your car." : "Grey: stock. Gold: as built. The line and the numbers compare it with the car you drive."),
           el("div", "race-stack row", action, testBtn, repairBtn), owned ? tabs : null, owned ? tabBody(id, st, drawBars) : null))]);
     }
     function tabBody(id, st, drawBars) {
-      const set = (key, value) => { const r = C.setLook(save, id, key, value); if (!r.ok) return toast(r.error, "warn"); if (r.cost) toast(`Bought for ${money(r.cost)}.`, "info"); persist(); show(garage, { replace: true }); };
+      const set = (key, value) => { const r = C.setLook(save, id, key, value); if (!r.ok) return toast(r.error, "warn"); if (r.cost) { toast(`Bought for ${money(r.cost)}.`, "info"); if (audio && audio.ui) audio.ui("buy"); } persist(); show(garage, { replace: true }); };
       if (gTab === "upgrades") return el("ul", "race-list", ...Object.entries(D.UPGRADES).map(([p, u]) => {
-        const lv = st.upgrades[p], cost = C.upgradeCost(id, p, lv);
-        const b = cost === null ? chip("Max", "gold") : btn(money(cost), () => { const r = C.buyUpgrade(save, id, p); if (!r.ok) return toast(r.error, "warn"); persist(); r.achievements.forEach((a) => toast(`Achievement unlocked: ${D.ACHIEVEMENTS[a].name}`, "gold")); show(garage, { replace: true }); }, "small" + (save.money >= cost ? "" : " alt"));
+        const lv = st.upgrades[p], cost = C.upgradeCost(id, p, lv, save);
+        const b = cost === null ? chip("Max", "gold") : btn(money(cost), () => { const r = C.buyUpgrade(save, id, p); if (!r.ok) return toast(r.error, "warn"); if (audio && audio.ui) audio.ui("buy"); persist(); r.achievements.forEach((a) => toast(`Achievement unlocked: ${D.ACHIEVEMENTS[a].name}${D.ACH_REWARDS[a] ? " · reward: " + D.ACH_REWARDS[a].text : ""}`, "gold")); show(garage, { replace: true }); }, "small" + (save.money >= cost ? "" : " alt"));
         if (cost !== null) {   // preview: hover or focus shows the next level on the bars
           const next = { ...st, upgrades: { ...st.upgrades, [p]: lv + 1 } };
           const on = () => drawBars(C.carStats(id, next, save.sponsor)), off = () => drawBars(C.carStats(id, st, save.sponsor));
@@ -591,27 +736,56 @@
         return el("div", "race-stack", el("div", "race-fields", el("label", "race-field", el("span", "race-lbl", "Racing number"), inp), btn("Set number", () => set("number", inp.value), "small")),
           el("div", "race-stack row", ...Object.entries(D.LOOKS.numpos).map(([k, o]) => btn(o.name + (st.numpos === k ? " ✓" : ""), () => set("numpos", k), st.numpos === k ? "small" : "small alt"))));
       }
-      const opts = D.LOOKS[gTab];
-      return el("div", "race-stack row", ...Object.entries(opts).map(([k, o]) => btn(`${o.name}${st[gTab] === k ? " ✓" : st.bought[gTab].includes(k) || !o.price ? "" : " · " + money(Math.round(o.price * D.CLASS_COST[D.CARS[id].cls] / 10) * 10)}`, () => set(gTab, k), st[gTab] === k ? "small" : "small alt")));
+      const opts = D.LOOKS[gTab], fit = Object.entries(opts).filter(([k]) => C.fits(id, gTab, k)), left = Object.keys(opts).length - fit.length;
+      return el("div", "race-stack", el("div", "race-stack row", ...fit.map(([k, o]) => o.earn && !save.achievements[o.earn] ? btn(`${o.name} · earn “${D.ACHIEVEMENTS[o.earn].name}”`, () => toast(`${D.ACHIEVEMENTS[o.earn].how}`, "info"), "small alt") : btn(`${o.name}${st[gTab] === k ? " ✓" : st.bought[gTab].includes(k) || !o.price ? "" : " · " + money(Math.round(o.price * D.CLASS_COST[D.CARS[id].cls] / 10) * 10)}`, () => set(gTab, k), st[gTab] === k ? "small" : "small alt"))),
+        ["bumper", "bonnet", "tyres", "body"].includes(gTab) ? el("p", "race-note", `Looks only: body parts don't change performance.${left ? ` ${left} option${left > 1 ? "s don't" : " doesn't"} fit the ${D.CARS[id].name}.` : ""}`) : null);
     }
     // A lit turntable: spotlight, a rotating platform with ticks, a floor reflection and spinning wheels.
+    // The studio: a dark stage with two softboxes overhead (mirrored on the polished floor), a perspective floor grid,
+    // a turntable, a rim light, and the car turning slowly with its lights and steering working.
     function startPreview(cv, id, st, hero) {
-      const ctx = cv.getContext("2d"), car = D.CARS[id], t0 = performance.now(), W = cv.width, H = cv.height;
-      const look = C.lookOf(st);
+      const ctx = cv.getContext("2d"), car = D.CARS[id], t0 = performance.now(), W = cv.width, H = cv.height, k = W / 360;
+      const look = C.lookOf(st), off = document.createElement("canvas"); off.width = W; off.height = H; const og = off.getContext("2d");
+      const stage = document.createElement("canvas"); stage.width = W; stage.height = H; const sg = stage.getContext("2d");
+      const cx = W / 2, cy = H * 0.56;
+      if (!hero) {   // the stage is drawn once
+        const wall = sg.createLinearGradient(0, 0, 0, H); wall.addColorStop(0, "#15120d"); wall.addColorStop(0.5, "#221d15"); wall.addColorStop(0.52, "#0d0b08"); wall.addColorStop(1, "#050403");
+        sg.fillStyle = wall; sg.fillRect(0, 0, W, H);
+        for (const sx of [0.3, 0.7]) {   // softboxes and their reflections on the floor
+          const bx = W * sx, g1 = sg.createRadialGradient(bx, H * 0.08, 2, bx, H * 0.08, W * 0.2); g1.addColorStop(0, "rgba(255,244,214,0.55)"); g1.addColorStop(1, "rgba(255,244,214,0)");
+          sg.fillStyle = g1; sg.fillRect(0, 0, W, H * 0.5);
+          sg.fillStyle = "rgba(255,246,220,0.85)"; sg.fillRect(bx - 34 * k, H * 0.05, 68 * k, 6 * k);
+          const g2 = sg.createLinearGradient(0, H * 0.55, 0, H); g2.addColorStop(0, "rgba(255,240,205,0.12)"); g2.addColorStop(1, "rgba(255,240,205,0)");
+          sg.fillStyle = g2; sg.beginPath(); sg.moveTo(bx - 20 * k, H * 0.53); sg.lineTo(bx + 20 * k, H * 0.53); sg.lineTo(bx + 60 * k, H); sg.lineTo(bx - 60 * k, H); sg.closePath(); sg.fill();
+        }
+        sg.strokeStyle = "rgba(217,180,95,0.10)"; sg.lineWidth = 1;   // floor grid in perspective
+        for (let i = -12; i <= 12; i++) { sg.beginPath(); sg.moveTo(cx + i * 14 * k, H * 0.52); sg.lineTo(cx + i * 60 * k, H); sg.stroke(); }
+        for (let j = 0; j < 7; j++) { const y = H * 0.52 + (H * 0.48) * Math.pow(j / 6, 1.7); sg.beginPath(); sg.moveTo(0, y); sg.lineTo(W, y); sg.stroke(); }
+      }
       const draw = (now) => {
         if (!cv.isConnected || !alive) return;
-        const t = (now - t0) / 1000, a = t * 0.55, cx = W / 2, cy = H * 0.55;
+        const t = (now - t0) / 1000, a = t * 0.5;
         ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.clearRect(0, 0, W, H);
-        if (!hero) { const g = ctx.createRadialGradient(cx, cy, 10, cx, cy, W * 0.6); g.addColorStop(0, "#2c261c"); g.addColorStop(1, "#0b0906"); ctx.fillStyle = g; ctx.fillRect(0, 0, W, H); }
-        const sp = ctx.createRadialGradient(cx, cy - 10, 0, cx, cy, W * 0.42); sp.addColorStop(0, "rgba(255,236,190,0.32)"); sp.addColorStop(1, "rgba(255,236,190,0)");
-        ctx.fillStyle = sp; ctx.beginPath(); ctx.ellipse(cx, cy, W * 0.42, H * 0.36, 0, 0, 7); ctx.fill();
-        ctx.strokeStyle = "rgba(217,180,95,0.45)"; ctx.lineWidth = 2; ctx.beginPath(); ctx.ellipse(cx, cy, W * 0.34, H * 0.3, 0, 0, 7); ctx.stroke();
-        ctx.strokeStyle = "rgba(217,180,95,0.25)"; ctx.lineWidth = 1.5;
-        for (let k = 0; k < 24; k++) { const q = k / 24 * 6.283 + a; ctx.beginPath(); ctx.moveTo(cx + Math.cos(q) * W * 0.31, cy + Math.sin(q) * H * 0.27); ctx.lineTo(cx + Math.cos(q) * W * 0.34, cy + Math.sin(q) * H * 0.3); ctx.stroke(); }
-        const c = { x: 0, y: 0, a, color: st.paint, look, shape: car.shape, num: st.number, steerIn: Math.sin(t * 1.1) * 0.6, dmg: 0, wheelPh: t * 18, brakeOn: Math.sin(t * 0.7) > 0.85 };
-        ctx.setTransform(3, 0, 0, 1.2, cx, cy + 26); ctx.globalAlpha = 0.18; view.drawCar(ctx, { ...c, a: -a }, {}); ctx.globalAlpha = 1;   // floor reflection
-        ctx.setTransform(3, 0, 0, 3, cx, cy - 6);
+        if (!hero) ctx.drawImage(stage, 0, 0);
+        // turntable: a lit disc with a ring of ticks that turns with the car
+        const tg = ctx.createRadialGradient(cx, cy, 4, cx, cy, W * 0.36); tg.addColorStop(0, "rgba(255,236,190,0.30)"); tg.addColorStop(0.7, "rgba(255,236,190,0.08)"); tg.addColorStop(1, "rgba(255,236,190,0)");
+        ctx.fillStyle = tg; ctx.beginPath(); ctx.ellipse(cx, cy, W * 0.38, H * 0.3, 0, 0, 7); ctx.fill();
+        ctx.strokeStyle = "rgba(217,180,95,0.5)"; ctx.lineWidth = 1.5 * k; ctx.beginPath(); ctx.ellipse(cx, cy, W * 0.33, H * 0.26, 0, 0, 7); ctx.stroke();
+        ctx.strokeStyle = "rgba(217,180,95,0.28)"; ctx.lineWidth = 1.2 * k;
+        for (let i = 0; i < 36; i++) { const q = i / 36 * 6.283 + a; ctx.beginPath(); ctx.moveTo(cx + Math.cos(q) * W * 0.3, cy + Math.sin(q) * H * 0.235); ctx.lineTo(cx + Math.cos(q) * W * 0.33, cy + Math.sin(q) * H * 0.26); ctx.stroke(); }
+        const c = { x: 0, y: 0, a, color: st.paint, look, shape: car.shape, art: car.art, car: id, num: st.number, steerIn: Math.sin(t * 1.1) * 0.6, dmg: 0, wheelPh: t * 18, brakeOn: Math.sin(t * 0.7) > 0.85, id };
+        // reflection: the car squashed below itself, faded out toward the viewer
+        og.setTransform(1, 0, 0, 1, 0, 0); og.clearRect(0, 0, W, H);
+        og.setTransform(3.4 * k, 0, 0, -1.2 * k, cx, cy + 34 * k); view.drawCar(og, { ...c }, { lights: true });
+        og.setTransform(1, 0, 0, 1, 0, 0); og.globalCompositeOperation = "destination-in";
+        const fade = og.createLinearGradient(0, cy, 0, H); fade.addColorStop(0, "rgba(0,0,0,0.3)"); fade.addColorStop(1, "rgba(0,0,0,0)"); og.fillStyle = fade; og.fillRect(0, 0, W, H); og.globalCompositeOperation = "source-over";
+        ctx.drawImage(off, 0, 0);
+        ctx.setTransform(3.4 * k, 0, 0, 3.4 * k, cx, cy - 4 * k);
         view.drawCar(ctx, c, { lights: true });
+        // a rim light sweeping over the body
+        ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.globalCompositeOperation = "lighter";
+        const rx = cx + Math.cos(t * 0.9) * W * 0.18, rim = ctx.createRadialGradient(rx, cy - 30 * k, 0, rx, cy - 30 * k, 70 * k); rim.addColorStop(0, "rgba(255,240,210,0.10)"); rim.addColorStop(1, "rgba(255,240,210,0)");
+        ctx.fillStyle = rim; ctx.fillRect(0, 0, W, H); ctx.globalCompositeOperation = "source-over";
         previewRaf = requestAnimationFrame(draw);
       };
       previewRaf = requestAnimationFrame(draw);
@@ -639,7 +813,7 @@
     function achievements() {
       const all = Object.entries(D.ACHIEVEMENTS), got = all.filter(([id]) => save.achievements[id]).length;
       return frame("Achievements", `${got} of ${all.length}`, [el("ul", "race-list", ...all.map(([id, a]) => el("li", "race-li" + (save.achievements[id] ? " done" : " locked"),
-        el("span", "", (save.achievements[id] ? "★ " : "☆ ") + a.name), el("span", "race-sub", save.achievements[id] ? `${a.how} · ${new Date(save.achievements[id]).toLocaleDateString()}` : a.how))))]);
+        el("span", "", (save.achievements[id] ? "★ " : "☆ ") + a.name), el("span", "race-sub", (save.achievements[id] ? `${a.how} · ${new Date(save.achievements[id]).toLocaleDateString()}` : a.how) + (D.ACH_REWARDS[id] ? ` · Reward: ${D.ACH_REWARDS[id].text}` : "")))))]);
     }
 
     // ---------------------------------------------------------------- settings and saves
@@ -656,9 +830,10 @@
           select("s-quality", "Graphics", S.quality, [["auto", "Auto (adapts)"], ["low", "Low"], ["medium", "Medium"], ["high", "High"]], (v) => { S.quality = v; apply(); show(settings, { replace: true }); }),
           select("s-camera", "Camera", S.camera, [["chase", "Chase (turns with your car)"], ["classic", "Classic (north up)"]], (v) => { S.camera = v; apply(); }),
           select("s-motion", "Reduced motion", S.reducedMotion === null ? "system" : S.reducedMotion ? "on" : "off", [["system", "Follow system"], ["on", "On"], ["off", "Off"]], (v) => { S.reducedMotion = v === "system" ? null : v === "on"; apply(); }),
+          select("s-assist", "Slide assist", S.assist || "light", [["off", "Off (all you)"], ["light", "Light (a little countersteer)"], ["strong", "Strong (catches most slides)"]], (v) => { S.assist = v; apply(); }),
           select("s-diff", "Career AI", S.difficulty, [["easy", "Easy"], ["medium", "Medium"], ["hard", "Hard"]], (v) => { S.difficulty = v; apply(); }),
           select("s-damage", "Damage", S.damage, [["cosmetic", "Cosmetic only"], ["persistent", "Carries over (repairs cost money)"]], (v) => { S.damage = v; apply(); })),
-        el("div", "race-stack row", toggle("shake", "Camera shake"), toggle("ghost", "Ghost car"), toggle("sound", "Sound"), toggle("music", "Music")),
+        el("div", "race-stack row", toggle("shake", "Camera shake"), toggle("ghost", "Ghost car"), toggle("line", "Driving line"), toggle("sound", "Sound"), toggle("music", "Music"), audio && audio.canSpeak === true ? toggle("announcer", "Announcer") : null),
         el("label", "race-field", el("span", "race-lbl", "Volume"), vol),
         el("p", "race-lbl", "Controls"),
         el("p", "race-note", "Arrows or WASD drive · Space or Shift: nitro · P or Esc: pause · Esc in menus: back. Touch: steering pads left, NOS, brake and gas right."),

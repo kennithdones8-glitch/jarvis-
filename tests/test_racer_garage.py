@@ -40,8 +40,9 @@ console.log(JSON.stringify({ n: cars.length, buy: cars.filter(([, c]) => !c.poli
 
 def test_tuning_presets_make_measurable_differences():
     r = js("""
-const P = D.PRESETS, top = (spec) => { const r = R.newRace({ track: "harbour", mode: "timetrial", laps: 1, player: { spec } }); r.state = "race"; let best = 0;
-  for (let i = 0; i < 120 * 8; i++) { R.step(r, 1 / 120, { steer: R.aiInput(r, r.cars[0]).steer, thr: true, brk: false, nitro: false }); best = Math.max(best, r.cars[0].fwd); } return best; };
+// top speed on an endless straight: the car is held on one point of the road (no corner ever cuts the run short)
+const P = D.PRESETS, top = (spec) => { const r = R.newRace({ track: "harbour", mode: "timetrial", laps: 1, player: { spec } }); r.state = "race"; let best = 0; const me = r.cars[0];
+  for (let i = 0; i < 120 * 40; i++) { me.a = r.trk.ANG[me.idx]; me.x = r.trk.P[me.idx][0]; me.y = r.trk.P[me.idx][1]; R.step(r, 1 / 120, { steer: 0, thr: true, brk: false, nitro: false }); best = Math.max(best, me.fwd); } return best; };
 // the same flick at the same speed: how big a slide it makes, and how long the slide lasts above the drift threshold
 const slide = (spec) => { const r = R.newRace({ track: "harbour", mode: "drift", laps: 1, player: { spec } }); r.state = "race"; const me = r.cars[0];
   me.a = r.trk.ANG[me.idx]; me.vx = Math.cos(me.a) * 420; me.vy = Math.sin(me.a) * 420; let peak = 0, held = 0;
