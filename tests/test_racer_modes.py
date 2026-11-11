@@ -123,12 +123,12 @@ def test_endurance_tyres_wear_and_the_pit_box_fixes_them():
 const lapAt = (wear) => { const r = R.newRace({ track: "kerbside", mode: "endurance", laps: 3 }); r.cars[0].wear = wear; let t = 0; const me = r.cars[0];
   while (me.laps < 2 && t < 120) { if (me.laps >= 1) me.wear = wear; R.step(r, 1 / 120, null); t += 1 / 120; } return me.lapTimes[1]; };
 const fresh = lapAt(0), worn = lapAt(0.9);
-// wear builds up over a stint; then stop in the box before the line
+// wear builds up over a stint; then stop in the box before the line (brake to a crawl and roll in, as a player would)
 const r = R.newRace({ track: "kerbside", mode: "endurance", laps: 6 }); const me = r.cars[0], t = r.trk;
 while (me.laps < 2) R.step(r, 1 / 120, null);
 const wear2 = me.wear;
 let pitted = false, ev = [];
-for (let k = 0; k < 120 * 60 && !pitted; k++) { const box = me.idx >= t.N - 22 && me.idx < t.N - 1; const a = R.aiInput(r, me); R.step(r, 1 / 120, box ? { steer: a.steer, thr: false, brk: true, nitro: false } : a); ev.push(...r.events.splice(0)); pitted = ev.some((e) => e.type === "pit" && e.done); }
+for (let k = 0; k < 120 * 60 && !pitted; k++) { const box = me.idx >= t.N - 22 && me.idx < t.N - 1; const a = R.aiInput(r, me); R.step(r, 1 / 120, box ? { steer: a.steer, thr: me.fwd < 40, brk: me.fwd > 80, nitro: false } : a); ev.push(...r.events.splice(0)); pitted = ev.some((e) => e.type === "pit" && e.done); }
 const ai = (() => { const x = R.newRace({ track: "kerbside", mode: "endurance", laps: 8 }); run(x, null, 400); return x.cars.slice(1).map((c) => c.pits); })();
 console.log(JSON.stringify({ fresh, worn, wear2, pitted, after: me.wear, pits: me.pits, ai }));""")
     assert r["worn"] > r["fresh"] * 1.03                                        # worn tyres: slower laps

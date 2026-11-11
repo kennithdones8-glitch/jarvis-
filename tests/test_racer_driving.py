@@ -67,3 +67,50 @@ console.log(JSON.stringify({ all: cars.every((c) => ["F", "R", "A"].includes(c.d
     assert r["all"] and all(r["mix"].get(k, 0) >= 3 for k in "FRA")
     assert r["stats"] == "F" and r["tempest"] == "A" and r["ronin"] == "R"
     assert [r["def"], r["back"], r["old"], r["junk"]] == ["light", "strong", "light", "light"]
+
+
+def test_surfaces_grip_and_slow_you_the_way_they_look():
+    r = js("""
+// the same car, put down at the same speed at the same offset from the centre line, on different ground
+const on = (track, off, i0) => { const r = R.newRace({ track, mode: 'timetrial', laps: 1 }); r.state = 'race'; const c = r.cars[0], t = r.trk;
+  const i = i0 % t.N, [nx, ny] = t.nrm(i); c.idx = i; c.x = t.P[i][0] + nx * off; c.y = t.P[i][1] + ny * off; c.a = t.ANG[i]; c.vx = Math.cos(c.a) * 300; c.vy = Math.sin(c.a) * 300;
+  R.step(r, 1 / 120, { steer: 0, thr: false, brk: false }); const surf = c.surf;
+  for (let k = 0; k < 60; k++) { R.step(r, 1 / 120, { steer: 0, thr: false, brk: false }); }
+  return { surf, speed: Math.hypot(c.vx, c.vy) }; };
+const TW = R.TW, t = R.newRace({ track: 'kerbside', mode: 'timetrial', laps: 1 }).trk;
+// a straight piece of track (no kerbs, no gravel): road, then apron, then grass
+let s = 0; for (let i = 0; i < t.N; i++) { let ok = true; for (let k = -10; k <= 70; k++) if (Math.abs(R.wrapA(t.ANG[(i + k + 6 + t.N) % t.N] - t.ANG[(i + k - 6 + t.N) % t.N])) > 0.1) ok = false; if (ok) { s = i; break; } }
+// a bend, and its outside: gravel
+let b = 0, side = 1; for (let i = 0; i < t.N; i++) { const b2 = R.wrapA(t.ANG[(i + 6) % t.N] - t.ANG[(i - 6 + t.N) % t.N]); if (Math.abs(b2) > 0.7) { b = i; side = b2 > 0 ? -1 : 1; break; } }
+console.log(JSON.stringify({ road: on('kerbside', 0, s), apron: on('kerbside', TW / 2 + 14, s), grass: on('kerbside', TW / 2 + 40, s), gravel: on('kerbside', side * (TW / 2 + 45), b), kerb: on('kerbside', -side * (TW / 2 + 5), b).surf }));""")
+    assert [r[k]["surf"] for k in ("road", "apron", "grass", "gravel")] == ["road", "apron", "grass", "gravel"] and r["kerb"] == "kerb"
+    assert r["road"]["speed"] > r["apron"]["speed"] > r["grass"]["speed"] > r["gravel"]["speed"]
+
+
+def test_barriers_stop_you_driving_through_and_scrape_speed():
+    r = js("""
+const hit = (track) => { const r = R.newRace({ track, mode: 'timetrial', laps: 1 }); r.state = 'race'; const c = r.cars[0], t = r.trk, i = c.idx, [nx, ny] = t.nrm(i);
+  // aimed 35 degrees off the road's direction, straight at the barrier, at speed
+  c.a = t.ANG[i] + 0.6; c.vx = Math.cos(c.a) * 420; c.vy = Math.sin(c.a) * 420; let far = 0, v0 = 420;
+  for (let k = 0; k < 120 * 2; k++) { R.step(r, 1 / 120, { steer: 0, thr: true, brk: false }); const [n2, d2] = R.nearest(t, c.x, c.y, c.idx); far = Math.max(far, d2); }
+  return { far, contacts: c.contacts, impacts: r.impacts.some((x) => x.wall) }; };
+console.log(JSON.stringify({ town: hit('oldtown'), park: hit('kerbside'), TW: R.TW }));""")
+    assert r["town"]["far"] < r["TW"] / 2 + 47 and r["park"]["far"] < r["TW"] / 2 + 98   # you never pass through
+    assert r["town"]["contacts"] >= 1 and r["town"]["impacts"]
+
+
+def test_the_slipstream_pulls_you_along_behind_another_car():
+    r = js("""
+const run = (withLead) => { const r = R.newRace({ track: 'harbour', mode: 'circuit', laps: 1, field: withLead ? [{ id: 'a', code: 'A', name: 'A', color: '#fff' }] : [] }); r.state = 'race';
+  const me = r.cars[0], t = r.trk, lead = withLead ? r.cars[1] : null;
+  // both pinned on a straight, you 70 units behind, both at 400; then 1.5 s flat out (the lead car holds 400)
+  let draft = 0;
+  for (let k = 0; k < 180; k++) { const i = me.idx, j = (i + 6) % t.N; me.a = t.ANG[i]; me.x = t.P[i][0]; me.y = t.P[i][1];
+    if (k === 0) { me.vx = Math.cos(me.a) * 400; me.vy = Math.sin(me.a) * 400; }
+    if (lead) { lead.a = t.ANG[i]; lead.x = t.P[i][0] + Math.cos(lead.a) * 70; lead.y = t.P[i][1] + Math.sin(lead.a) * 70; lead.vx = Math.cos(lead.a) * 400; lead.vy = Math.sin(lead.a) * 400; }
+    R.step(r, 1 / 120, { steer: 0, thr: true, brk: false }); draft = Math.max(draft, me.draft); }
+  return { speed: me.fwd, draft }; };
+const alone = run(false), tow = run(true);
+console.log(JSON.stringify({ alone, tow }));""")
+    assert r["tow"]["draft"] > 0.3 and r["alone"]["draft"] < 0.01
+    assert r["tow"]["speed"] > r["alone"]["speed"] + 3

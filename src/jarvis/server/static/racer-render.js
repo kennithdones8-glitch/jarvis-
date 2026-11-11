@@ -1212,6 +1212,40 @@
       }
       return Math.max(-1, Math.min(1, out));
     }
+    // The driving line (Settings): the ideal speed for your car round this track, from the same corner and braking
+    // limits the AI uses. Green where you can accelerate, amber where you hold, red where you should be braking.
+    function lineFor(race, me) {
+      const key = race.trk.key + "|" + JSON.stringify(me.spec) + "|" + race.wetness.toFixed(1);
+      if (G.lineKey === key) return G.lineV;
+      const t = race.trk, N = t.N, S = me.spec, ty = S.tyre ? S.tyre.dry * (1 - race.wetness) + S.tyre.wet * race.wetness : 1, wetF = 1 - 0.26 * race.wetness;
+      const auth = S.steer * 0.9, aLat = S.grip * ty * (1 + 0.05 * (S.aero || 0)) * (1 - 0.06 * (S.slide || 0)) * 90 * wetF * 0.85, B = S.brake * 0.5 * (1 - 0.2 * race.wetness);
+      const top = me.acc * (1 + (S.turbo || 0)) / S.drag, A = me.acc * 0.6, v = new Float32Array(N), mode = new Uint8Array(N);
+      for (let i = 0; i < N; i++) { const kap = t.K[i] + 1e-6; v[i] = Math.min(top, auth / (kap + 0.42 * auth / 700), Math.sqrt(aLat / kap)); }
+      for (let pass = 0; pass < 2; pass++) for (let i = 2 * N; i > 0; i--) { const a = i % N, b = (i + 1) % N; v[a] = Math.min(v[a], Math.sqrt(v[b] * v[b] + 2 * B * SP)); }   // brake into each corner
+      const f = Float32Array.from(v);
+      for (let pass = 0; pass < 2; pass++) for (let i = 0; i < 2 * N; i++) { const a = i % N, b = (i + 1) % N; f[b] = Math.min(f[b], Math.sqrt(f[a] * f[a] + 2 * A * SP)); }   // and power out
+      for (let i = 0; i < N; i++) { const nx = f[(i + 2) % N] - f[i]; mode[i] = v[i] < f[i] - 4 || nx < -3 ? 2 : nx > 3 ? 0 : 1; }
+      G.lineKey = key; G.lineV = mode; return mode;
+    }
+    function drawLine(ctx, race, me) {
+      const t = race.trk, mode = lineFor(race, me), col = ["rgba(90,220,120,0.55)", "rgba(240,200,70,0.6)", "rgba(240,70,60,0.65)"];
+      ctx.save(); ctx.lineCap = "round"; ctx.lineWidth = 7;
+      for (let k = 2; k < 90; k++) {
+        const i = (me.idx + k) % t.N, j = (i + 1) % t.N, b2 = wrapA(t.ANG[(i + 6) % t.N] - t.ANG[(i - 6 + t.N) % t.N]), sd = b2 > 0 ? 1 : -1, o = sd * TW * 0.22 * Math.min(1, Math.abs(b2));
+        const b3 = wrapA(t.ANG[(j + 6) % t.N] - t.ANG[(j - 6 + t.N) % t.N]), o2 = (b3 > 0 ? 1 : -1) * TW * 0.22 * Math.min(1, Math.abs(b3)), [nx, ny] = t.nrm(i), [mx, my] = t.nrm(j);
+        ctx.globalAlpha = Math.min(1, (90 - k) / 30);
+        ctx.strokeStyle = col[mode[i]]; ctx.beginPath(); ctx.moveTo(t.P[i][0] + nx * o, t.P[i][1] + ny * o); ctx.lineTo(t.P[j][0] + mx * o2, t.P[j][1] + my * o2); ctx.stroke();
+      }
+      ctx.restore();
+    }
+    // the slipstream: wind lines streaming past your car while you're tucked in behind someone
+    function drawDraft(ctx, me, time) {
+      const hx = Math.cos(me.a), hy = Math.sin(me.a), px = -hy, py = hx, a = Math.min(1, (me.draft - 0.25) * 2);
+      ctx.save(); ctx.strokeStyle = `rgba(220,235,255,${0.35 * a})`; ctx.lineWidth = 1.6;
+      for (let k = 0; k < 6; k++) { const side = (k % 2 ? 1 : -1) * (14 + (k >> 1) * 7), ph = ((time * 3.2 + k * 0.37) % 1), back = -10 - ph * 70;
+        ctx.beginPath(); ctx.moveTo(me.x + hx * (back + 30) + px * side, me.y + hy * (back + 30) + py * side); ctx.lineTo(me.x + hx * back + px * side, me.y + hy * back + py * side); ctx.stroke(); }
+      ctx.restore();
+    }
     function camera(dt, W, H, focus) {
       G.camBase = Math.max(0.42, Math.min(1.45, Math.min(W, H) / 560));
       if (G.mode === "photo" && G.ph) { const P = G.ph; return { cx: P.x, cy: P.y, z: P.z * G.camBase, rot: P.rot, eyeX: W / 2, eyeY: H / 2 }; }
@@ -1251,6 +1285,7 @@
       G.cam.z = G.cam.z ? G.cam.z + (z - G.cam.z) * Math.min(1, dt * 3) : z;
       G.bars += (bars - G.bars) * Math.min(1, dt * 3);
       let cx = G.cam.x, cy = G.cam.y;
+      if (G.mode === "race" && focus.surf === "kerb" && Math.abs(focus.fwd || 0) > 150 && G.settings.shake !== false && !G.reduce) G.shake = Math.max(G.shake, 0.12);   // the kerb rumble
       if (G.shake > 0) { cx += (Math.random() - 0.5) * 16 * G.shake; cy += (Math.random() - 0.5) * 16 * G.shake; G.shake = Math.max(0, G.shake - dt * 2.5); }
       const eyeX = W / 2, eyeY = chase && (G.mode === "race" || (G.mode === "replay" && G.rp && G.rp.cam === "chase")) ? H * 0.62 : H / 2;
       return { cx, cy, z: G.cam.z, rot: G.cam.rot, eyeX, eyeY };
@@ -1309,6 +1344,8 @@
       }
       if (q.trails) drawTrails(ctx);
       if (G.mode === "race" || G.mode === "replay") drawModeMarks(ctx, race, time);
+      if (G.mode === "race" && G.settings.line && race.state !== "done") drawLine(ctx, race, me);
+      if (G.mode === "race" && (me.draft || 0) > 0.25 && !G.reduce) drawDraft(ctx, me, time);
       const gp = G.mode === "race" && G.cfg.ghostOn !== false ? ghostPose(race) : null;
       if (gp) drawCar(ctx, { x: gp[0], y: gp[1], a: gp[2], color: me.color, look: me.look, shape: me.shape }, { ghost: true });
       const onPodium = G.mode === "podium" && G.podium ? new Set(G.podium.map((q) => q.c)) : null;
@@ -1634,7 +1671,7 @@
         const me = G.race.cars[0], t = G.race.trk, live = G.mode === "race" && !G.paused;
         const crowd = live ? clamp(1 - Math.hypot(me.x - t.P[0][0], me.y - t.P[0][1]) / 900, 0, 1) : 0;   // the grandstands are by the line
         G.audio.update(live ? { speed: Math.max(0, me.fwd), top: me.acc / me.spec.drag, slip: me.on ? me.slip : 0, boost: me.boost, on: me.on, thr: !!me.thr, turbo: me.spec.turbo || 0,
-          gear: G.race.mode === "drag" ? me.gear : undefined, rpm: me.rpm, wet: G.race.wetness, tunnel: G.inTunnel, crowd } : null);
+          gear: G.race.mode === "drag" ? me.gear : undefined, rpm: me.rpm, wet: G.race.wetness, tunnel: G.inTunnel, crowd, surf: me.surf } : null);
       }
       render(rdt);
     }

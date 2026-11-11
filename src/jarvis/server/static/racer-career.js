@@ -43,7 +43,7 @@
       contracts: [], records: { drag: { best: 0, wins: 0 }, pursuit: { best: 0, escapes: 0, busts: 0, heat: 0, fines: 0 }, touge: { wins: 0 }, endurance: { wins: 0 }, tournament: { wins: 0 }, delivery: { done: 0 } },
       tourney: null, wager: null,
       ng: 0, endings: {},
-      settings: { quality: "auto", camera: "chase", shake: true, sound: true, music: true, announcer: true, assist: "light", volume: 0.7, reducedMotion: null, ghost: true, difficulty: "medium", damage: "cosmetic" } };
+      settings: { quality: "auto", camera: "chase", shake: true, sound: true, music: true, announcer: true, assist: "light", line: false, volume: 0.7, reducedMotion: null, ghost: true, difficulty: "medium", damage: "cosmetic" } };
   }
   // Validate anything loaded (from storage or an import). Unknown keys are dropped, bad values replaced by defaults,
   // and every replacement is reported, so a damaged save is repaired visibly instead of silently.
@@ -142,7 +142,7 @@
       S.quality = ["auto", "low", "medium", "high"].includes(st.quality) ? st.quality : "auto";
       S.camera = st.camera === "classic" ? "classic" : "chase";
       S.assist = ["off", "light", "strong"].includes(st.assist) ? st.assist : "light";
-      for (const k of ["shake", "sound", "music", "ghost", "announcer"]) S[k] = bool(st[k], S[k]);
+      for (const k of ["shake", "sound", "music", "ghost", "announcer", "line"]) S[k] = bool(st[k], S[k]);
       S.volume = num(st.volume, 0.7, 0, 1); S.reducedMotion = typeof st.reducedMotion === "boolean" ? st.reducedMotion : null;
       S.difficulty = ["easy", "medium", "hard"].includes(st.difficulty) ? st.difficulty : "medium";
       S.damage = st.damage === "persistent" ? "persistent" : "cosmetic";

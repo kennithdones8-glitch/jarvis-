@@ -833,7 +833,7 @@
           select("s-assist", "Slide assist", S.assist || "light", [["off", "Off (all you)"], ["light", "Light (a little countersteer)"], ["strong", "Strong (catches most slides)"]], (v) => { S.assist = v; apply(); }),
           select("s-diff", "Career AI", S.difficulty, [["easy", "Easy"], ["medium", "Medium"], ["hard", "Hard"]], (v) => { S.difficulty = v; apply(); }),
           select("s-damage", "Damage", S.damage, [["cosmetic", "Cosmetic only"], ["persistent", "Carries over (repairs cost money)"]], (v) => { S.damage = v; apply(); })),
-        el("div", "race-stack row", toggle("shake", "Camera shake"), toggle("ghost", "Ghost car"), toggle("sound", "Sound"), toggle("music", "Music"), audio && audio.canSpeak === true ? toggle("announcer", "Announcer") : null),
+        el("div", "race-stack row", toggle("shake", "Camera shake"), toggle("ghost", "Ghost car"), toggle("line", "Driving line"), toggle("sound", "Sound"), toggle("music", "Music"), audio && audio.canSpeak === true ? toggle("announcer", "Announcer") : null),
         el("label", "race-field", el("span", "race-lbl", "Volume"), vol),
         el("p", "race-lbl", "Controls"),
         el("p", "race-note", "Arrows or WASD drive · Space or Shift: nitro · P or Esc: pause · Esc in menus: back. Touch: steering pads left, NOS, brake and gas right."),

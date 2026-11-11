@@ -189,7 +189,10 @@
         nodes.lfo2.frequency.setTargetAtTime(Math.max(3, f / 5), t, 0.05); nodes.lope.gain.setTargetAtTime((V.lope || 0) * 0.6 * Math.max(0, 1 - r * 1.6), t, 0.08);
         nodes.lp.frequency.setTargetAtTime(350 + V.cut * (0.25 + 0.75 * Math.min(1, r)) * (p.thr === false ? 0.6 : 1), t, 0.05);
         nodes.eg.gain.setTargetAtTime((V.electric ? 0.012 : (0.05 + 0.1 * Math.min(1, r)) * (shiftDip > 0 ? 0.35 : 1)) * (p.thr === false ? 0.75 : 1), t, 0.03);
-        nodes.tyre.g.gain.setTargetAtTime(p.on && p.slip > 90 ? Math.min(0.12, (p.slip - 90) / 900) : 0, t, 0.04);
+        // tyres: a squeal when sliding; on a kerb a low rumble, on grass a hiss, on gravel a crunch
+        const SURF = { kerb: [170, 0.07, 3], grass: [700, 0.035, 1.2], gravel: [420, 0.08, 1.5] }[p.surf], mv = Math.min(1, (p.speed || 0) / 300);
+        if (SURF && mv > 0.1) { nodes.tyre.f.frequency.setTargetAtTime(SURF[0], t, 0.03); nodes.tyre.f.Q.setTargetAtTime(SURF[2], t, 0.03); nodes.tyre.g.gain.setTargetAtTime(SURF[1] * mv, t, 0.03); }
+        else { nodes.tyre.f.frequency.setTargetAtTime(1800, t, 0.05); nodes.tyre.f.Q.setTargetAtTime(6, t, 0.05); nodes.tyre.g.gain.setTargetAtTime(p.on && p.slip > 90 ? Math.min(0.12, (p.slip - 90) / 900) : 0, t, 0.04); }
         nodes.nitro.g.gain.setTargetAtTime(p.boost ? 0.09 : 0, t, 0.06);
         // turbo: whistles as it spools, blows off when you lift
         const tb = p.turbo || 0;
