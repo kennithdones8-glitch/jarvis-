@@ -43,7 +43,7 @@
       contracts: [], records: { drag: { best: 0, wins: 0 }, pursuit: { best: 0, escapes: 0, busts: 0, heat: 0, fines: 0 }, touge: { wins: 0 }, endurance: { wins: 0 }, tournament: { wins: 0 }, delivery: { done: 0 } },
       tourney: null, wager: null,
       ng: 0, endings: {},
-      settings: { quality: "auto", camera: "chase", shake: true, sound: true, music: true, volume: 0.7, reducedMotion: null, ghost: true, difficulty: "medium", damage: "cosmetic" } };
+      settings: { quality: "auto", camera: "chase", shake: true, sound: true, music: true, announcer: true, volume: 0.7, reducedMotion: null, ghost: true, difficulty: "medium", damage: "cosmetic" } };
   }
   // Validate anything loaded (from storage or an import). Unknown keys are dropped, bad values replaced by defaults,
   // and every replacement is reported, so a damaged save is repaired visibly instead of silently.
@@ -141,7 +141,7 @@
       const st = raw.settings, S = s.settings;
       S.quality = ["auto", "low", "medium", "high"].includes(st.quality) ? st.quality : "auto";
       S.camera = st.camera === "classic" ? "classic" : "chase";
-      for (const k of ["shake", "sound", "music", "ghost"]) S[k] = bool(st[k], S[k]);
+      for (const k of ["shake", "sound", "music", "ghost", "announcer"]) S[k] = bool(st[k], S[k]);
       S.volume = num(st.volume, 0.7, 0, 1); S.reducedMotion = typeof st.reducedMotion === "boolean" ? st.reducedMotion : null;
       S.difficulty = ["easy", "medium", "hard"].includes(st.difficulty) ? st.difficulty : "medium";
       S.damage = st.damage === "persistent" ? "persistent" : "cosmetic";
@@ -649,7 +649,8 @@
       return { id, name: D.DRIVERS[id].name, w: k.w + (r.losses || 0), l: k.l + (r.wins || 0) };   // their losses to you count for you
     });
     const me = Object.keys(D.RIVAL_LINES).reduce((a, id) => { const r = save.rivals[id]; if (r) { a.w += r.wins || 0; a.l += r.losses || 0; } return a; }, { id: "YOU", name: save.profile.name, w: 0, l: 0, you: true });
-    return [...rows, me].map((x) => ({ ...x, pts: x.w * 3 - x.l })).sort((a, b) => b.pts - a.pts || b.w - a.w);
+    // ranked by win rate (so racing more often doesn't buy a place), then by wins
+    return [...rows, me].map((x) => ({ ...x, pts: x.w + x.l ? Math.round(100 * x.w / (x.w + x.l)) : 0 })).sort((a, b) => b.pts - a.pts || b.w - a.w);
   }
   const repTitle = (save) => { let t = D.REP_TITLES[0][1]; for (const [min, name] of D.REP_TITLES) if (save.rep >= min) t = name; return t; };
   // Crew matters: open once their conditions are met, and stay settled the way you settled them.

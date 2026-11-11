@@ -25,7 +25,10 @@ WHAT'S IN IT
                 each has a perk (cheaper repairs, more XP, more prize money, earlier events).
   World map     Four districts with home crews. Win there to take a district over; take one over
                 and its crew wants a turf war (a 2 v 2 team race). A weekly special pays extra,
-                rumours lead to secret events, and the rivals race each other between your races.
+                rumours lead to secret events, and the rivals race each other between your races
+                (street rankings; a close loss becomes a showdown you can gatecrash). Your story
+                choices open and close events, tonight-only events come and go every three race
+                days, and crew members argue at HQ for you to settle.
   Modes         Circuit, sprint, elimination, time trial with medals, drift, one-on-one rival races,
                 drag (launch on the revs, shift near the top), touge (pull 66 m clear and it's over),
                 endurance (tyres wear; stop in the pit box), delivery (checkpoints against the clock,
@@ -43,7 +46,9 @@ WHAT'S IN IT
   Free play     Any track and mode with your own rules: laps, opponents and their car class, AI
                 difficulty, nitro, collisions and damage on or off, time of day, weather and weather
                 that changes during the race.
-  Garage        28 cars in four classes, each with its own weight, turbo, grip and handling.
+  Garage        38 cars in four classes (tuners, exotics, muscle, a pickup, an electric car and
+                classics), each with its own handling, power band, engine sound and factory livery.
+                Some are bought, some earned (achievements, medals, crew, pursuits, the story).
                 Nine upgrades, tuning (gearing, downforce, differential, tyres and presets) with a
                 live comparison and a test lap, paint, livery colours, decals, wheels, body kits,
                 spoilers, finishes, tints, lights, exhausts and numbers. Damage can carry over
@@ -51,13 +56,15 @@ WHAT'S IN IT
   Replays       Watch any race again: four cameras, any car, slow motion, and a list of highlights.
   Photo mode    From the pause menu or a replay: move, zoom and turn the camera, pick a filter and
                 a vignette, hide the cars, and save a PNG.
-  Sound         All synthesised: an engine voice per car type, gear changes, turbo whistle and
-                blow-off, crowd, rain, sirens, police radio, and music that follows the race.
+  Sound         All synthesised: an engine voice per car, gear changes, turbo whistle and
+                blow-off, crowd cheers and gasps, rain, sirens, police radio, menu sounds, and music
+                that follows the race. A race announcer speaks with your browser's own voice
+                (Settings: Announcer; only shown where the browser can speak).
   Conditions    Day, dawn, dusk and night (headlights and street lamps); dry, rain (less grip,
                 spray, puddles) and fog, and weather that changes mid-race.
   Settings      Graphics quality (Auto adapts to your device), camera (Chase turns with your car,
                 or Classic north-up), camera shake, reduced motion, damage (cosmetic or persistent),
-                sound, music, volume, career difficulty, ghost car.
+                sound, music, announcer, volume, career difficulty, ghost car.
 
 YOUR SAVE
   Progress is kept in this browser only (local storage). A backup copy is written with every save;

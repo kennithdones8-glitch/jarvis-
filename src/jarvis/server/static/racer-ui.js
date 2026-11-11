@@ -27,7 +27,9 @@
     if (audio) view.setAudio(audio);
     view.applySettings(save.settings);
     const toastBox = el("div", "race-toasts"); toastBox.setAttribute("aria-live", "polite"); view.stage.append(toastBox);
+    let toastSnd = 0;
     function toast(text, kind) {
+      if (audio && audio.ui && Date.now() - toastSnd > 350 && (kind === "warn" || kind === "gold")) { toastSnd = Date.now(); audio.ui(kind === "warn" ? "error" : "achievement"); }
       const t = el("div", "race-toast" + (kind ? " " + kind : ""), text); toastBox.append(t);
       setTimeout(() => t.remove(), 4200);
     }
@@ -47,7 +49,9 @@
     const btn = (label, fn, cls = "", attrs = {}) => {
       const b = el("button", "race-go" + (cls ? " " + cls : ""), label); b.type = "button";
       for (const [k, v] of Object.entries(attrs)) b.setAttribute(k, v);
-      b.addEventListener("click", (e) => { if (audio) audio.click(); fn(e); });
+      // menu sounds: Back steps down, a main action confirms, everything else clicks
+      const snd = label === "Back" ? "back" : /\b(alt|small)\b/.test(cls) ? null : "confirm";
+      b.addEventListener("click", (e) => { if (audio) { if (snd && audio.ui) audio.ui(snd); else audio.click(); } fn(e); });
       return b;
     };
     const chip = (text, cls = "") => el("span", "race-tag" + (cls ? " " + cls : ""), text);
@@ -372,6 +376,7 @@
         : s.place === 1 ? "Victory · P1" : `P${s.place} of ${s.of}`;
       const passLine = ctx.kind === "story" || ctx.kind === "arc" || ctx.kind === "side" || ctx.kind === "rival" || ctx.kind === "champ" || ctx.kind === "tourney"
         ? el("p", "race-goal " + (out.passed ? "ok" : "bad"), (out.passed ? "Goal met: " : "Goal missed: ") + C.goalText(ev.goal)) : null;
+      if (audio && audio.ui && (out.unlocked.length || out.levelUp)) setTimeout(() => audio.ui("unlock"), 1200);   // after the finish fanfare
       const unlocks = out.unlocked.map((u) => el("li", "race-li", u.type === "district" ? `New district: ${u.name}` : u.gift ? `New car in your garage: ${u.name}` : `Car unlocked to buy: ${u.name}`));
       const ach = out.achievements.map((id) => el("li", "race-li", `Achievement: ${D.ACHIEVEMENTS[id].name}`));
       for (const id of out.achievements) toast(`Achievement unlocked: ${D.ACHIEVEMENTS[id].name}${D.ACH_REWARDS[id] ? " · reward: " + D.ACH_REWARDS[id].text : ""}`, "gold");
@@ -492,7 +497,7 @@
           e.done ? chip("Won", "done") : btn("Race", () => brief({ kind: "side", event: e }), "small"), e.showdown ? "story" : "")))) : null;
       const ranks = C.rankings(save);
       const rankBox = ranks.length > 1 ? el("div", "race-panel", el("p", "race-lbl", "Street rankings"), el("ol", "race-list", ...ranks.map((x, k) => el("li", "race-li" + (x.you ? " story" : ""),
-        el("span", "", `${k + 1}. ${x.name}`), el("span", "race-sub", `${x.w} won · ${x.l} lost`), chip(`${x.pts} pts`))))) : null;
+        el("span", "", `${k + 1}. ${x.name}`), el("span", "race-sub", `${x.w} won · ${x.l} lost`), chip(`${x.pts}% won`))))) : null;
       const special = fe ? el("div", "race-panel mission", el("p", "race-eyebrow", `${C.weekday(save)} · day ${save.world.day} · weekly special`), el("b", "race-title", fe.title),
         el("p", "race-note", `${D.DISTRICTS[fe.district].name} · ${MODE_NAME[fe.mode]} · pays 50% more today.`), btn("Race it", () => brief({ kind: "side", event: { ...fe, goal: fe.goal || (fe.mode === "timetrial" ? { type: "time", max: D.PAR[fe.track] * fe.laps * 1.12 } : { type: "place", max: fe.mode === "elimination" ? 2 : 3 }) } }), "small")) : null;
       const heard = D.RUMORS.filter((r) => save.world.rumors[r.id]);
@@ -684,7 +689,7 @@
       const handling = car.handling ? el("p", "race-note race-handling", car.handling) : null;
       const facts = el("div", "race-tags", chip(`Rating ${car.cls} ${C.rating(spec)}`, "gold"), chip(`${car.cls} · ${car.cat}`), chip(`Top ≈ ${KMH(spec)} km/h`), chip(`${Math.round((spec.mass || 1) * 1000)} kg`), ...TRAITS(car).map((t) => chip(t, "small")));
       const action = owned ? (id === curId ? chip("Driving this car", "gold") : btn("Drive this car", () => { save.garage.current = id; persist(); show(garage, { replace: true }); }))
-        : av.ok && car.price !== null ? btn(`Buy for ${money(car.price)}`, () => { const r = C.buyCar(save, id); if (!r.ok) return toast(r.error, "warn"); persist(); toast(`${car.name} is yours.`, "gold"); r.achievements.forEach((a) => toast(`Achievement unlocked: ${D.ACHIEVEMENTS[a].name}${D.ACH_REWARDS[a] ? " · reward: " + D.ACH_REWARDS[a].text : ""}`, "gold")); show(garage, { replace: true }); }, save.money >= car.price ? "" : "alt")
+        : av.ok && car.price !== null ? btn(`Buy for ${money(car.price)}`, () => { const r = C.buyCar(save, id); if (!r.ok) return toast(r.error, "warn"); if (audio && audio.ui) audio.ui("buy"); persist(); toast(`${car.name} is yours.`, "gold"); r.achievements.forEach((a) => toast(`Achievement unlocked: ${D.ACHIEVEMENTS[a].name}${D.ACH_REWARDS[a] ? " · reward: " + D.ACH_REWARDS[a].text : ""}`, "gold")); show(garage, { replace: true }); }, save.money >= car.price ? "" : "alt")
           : el("p", "race-note", av.why);
       const repairBtn = owned && st.dmg > 0.01 ? btn(`Repair ${Math.round(st.dmg * 100)}% damage · ${money(C.repairCost(id, st) * (save.crew.members.nia && save.crew.members.nia.hired ? 0.7 : 1))}`, () => { const r = C.repair(save, id); if (!r.ok) return toast(r.error, "warn"); persist(); toast(`Repaired for ${money(r.cost)}.`, "info"); show(garage, { replace: true }); }, "alt small") : null;
       const TABS = { upgrades: "Upgrades", tune: "Tuning", paint: "Paint", decal: "Decals", wheels: "Wheels", tyres: "Tyres", body: "Arches", bumper: "Bumper", bonnet: "Bonnet", spoiler: "Spoiler", finish: "Finish", tint: "Glass", lights: "Lights", exhaust: "Exhaust", number: "Number" };
@@ -698,10 +703,10 @@
           el("div", "race-stack row", action, testBtn, repairBtn), owned ? tabs : null, owned ? tabBody(id, st, drawBars) : null))]);
     }
     function tabBody(id, st, drawBars) {
-      const set = (key, value) => { const r = C.setLook(save, id, key, value); if (!r.ok) return toast(r.error, "warn"); if (r.cost) toast(`Bought for ${money(r.cost)}.`, "info"); persist(); show(garage, { replace: true }); };
+      const set = (key, value) => { const r = C.setLook(save, id, key, value); if (!r.ok) return toast(r.error, "warn"); if (r.cost) { toast(`Bought for ${money(r.cost)}.`, "info"); if (audio && audio.ui) audio.ui("buy"); } persist(); show(garage, { replace: true }); };
       if (gTab === "upgrades") return el("ul", "race-list", ...Object.entries(D.UPGRADES).map(([p, u]) => {
         const lv = st.upgrades[p], cost = C.upgradeCost(id, p, lv, save);
-        const b = cost === null ? chip("Max", "gold") : btn(money(cost), () => { const r = C.buyUpgrade(save, id, p); if (!r.ok) return toast(r.error, "warn"); persist(); r.achievements.forEach((a) => toast(`Achievement unlocked: ${D.ACHIEVEMENTS[a].name}${D.ACH_REWARDS[a] ? " · reward: " + D.ACH_REWARDS[a].text : ""}`, "gold")); show(garage, { replace: true }); }, "small" + (save.money >= cost ? "" : " alt"));
+        const b = cost === null ? chip("Max", "gold") : btn(money(cost), () => { const r = C.buyUpgrade(save, id, p); if (!r.ok) return toast(r.error, "warn"); if (audio && audio.ui) audio.ui("buy"); persist(); r.achievements.forEach((a) => toast(`Achievement unlocked: ${D.ACHIEVEMENTS[a].name}${D.ACH_REWARDS[a] ? " · reward: " + D.ACH_REWARDS[a].text : ""}`, "gold")); show(garage, { replace: true }); }, "small" + (save.money >= cost ? "" : " alt"));
         if (cost !== null) {   // preview: hover or focus shows the next level on the bars
           const next = { ...st, upgrades: { ...st.upgrades, [p]: lv + 1 } };
           const on = () => drawBars(C.carStats(id, next, save.sponsor)), off = () => drawBars(C.carStats(id, st, save.sponsor));
@@ -827,7 +832,7 @@
           select("s-motion", "Reduced motion", S.reducedMotion === null ? "system" : S.reducedMotion ? "on" : "off", [["system", "Follow system"], ["on", "On"], ["off", "Off"]], (v) => { S.reducedMotion = v === "system" ? null : v === "on"; apply(); }),
           select("s-diff", "Career AI", S.difficulty, [["easy", "Easy"], ["medium", "Medium"], ["hard", "Hard"]], (v) => { S.difficulty = v; apply(); }),
           select("s-damage", "Damage", S.damage, [["cosmetic", "Cosmetic only"], ["persistent", "Carries over (repairs cost money)"]], (v) => { S.damage = v; apply(); })),
-        el("div", "race-stack row", toggle("shake", "Camera shake"), toggle("ghost", "Ghost car"), toggle("sound", "Sound"), toggle("music", "Music")),
+        el("div", "race-stack row", toggle("shake", "Camera shake"), toggle("ghost", "Ghost car"), toggle("sound", "Sound"), toggle("music", "Music"), audio && audio.canSpeak === true ? toggle("announcer", "Announcer") : null),
         el("label", "race-field", el("span", "race-lbl", "Volume"), vol),
         el("p", "race-lbl", "Controls"),
         el("p", "race-note", "Arrows or WASD drive · Space or Shift: nitro · P or Esc: pause · Esc in menus: back. Touch: steering pads left, NOS, brake and gas right."),

@@ -1101,6 +1101,10 @@
       if (p) { if (G.hooks.pause) G.hooks.pause(); else fallbackCard("pause"); }
       else { G.ui.overlay.hidden = true; G.ui.stage.focus({ preventScroll: true }); }
     }
+    // The announcer and the crowd react to what happens (both silent if sound is off).
+    const ann = (t, p) => { if (G.audio && G.audio.say) G.audio.say(t, p); };
+    const roar = (k) => { if (G.audio && G.audio.crowd) G.audio.crowd(k); };
+    const leading = (r) => !!(r.rank && r.rank[r.cars[0].id] === 0);
     function banner(text, ms, warn) {
       const b = G.ui.banner; b.textContent = text; b.classList.toggle("warn", !!warn); b.hidden = false;
       b.classList.remove("pop"); void b.offsetWidth; b.classList.add("pop");
@@ -1121,16 +1125,18 @@
       for (const e of r.events.splice(0)) {
         if (G.mode !== "race") continue;
         if (G.hooks.event) G.hooks.event(e);
-        if (e.type === "go") { G.ui.lights.hidden = true; banner("Go!", 900); status(r.laps > 99 ? "Lights out, go!" : `Lap 1 of ${r.laps}: lights out, go!`); if (G.audio) G.audio.go(); }
+        if (e.type === "go") { G.ui.lights.hidden = true; banner("Go!", 900); status(r.laps > 99 ? "Lights out, go!" : `Lap 1 of ${r.laps}: lights out, go!`); if (G.audio) G.audio.go(); if (r.mode !== "timetrial" && r.mode !== "pursuit") ann(r.mode === "drag" ? "Go!" : "Lights out, and away they go!", 2); }
         else if (e.type === "lap") {
           const best = G.cfg.best;
           banner((e.lap === r.laps - 1 ? "Final lap" : "Lap " + (e.lap + 1)) + " · " + fmt(e.time) + (!best || e.time < best ? " fastest" : ""), 1400);
           status(`Lap ${e.lap + 1} of ${r.laps}, P${standings(r).indexOf(r.cars[0]) + 1}.`);
           if (G.audio) { G.audio.lap(); if (e.lap === r.laps - 1 && G.audio.music) G.audio.music(null, 2); }   // the final lap: the music lifts
+          if (e.lap === r.laps - 1 && r.laps > 1) { ann(leading(r) ? "Final lap, and you're leading!" : "Final lap!", 2); roar("cheer"); }
         } else if (e.type === "finish") { mark("Finish"); finish(); }
         else if (e.type === "eliminated") {
           const c = r.cars.find((x) => x.code === e.code);
           banner(e.you ? "Eliminated" : `${c ? c.name : e.code} is out`, 1600, e.you);
+          if (!e.you) ann(`${c ? c.name : e.code} is out!`, 1);
           if (e.you) finish();
         } else if (e.type === "drift-bank" && e.pts > 150) banner(`+${e.pts.toLocaleString()}${e.mult > 1 ? " ×" + e.mult : ""}`, 900);
         else if (e.type === "drift-lost") banner("Combo lost", 700, true);
@@ -1138,11 +1144,12 @@
         else if (e.type === "overtake" && e.you && r.t - (G.otT || -9) > 1.2) {
           G.otT = r.t; const other = r.cars.find((c) => c.id === (e.gain ? e.on : e.by));
           mark(e.gain ? `You pass ${other ? other.code : ""}` : `${other ? other.code : "Rival"} passes you`);
-          if (e.gain) { banner(`Overtake · ${other ? other.code : ""}`, 800); if (!G.reduce) G.punch = Math.max(G.punch, 0.045); G.edge = 1; if (G.audio && G.audio.whoosh) G.audio.whoosh(); }
-          else banner(`${other ? other.code : "Rival"} passes`, 700, true);
-        } else if (e.type === "close-finish" && (e.a === "YOU" || e.b === "YOU")) { mark("Photo finish"); banner(`Photo finish · ${e.gap.toFixed(3)}s`, 1600); if (!G.reduce) G.timeScale = 0.2; }
+          if (e.gain) { banner(`Overtake · ${other ? other.code : ""}`, 800); if (!G.reduce) G.punch = Math.max(G.punch, 0.045); G.edge = 1; if (G.audio && G.audio.whoosh) G.audio.whoosh();
+            if (leading(r) && r.cars.length > 1) { ann("Into the lead!", 2); roar("cheer"); } }
+          else { banner(`${other ? other.code : "Rival"} passes`, 700, true); if (other && r.rank && r.rank[other.id] === 0) ann(`${other.name || other.code} takes the lead!`, 2); }
+        } else if (e.type === "close-finish" && (e.a === "YOU" || e.b === "YOU")) { mark("Photo finish"); banner(`Photo finish · ${e.gap.toFixed(3)}s`, 1600); roar("ooh"); ann("Photo finish!", 3); if (!G.reduce) G.timeScale = 0.2; }
         else if (e.type === "pursuit-end" || e.type === "delivery-failed" || e.type === "touge") { mark({ "pursuit-end": e.result === "escaped" ? "Escaped" : "Busted", "delivery-failed": "Out of time", touge: "Pulled clear" }[e.type]); finish(); }
-        else if (e.type === "heat") { if (G.audio && G.audio.radio) { G.audio.radio(); if (e.heat >= 3) G.audio.music("pursuit", 2); } banner(`Heat ${e.heat}`, 1300, true); status(`Heat level ${e.heat}: ${e.heat >= 3 ? "units will ram you and set roadblocks" : "more units are joining"}.`); }
+        else if (e.type === "heat") { if (G.audio && G.audio.radio) { G.audio.radio(); if (e.heat >= 3) G.audio.music("pursuit", 2); } banner(`Heat ${e.heat}`, 1300, true); if (e.heat >= 3) ann(`Heat ${e.heat}. Every unit is after you.`, 1); status(`Heat level ${e.heat}: ${e.heat >= 3 ? "units will ram you and set roadblocks" : "more units are joining"}.`); }
         else if (e.type === "unit-down") { mark("Unit disabled"); banner(`Unit disabled · ${e.left} left`, 1100); if (!G.reduce) G.punch = Math.max(G.punch, 0.05); }
         else if (e.type === "unit-join") { status("Another unit has joined the pursuit."); if (G.audio && G.audio.radio) G.audio.radio(); }
         else if (e.type === "roadblock") { mark("Roadblock"); if (G.audio && G.audio.radio) G.audio.radio(); banner(`Roadblock ahead · gap on the ${e.side > 0 ? "left" : "right"}`, 1800, true); status(`Roadblock ahead. The gap is on the ${e.side > 0 ? "left" : "right"}.`); }
@@ -1150,7 +1157,7 @@
         else if (e.type === "shift") { banner(`${e.gear} · ${{ perfect: "Perfect shift", good: "Good shift", early: "Early", late: "Late" }[e.q]}`, 600, e.q === "early" || e.q === "late"); if (G.audio && G.audio.shift) G.audio.shift(); }
         else if (e.type === "pit") { banner(e.done ? "Fresh tyres · go!" : "Pit stop", e.done ? 900 : 2600); status(e.done ? "Pit stop done: fresh tyres and repairs." : "In the pits."); }
         else if (e.type === "checkpoint") { banner(`Stop ${e.n}/${e.of} · +time`, 900); status(`Checkpoint ${e.n} of ${e.of}. ${e.left.toFixed(0)} seconds left.`); if (G.audio && G.audio.lap) G.audio.lap(); }
-        else if (e.type === "weather") { banner(e.to === "rain" ? "Rain is coming" : e.to === "fog" ? "Fog rolling in" : "Track drying", 1500); status(e.to === "rain" ? "Rain is arriving: grip will fall." : e.to === "fog" ? "Fog is rolling in." : "The track is drying out."); }
+        else if (e.type === "weather") { if (e.to === "rain") ann("Here comes the rain.", 1); banner(e.to === "rain" ? "Rain is coming" : e.to === "fog" ? "Fog rolling in" : "Track drying", 1500); status(e.to === "rain" ? "Rain is arriving: grip will fall." : e.to === "fog" ? "Fog is rolling in." : "The track is drying out."); }
       }
       for (const [x, y, a] of r.skids.splice(0)) {
         const bx = x - Math.cos(a) * 14 - r.trk.OX, by = y - Math.sin(a) * 14 - r.trk.OY, sx = -Math.sin(a) * 9, sy = Math.cos(a) * 9;
@@ -1160,7 +1167,7 @@
         if (G.mode !== "race") continue;
         for (let i = 0; i < Math.min(18, 5 + im.v / 25); i++) { const a = Math.random() * 7, s = 120 + Math.random() * 300; emit(K.spark, im.x, im.y, Math.cos(a) * s, Math.sin(a) * s, 0.25 + Math.random() * 0.3, 1); }
         for (let i = 0; i < 4; i++) emit(K.smoke, im.x, im.y, (Math.random() - 0.5) * 60, (Math.random() - 0.5) * 60, 0.6, 6);
-        if (im.you) { if (im.v > 120 && (!G.lastMark || G.race.simT - G.lastMark > 2)) { G.lastMark = G.race.simT; mark("Contact"); } if (G.settings.shake !== false && !G.reduce) G.shake = Math.min(1, G.shake + im.v / 240); if (G.audio) G.audio.impact(im.v); }
+        if (im.you) { if (im.v > 120 && (!G.lastMark || G.race.simT - G.lastMark > 2)) { G.lastMark = G.race.simT; mark("Contact"); } if (G.settings.shake !== false && !G.reduce) G.shake = Math.min(1, G.shake + im.v / 240); if (G.audio) G.audio.impact(im.v); if (im.v > 260 && (!G.gaspT || G.race.simT - G.gaspT > 4)) { G.gaspT = G.race.simT; roar("gasp"); } }
       }
     }
     function finish() {
@@ -1172,6 +1179,9 @@
       banner(word, 1400, s.pursuit ? s.pursuit.result !== "escaped" : false);
       if (s.place === 1 && !s.eliminated) { const me = r.cars[0]; for (let i = 0; i < 110; i++) { const a = Math.random() * 7, v = 80 + Math.random() * 280; emit(K.confetti, me.x, me.y, Math.cos(a) * v, Math.sin(a) * v, 1.4 + Math.random(), 5, ["#e9c44a", "#d23c3c", "#2f7de1", "#ffffff", "#1d9a6c", "#ff3fa4"][i % 6]); } }
       if (G.audio) G.audio.finish(s.place === 1 && !s.eliminated);
+      ann(s.pursuit ? (s.pursuit.result === "escaped" ? "Clean getaway!" : "Busted.") : s.delivery ? (s.delivery.delivered ? "Delivered!" : "Out of time.")
+        : s.eliminated ? "Eliminated." : s.of < 2 ? "" : s.place === 1 ? "And it's a win!" : s.place <= 3 ? `P${s.place}. A podium finish.` : `P${s.place} at the flag.`, 3);
+      if (!s.pursuit && !s.eliminated && s.place <= 3 && s.of > 1) roar("cheer");
       if (s.pursuit) status(s.pursuit.result === "escaped" ? `Escaped at heat ${s.pursuit.heat} with a ${s.pursuit.bounty.toLocaleString()} bounty.` : `Busted at heat ${s.pursuit.heat}.`);
       else status(s.eliminated ? `Eliminated on ${r.trk.name}.` : `Finished P${s.place} of ${s.of} on ${r.trk.name} in ${fmt(s.total)}.`);
       setTimeout(() => {

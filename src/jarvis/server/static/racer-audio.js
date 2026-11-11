@@ -32,7 +32,7 @@
   function create(settings = {}) {
     const AC = root.AudioContext || root.webkitAudioContext;
     if (!AC) return NOOP;
-    let ac = null, nodes = null, set = { sound: true, music: true, volume: 0.7, ...settings }, musicTimer = null, step = 0, paused = false;
+    let ac = null, nodes = null, set = { sound: true, music: true, announcer: true, volume: 0.7, ...settings }, musicTimer = null, step = 0, paused = false;
     let mood = "menu", intensity = 0, voice = VOICES.open, lastGear = 0, shiftDip = 0, spool = 0, lastThr = false;
     const safe = (fn) => (...a) => { try { return fn(...a); } catch { return undefined; } };
     function init() {
@@ -133,9 +133,41 @@
         step++; nextT += sixteenth;
       }
     }
+    // The race announcer: the browser's own speech synthesis (free, offline on most devices). Lines are short and
+    // throttled; a more important line interrupts a less important one. Silent where speech isn't available.
+    const SP = typeof speechSynthesis !== "undefined" && typeof SpeechSynthesisUtterance !== "undefined" ? speechSynthesis : null;
+    let sayUntil = 0, sayPri = 0, sayVoice;
+    function say(text, pri = 1) {
+      if (!SP || !set.sound || !set.announcer || paused || !text) return false;
+      const now = Date.now();
+      if (now < sayUntil && pri <= sayPri) return false;
+      if (now < sayUntil) SP.cancel();
+      if (sayVoice === undefined) { const vs = SP.getVoices ? SP.getVoices() : []; sayVoice = vs.find((v) => /^en[-_]GB/i.test(v.lang)) || vs.find((v) => /^en/i.test(v.lang)) || null; if (!vs.length) sayVoice = undefined; }
+      const u = new SpeechSynthesisUtterance(text); if (sayVoice) u.voice = sayVoice;
+      u.rate = 1.12; u.pitch = 0.9; u.volume = Math.max(0, Math.min(1, set.volume * 1.3));
+      SP.speak(u); sayUntil = now + 900 + text.length * 70; sayPri = pri;
+      return true;
+    }
+    // The crowd: shaped noise. A cheer swells and fades, a gasp is a sharp intake, an "ooh" rises and falls.
+    function crowd(kind) {
+      if (!nodes) return;
+      if (kind === "cheer") { burst("bandpass", 500, 1400, 1.8, 0.16, "amb", 0.6); burst("bandpass", 900, 2200, 1.4, 0.1, "amb", 0.9, 0.15); }
+      else if (kind === "gasp") { burst("highpass", 2600, 1200, 0.35, 0.14, "amb", 0.7); burst("bandpass", 700, 400, 0.6, 0.08, "amb", 1.2, 0.08); }
+      else if (kind === "ooh") { burst("bandpass", 380, 760, 0.5, 0.1, "amb", 4, 0); burst("bandpass", 760, 340, 0.8, 0.1, "amb", 4, 0.45); }
+    }
+    // Menu sounds: each action has its own.
+    function ui(kind) {
+      if (!nodes) return;
+      if (kind === "confirm") { blip(880, 0.06, "square", 0.08); blip(1320, 0.09, "square", 0.07, null, "sfx", 0.06); }
+      else if (kind === "back") { blip(700, 0.06, "square", 0.07); blip(470, 0.09, "square", 0.06, null, "sfx", 0.05); }
+      else if (kind === "buy") { blip(1568, 0.07, "triangle", 0.14); blip(2093, 0.18, "triangle", 0.14, null, "sfx", 0.08); burst("highpass", 6000, 9000, 0.12, 0.06, "sfx", 1, 0.08); }
+      else if (kind === "error") { blip(150, 0.16, "sawtooth", 0.1); blip(140, 0.16, "sawtooth", 0.1, null, "sfx", 0.18); }
+      else if (kind === "unlock") [523, 659, 784, 1047, 1319].forEach((f, i) => blip(f, 0.22, "triangle", 0.12, null, "sfx", i * 0.07));
+      else if (kind === "achievement") { [784, 988, 1175].forEach((f, i) => blip(f, 0.16, "square", 0.07, null, "sfx", i * 0.09)); blip(1568, 0.5, "triangle", 0.14, null, "sfx", 0.3); }
+    }
     const api = {
       unlock: safe(() => { init(); if (ac.state === "suspended") ac.resume(); }),
-      settings: safe((s) => { set = { ...set, ...s }; apply(); }),
+      settings: safe((s) => { set = { ...set, ...s }; if (SP && (!set.sound || !set.announcer)) { SP.cancel(); sayUntil = 0; } apply(); }),
       voice: safe((shape, own) => setVoice(shape, own)),
       // p: { speed, top, slip, boost, on, thr, turbo (0..1 of the car's turbo), gear and rpm (drag: real gears), wet, tunnel, crowd }
       update: safe((p) => {
@@ -190,11 +222,15 @@
       }),
       finish: safe((win) => { const notes = win ? [523, 659, 784, 1047] : [523, 494, 440]; notes.forEach((f, i) => blip(f, 0.35, "triangle", 0.2, null, "sfx", i * 0.14)); if (win) burst("bandpass", 700, 500, 2.2, 0.14, "amb", 0.7); }),
       click: safe(() => blip(1200, 0.05, "square", 0.08)),
+      say: safe((text, pri) => say(text, pri)),
+      canSpeak: !!SP,
+      crowd: safe((k) => crowd(k)),
+      ui: safe((k) => ui(k)),
       pause: safe((p) => {
-        paused = p;
+        paused = p; if (p && SP) { SP.cancel(); sayUntil = 0; }
         if (p && nodes) { const t = ac.currentTime; for (const g of [nodes.eg.gain, nodes.tyre.g.gain, nodes.nitro.g.gain, nodes.twg.gain, nodes.srg.gain, nodes.crowd.g.gain, nodes.rain.g.gain]) g.setTargetAtTime(0, t, 0.05); }
       }),
-      stop: safe(() => { if (musicTimer) clearInterval(musicTimer); musicTimer = null; if (ac) ac.close(); ac = null; nodes = null; }),
+      stop: safe(() => { if (SP) SP.cancel(); if (musicTimer) clearInterval(musicTimer); musicTimer = null; if (ac) ac.close(); ac = null; nodes = null; }),
       get ready() { return !!(ac && ac.state === "running"); },
     };
     return api;
