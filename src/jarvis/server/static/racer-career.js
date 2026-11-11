@@ -43,7 +43,7 @@
       contracts: [], records: { drag: { best: 0, wins: 0 }, pursuit: { best: 0, escapes: 0, busts: 0, heat: 0, fines: 0 }, touge: { wins: 0 }, endurance: { wins: 0 }, tournament: { wins: 0 }, delivery: { done: 0 } },
       tourney: null, wager: null,
       ng: 0, endings: {},
-      settings: { quality: "auto", camera: "chase", shake: true, sound: true, music: true, announcer: true, volume: 0.7, reducedMotion: null, ghost: true, difficulty: "medium", damage: "cosmetic" } };
+      settings: { quality: "auto", camera: "chase", shake: true, sound: true, music: true, announcer: true, assist: "light", volume: 0.7, reducedMotion: null, ghost: true, difficulty: "medium", damage: "cosmetic" } };
   }
   // Validate anything loaded (from storage or an import). Unknown keys are dropped, bad values replaced by defaults,
   // and every replacement is reported, so a damaged save is repaired visibly instead of silently.
@@ -141,6 +141,7 @@
       const st = raw.settings, S = s.settings;
       S.quality = ["auto", "low", "medium", "high"].includes(st.quality) ? st.quality : "auto";
       S.camera = st.camera === "classic" ? "classic" : "chase";
+      S.assist = ["off", "light", "strong"].includes(st.assist) ? st.assist : "light";
       for (const k of ["shake", "sound", "music", "ghost", "announcer"]) S[k] = bool(st[k], S[k]);
       S.volume = num(st.volume, 0.7, 0, 1); S.reducedMotion = typeof st.reducedMotion === "boolean" ? st.reducedMotion : null;
       S.difficulty = ["easy", "medium", "hard"].includes(st.difficulty) ? st.difficulty : "medium";
@@ -238,7 +239,7 @@
       brake: c.brake * (1 + 0.09 * L("brakes")) * (1 + 0.03 * L("weight")), steer: c.steer * (1 + 0.04 * L("suspension")),
       nitro: { push: c.nitro.push * (1 + 0.06 * L("nitro")), burn: c.nitro.burn, fill: c.nitro.fill * nf, cap: c.nitro.cap },
       mass: (c.mass || 1) * (1 - 0.05 * L("weight")), turbo: (c.turbo || 0) + 0.05 * L("turbo"), aero, slide: Math.min(1, (c.slide || 0) + 0.8 * (T.diff || 0)),
-      tyre: { dry: ty.dry, wet: ty.wet * wet }, offroad: c.offroad || 0, band: c.band || 0 };
+      tyre: { dry: ty.dry, wet: ty.wet * wet }, offroad: c.offroad || 0, band: c.band || 0, drive: c.drive || "R" };
   }
   // 0..1 bars for the garage (fixed scales so cars compare honestly).
   function bars(spec) {

@@ -201,13 +201,14 @@ def test_the_whole_campaign_can_be_finished(pick, level):
     # A simulated player (the AI driving your car; in drift events a corner-committing driver who lifts when the slide
     # gets too big, in the owned car that slides best) plays the story in order, takes choice `pick` everywhere,
     # grinds a classic side event (circuit, sprint, elimination, time trial or drift; it doesn't pit or deliver)
-    # after a loss, and spends like a sensible player (it only buys a car at least 6% better than the one it drives).
+    # after a loss, and spends like a sensible player (it test-laps cars and only buys one at least 2% quicker than the one it
+    # drives, or any quicker car once it has lost the same mission three times).
     r = js(f"""
 const save = C.fresh(); save.settings.difficulty = {json.dumps(level)}; let n = 0; const tries = {{}};
 const race = (kind, ev) => {{
   // like a player would: take the car that slides best to a drift event, then back to your main car
   const main = save.garage.current;
-  if (ev.mode === "drift") save.garage.current = Object.keys(save.garage.owned).sort((a, b) => (D.CARS[b].slide || 0) - (D.CARS[a].slide || 0) || score(D.CARS[b]) - score(D.CARS[a]))[0];
+  if (ev.mode === "drift") save.garage.current = Object.keys(save.garage.owned).sort((a, b) => (D.CARS[b].slide || 0) - (D.CARS[a].slide || 0) || score(b) - score(a))[0];
   const cfg = C.config(save, ev, kind), r = R.newRace({{ ...cfg, seed: ++n }}); let t = 0;
   while (r.state !== "done" && t < 400) {{
     if (r.mode === "drift") {{ const a = R.aiInput(r, r.cars[0]); R.step(r, 1 / 120, {{ steer: Math.abs(a.steer) > 0.2 ? Math.sign(a.steer) : a.steer, thr: r.cars[0].slip < 160, brk: false, nitro: false }}); }}
@@ -216,16 +217,21 @@ const race = (kind, ev) => {{
   }}
   const out = C.applyResult(save, {{ kind, event: ev, raceId: "r" + n }}, R.summary(r)); save.garage.current = main; return out;
 }};
-const score = (c) => (c.acc / c.drag) * Math.sqrt(c.grip);
+// like a player using the garage's test lap: a car's worth is how fast it actually laps (the AI driving it, stock)
+const lapOf = {{}};
+const score = (id) => lapOf[id] || (lapOf[id] = (() => {{ const r = R.newRace({{ track: "kerbside", mode: "circuit", laps: 1, seed: 1, field: [{{ id: "t", code: "T", name: "T", color: "#fff", spec: C.carStats(id, C.carState(id)), skill: 1 }}], playerSlot: 1 }});
+  const me = r.cars[0]; me.out = true; me.x = r.trk.OX + 25; me.y = r.trk.OY + 25; let t = 0; while (!r.cars[1].done && t < 200) {{ R.step(r, 1 / 120, {{ steer: 0, thr: false, brk: false }}); t += 1 / 120; }}
+  return 1000 / (r.cars[1].done ? r.cars[1].finish : 200); }})());
 const spend = () => {{
-  const buy = Object.entries(D.CARS).filter(([id, c]) => !save.garage.owned[id] && C.carAvailable(save, id).ok && c.price !== null && c.price <= save.money).sort((a, b) => score(b[1]) - score(a[1]))[0];
-  if (buy && score(buy[1]) > score(D.CARS[save.garage.current]) * 1.06) return C.buyCar(save, buy[0]).ok;
+  const buy = Object.entries(D.CARS).filter(([id, c]) => !save.garage.owned[id] && C.carAvailable(save, id).ok && c.price !== null && c.price <= save.money).sort((a, b) => score(b[0]) - score(a[0]))[0];
+  if (buy && score(buy[0]) > score(save.garage.current) * (stuck >= 3 ? 1.0 : 1.02)) return C.buyCar(save, buy[0]).ok;
   return ["engine", "tires", "suspension", "brakes", "nitro"].some((p) => C.buyUpgrade(save, save.garage.current, p).ok);
 }};
-let blocked = null;
+let blocked = null, stuck = 0;
 while (!save.story.ended) {{
   const m = C.nextMission(save); if (!m) break;
   if ((tries[m.id] = (tries[m.id] || 0) + 1) > 15) {{ blocked = m.id; break; }}
+  stuck = tries[m.id];
   if (C.needsChoice(save, m)) C.choose(save, m.id, {pick} % m.choice.options.length);
   const out = race("story", m);
   if (out.choice) C.choose(save, m.id, {pick} % out.choice.options.length);

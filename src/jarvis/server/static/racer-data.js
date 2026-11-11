@@ -182,6 +182,11 @@
     vecchia: { factory: { paint: "#b0122a", wheels: "steel" }, band: -0.2, handling: "A 1958 racer: skinny tyres, no wings, a straight-eight. It drifts through every corner whether you want it to or not.",
       art: { len: 0.97, remove: ["wings", "airbox"], add: ["headrest"] }, voice: { cyl: 8, idle: 52, span: 130, rasp: 0.55, drive: 0.4 } },
   };
+  // Drivetrain: front-drive cars push wide under power, rear-drive cars rotate (and step out) on the throttle,
+  // all-wheel drive sits between. By body style, with the exceptions named.
+  const DRIVE_BY_SHAPE = { kei: "F", hatch: "F", sedan: "F", wagon: "F", rally: "A" };
+  const DRIVE = { ardent: "A", interceptor: "R", volta: "A", longhaul: "R", pacer: "F", mistral: "F" };
+  for (const [id, c] of Object.entries(CARS)) c.drive = DRIVE[id] || DRIVE_BY_SHAPE[c.shape] || "R";
   for (const [id, x] of Object.entries(IDENTITY)) { const c = CARS[id]; Object.assign(c, x.set || {}); c.band = x.band; c.handling = x.handling; c.art = x.art || {}; c.voice = x.voice || {}; c.factory = x.factory || null; }
   const CLASS_COST = { C: 1, B: 1.45, A: 2.05, S: 2.9 };
 

@@ -20,7 +20,7 @@
       return e;
     };
     const KEYS = { ArrowUp: "up", KeyW: "up", ArrowDown: "down", KeyS: "down", ArrowLeft: "left", KeyA: "left",
-      ArrowRight: "right", KeyD: "right", Space: "nitro", ShiftLeft: "nitro", ShiftRight: "nitro", KeyE: "shift", KeyQ: "shift" };
+      ArrowRight: "right", KeyD: "right", Space: "nitro", ShiftLeft: "nitro", ShiftRight: "nitro", KeyE: "shift", KeyQ: "shift", KeyX: "hb", KeyC: "hb" };
     const reduceMotion = () => !!(root.matchMedia && root.matchMedia("(prefers-reduced-motion: reduce)").matches);
     const coarse = () => !!(root.matchMedia && root.matchMedia("(pointer: coarse)").matches);
     const ease = (k) => k * k * (3 - 2 * k);
@@ -1025,11 +1025,11 @@
       const pauseBtn = el("button", "race-pausebtn", "II"); pauseBtn.type = "button"; pauseBtn.setAttribute("aria-label", "Pause"); pauseBtn.hidden = true;
       const pad = (k, label, cls) => {
         const b = el("button", "race-pad" + (cls ? " " + cls : ""), label); b.type = "button"; b.dataset.k = k;
-        b.setAttribute("aria-label", { left: "Steer left", right: "Steer right", down: "Brake", up: "Accelerate", nitro: "Nitro", shift: "Shift up" }[k]); return b;
+        b.setAttribute("aria-label", { left: "Steer left", right: "Steer right", down: "Brake", up: "Accelerate", nitro: "Nitro", shift: "Shift up", hb: "Handbrake" }[k]); return b;
       };
       const shiftPad = pad("shift", "SHIFT", "shift"); shiftPad.hidden = true;
       const pads = el("div", "race-pads", el("div", "race-padgrp", pad("left", "◀"), pad("right", "▶"), shiftPad),
-        el("div", "race-padgrp", el("div", "race-padcol", pad("nitro", "NOS", "nos"), pad("down", "BRAKE")), pad("up", "GAS", "gas")));
+        el("div", "race-padgrp", el("div", "race-padcol", pad("nitro", "NOS", "nos"), pad("down", "BRAKE")), el("div", "race-padcol", pad("hb", "HAND", "hb"), pad("up", "GAS", "gas"))));
       pads.hidden = true;
       const hud = [tower, lapbox, speedo, modebox, pauseBtn];
       const stage = el("div", "race-stage", cv, ...hud, lights, banner, pads, overlay);
@@ -1059,7 +1059,7 @@
     }
     // A race config: newRace opts plus { title, ghostOn, best (seconds, for the HUD), target: {label, value} }.
     function start(cfg, hooks = {}) {
-      G.cfg = cfg; G.hooks = hooks;
+      G.cfg = cfg; G.hooks = hooks; G.st = 0; G.steerAxis = undefined;
       G.race = newRace({ ...cfg, seed: cfg.seed || (Date.now() & 0xffff) + 1 });
       loadWorld(G.race.track, G.race.tod, G.race.weather);
       G.mode = "race"; G.paused = false; G.ui.overlay.hidden = true; G.ui.lights.hidden = false; G.rowKey = ""; G.rowT = 0;
@@ -1195,6 +1195,23 @@
     // A spring follows a point ahead of the car; in chase mode the view also turns so the car points up the screen
     // and sits low, looking down the road. Speed widens the view, nitro punches it out, impacts shake it. The start
     // is an orbiting shot that settles behind your car as the lights go out; the finish slows time and orbits again.
+    // Your steering: keys and pads ramp in (slower at speed) and settle back quickly; the touch strip is analog. Slide
+    // assist (Settings) adds a little countersteer when the car's travel and its nose disagree. The AI is untouched.
+    const ASSIST = { off: 0, light: 0.35, strong: 0.7 };
+    function steerInput(rdt) {
+      const k = G.keys, me = G.race.cars[0], tgt = G.steerAxis !== undefined ? G.steerAxis : (k.right ? 1 : 0) - (k.left ? 1 : 0);
+      const fwd = me.fwd || 0, sf = Math.min(1, Math.abs(fwd) / 650), cur = G.st || 0;
+      const back = Math.abs(tgt) < Math.abs(cur) || (tgt && cur && Math.sign(tgt) !== Math.sign(cur));
+      const rate = back ? 10 : 6.5 * (1 - 0.45 * sf), dt = Math.min(0.05, rdt);
+      G.st = cur + Math.max(-rate * dt, Math.min(rate * dt, tgt - cur));
+      let out = G.st;
+      const A = ASSIST[G.settings.assist] === undefined ? ASSIST.light : ASSIST[G.settings.assist], sp = Math.hypot(me.vx, me.vy);
+      if (A && sp > 150 && !me.hb) {
+        let d = Math.atan2(me.vy, me.vx) - me.a; d = Math.atan2(Math.sin(d), Math.cos(d));
+        if (Math.abs(d) > 0.12 && Math.abs(d) < 1.6) out += Math.sign(d) * Math.min(1, (Math.abs(d) - 0.12) * 3) * A;
+      }
+      return Math.max(-1, Math.min(1, out));
+    }
     function camera(dt, W, H, focus) {
       G.camBase = Math.max(0.42, Math.min(1.45, Math.min(W, H) / 560));
       if (G.mode === "photo" && G.ph) { const P = G.ph; return { cx: P.x, cy: P.y, z: P.z * G.camBase, rot: P.rot, eyeX: W / 2, eyeY: H / 2 }; }
@@ -1593,7 +1610,7 @@
       const dt = rdt * G.timeScale;
       if (G.mode === "race" && !G.paused && G.ui.overlay.hidden) {
         G.acc += dt;
-        const k = G.keys, you = { steer: (k.right ? 1 : 0) - (k.left ? 1 : 0), thr: !!k.up, brk: !!k.down, nitro: !!k.nitro, shift: !!k.shift };
+        const k = G.keys, you = { steer: steerInput(rdt), thr: !!k.up, brk: !!k.down, nitro: !!k.nitro, shift: !!k.shift, hb: !!k.hb };
         let n = 0;
         while (G.acc >= 1 / 120 && n++ < 12) { step(G.race, 1 / 120, you); G.acc -= 1 / 120; }
         record(G.race);
@@ -1857,11 +1874,17 @@
       G = { ui, keys: {}, cam: { x: 0, y: 0, vx: 0, vy: 0, rot: 0, z: 0 }, last: root.performance.now(), acc: 0, paused: false, hooks: {}, cfg: {}, onStatus: opts.onStatus,
         settings: {}, reduce: reduceMotion(), touch: coarse(), ft: 16, mode: "menu", timeScale: 1, finishT: -1, bars: 1, punch: 0, flash: 0 };
       applySettings({});
+      // the two steering pads work as one analog strip: where your thumb is between them sets how much you steer
+      const lp = ui.pads.querySelector('[data-k="left"]'), rp = ui.pads.querySelector('[data-k="right"]'), steerPtr = new Map();
+      const axis = () => { if (!G) return; if (!steerPtr.size) { G.steerAxis = undefined; return; }
+        const a = lp.getBoundingClientRect(), b2 = rp.getBoundingClientRect(), cx = (a.right + b2.left) / 2, half = Math.max(20, (b2.right - a.left) / 2);
+        const x = [...steerPtr.values()].pop(); G.steerAxis = Math.max(-1, Math.min(1, (x - cx) / (half * 0.5))); };
       ui.pads.querySelectorAll(".race-pad").forEach((b) => {
-        const k = b.dataset.k, held = new Set();
+        const k = b.dataset.k, held = new Set(), steer = k === "left" || k === "right";
         const set = () => { if (G) { G.keys[k] = held.size > 0; b.classList.toggle("active", held.size > 0); } };
-        b.addEventListener("pointerdown", (e) => { e.preventDefault(); held.add(e.pointerId); try { b.setPointerCapture(e.pointerId); } catch { /* fine */ } set(); });
-        const up = (e) => { held.delete(e.pointerId); set(); };
+        b.addEventListener("pointerdown", (e) => { e.preventDefault(); held.add(e.pointerId); try { b.setPointerCapture(e.pointerId); } catch { /* fine */ } if (steer) { steerPtr.set(e.pointerId, e.clientX); axis(); } set(); });
+        if (steer) b.addEventListener("pointermove", (e) => { if (steerPtr.has(e.pointerId)) { steerPtr.set(e.pointerId, e.clientX); axis(); } });
+        const up = (e) => { held.delete(e.pointerId); if (steer) { steerPtr.delete(e.pointerId); axis(); } set(); };
         for (const ev of ["pointerup", "pointercancel", "lostpointercapture"]) b.addEventListener(ev, up);
         b.addEventListener("contextmenu", (e) => e.preventDefault());
       });

@@ -76,6 +76,7 @@
   letter-spacing: .06em; touch-action: none; -webkit-tap-highlight-color: transparent; cursor: pointer; }
 .race-pad.gas { width: 80px; height: 80px; border-color: var(--r-gold); }
 .race-pad.nos { width: 54px; height: 54px; border-color: var(--r-amber); color: var(--r-amber); font-size: 13px; }
+.race-pad.hb { width: 54px; height: 54px; font-size: 12px; }
 .race-pad.active { background: rgba(255, 255, 255, .25); }
 .race-pad:focus-visible { outline: 2px solid var(--r-gold-hi); }
 .race-stage:has(.race-pads:not([hidden])) .race-speed { bottom: 150px; }
@@ -84,7 +85,7 @@
   .race-row .gap { font-size: 12px; } .race-lapnum { font-size: 20px; } .race-t { font-size: 15px; }
   .race-mini { display: none; } .race-stats { grid-template-columns: repeat(2, 1fr); }
   .race-pads { padding: 0 8px 8px; } .race-padgrp { gap: 8px; } .race-padcol { gap: 8px; }
-  .race-pad { width: 56px; height: 56px; font-size: 13px; } .race-pad.gas { width: 66px; height: 66px; } .race-pad.nos { width: 48px; height: 48px; font-size: 12px; }
+  .race-pad { width: 56px; height: 56px; font-size: 13px; } .race-pad.gas { width: 66px; height: 66px; } .race-pad.nos { width: 48px; height: 48px; font-size: 12px; } .race-pad.hb { width: 48px; height: 48px; }
   .race-stage:has(.race-pads:not([hidden])) .race-speed { bottom: 128px; }
   .race-h { font-size: 28px; }
 }

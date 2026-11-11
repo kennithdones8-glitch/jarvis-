@@ -97,7 +97,7 @@
           btn("Profile and stats", () => show(profile), "alt"),
           btn("Achievements", () => show(achievements), "alt"),
           btn("Settings", () => show(settings), "alt")),
-        el("p", "race-note", "Arrow keys or WASD to drive, Space for nitro, P to pause. On a phone or iPad, use the pads.")], { noBack: true, hero: true });
+        el("p", "race-note", "Arrow keys or WASD to drive, Space for nitro, X for the handbrake, P to pause. On a phone or iPad, use the pads: slide your thumb across the arrows to steer gently.")], { noBack: true, hero: true });
     }
 
     // ---------------------------------------------------------------- career HQ
@@ -687,7 +687,7 @@
         gTest[id + JSON.stringify(shown.upgrades) + JSON.stringify(shown.tune)] = { mine, cur: c2 }; show(garage, { replace: true });
       }, "alt small");
       const handling = car.handling ? el("p", "race-note race-handling", car.handling) : null;
-      const facts = el("div", "race-tags", chip(`Rating ${car.cls} ${C.rating(spec)}`, "gold"), chip(`${car.cls} · ${car.cat}`), chip(`Top ≈ ${KMH(spec)} km/h`), chip(`${Math.round((spec.mass || 1) * 1000)} kg`), ...TRAITS(car).map((t) => chip(t, "small")));
+      const facts = el("div", "race-tags", chip(`Rating ${car.cls} ${C.rating(spec)}`, "gold"), chip(`${car.cls} · ${car.cat}`), chip(`Top ≈ ${KMH(spec)} km/h`), chip(`${Math.round((spec.mass || 1) * 1000)} kg`), chip({ F: "Front-drive", R: "Rear-drive", A: "All-wheel drive" }[car.drive || "R"]), ...TRAITS(car).map((t) => chip(t, "small")));
       const action = owned ? (id === curId ? chip("Driving this car", "gold") : btn("Drive this car", () => { save.garage.current = id; persist(); show(garage, { replace: true }); }))
         : av.ok && car.price !== null ? btn(`Buy for ${money(car.price)}`, () => { const r = C.buyCar(save, id); if (!r.ok) return toast(r.error, "warn"); if (audio && audio.ui) audio.ui("buy"); persist(); toast(`${car.name} is yours.`, "gold"); r.achievements.forEach((a) => toast(`Achievement unlocked: ${D.ACHIEVEMENTS[a].name}${D.ACH_REWARDS[a] ? " · reward: " + D.ACH_REWARDS[a].text : ""}`, "gold")); show(garage, { replace: true }); }, save.money >= car.price ? "" : "alt")
           : el("p", "race-note", av.why);
@@ -830,6 +830,7 @@
           select("s-quality", "Graphics", S.quality, [["auto", "Auto (adapts)"], ["low", "Low"], ["medium", "Medium"], ["high", "High"]], (v) => { S.quality = v; apply(); show(settings, { replace: true }); }),
           select("s-camera", "Camera", S.camera, [["chase", "Chase (turns with your car)"], ["classic", "Classic (north up)"]], (v) => { S.camera = v; apply(); }),
           select("s-motion", "Reduced motion", S.reducedMotion === null ? "system" : S.reducedMotion ? "on" : "off", [["system", "Follow system"], ["on", "On"], ["off", "Off"]], (v) => { S.reducedMotion = v === "system" ? null : v === "on"; apply(); }),
+          select("s-assist", "Slide assist", S.assist || "light", [["off", "Off (all you)"], ["light", "Light (a little countersteer)"], ["strong", "Strong (catches most slides)"]], (v) => { S.assist = v; apply(); }),
           select("s-diff", "Career AI", S.difficulty, [["easy", "Easy"], ["medium", "Medium"], ["hard", "Hard"]], (v) => { S.difficulty = v; apply(); }),
           select("s-damage", "Damage", S.damage, [["cosmetic", "Cosmetic only"], ["persistent", "Carries over (repairs cost money)"]], (v) => { S.damage = v; apply(); })),
         el("div", "race-stack row", toggle("shake", "Camera shake"), toggle("ghost", "Ghost car"), toggle("sound", "Sound"), toggle("music", "Music"), audio && audio.canSpeak === true ? toggle("announcer", "Announcer") : null),

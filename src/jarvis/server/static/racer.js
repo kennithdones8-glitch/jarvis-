@@ -103,7 +103,7 @@
   const specOf = (d) => {
     const s = d.spec || BASE_SPEC;
     return { acc: s.acc, drag: s.drag, grip: s.grip, brake: s.brake, steer: s.steer, nitro: { ...BASE_SPEC.nitro, ...(s.nitro || {}) },
-      mass: s.mass || 1, turbo: s.turbo || 0, aero: s.aero || 0, slide: s.slide || 0, tyre: s.tyre || { dry: 1, wet: 1 }, offroad: s.offroad || 0, band: s.band || 0 };
+      mass: s.mass || 1, turbo: s.turbo || 0, aero: s.aero || 0, slide: s.slide || 0, tyre: s.tyre || { dry: 1, wet: 1 }, offroad: s.offroad || 0, band: s.band || 0, drive: s.drive || "R" };
   };
 
   // opts: { track, level, seed, ghost: {time, pts}, mode, laps, field: [driver], player: {driver}, weather, time,
@@ -144,7 +144,15 @@
     let fx = Math.cos(c.a), fy = Math.sin(c.a);
     const sp0 = c.vx * fx + c.vy * fy;
     const sf = Math.min(1, Math.abs(sp0) / 150) * (1 - 0.42 * Math.min(1, Math.abs(sp0) / 700));
-    c.a += inp.steer * sp.steer * (1 + 0.1 * (sp.slide || 0)) * sf * Math.sign(sp0 || 1) * dt;
+    // Weight transfer: braking loads the nose (sharper turn-in, a lighter tail), throttle loads the tail. It takes a
+    // moment to move, so a lift or a dab of brake mid-corner rotates the car. Rear-drive cars also rotate on the
+    // throttle; front-drive cars push wide under power. The handbrake locks the rear: the tail swings round.
+    const drv = sp.drive || "R", fast = Math.min(1, Math.abs(sp0) / 420), hb = !!inp.hb && sp0 > 60;
+    const loadT = inp.brk && sp0 > 15 ? 1 : inp.thr ? -0.5 : 0.35;
+    c.load = (c.load || 0) + (loadT - (c.load || 0)) * Math.min(1, 6 * dt);
+    const steerF = 1 + 0.16 * c.load - (drv === "F" && inp.thr ? 0.12 * fast : 0);
+    const rot = Math.max(0, c.load) * 0.2 + (drv === "R" && inp.thr ? 0.12 + 0.2 * (sp.slide || 0) : drv === "A" && inp.thr ? 0.05 : 0) + (hb ? 0.95 : 0);
+    c.a += inp.steer * sp.steer * ((1 + 0.1 * (sp.slide || 0)) * sf * steerF + rot * fast) * Math.sign(sp0 || 1) * dt;
     fx = Math.cos(c.a); fy = Math.sin(c.a);
     let fwd = c.vx * fx + c.vy * fy, lat = -c.vx * fy + c.vy * fx;
     const top = c.acc / sp.drag, n = sp.nitro;
@@ -158,6 +166,7 @@
     const fr = Math.min(1, Math.max(0, fwd) / top), bandF = 1 + (sp.band || 0) * 0.3 * (fr - 0.5) * (fr < 0.85 ? 1 : Math.max(0, (1 - fr) / 0.15));
     if (inp.thr) fwd += c.acc * bandF * (c.accF === undefined ? 1 : c.accF) * (1 + sp.turbo * c.spool) * dt * (c.on ? 1 : 0.55 + 0.3 * sp.offroad);
     if (inp.brk) fwd -= (fwd > 15 ? sp.brake : 260) * dt;              // brake, then reverse
+    if (hb) fwd -= 320 * dt;
     fwd -= fwd * (c.on ? (c.boost ? sp.drag / 2 : sp.drag) * (1 + 0.04 * c.dmg) : 2.3 * (1 - 0.5 * sp.offroad)) * dt;   // drag; damage costs ≤4%
     if (!inp.thr && !inp.brk) fwd -= Math.sign(fwd) * Math.min(Math.abs(fwd), 70 * dt);
     fwd = Math.max(fwd, -160);
@@ -167,14 +176,15 @@
     const tyreF = sp.tyre.dry * (1 - race.wetness) + sp.tyre.wet * race.wetness, aeroF = 1 + 0.1 * sp.aero * Math.min(1, Math.abs(fwd) / 650);
     // a loose diff lets slides last longer (slower to straighten up) without throwing the car off the road
     const gripE = sp.grip * tyreF * aeroF * (1 - 0.3 * (c.wear || 0));   // worn tyres (endurance) lose up to 30%
-    const lat0 = lat, wetF = 1 - 0.26 * race.wetness, damp = lat * (1 - Math.exp(-(c.on ? gripE * (1 - 0.3 * sp.slide) : 3) * wetF * dt));
-    const lim = (c.on ? gripE * LATG * (1 - 0.06 * sp.slide) : 180) * wetF * dt;
+    const rearF = hb ? 0.38 : drv === "R" && inp.thr ? 1 - 0.08 * fast * (0.5 + (sp.slide || 0)) : 1;   // a locked or spinning rear holds less
+    const lat0 = lat, wetF = 1 - 0.26 * race.wetness, damp = lat * (1 - Math.exp(-(c.on ? gripE * (1 - 0.3 * sp.slide) * rearF : 3) * wetF * dt));
+    const lim = (c.on ? gripE * LATG * (1 - 0.06 * sp.slide) * rearF : 180) * wetF * dt;
     lat -= Math.abs(damp) > lim ? Math.sign(damp) * lim : damp;
     c.vx = fx * fwd - fy * lat; c.vy = fy * fwd + fx * lat;
     const t = race.trk;
     c.x = Math.max(t.OX + 20, Math.min(t.OX + t.WW - 20, c.x + c.vx * dt));
     c.y = Math.max(t.OY + 20, Math.min(t.OY + t.WH - 20, c.y + c.vy * dt));
-    c.fwd = fwd; c.slip = Math.abs(lat); c.brakeOn = !!inp.brk && fwd > 15; c.steerIn = inp.steer || 0; c.thr = !!inp.thr;
+    c.fwd = fwd; c.slip = Math.abs(lat); c.brakeOn = !!inp.brk && fwd > 15; c.steerIn = inp.steer || 0; c.thr = !!inp.thr; c.hb = hb;
     c.latAcc = c.latAcc * 0.9 + (lat0 - lat) * 0.1;
   }
 
