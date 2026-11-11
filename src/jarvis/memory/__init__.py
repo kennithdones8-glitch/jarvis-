@@ -143,6 +143,8 @@ class MemoryStore:
                           (record_tombstone(row["content"]), now_iso()))
             c.execute("DELETE FROM records WHERE id = ?", (record_id,))
             c.execute("DELETE FROM records_fts WHERE id = ?", (record_id,))
+            c.execute("DELETE FROM feedback WHERE target = 'reply' AND ref = ?", (record_id,))   # your rating and its comment
+            c.execute("DELETE FROM links WHERE src = ? OR dst = ?", (f"record:{record_id}",) * 2)
             self.audit.record("memory.record_deleted", actor=by, record_id=record_id, derived_deleted=len(derived))
         return len(derived)
 
@@ -229,9 +231,23 @@ class MemoryStore:
         with self.db.tx() as c:
             c.execute("DELETE FROM memories WHERE id = ?", (memory_id,))
             c.execute("DELETE FROM memories_fts WHERE id = ?", (memory_id,))
+            c.execute("DELETE FROM links WHERE src = ? OR dst = ?", (f"memory:{memory_id}",) * 2)   # where it was used
             c.execute("INSERT OR IGNORE INTO tombstones (hash, created_at) VALUES (?, ?)",
                       (sha256_hex(normalise(old["text"])), now_iso()))
             self.audit.record("memory.deleted", actor=by, memory_id=memory_id)
+
+    def link_informed(self, memory_ids: list[str], record_id: str | None) -> int:
+        """Remember which memories were given to an answer as context (references only: two ids and a relation, never
+        text), so the knowledge graph can show where a memory has been used. Being in the context doesn't prove the
+        answer relied on it, so the relation says exactly that: "context for". Deleting either side deletes the link."""
+        if not record_id or not memory_ids:
+            return 0
+        now = now_iso()
+        with self.db.tx() as c:
+            for mid in dict.fromkeys(memory_ids):
+                c.execute("INSERT OR IGNORE INTO links (src, dst, rel, source, created_at) VALUES (?,?,?,?,?)",
+                          (f"memory:{mid}", f"record:{record_id}", "context for", "chat", now))
+        return len(set(memory_ids))
 
     def forget(self, query: str, *, by: str, dry_run: bool = True) -> dict[str, Any]:
         """Everything matching ``query``: preview with dry_run, delete otherwise."""
@@ -307,22 +323,23 @@ class MemoryStore:
         m = REMEMBER.match(message)
         return m.group("fact").strip() if m else None
 
-    def learn_from(self, session: str, user_text: str, reply: str, *, background: bool = True) -> None:
+    def learn_from(self, session: str, user_text: str, reply: str, *, background: bool = True) -> str | None:
         """Archive the exchange, store any explicit "remember…" fact, and (optionally) let the LOCAL model
         notice facts you stated. Extraction never uses a cloud model."""
         rid = self.add_record(session, "user", user_text)
         self.add_record(session, "assistant", reply)
         if rid is None:
-            return
+            return None
         fact = self.explicit_request(user_text)
         if fact:
             self.remember(fact, origin="explicit", source_record=rid)
-            return
+            return rid
         if self.settings.extract and self.models is not None:
             if background:
                 threading.Thread(target=self._extract_quietly, args=(user_text, rid), daemon=True).start()
             else:
                 self._extract(user_text, rid)
+        return rid   # the exchange's id: your rating of this answer is stored against it
 
     def _extract_quietly(self, text: str, record_id: str) -> None:
         # Best-effort background learning: it must never crash the app (e.g. JARVIS shutting down mid-way).

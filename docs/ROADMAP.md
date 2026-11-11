@@ -28,7 +28,7 @@ Approved model paths and what they cost:
 | **v0.17** | **Mac apps, smarter chat (lookups), Briefing 2.0, benchmark (milestone 1), live replies, Help** | ✅ in tests · **Mac check pending** |
 | **v0.17.2** | **M-B: release gate (`jarvis gate`) + docs synced with the code** | ✅ |
 | M-A | Verification on the Mac: tests, `mac check`, benchmark (local + hybrid), Claude-app baseline, iPhone pairing and a notification, voice (optional) | **next (needs the Mac)** |
-| M-C | Outcome Engine v1: goal interpretation, context packing, "no downgrades" routing, per-goal acceptance checks, measured on the benchmark before and after | after M-A |
+| M-C | Outcome Engine v1: goal interpretation, context packing, "no downgrades" routing, grounding checks | ✅ v1 done (0.18.0) · 0.19.x added plan checks (contradictions, bad references, split writes, look first) · **v2 (branch):** per-mission criteria, read-back for Calendar/Reminders/Notes, plans that survive restarts, one reviewed replan · open: criteria the owner writes, multi-mission objectives |
 | M9+ | Mac automation, deeper proactive monitoring (e.g. watched folders), self-improvement proposals (isolated worktrees, owner-approved) | later |
 | — | Search by meaning (embeddings) | only if keyword recall proves weak |
 
@@ -37,15 +37,15 @@ Approved model paths and what they cost:
 | System | Today | Built from |
 |---|---|---|
 | Flight Recorder | exists (v0.17.3) | audit hash chain, steps/checkpoints, approvals, evidence, model routes, **per-task timeline** · missing: external anchor for the newest entries |
-| Outcome Engine | partial | planner + task engine + writes_verified + bench checks · missing: per-goal criteria, broader verification, replanning (M-C) |
-| Intelligence Tournament | missing | research source verification only |
-| Opportunity Radar | minimal | morning briefing |
-| Personal Knowledge Graph | partial | memories with provenance, records, full-text search · no relations |
-| Simulation Lab | partial | benchmark throwaway folders, stand-ins |
+| Outcome Engine | v2 on the branch | per-mission criteria from the plan, read-back for Calendar/Reminders/Notes, unconfirmed ≠ verified, durable plans, one reviewed replan · missing: owner-written criteria, multi-mission objectives |
+| Intelligence Tournament | evidence report + routing at level 7 (branch) | `learn/analysis.py:tournament` · its recommendation becomes a bounded, undoable, self-withdrawing routing adjustment (`autopilot.act_on_tournament`) · benchmark runs don't drive it (mixed models) |
+| Opportunity Radar | one ranked feed (branch) | `initiative.py`: failed missions, health, stalled projects, contested lessons, proposals, project ideas · the briefing stays separate |
+| Personal Knowledge Graph | partial (branch) | computed on request + lasting links (memory → answers it was given, ids only, deleted with either side) · project evidence and replans as edges · no search by meaning |
+| Simulation Lab | exists (branch) | routing replay, recovery drills, benchmark comparison, level 6 change trials (worktrees; not yet OS-sandboxed) |
 | Trust Contract | partial | global policy, tiers, privacy gate, budget, approvals · no per-task contract |
-| Initiative Engine | missing | notifications only |
+| Initiative Engine | feed + daily notification (branch) | suggest-only; initiative pause; dismissals; one generic notification a day outside quiet hours |
 | Personal Operations Model | missing | on-demand calendar/reminder reads |
-| Self-Test & Recovery Lab | mostly exists (v0.17.4) | 350+ tests, `jarvis doctor`, `jarvis bench`, `jarvis gate`, **`jarvis drill`** (10 recovery drills on a throwaway JARVIS) · missing: drills against the live install (deliberately not done) |
+| Self-Test & Recovery Lab | mostly exists (v0.17.4) | 800+ tests, `jarvis doctor`, `jarvis bench`, `jarvis gate`, **`jarvis drill`** (10 recovery drills on a throwaway JARVIS) · missing: drills against the live install (deliberately not done) |
 
 Superseded: M3c/SearXNG web search (research now goes through Claude Code; the SearXNG tool is optional and
 off by default).

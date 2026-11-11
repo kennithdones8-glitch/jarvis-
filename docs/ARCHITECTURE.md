@@ -239,8 +239,8 @@ prefer="quality")` and up to 2000 tokens, falling back to the best available mod
 ## 3D holographic core and cinematic environment (theme v3)
 
 - `static/avatar3d.js` (ES module) draws the core with Three.js r160 (vendored, SHA-256 pinned by a test): shapes
-  built in code (no downloaded model), each a named, replaceable part (pad, torso, helmet, face, visor, ears,
-  circuits, plates, pauldrons, gorget, fins, halo) with a hologram shader (rim light, scan lines, rising light band,
+  built in code (no downloaded model), each a named, replaceable part (pad, torso, helmet, face, eyes, gorget, cuirass,
+  pauldrons, bracers; evolution-only light: circuits, crestglow, halo, crown) with a hologram shader (rim light, scan lines, rising light band,
   energy pulses, materialisation edge, fade into the projector beam, floor reflection). The reactor (`#core`) stays
   as the chest core, so its states and tests are unchanged.
 - `avatar.js` loads it only when WebGL works and falls back to the 2D core on any failure or a lost GPU context.
@@ -252,6 +252,102 @@ prefer="quality")` and up to 2000 tokens, falling back to the best available mod
   opacity animations only, stopped in Low performance and Reduced motion.
 - Palette: deep black, metallic gold `--gold`, champagne `--champagne`, warm white `--warm-white`; amber only for
   activity and warnings; cyan only for listening/speaking.
+
+## E.V.O.L.V.E. — continuous intelligence and projections
+
+- **One event source**: the hash-chained audit log. `jarvis/learn` reads only new entries (cursor `learn.audit_seq`
+  in `meta`) from the dashboard's maintenance loop: OBSERVE → `outcomes` (replies by the answer check, missions by
+  their verifier), LEARN → `lessons` (fixed rules, evidence, confidence, contradictions → hypothesis, 30 days without
+  evidence → outdated). No model, nothing leaves the Mac; lessons hold counts and model/tool names only.
+- **Autonomy** (`autonomy` table): tiers 1–7 (observe, learn, analyze, experiment, propose, approved execution,
+  verified operation); a tier needs every tier below it; pauses for learning, experiments and initiative; the
+  emergency stop halts all. Tiers 6–7 are not built and can't be enabled from a browser; `/api/autonomy` is Mac-only.
+- **Analysis** (`learn/analysis.py`): tournament (per-model evidence; suggestion only), lab (replay, drill,
+  bench_compare; one at a time, isolated), discovery (recommendations only), self-inspection (own source,
+  read-only), knowledge graph. **Initiative** lives in the existing propose-only `proposals.py` detectors.
+- **Projections**: `learn/projections.py` serves real data per module (`GET /api/projection/<module>`, each with a
+  `basis` line); `static/avatar3d-projections.js` draws them in the avatar's scene. Opening: `intent.py` ("show me…"),
+  Projection studio, and the focus view's automatic selection from the real state.
+
+## Avatar 3D — module layout and the central state machine
+
+- `static/avatar-state.js` (classic script, loaded before `avatar.js`): the **one place that decides what the
+  projection shows**. Pure logic, unit-tested in Node (`tests/test_avatar_state.py`, skipped without Node).
+  - Input: the state `avatarState()` derives from real signals on each poll. Output: `{ state, profile, preview, lifecycle }`.
+  - 14 + 2 profiles: dormant, materializing, idle, listening, thinking, researching, planning, executing, speaking,
+    success, warning, error, recovering, dematerializing, plus approval and halted.
+  - Priorities (halted > error > approval > warning > recovering > success > live work > idle): a critical state
+    replaces anything at once; routine activity waits until a more important state has had its minimum time.
+  - Success shows for at most 4 s; live-work states fall back to idle if the dashboard stops reporting for 10 s;
+    previews are flagged, last at most 10 s and give way to a real critical state.
+  - Queued missions show as idle with a "Queued — nothing is running yet" card, never as active work.
+- `static/avatar3d.js` (engine, scene, state looks, gestures, quality) imports: `avatar3d-shaders.js` (GLSL only),
+  `avatar3d-geometry.js` (body and hand distance fields, meshing, the faceless helmet), `avatar3d-reactor.js`
+  (reactor layers), `avatar3d-neural.js` (the neural network), `avatar3d-particles.js` (materialise /
+  dematerialise particles) and `avatar3d-environment.js` (platform, orbitals, chamber, ground light, panels).
+  Every module is on the server's static allow-list; no dependency besides the vendored Three.js r160.
+- Settings: the focus view's projection controls are stored with the display settings (`jarvis-display`, per
+  device) and reach the renderer through `JarvisAvatar.setOptions`; the floating panels get the dashboard's own
+  systems lines through `JarvisAvatar.setPanels` (shown only in the focus view).
+- Evolution has five stages (`evolution.TIERS`, definitions v4); stage 5 needs all 19 milestones.
+
+## Avatar 2.0 — living intelligence projection
+
+- **Renderer** `static/avatar3d.js` (Three.js, unchanged dependency): body that breathes, head on a neck pivot,
+  arms on shoulder pivots; faceless helm (visor shell, optical sensors, internal gear rings, visor scan line);
+  reactor assembly around the SVG core (independent rings, rotor, discharge arcs, brightness from activity);
+  environment: neural lattice, research data streams, vertical scan ring, platform energy pulses, rotating
+  platform geometry, and eight **system satellites** on the main orbit coloured by the Command center's live status.
+  Shared uniforms drive every material; the floor reflection is a second pass of the same figure.
+- **States** (22 today: the 18 below plus learning, experimenting, analyzing and disagreeing — see Avatar 2.5) come only from real signals in `avatarState(s, d)` (`app.js`): microphone or typing in the
+  message box → listening; chat stream stages → understanding / reasoning / writing / coding / verifying;
+  research → researching; task running → executing; task recovering or the connection coming back → recovery;
+  speech engine speaking → speaking (reactor pulses on reported word boundaries); task completed → completed;
+  decision/blocked → approval; failing health check or no model → warning (amber); a failed task, lost
+  connection, or failing database/audit log → error (red, the only red); emergency stop → halted; no data → unknown.
+  States blend over ~0.6–1 s.
+- **Interaction**: click or Enter on the projection opens the focus view (live state, current work, the eight
+  systems, evolution); hovering a satellite shows that system's live status and clicking opens it; Esc or Exit
+  closes; the top bar (Emergency stop) stays above. A small task hologram beside the projection shows the real
+  current step, research, or replying model. Display → Projection intensity (Subtle / Standard / Vivid).
+- **Evolution v3** (`evolution.py`, 19 milestones incl. benchmark pass, 5/25/100 verified missions, recent green `jarvis doctor` and `jarvis mac check`, 30 days reliable; those CLI commands record their outcome via `record_check`). Stages Initial Projection → Advanced Projection → Intelligence Projection →
+  Evolved Intelligence; a milestone counts while it verifies and for 7 days after it last verified; first/last
+  verification, stage changes and definitions version (`DEFINITION_VERSION`) are stored and audited. A device may
+  show a lower stage (Evolution record), never a higher one.
+
+## Avatar 2.5 — living intelligence projection
+
+- **Camera rig** `static/avatar3d-camera.js`: the camera on a sphere around a target (azimuth, elevation, distance)
+  with views (`VIEWS`) and inspection targets (`TARGETS`); goals are eased per frame (k = 1 in Low performance and
+  Reduced motion). The Projection Director no longer moves the camera: it reports how far to widen (`director.wide`)
+  and the rig applies it to the resting view only. Pointer, wheel and touch input are bound in `avatar.js` and
+  captured only while inspecting (`.core-wrap.inspecting { touch-action: none }`).
+- **Presets** `static/avatar-presets.js` (`window.JarvisPresets`): pure functions over `{ active, custom[] }`; app.js
+  stores them in `localStorage["jarvis-presets"]` and applies a preset by merging its settings into the per-device
+  display settings (`jarvis-display`), the same path as every other projection control.
+- **Event-to-visual map** `static/avatar-events.js` (`window.JarvisEvents`): `MAP[state]` → personality, automatic
+  projection, effect, sound cue; `PERSONALITY[name]` → head motion, gesture, glances; `AUDIT_STATES` → the audit
+  events that show a state of their own (`permission.denied`, `egress.denied` → `disagreeing`). `avatar.js` passes
+  the personality to the renderer (`setPersonality`); `app.js` reads `projectionFor` and spots refusals with
+  `fromAudit` (newest audit seq remembered, so nothing replays). Priorities and timing stay in `avatar-state.js`
+  (disagreeing: priority 75, at most 3 s).
+- **Projection Director** (phase 3): entries carry `side` (±1), `minimized` and the single `expanded` module;
+  `layout()` places them (two per side, overflow moves across; expanded alone at `EXPANDED`), `update()` eases
+  positions, scales and the camera goal (`wide`, `wideX`, `wideR`). The rig scales the widening by the canvas aspect
+  (`setAspect`), so the wider focus-view canvas (`body.proj-area`) keeps the figure large. `research` data is built by
+  `researchProjection()` in app.js from the last research answer in the conversation.
+- **Recovery** (`avatar.js`): `av.status` is loading / 3d / lost / restarting / 2d / unavailable / failed. Context
+  loss → `lost()` (2D core, wait `RESTORE_WAIT`); `webglcontextrestored` → `restored()` (same renderer); timeout →
+  `rebuild(false)` (`dispose()` then `tryThree()` after `RETRY_WAIT[n]`, three tries; `onRebuilt(modules)` reopens
+  projections). **Quality**: `setAutoQuality()` logs every change (`qualityInfo`); `lowBattery` comes from the
+  Battery Status API in app.js (`watchBattery`).
+- **Voice and sound**: `startMicLevel()` (app.js) → `JarvisAvatar.voiceLevel(0..1)` → renderer `setVoice` (eased into
+  `REACTOR` and `uSpeech`). `avatar-sound.js` (`window.JarvisSound`): Web Audio hum + cues named in
+  `avatar-events.js`; `duck()` while speaking or recording; cues only from real, non-preview state changes.
+- **Transformations** `static/avatar3d-transform.js`: `createSequencer()` keeps one sequence's clock (`STEPS` with
+  overlapping `TIMING`, 3.1 s), plays forward to open and backward to close, and closes the open one before opening
+  another. The renderer's `applyTransform()` maps step progress to each plate's offset (its own direction plus a
+  slide) and turn about its bounding-box centre; plates are tagged by name and side when the armour is cut.
 
 ## Benchmark and release gate (`src/jarvis/bench/`, `src/jarvis/gate.py`, v0.17)
 
@@ -290,6 +386,48 @@ used). Tests prove each protection drill fails when its protection is disabled.
 - **Grounding check:** answers built on calendar or reminder lookups may only mention times found in that data or
   in the question; otherwise one retry with the problem pointed out, then the reply is marked "Unverified". Logged
   as `chat.grounding` (outcome and counts only).
+
+## Mission Control (Outcome Engine v2, work branch)
+
+- **Criteria** (`orchestrator/criteria.py`): `criteria_for(plan.steps)` at submit → `context.criteria` (check kinds:
+  file, read_back, reported, finished). Verifier `mission_verified` = `writes_verified` (files, citations) + each
+  criterion: read-back reuses the action's `reconcile` (the crash-recovery lookup) on the step's arguments merged with
+  its result; statuses verified / failed / unconfirmed / reported / skipped; any failed → FAILED; unconfirmed counted
+  in `evidence.unconfirmed` (learning verdict "unverified"). Tasks created before v2 keep `writes_verified`.
+- **Durable planning jobs** (`plan_jobs`, schema v10): `Dashboard._persist_job` on every state change;
+  `_restore_jobs` at start (ready → back with the plan; planning → re-planned; waiting_approval → waits on the same
+  approval; >24 h or submitted → dropped).
+- **Replan** (`POST /api/tasks/<id>/replan`): failed missions only, once (`context.replan_of`, `plan_jobs.replan_of`);
+  `Orchestrator.failure_story` (steps, states, errors) reaches the planner as a note alongside the look-first facts.
+
+## Connected intelligence (work branch, Evolution 3.0 phase 3)
+
+- **Tournament → routing:** `autopilot.act_on_tournament` (tier 7) turns `analysis.tournament()["recommendation"]`
+  into adjustments keyed `tournament:best:<model>` / `tournament:worst:<model>` with the evidence; withdrawn
+  (`autopilot.withdraw`) when the recommendation goes away; never re-applied after an owner undo. `router_bonus` sums
+  per model; the router clamps ±3.
+- **Links:** `MemoryStore.link_informed` writes `memory:<id> —context for→ record:<id>`; `MemoryStore.delete`,
+  `delete_record` and `TaskStore.delete` remove any link touching the node. `knowledge_graph` adds conversation nodes
+  (date only), project-evidence edges (from `project_ideas.body.evidence`) and replan edges (`context.replan_of`).
+- **Initiative feed:** `initiative.py` (`candidates`, `feed`, `dismiss`, `should_notify`); `GET /api/initiative`,
+  `POST /api/initiative/dismiss`; `Notifier.poll` sends the daily generic notification after the quiet-hours check.
+
+## Working modes (work branch, Evolution 3.0 phase 4)
+
+- `avatar-events.js` `MODES` (projections, view, look, `auto` states) and `modeFor(state)`; one source of truth with
+  the rest of the event-to-visual map. `app.js`: `enterWorkMode` / `leaveWorkMode` with the focus view, `setWorkMode`
+  (re-entry guarded; the mode is recorded before projections open, because opening one re-renders the page),
+  `workModeTick` (Auto: System at once, others after `MODE_HOLD_MS`, Command after `MODE_RETURN_MS`), and
+  `effectiveDisplay` (the mode's look over your saved settings, focus view only). Preference: `localStorage
+  ["jarvis-workmode"]`.
+
+## Avatar forms and readiness (work branch, Evolution 3.0 phase 5)
+
+- `avatar-events.js` `FORMS` (transform, view, look, xray). `app.js`: `setForm` / `reapplyForm` (after inspection) /
+  `leaveForm`; `effectiveDisplay` layers the form over the working mode over your saved settings. Renderer option
+  `xray` thins the plates (`uOpacity` 0.28, no depth write) and adds a fixed visibility to the inner skeleton.
+- `readiness(d)` (app.js) from `/api/state` health items; `JarvisAvatar.ready()` → one pulse (full mode, not during
+  boot) on the transition to all-passing.
 
 ## Service and backups
 

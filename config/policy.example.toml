@@ -29,6 +29,13 @@ effect = "allow"
 tools = ["search"]
 actions = ["query"]
 
+# Music playback (play, pause, skip, a playlist) without asking each time. Remove this rule to approve every one.
+[[rules]]
+id = "music-controls"
+effect = "allow"
+tools = ["music"]
+actions = ["control", "playlist"]
+
 [[rules]]
 id = "no-deletes-yet"
 effect = "deny"

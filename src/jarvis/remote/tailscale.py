@@ -59,3 +59,34 @@ def serve(port: int) -> None:
 
 def unserve() -> None:
     _run("serve", "--https=443", "off")
+
+
+def checklist() -> list[dict[str, object]]:
+    """Where iPhone access stands, step by step (nothing is changed). Each step: name, ok, and what to do if not."""
+    steps: list[dict[str, object]] = []
+    try:
+        cli()
+        steps.append({"name": "Tailscale installed on this Mac", "ok": True, "fix": ""})
+    except TailscaleError:
+        steps.append({"name": "Tailscale installed on this Mac", "ok": False,
+                      "fix": "Install Tailscale from the Mac App Store (free) and sign in."})
+        return steps
+    try:
+        status = json.loads(_run("status", "--json"))
+    except (TailscaleError, ValueError) as exc:
+        steps.append({"name": "Tailscale running", "ok": False, "fix": f"Open the Tailscale app and sign in ({exc})."})
+        return steps
+    running = status.get("BackendState") == "Running"
+    steps.append({"name": "Tailscale signed in and connected", "ok": running,
+                  "fix": "" if running else "Open the Tailscale app (menu bar) and sign in."})
+    if not running:
+        return steps
+    name = str((status.get("Self") or {}).get("DNSName") or "").rstrip(".")
+    magic = name.endswith(".ts.net")
+    steps.append({"name": "MagicDNS and HTTPS on", "ok": magic, "fix": "" if magic else
+                  "In the Tailscale admin console (login.tailscale.com → DNS), turn on MagicDNS and HTTPS Certificates."})
+    phones = [p for p in (status.get("Peer") or {}).values()
+              if str(p.get("OS", "")).lower() in ("ios", "iphone") or "iphone" in str(p.get("HostName", "")).lower()]
+    steps.append({"name": "An iPhone in the same Tailscale account", "ok": bool(phones), "fix": "" if phones else
+                  "Install Tailscale on your iPhone (App Store, free) and sign in with the same account."})
+    return steps

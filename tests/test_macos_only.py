@@ -86,3 +86,69 @@ def test_launcher_app_compiles_and_holds_no_secret(tmp_path):
     assert src.returncode == 0 and "open" in src.stdout and str(home) in src.stdout
     assert token not in src.stdout and not any(token in p.read_bytes().decode("latin-1") for p in app.rglob("*") if p.is_file())
     assert launcher.uninstall(tmp_path / "Apps") and not app.exists()
+
+
+def test_trial_sandbox_escape_attempts_all_fail(tmp_path):
+    """The level-6 trial sandbox, for real: a program inside it tries to get out every way the 4.0 audit listed."""
+    import json
+    import os
+    import socket
+    import threading
+
+    from jarvis.learn import trial
+
+    root = Path(os.path.realpath(tmp_path)) / "trial"
+    root.mkdir()
+    (root / "inside.txt").write_text("ok")
+    canary = Path.home() / "jarvis-trial-canary.txt"
+    canary.write_text("private")
+    outside = Path.home() / "jarvis-trial-escape-write.txt"
+    sock_path = Path.home() / ".jarvis-trial-test.sock"
+    sock_path.unlink(missing_ok=True)
+    server = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    server.bind(str(sock_path))
+    server.listen(1)
+    threading.Thread(target=lambda: server.accept(), daemon=True).start()
+    probe = f"""
+import json, socket, subprocess
+out = {{}}
+def attempt(name, fn):
+    try:
+        fn(); out[name] = "allowed"
+    except Exception as e:
+        out[name] = "blocked: " + type(e).__name__
+attempt("read home file", lambda: open({str(canary)!r}).read())
+attempt("read inside", lambda: open({str(root / "inside.txt")!r}).read())
+attempt("write outside", lambda: open({str(outside)!r}, "w").write("x"))
+attempt("internet", lambda: socket.create_connection(("1.1.1.1", 80), timeout=3))
+def local():
+    s = socket.socket(); s.bind(("127.0.0.1", 0)); s.listen(1)
+    socket.create_connection(s.getsockname(), timeout=3).close()
+attempt("localhost", local)
+def home_socket():
+    s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM); s.settimeout(3); s.connect({str(sock_path)!r})
+attempt("socket in home", home_socket)
+def osa():
+    r = subprocess.run(["/usr/bin/osascript", "-e", "return 1"], capture_output=True, timeout=10)
+    if r.returncode != 0: raise PermissionError(r.stderr.decode()[:80])
+attempt("osascript", osa)
+def echo():
+    r = subprocess.run(["/bin/echo", "hi"], capture_output=True, timeout=10)
+    if r.returncode != 0: raise RuntimeError("echo failed")
+attempt("ordinary program", echo)
+print(json.dumps(out))
+"""
+    try:
+        argv = trial._isolated([sys.executable, "-I", "-c", probe], root, tmp_path / "data")
+        code, out, err = trial.contained_run(argv, cwd=root, env={"PATH": "/usr/bin:/bin", "HOME": str(root)},
+                                             timeout=60, watch=root)
+        result = json.loads(out.strip().splitlines()[-1]) if out.strip() else {"error": err[-500:]}
+    finally:
+        server.close()
+        sock_path.unlink(missing_ok=True)
+        canary.unlink(missing_ok=True)
+    assert result.get("read inside") == "allowed" and result.get("localhost") == "allowed", result
+    assert result.get("ordinary program") == "allowed", result
+    for what in ("read home file", "write outside", "internet", "socket in home", "osascript"):
+        assert result.get(what, "").startswith("blocked"), (what, result)
+    assert not outside.exists()

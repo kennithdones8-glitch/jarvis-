@@ -14,3 +14,7 @@ config/policy.toml
 .env
 
 demo/dist/
+serve.log
+
+# Built by games/kerbside/make_zip.py
+kerbside-grand-prix.zip

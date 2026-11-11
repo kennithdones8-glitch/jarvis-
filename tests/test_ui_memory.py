@@ -12,7 +12,7 @@ def test_origin_is_spelled_out_and_inferred_memories_are_not_hidden(dash):
     js = _js(d)
     assert '"Stated by you"' in js and '"Confirmed by you"' in js and '"Inferred by JARVIS"' in js
     assert "already used in answers" in js  # inferred memories are used before you confirm them; say so
-    assert "confidence" not in js.split("async function loadMemory")[1].split("async function memAct")[0]  # no made-up scores
+    assert "confidence" not in js.split("async function loadMemory")[1].split("\n}\n")[0]  # no made-up scores on the Memory page
 
 
 def test_filters_only_change_what_is_shown(dash):

@@ -40,7 +40,7 @@ def test_stop_aborts_the_stream_and_keeps_what_was_written(dash):
     assert "new AbortController()" in stream and "signal: controller.signal" in stream
     assert 'e.name === "AbortError"' in stream and "partial: live.text" in stream
     assert "ui.abort.abort()" in fn(js, "stopReply")
-    assert "stopReply()" in js.split('e.key === "Escape"')[1].split("\n")[0]
+    assert "stopReply()" in js.split('document.addEventListener("keydown", (e) => { if (e.key === "Escape")')[1].split("\n")[0]
 
 
 def test_a_failed_attempts_words_are_dropped(dash):

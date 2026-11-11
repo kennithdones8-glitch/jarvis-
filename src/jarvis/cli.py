@@ -100,8 +100,8 @@ def main(argv: list[str] | None = None) -> int:
     p = sub.add_parser("revoke-egress")
     p.add_argument("grant_id")
     sub.add_parser("grants", help="list egress grants")
-    p = sub.add_parser("remote", help="use JARVIS from your iPhone over Tailscale: enable | disable | status")
-    p.add_argument("op", choices=["enable", "disable", "status"])
+    p = sub.add_parser("remote", help="use JARVIS from your iPhone over Tailscale: setup | enable | disable | status")
+    p.add_argument("op", choices=["setup", "enable", "disable", "status"])
     p.add_argument("--port", type=int, default=8765)
     p.add_argument("--hostname", help="this Mac's Tailscale name (default: asked from the Tailscale app)")
     p = sub.add_parser("voice", help="local speech recognition (whisper.cpp): setup | enable | disable | status | test FILE")
@@ -120,6 +120,13 @@ def main(argv: list[str] | None = None) -> int:
     p = sub.add_parser("proposals", help="improvements JARVIS suggests from its own record (propose-only: you decide)")
     p.add_argument("op", nargs="?", default="list", choices=["list", "refresh", "show", "approve", "reject", "done", "brief"])
     p.add_argument("id", nargs="?")
+    p = sub.add_parser("autonomy", help="what JARVIS may do on its own: show | enable N | disable N | pause WHAT | resume WHAT")
+    p.add_argument("op", nargs="?", default="show", choices=["show", "enable", "disable", "pause", "resume"])
+    p.add_argument("what", nargs="?")
+    p = sub.add_parser("lessons", help="what JARVIS has learned from its own record, with evidence")
+    p = sub.add_parser("trial", help="tier 6: test a branch or commit in a throwaway copy and compare (never merges)")
+    p.add_argument("ref")
+    p.add_argument("--baseline", default="HEAD")
     p = sub.add_parser("gate", help="release gate: full tests, linter, and every security item (run from the repo)")
     p.add_argument("--json", action="store_true")
     p = sub.add_parser("bench", help="benchmark: list | run [IDS] | baseline | score-baseline FILE | report RUN_DIR | "
@@ -133,6 +140,8 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--b1", action="store_true", help="baseline with the same information JARVIS gets")
     p.add_argument("--coding-self-test", action="store_true",
                    help="run with the coding self-test on (code runs only inside the macOS sandbox)")
+    p.add_argument("--compute", action="store_true",
+                   help="run with 'work it out with code' on (programs run only inside the macOS sandbox)")
     p.add_argument("--set", choices=["core", "extended", "hard", "all"], default="core",
                    help="core: the 12 compared with the Claude app (default); extended: 12 more; all: both; hard: 17 held-out harder tasks")
     p.add_argument("--before", nargs="+", metavar="DIR", help="compare: one or more runs pooled as 'before'")
@@ -156,6 +165,11 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("device_id", nargs="?")
     args = parser.parse_args(argv)
 
+    if args.cmd == "dashboard":
+        from .service import responding
+        if responding(args.port):  # before opening the data: a command that does nothing changes nothing
+            print(f"JARVIS is already running on port {args.port} (the background service?). Open it with `jarvis open`.")
+            return 0
     try:
         kernel = Kernel(args.home)
     except Exception as exc:  # settings or database unreadable: say which file, never a traceback
@@ -236,6 +250,8 @@ def main(argv: list[str] | None = None) -> int:
             print(json.dumps(c.as_dict(), indent=2) if args.json else trust.as_text(c))
         elif args.cmd == "proposals":
             return _proposals(kernel, args)
+        elif args.cmd in ("autonomy", "lessons", "trial"):
+            return _learn_cli(kernel, args)
         elif args.cmd == "trace":
             from . import flight
 
@@ -247,7 +263,11 @@ def main(argv: list[str] | None = None) -> int:
             print("Running recovery drills on a throwaway JARVIS (your real data is not touched)…", file=sys.stderr)
             results = drill.run(args.only or None)
             print(drill.as_json(results) if args.json else drill.report(results))
-            return 0 if results and all(r.passed for r in results) else 1
+            ok = bool(results) and all(r.passed for r in results)
+            if not args.only:   # a full run counts toward the projection's reliability milestone
+                from .evolution import record_check
+                record_check(kernel, "drill", ok)
+            return 0 if ok else 1
         elif args.cmd == "gate":
             from . import gate
 
@@ -258,7 +278,7 @@ def main(argv: list[str] | None = None) -> int:
         elif args.cmd == "bench":
             return _bench(kernel, args)
         elif args.cmd == "mac":
-            return _mac_check()
+            return _mac_check(kernel=kernel)
         elif args.cmd == "checkup":
             from .checkup import WARN, Checkup, report
 
@@ -271,6 +291,10 @@ def main(argv: list[str] | None = None) -> int:
 
             results = Doctor(kernel, port=args.port, voice_test=not args.no_voice_test).run()
             print(as_json(results) if args.json else report(results))
+            from .doctor import OK, SKIP
+            from .evolution import record_check
+            # "all green": nothing warns or fails (checks for features you haven't set up are skipped, not failed)
+            record_check(kernel, "doctor", bool(results) and all(c.status in (OK, SKIP) for c in results))
             return 1 if any(c.status == FAIL for c in results) else 0
         elif args.cmd == "briefing":
             from .proactive import briefing_text, build_briefing
@@ -379,6 +403,9 @@ def _startup_problem(exc: Exception, home) -> str:
         backup = culprit.with_suffix(".toml.bak")
         undo = f" or put back the previous copy: cp \"{backup}\" \"{culprit}\"" if backup.exists() else ""
         return f"error: {culprit} has a problem: {exc}\nFix that line in a text editor{undo}."
+    from .core.kernel import UpgradeBlocked
+    if isinstance(exc, UpgradeBlocked):
+        return f"error: {exc}"
     if isinstance(exc, SchemaTooNew):
         return f"error: {exc}. This copy of JARVIS is older than your data: run `git pull && uv sync`."
     if isinstance(exc, sqlite3.Error):
@@ -591,9 +618,19 @@ def _app(kernel: Kernel, args) -> int:
             custom = bool(args.home) or "JARVIS_HOME" in __import__("os").environ
             app = launcher.install(kernel.home, custom_home=custom, dest_dir=dest, port=args.port)
             print(f"Made {app}. Double-click it (or drag it to your Dock) to open the dashboard.")
-            print("It runs `jarvis open` from this folder; it stores no link or password and changes nothing.")
+            print("It runs `jarvis open` from this folder and stores no link or password. If JARVIS isn't running it "
+                  "offers a Start JARVIS button; otherwise it changes nothing.")
+            try:
+                cmd = launcher.install_command(kernel.home, custom_home=custom, dest_dir=dest / "bin" if dest else None)
+                on_path = str(cmd.parent) in __import__("os").environ.get("PATH", "").split(__import__("os").pathsep)
+                print(f"Also made the `jarvis` command ({cmd}): `jarvis doctor` now works without `uv run`."
+                      + ("" if on_path else f" Open a new Terminal window first; if it isn't found, add {cmd.parent} to your PATH."))
+            except launcher.LauncherError as exc:
+                print(f"(No `jarvis` command: {exc}. `uv run jarvis …` still works.)")
         else:
             print("Removed JARVIS.app." if launcher.uninstall(dest) else "JARVIS.app wasn't installed there.")
+            if launcher.uninstall_command(dest / "bin" if dest else None):
+                print("Removed the `jarvis` command.")
     except launcher.LauncherError as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 1
@@ -647,6 +684,25 @@ def _remote(kernel: Kernel, args) -> int:
             _print({"enabled": bool(cfg.get("enabled")), "hostname": cfg.get("hostname"),
                     "phone_url": f"https://{cfg['hostname']}" if cfg.get("enabled") else None,
                     "paired_devices": len(devices)})
+        elif args.op == "setup":   # a guided check: says what's missing; turns sharing on only when all is ready
+            print("Setting up JARVIS on your iPhone (private: only your own devices, through Tailscale).\n")
+            steps = ts.checklist()
+            for st in steps:
+                print(f"{'✓' if st['ok'] else '✗'} {st['name']}" + ("" if st["ok"] else f"\n    → {st['fix']}"))
+            needed = [st for st in steps if not st["ok"] and not st["name"].startswith("An iPhone")]
+            if needed or len(steps) < 4:
+                print("\nFix the ✗ line above, then run `jarvis remote setup` again.")
+                return 1
+            host = ts.hostname().rstrip(".")
+            _write_remote_config(kernel, enabled=True, hostname=host)
+            ts.serve(args.port)
+            if svc.is_loaded():
+                svc.restart()
+            print(f"\n✓ Sharing the dashboard inside your Tailscale network only: https://{host}")
+            if not steps[-1]["ok"]:
+                print("  (Install Tailscale on the iPhone and sign in with the same account before pairing.)")
+            print("\nLast step, on this Mac: open JARVIS → Systems → Phone → Pair a phone, and scan the code with the\n"
+                  "iPhone's camera. Then on the iPhone: Share → Add to Home Screen, and sign in with Face ID.")
         elif args.op == "enable":
             host = (args.hostname or ts.hostname()).rstrip(".")
             _write_remote_config(kernel, enabled=True, hostname=host)
@@ -771,6 +827,51 @@ listening on 127.0.0.1 only.""")
     return 0
 
 
+def _learn_cli(kernel: Kernel, args) -> int:
+    from . import learn
+    from .learn import Autonomy, AutonomyError, analysis
+
+    if args.cmd == "lessons":
+        rows = learn.lessons(kernel)
+        for les in rows:
+            print(f"[{les['kind']:<10}] {les['confidence']:.0%}  {les['statement']}")
+        if not rows:
+            print("No lessons yet: they appear once JARVIS has enough evidence.")
+        return 0
+    a = Autonomy(kernel)
+    if args.cmd == "autonomy":
+        try:
+            if args.op in ("enable", "disable"):
+                a.set_tier(int(args.what or 0), args.op == "enable", by="user:cli", from_dashboard=False)
+            elif args.op in ("pause", "resume"):
+                a.set_pause(str(args.what), args.op == "pause", by="user:cli")
+        except (AutonomyError, ValueError) as exc:
+            print(f"error: {exc}", file=sys.stderr)
+            return 1
+        st = a.state()
+        for t in st["tiers"]:
+            print(f"{'on ' if t['on'] else 'off'}  tier {t['tier']} · {t['name']}: {t['about']}")
+        print("paused: " + (", ".join(k for k, v in st["paused"].items() if v) or "nothing")
+              + ("  ·  EMERGENCY STOP ON" if st["stopped"] else ""))
+        return 0
+    try:
+        eid = analysis.Lab(kernel).start("trial", by="user:cli", background=False, ref=args.ref, baseline=args.baseline)
+    except analysis.LabError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 1
+    e = next(x for x in analysis.Lab(kernel).list() if x["id"] == eid)
+    r = e["results"] or {}
+    if "candidate" in r:
+        for side in ("baseline", "candidate"):
+            s = r[side]
+            print(f"{side:<9} {s['ref']} ({s['sha']}): {s['tests']['passed']} passed, {s['tests']['failed']} failed, "
+                  f"lint {s['lint'] or 'not run'}, {s['seconds']} s")
+        for name in r["newly_failing"]:
+            print(f"  newly failing: {name}")
+    print(e["recommendation"])
+    return 0 if e["state"] == "done" else 1
+
+
 def _proposals(kernel: Kernel, args) -> int:
     from .proposals import Proposals
 
@@ -880,7 +981,7 @@ def _bench(kernel: Kernel, args) -> int:
                   "settings and permissions are untouched.\n")
         run_dir = run_suite(tasks, real_config=kernel.config_path, out_dir=out, models=args.models,
                             repeat=max(1, args.repeat), run_code=args.run_code, progress=print,
-                            coding_self_test=args.coding_self_test)
+                            coding_self_test=args.coding_self_test, compute=args.compute)
         print(f"\nReport: {run_dir / 'report.md'}")
         print(summary_part((run_dir / "report.md").read_text()))
         return 0
@@ -889,7 +990,7 @@ def _bench(kernel: Kernel, args) -> int:
         return 1
 
 
-def _mac_check(runner=None) -> int:
+def _mac_check(runner=None, kernel=None) -> int:
     """Read from each Mac app once through the same code JARVIS uses, so macOS can ask its one-time permission
     question while you're at Terminal. Reads only; nothing is added or changed."""
     from datetime import datetime, timedelta
@@ -925,6 +1026,9 @@ def _mac_check(runner=None) -> int:
             print(f"✗ {label:<10} {exc}")
     print("\nMail drafts and opening apps ask for permission the first time you approve one." if not failed else
           "\nFix the ✗ lines (System Settings → Privacy & Security → Automation), then run this again.")
+    if kernel is not None and runner is None:   # a real run on this Mac counts toward the projection's milestones
+        from .evolution import record_check
+        record_check(kernel, "mac_check", not failed)
     return 1 if failed else 0
 
 

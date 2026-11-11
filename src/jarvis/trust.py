@@ -27,6 +27,10 @@ PHRASES: dict[tuple[str, str], str] = {
     ("notes", "read"): "read a note", ("notes", "create"): "create notes", ("mail", "draft"): "save email drafts (never sends)",
     ("apps", "open"): "open apps", ("llm", "compose"): "write text with a local model from data it was given",
     ("research", "web"): "research the web with Claude",
+    ("music", "now"): "see what the Music app is playing", ("music", "control"): "play, pause and skip in Music",
+    ("music", "playlist"): "play a Music playlist", ("music", "volume"): "change Music's volume",
+    ("system", "status"): "check battery, Wi-Fi, disk and volume", ("system", "volume"): "change the Mac's volume",
+    ("system", "focus"): "turn Do Not Disturb on or off (through your Shortcut)",
 }
 CATEGORY_NAMES = {"conversation": "what you say in chat", "file_content": "your files and app data (calendar, reminders, notes)",
                   "memory": "what JARVIS remembers about you", "project": "project files", "web_content": "web page text",

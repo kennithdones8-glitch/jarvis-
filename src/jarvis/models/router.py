@@ -45,6 +45,8 @@ class Need:
     # instead. It never moves an answer to the cloud. Real failures (hard set, smarter-v2): the 3B dropped a
     # reminder JARVIS had listed as due today, and couldn't link two memories that were both in front of it.
     careful: bool = False
+    # A second opinion must come from a different model: "provider/model" (or just the model id) to leave out.
+    avoid: str = ""
 
     def __post_init__(self) -> None:
         if self.capability not in CAPABILITIES:
@@ -104,7 +106,10 @@ def hard_signals(text: str) -> bool:
     return bool(HARD_SIGNALS.search(text)) or text.count("?") >= 3 or len(text) > 1200 or is_puzzle(text)
 
 
-WORD_PROBLEM = re.compile(r"\b(how (many|much|long|far|old)|calculate|work out|what is the (total|difference|average))\b",
+# Hard set (smarter-v2): "what time does it arrive?" and "on which weekday ...?" weren't seen as maths, so the
+# 14B never got them. Still needs two or more numbers, so "what time is my dentist?" isn't caught.
+WORD_PROBLEM = re.compile(r"\b(how (many|much|long|far|old)|calculate|work out|what is the (total|difference|average)"
+                          r"|what time (does|do|will|is|would)|(which|what) (week)?day|(which|what) date|when (does|will))\b",
                           re.I)
 NUMBER = re.compile(r"\d+(?:[.,]\d+)?")
 
@@ -132,6 +137,7 @@ class ModelRouter:
         if any(p.location != "local" for p in self.local.values()):
             raise ValueError("cloud providers must be registered with the egress gate")
         self.gate = gate
+        self.adjust: dict[str, float] = {}   # tier 7: model id → small score nudge from lessons (see learn.autopilot)
 
     def route(self, need: Need, request: ChatRequest) -> Route:
         local_only = need.local_only or self.gate.sensitivity.has_local_only(request)
@@ -151,7 +157,9 @@ class ModelRouter:
             for mid, info in models.items():
                 key = f"{name}/{mid}"
                 reason = None
-                if need.capability not in info.capabilities:
+                if need.avoid and need.avoid in (key, mid):
+                    reason = "the model whose work is being checked"
+                elif need.capability not in info.capabilities:
                     reason = f"lacks capability '{need.capability}'"
                 elif info.quality < need.min_quality:
                     reason = f"quality {info.quality} below required {need.min_quality}"
@@ -170,7 +178,8 @@ class ModelRouter:
                     "speed" if self.mode == "local_first" and not need.careful else "quality")
                 primary, secondary = (info.quality, info.speed) if prefer == "quality" else (info.speed, info.quality)
                 local_bonus = 100 if location == "local" and self.mode == "local_first" else 0
-                score = local_bonus + primary * 10 + secondary + (0.5 if location == "local" else 0)
+                nudge = max(-3.0, min(3.0, self.adjust.get(mid, 0.0)))   # bounded: never beats the local-first bonus
+                score = local_bonus + primary * 10 + secondary + (0.5 if location == "local" else 0) + nudge
                 ok.append(Candidate(name, mid, location, info, score))
 
         if not ok:

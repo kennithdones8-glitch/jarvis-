@@ -224,6 +224,13 @@ class Notifier:
             self._task_states[t["id"]] = t["state"]
         if quiet:
             return sent
+        try:   # a strong suggestion from the Initiative feed: generic, at most once a day, never in quiet hours
+            from ..initiative import should_notify
+            if should_notify(self.kernel) and self._may_send("initiative"):
+                self.push.send("JARVIS", "JARVIS has a suggestion", tag="initiative", url="/#/intelligence")
+                sent.append("initiative")
+        except Exception:  # noqa: BLE001 - suggestions never break notifications
+            pass
         if attention and self._may_send("attention"):
             self.push.send("JARVIS", "A task needs your attention", tag="attention")
             sent.append("attention")

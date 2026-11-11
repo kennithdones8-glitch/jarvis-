@@ -74,3 +74,14 @@ def test_refuses_outside_a_repository(tmp_path):
     import pytest
     with pytest.raises(RuntimeError, match="from the JARVIS repository"):
         gate.run(root=tmp_path)
+
+
+def test_failure_reasons_are_reported():
+    from jarvis.gate import GateResult, failure_reasons, report
+    xml = ('<testsuite><testcase classname="tests.test_x" name="test_a[1]"><failure message="assert 1 == 2&#10;more">'
+           'trace</failure></testcase><testcase classname="tests.test_x" name="test_b"/></testsuite>')
+    why = failure_reasons(xml)
+    assert why == {"test_x::a": "assert 1 == 2 more"}
+    r = GateResult(passed=False, suite={"passed": 1, "failed": ["test_x::a"], "skipped": [], "unexpected_skips": [],
+                                        "ok": False, "why": why}, lint={"ok": True, "detail": "clean"}, items=[])
+    assert "      why: assert 1 == 2 more" in report(r)

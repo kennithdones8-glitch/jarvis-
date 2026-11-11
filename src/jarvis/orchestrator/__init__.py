@@ -72,16 +72,25 @@ class Orchestrator:
             kernel.registry.register(ResearchTool(kernel.models).spec())
         kernel.engine.arg_resolver = resolve_step_args
         kernel.engine.verifiers.setdefault("writes_verified", writes_verified)
+        from .criteria import make_verifier
+        kernel.engine.verifiers.setdefault("mission_verified", make_verifier(kernel.registry, writes_verified))
         self.notes_dir = str(Path(notes_dir).expanduser())
         self.planner = Planner(kernel.models, kernel.registry, roots=[str(r) for r in kernel.policy.roots],
                                notes_dir=self.notes_dir)
 
-    def plan(self, request: str, *, local_only: bool = False) -> Plan:
+    def plan(self, request: str, *, local_only: bool = False, earlier: str | None = None) -> Plan:
+        """``earlier``: what happened on a failed first attempt (a replan), so the new plan doesn't redo what's done."""
         if question := self.premise_question(request):
             plan = Plan("clarify", message=question, model="jarvis (calendar check)")
             self.kernel.audit.record("orchestrator.premise_checked", actor="system", asked=True)
             return plan
         facts = self.look_first(request)
+        if earlier:
+            from ..models import Message
+            note = ("A first attempt at this request failed. What happened:\n" + earlier
+                    + "\nPlan only what is still needed: don't repeat steps that are already done, and avoid what failed.")
+            facts = (Message(facts.role, facts.content + "\n\n" + note, facts.category, local_only=facts.local_only)
+                     if facts is not None else Message("user", note))
         plan = self.planner.plan(request, local_only=local_only, facts=facts)
         self.kernel.audit.record("orchestrator.planned", actor="system", kind=plan.kind, goal=plan.goal,
                                  model=plan.model, attempts=plan.attempts, message=plan.message,
@@ -169,13 +178,27 @@ class Orchestrator:
             self.kernel.audit.record("orchestrator.looked_first", actor="system", checked=found.checked)
         return found.context
 
-    def submit(self, request: str, plan: Plan, *, actor: str = "user", runner: str = "cli") -> str:
-        """``runner`` names the process that drives the task, so two processes never run the same one."""
+    def submit(self, request: str, plan: Plan, *, actor: str = "user", runner: str = "cli",
+               replan_of: str | None = None, after: str | None = None) -> str:
+        """``runner`` names the process that drives the task, so two processes never run the same one.
+        The mission's definition of success (one criterion per step) is decided now, from the plan itself."""
+        from .criteria import criteria_for
         if plan.kind != "plan":
             raise ValueError(f"cannot submit a {plan.kind} result")
-        return self.kernel.tasks.create(request, goal=plan.goal or request, steps=plan.steps, actor=actor,
-                                        context={"verifier": "writes_verified", "planner": plan.model,
-                                                 "runner": runner})
+        context = {"verifier": "mission_verified", "planner": plan.model, "runner": runner, "criteria": criteria_for(plan.steps)}
+        if replan_of:
+            context["replan_of"] = replan_of
+        if after:
+            context["after"] = after   # waits until that mission has completed (the runner checks)
+        return self.kernel.tasks.create(request, goal=plan.goal or request, steps=plan.steps, actor=actor, context=context)
+
+    @staticmethod
+    def failure_story(task: dict[str, Any], steps: list[dict[str, Any]]) -> str:
+        """What a failed mission did, for its one replan: step descriptions, states and errors (no file contents)."""
+        lines = [f"- step {s['idx'] + 1} ({s['tool']}.{s['action']}): {s['description'][:160]} — {s['state']}"
+                 + (f"; error: {str(s['error'])[:200]}" if s["error"] else "") for s in steps]
+        why = (task.get("error") or "")[:200]
+        return "\n".join(lines) + (f"\nThe mission ended with: {why}" if why else "")
 
     def preview_args(self, task_id: str, step_id: str) -> dict[str, Any]:
         """The exact arguments a step will run with (references filled in) — shown when asking for approval."""

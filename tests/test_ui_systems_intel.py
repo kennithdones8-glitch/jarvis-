@@ -23,6 +23,9 @@ def test_briefing_and_ideas_only_read(dash):
     intel = js.split("async function loadIntel() {")[1].split("\n}\n")[0]
     assert 'api("/api/briefing")' in intel and 'api("/api/proposals")' in intel
     assert "/approve" not in intel and "/reject" not in intel and "call(" not in intel  # deciding stays on the Ideas page
+    assert "dismissSuggestion(it)" in intel                                            # the one action: "Not now"
+    dismiss = js.split("async function dismissSuggestion(it) {")[1].split("\n}\n")[0]
+    assert dismiss.count("call(") == 1 and '"/api/initiative/dismiss"' in dismiss         # hides a suggestion, nothing else
     assert "sections.flat(Infinity)" in intel
     assert '"intelligence"' in js.split("const VIEWS =")[1].split("\n")[0]
 

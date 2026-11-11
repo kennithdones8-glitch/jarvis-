@@ -429,6 +429,17 @@ def test_quick_mode_never_uses_the_reasoning_model(model_kernel):
     assert k.models.complete(quick, req(SYSTEM, Message("user", FLOUR)), purpose="chat").model == "small:3b"
 
 
+def test_classifying_a_maths_message_stays_on_the_fast_model(model_kernel):
+    """Merge of 0.19.3 with the work branch: the Ask / Research / Do classifier (a 6-token label) must not load the
+    reasoning model just because the message it classifies is a word problem or code."""
+    from jarvis import intent
+    k, ollama, openai = model_kernel(local_installed=("small:3b", "mid:7b", "big:14b"), extra_local=MID + BIG)
+    classify = Need("chat", prefer="speed", local_only=True, keep_speed=True)   # what the dashboard's route_message asks
+    r = k.models.complete(classify, req(Message("user", intent.PROMPT.format(text=FLOUR))), purpose="message type (local)")
+    assert r.model == "small:3b" and openai.received == []
+    assert not [e for e in k.audit.entries(limit=50) if e["event"] in ("model.reasoning_local", "model.reasoning_unavailable")]
+
+
 def test_reasoning_model_missing_or_broken_falls_back_to_the_usual_choice(model_kernel):
     k, ollama, openai = model_kernel(local_installed=("small:3b", "mid:7b"), extra_local=MID + BIG)  # 14B not pulled
     r = k.models.complete(Need("chat", prefer="auto"), req(SYSTEM, Message("user", FLOUR)), purpose="chat")
