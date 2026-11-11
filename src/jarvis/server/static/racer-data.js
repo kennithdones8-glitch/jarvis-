@@ -188,6 +188,11 @@
   const DRIVE = { ardent: "A", interceptor: "R", volta: "A", longhaul: "R", pacer: "F", mistral: "F" };
   for (const [id, c] of Object.entries(CARS)) c.drive = DRIVE[id] || DRIVE_BY_SHAPE[c.shape] || "R";
   for (const [id, x] of Object.entries(IDENTITY)) { const c = CARS[id]; Object.assign(c, x.set || {}); c.band = x.band; c.handling = x.handling; c.art = x.art || {}; c.voice = x.voice || {}; c.factory = x.factory || null; }
+  // Class balance: power and grip trims so each class laps inside its own band (S quickest, then A, B, C, with
+  // a gap between), measured with the AI on all four tracks. Each car keeps its place within its class and its
+  // character; the trims are a few percent at most. [power ×, grip ×]
+  const BALANCE = { phantom: [1.006, 1.0037], spectre: [1.0028, 1.0018], volta: [1.0179, 1.0115], countess: [1.0196, 1.0125], sirocco: [1.025, 1.0161], aurora: [1.0306, 1.0196], montecarlo: [1.0204, 1.0131], tsubame: [0.9715, 0.9817], kaze: [0.9743, 0.9834], summit: [0.9761, 0.9845], vespera: [1.0136, 1.0087], valkyrie: [1.0053, 1.0036], tempest: [1.0022, 1.0013], halcyon: [1.004, 1.0025], corvid: [1.0127, 1.0082], vanguard: [1.0318, 1.0204], goliath: [1.1076, 1.0679], hayate: [0.9733, 0.9828], tidewater: [0.9806, 0.9874], feather: [0.9827, 0.9889], brickyard: [0.9798, 0.987], lumen: [0.9991, 0.9994], longhaul: [1.0012, 1.0006], kestrel: [1.0348, 1.0222], ardent: [1.0356, 1.0227], vecchia: [1.0303, 1.0193], ironclad: [1.0411, 1.0264], kurogane: [1.0392, 1.025], bulldozer: [1.0412, 1.0262], brute: [1.0845, 1.0536], stallion: [1.0868, 1.055], thunderbolt: [1.1255, 1.079], vela: [0.9847, 0.9902], kitsune: [1.0145, 1.0092], mistral: [1.0202, 1.013], dune: [1.0352, 1.0224], ronin: [1.032, 1.0205], pacer: [1.0193, 1.0123] };
+  for (const [id, [pa, ga]] of Object.entries(BALANCE)) { const c = CARS[id]; c.acc = Math.round(c.acc * pa); c.grip = +(c.grip * ga).toFixed(2); }
   const CLASS_COST = { C: 1, B: 1.45, A: 2.05, S: 2.9 };
 
   // Upgrades: three levels each. Effects are applied in KerbsideCareer.carStats() and tested.
