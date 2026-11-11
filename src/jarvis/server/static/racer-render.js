@@ -216,6 +216,14 @@
       return cv;
     }
 
+    function grassTile(seed) {   // transparent speckles of light and dark blades
+      const cv = doc.createElement("canvas"); cv.width = cv.height = 128;
+      const g = cv.getContext("2d"), rand = rng(seed);
+      for (let i = 0; i < 1400; i++) { const v = rand(); g.fillStyle = v > 0.55 ? `rgba(220,255,170,${0.05 + rand() * 0.08})` : `rgba(0,25,0,${0.05 + rand() * 0.1})`; g.fillRect(rand() * 128, rand() * 128, 1, 2 + rand() * 2); }
+      return cv;
+    }
+    // Where the road bends: per point, the turn over the next stretch (positive: a left-hander in this frame).
+    const bendAt = (t, i) => wrapA(t.ANG[(i + 6) % t.N] - t.ANG[(i - 6 + t.N) % t.N]);
     function paintWorld(t, tod, wet) {
       setupCanal(t); setupPond(t);
       const D = DECOR[t.decor] || DECOR.park, cv = doc.createElement("canvas"); cv.width = t.WW; cv.height = t.WH;
@@ -246,6 +254,8 @@
           g.fillStyle = D.stripe;   // mown stripes, then soft patches of light and shade
           for (let s = -t.WH; s < t.WW + t.WH; s += 120) { g.beginPath(); g.moveTo(t.OX + s, t.OY); g.lineTo(t.OX + s + 60, t.OY); g.lineTo(t.OX + s + 60 - t.WH, t.OY + t.WH); g.lineTo(t.OX + s - t.WH, t.OY + t.WH); g.fill(); }
           for (let i = 0; i < 320; i++) { const r = 30 + rand() * 90; g.fillStyle = rand() > 0.5 ? "rgba(255,255,190,0.045)" : "rgba(0,30,0,0.06)"; g.beginPath(); g.arc(t.OX + rand() * t.WW, t.OY + rand() * t.WH, r, 0, 7); g.fill(); }
+          // blades: a fine speckle so the grass reads as grass up close
+          g.fillStyle = g.createPattern(grassTile(t.key.length * 5), "repeat"); g.fillRect(t.OX, t.OY, t.WW, t.WH);
           if (t.decor === "rock") for (let i = 0; i < 70; i++) { g.fillStyle = "rgba(90,80,60,0.18)"; g.beginPath(); g.ellipse(t.OX + rand() * t.WW, t.OY + rand() * t.WH, 40 + rand() * 120, 20 + rand() * 50, rand() * 3, 0, 7); g.fill(); }
         }
       }
@@ -265,24 +275,64 @@
         g.beginPath(); for (let x = t.OX; x <= t.OX + t.WW; x += 20) (x === t.OX ? g.moveTo : g.lineTo).call(g, x, canalY(t, x));
         g.strokeStyle = "#7b746a"; g.lineWidth = 120; g.stroke(); g.strokeStyle = D.canal; g.lineWidth = 96; g.stroke();
       }
-      path(); g.strokeStyle = t.decor === "city" ? "#8d8b86" : "#d1bf8f"; g.lineWidth = TW + 90; g.stroke();     // run-off: gravel, or a pavement in town
-      if (t.decor !== "city") { for (let i = 0; i < t.N; i++) { const [nx, ny] = t.nrm(i), p = t.P[i]; for (let k = 0; k < 2; k++) { const o = (rand() > 0.5 ? 1 : -1) * (TW / 2 + 15 + rand() * 30); g.fillStyle = "rgba(90,70,40,0.25)"; g.fillRect(p[0] + nx * o, p[1] + ny * o, 2, 2); } } }
-      // catch fence line at the back of the run-off
-      for (const s of [-1, 1]) { offsetPath(s * (TW / 2 + 46)); g.strokeStyle = "rgba(30,32,36,0.55)"; g.lineWidth = 2; g.setLineDash([2, 6]); g.stroke(); g.setLineDash([]); }
-      // kerbs with a bevel: white base, red blocks, light inner edge, dark outer edge
-      path(); g.strokeStyle = "#f4f1ea"; g.lineWidth = TW + 22; g.stroke();
-      path(); g.strokeStyle = "#d8322a"; g.setLineDash([22, 22]); g.stroke(); g.setLineDash([]);
-      for (const s of [-1, 1]) { offsetPath(s * (TW / 2 + 10.5)); g.strokeStyle = "rgba(0,0,0,0.35)"; g.lineWidth = 1.5; g.stroke(); }
-      // tarmac: a textured pattern, a rubbered racing line, edge lines
+      const city = t.decor === "city";
+      // run-off: a paved apron everywhere (pavement in town), deep gravel traps on the outside of the bends
+      path(); g.strokeStyle = city ? "#8d8b86" : "#8f9089"; g.lineWidth = TW + (city ? 90 : 34); g.stroke();
+      if (!city) {
+        path(); g.strokeStyle = "rgba(0,0,0,0.12)"; g.lineWidth = TW + 40; g.stroke(); path(); g.strokeStyle = "#8f9089"; g.lineWidth = TW + 34; g.stroke();
+        for (let i = 0; i < t.N; i += 2) {
+          const b2 = bendAt(t, i); if (Math.abs(b2) < 0.32) continue;
+          const [nx, ny] = t.nrm(i), sd = b2 > 0 ? -1 : 1, p = t.P[i], o = TW / 2 + 52;
+          g.fillStyle = "#cdb98a"; g.beginPath(); g.ellipse(p[0] + nx * sd * o, p[1] + ny * sd * o, 42, 34, t.ANG[i], 0, 7); g.fill();
+        }
+        for (let i = 0; i < t.N; i += 1) {   // pebbles in the traps
+          const b2 = bendAt(t, i); if (Math.abs(b2) < 0.32) continue;
+          const [nx, ny] = t.nrm(i), sd = b2 > 0 ? -1 : 1, p = t.P[i];
+          for (let k = 0; k < 14; k++) { const o = TW / 2 + 22 + rand() * 66, l = (rand() - 0.5) * 12; g.fillStyle = rand() > 0.5 ? "rgba(255,250,230,0.5)" : "rgba(90,70,40,0.35)"; g.fillRect(p[0] + nx * sd * o + Math.cos(t.ANG[i]) * l, p[1] + ny * sd * o + Math.sin(t.ANG[i]) * l, 1.6, 1.6); }
+        }
+      }
+      // barriers: steel Armco on posts out of town, a concrete wall in town
+      for (const sd of [-1, 1]) {
+        const o = sd * (TW / 2 + (city ? 47 : 98));
+        offsetPath(o); g.strokeStyle = "rgba(0,0,0,0.3)"; g.lineWidth = city ? 9 : 5; g.stroke();
+        offsetPath(o); g.strokeStyle = city ? "#c9c3b6" : "#aeb4bb"; g.lineWidth = city ? 6 : 3; g.stroke();
+        offsetPath(o - sd * (city ? 2 : 0.8)); g.strokeStyle = "rgba(255,255,255,0.45)"; g.lineWidth = 1; g.stroke();
+        if (!city) for (let i = 0; i < t.N; i += 3) { const [nx, ny] = t.nrm(i), p = t.P[i]; g.fillStyle = "#3a3d42"; g.fillRect(p[0] + nx * (o + sd * 3) - 1.5, p[1] + ny * (o + sd * 3) - 1.5, 3, 3); }
+      }
+      // tarmac: a textured pattern, then resurfaced patches, joints and drains
       const tile = noiseTile(t.key.length * 13, wet ? "#373c44" : "#43484f", 0.16);
       path(); g.strokeStyle = g.createPattern(tile, "repeat"); g.lineWidth = TW; g.stroke();
-      path(); g.strokeStyle = "rgba(0,0,0,0.16)"; g.lineWidth = 52; g.stroke();
-      path(); g.strokeStyle = "rgba(0,0,0,0.10)"; g.lineWidth = 22; g.stroke();
-      path(); g.strokeStyle = "rgba(255,255,255,0.12)"; g.lineWidth = 3; g.setLineDash([30, 40]); g.stroke(); g.setLineDash([]);
-      for (const s of [-1, 1]) { offsetPath(s * (TW / 2 - 6)); g.strokeStyle = "rgba(255,255,255,0.7)"; g.lineWidth = 2.5; g.stroke(); }
-      // cracks and patches
+      const seg = (i0, n) => { g.beginPath(); for (let k = 0; k <= n; k++) { const q = t.P[(i0 + k) % t.N]; k ? g.lineTo(q[0], q[1]) : g.moveTo(q[0], q[1]); } };
+      for (let i = 0; i < 9; i++) { const i0 = Math.floor(rand() * t.N), n = 8 + Math.floor(rand() * 26); seg(i0, n); g.lineCap = "butt"; g.strokeStyle = rand() > 0.5 ? "rgba(0,0,0,0.09)" : "rgba(255,255,255,0.035)"; g.lineWidth = TW - 8; g.stroke(); g.lineCap = "round"; }
+      for (let i = 5; i < t.N; i += 37) { const [nx, ny] = t.nrm(i), p = t.P[i]; g.strokeStyle = "rgba(0,0,0,0.22)"; g.lineWidth = 1.2; g.beginPath(); g.moveTo(p[0] + nx * TW / 2, p[1] + ny * TW / 2); g.lineTo(p[0] - nx * TW / 2, p[1] - ny * TW / 2); g.stroke(); }
+      if (city) for (let i = 9; i < t.N; i += 23) { const [nx, ny] = t.nrm(i), p = t.P[i], sd = i % 2 ? 1 : -1; g.save(); g.translate(p[0] + nx * sd * (TW / 2 - 12), p[1] + ny * sd * (TW / 2 - 12)); g.rotate(t.ANG[i]); g.fillStyle = "#2a2c30"; g.fillRect(-6, -3, 12, 6); g.fillStyle = "#4c4f55"; for (let k = -5; k < 6; k += 2.2) g.fillRect(k, -2.4, 1, 4.8); g.restore(); }
+      // rubber: the racing line, darker through the bends (toward the apex), plus the old straight-line wear
+      path(); g.strokeStyle = "rgba(0,0,0,0.13)"; g.lineWidth = 52; g.stroke();
+      for (let i = 0; i < t.N; i++) {
+        const b2 = bendAt(t, i); if (Math.abs(b2) < 0.25) continue;
+        const [nx, ny] = t.nrm(i), sd = b2 > 0 ? 1 : -1, p = t.P[i], q = t.P[(i + 1) % t.N], [mx, my] = t.nrm(i + 1), o = sd * TW * 0.22 * Math.min(1, Math.abs(b2));
+        g.strokeStyle = `rgba(0,0,0,${0.1 + 0.08 * Math.min(1, Math.abs(b2))})`; g.lineWidth = 30; g.beginPath(); g.moveTo(p[0] + nx * o, p[1] + ny * o); g.lineTo(q[0] + mx * o, q[1] + my * o); g.stroke();
+      }
+      if (city) { path(); g.strokeStyle = "rgba(255,255,255,0.5)"; g.lineWidth = 2.5; g.setLineDash([26, 30]); g.stroke(); g.setLineDash([]); }
+      else { path(); g.strokeStyle = "rgba(255,255,255,0.1)"; g.lineWidth = 3; g.setLineDash([30, 40]); g.stroke(); g.setLineDash([]); }
+      for (const sd of [-1, 1]) { offsetPath(sd * (TW / 2 - 5)); g.strokeStyle = "rgba(255,255,255,0.72)"; g.lineWidth = 2.6; g.stroke(); }
+      // kerbs only where the road bends: red and white blocks with a raised edge, on the apex and the exit
+      for (let i = 0; i < t.N; i++) {
+        const b2 = bendAt(t, i); if (Math.abs(b2) < 0.3) continue;
+        const [nx, ny] = t.nrm(i), p = t.P[i];
+        for (const sd of [-1, 1]) {
+          if (sd === (b2 > 0 ? -1 : 1) && Math.abs(b2) < 0.55) continue;   // gentle bends: the inside kerb only
+          g.save(); g.translate(p[0] + nx * sd * (TW / 2 + 2), p[1] + ny * sd * (TW / 2 + 2)); g.rotate(t.ANG[i]);
+          g.fillStyle = i % 2 ? "#e2382d" : "#f4f1ea"; g.fillRect(-SP / 2 - 0.3, -6, SP + 0.6, 12);
+          g.fillStyle = "rgba(255,255,255,0.35)"; g.fillRect(-SP / 2, -sd * 6, SP, sd * -1.6 * -1);
+          g.fillStyle = "rgba(0,0,0,0.3)"; g.fillRect(-SP / 2, sd * 4.6, SP, 1.4);
+          g.restore();
+        }
+      }
+      // cracks and stains
       for (let i = 0; i < 70; i++) { const k = Math.floor(rand() * t.N), [nx, ny] = t.nrm(k), o = (rand() - 0.5) * TW * 0.8, p = t.P[k];
-        g.fillStyle = "rgba(20,22,26,0.22)"; g.beginPath(); g.ellipse(p[0] + nx * o, p[1] + ny * o, 8 + rand() * 18, 4 + rand() * 8, t.ANG[k] + rand(), 0, 7); g.fill(); }
+        g.fillStyle = "rgba(20,22,26,0.2)"; g.beginPath(); g.ellipse(p[0] + nx * o, p[1] + ny * o, 8 + rand() * 18, 4 + rand() * 8, t.ANG[k] + rand(), 0, 7); g.fill(); }
+      for (const sl of t.slots(6)) { g.fillStyle = "rgba(10,10,12,0.25)"; g.beginPath(); g.ellipse(sl.x - Math.cos(sl.a) * 10, sl.y - Math.sin(sl.a) * 10, 9, 6, sl.a, 0, 7); g.fill(); }   // oil drips on the grid
       if (wet) {   // puddles and a cold sheen
         path(); g.strokeStyle = "rgba(120,150,190,0.10)"; g.lineWidth = TW; g.stroke();
         for (let i = 0; i < 110; i++) { const k = Math.floor(rand() * t.N), [nx, ny] = t.nrm(k), o = (rand() - 0.5) * TW * 0.8, p = t.P[k];
@@ -343,6 +393,43 @@
       return (shadeCache[k] = `rgb(${m(r)},${m(g2)},${m(b)})`);
     };
 
+    // Roofs: the top face mapped from a unit square (u along the long side), with detail by district: pitched tile
+    // roofs with chimneys in Old Town, corrugated sheds by the harbour, flat roofs with a parapet, AC units and
+    // skylights elsewhere. Drawn on High (one cached texture per roof).
+    function roofDetail(ctx, p, T, dim) {
+      const style = p.roofStyle || (p.roofStyle = (() => { const h = Math.abs((p.x * 7 + p.y * 13) | 0); const d = G.world.t.decor;
+        return d === "city" ? (h % 5 < 3 ? "pitched" : "flat") : d === "water" ? (h % 3 ? "shed" : "flat") : d === "rock" ? (h % 2 ? "pitched" : "flat") : "flat"; })());
+      const long = p.w >= p.d, o = long ? T[0] : T[1], U = long ? T[1] : T[2], V = long ? T[3] : T[0];
+      const len = long ? p.w : p.d, wid = long ? p.d : p.w, key = style + dim.toFixed(2);
+      if (!p.roofTex || p.roofTex.key !== key) {   // paint the detail once into a small texture (unit square → pixels)
+        const cv = doc.createElement("canvas"); cv.width = Math.max(8, Math.min(256, Math.round(len))); cv.height = Math.max(8, Math.min(256, Math.round(wid)));
+        const g = cv.getContext("2d"); g.scale(cv.width, cv.height); paintRoof(g, p, style, dim, len, wid);
+        p.roofTex = { key, cv };
+      }
+      ctx.save(); ctx.transform(U[0] - o[0], U[1] - o[1], V[0] - o[0], V[1] - o[1], o[0], o[1]);
+      ctx.drawImage(p.roofTex.cv, 0, 0, 1, 1);
+      ctx.restore();
+    }
+    function paintRoof(ctx, p, style, dim, len, wid) {
+      if (style === "pitched") {   // two slopes, one in light, one in shade; tile courses; a ridge; chimneys
+        ctx.fillStyle = `rgba(255,240,220,${0.12 * dim})`; ctx.fillRect(0, 0, 1, 0.5); ctx.fillStyle = "rgba(0,0,0,0.22)"; ctx.fillRect(0, 0.5, 1, 0.5);
+        ctx.fillStyle = "rgba(0,0,0,0.16)"; for (let v = 0.06; v < 1; v += Math.max(0.06, 7 / wid)) ctx.fillRect(0, v, 1, 0.012);
+        ctx.fillStyle = shade(p.roof, dim * 0.7); ctx.fillRect(0, 0.485, 1, 0.03);
+        const n = 1 + (Math.abs(p.x | 0) % 2); for (let i = 0; i < n; i++) { const u = 0.2 + i * 0.55; ctx.fillStyle = shade("#8a5a44", dim); ctx.fillRect(u, 0.22, 10 / len, 9 / wid); ctx.fillStyle = "rgba(0,0,0,0.5)"; ctx.fillRect(u + 2 / len, 0.22 + 2 / wid, 6 / len, 5 / wid); }
+      } else if (style === "shed") {   // corrugated sheet: ribs across the short way, a skylight band
+        ctx.fillStyle = "rgba(0,0,0,0.14)"; for (let u = 0; u < 1; u += Math.max(0.012, 4 / len)) ctx.fillRect(u, 0, 1.4 / len, 1);
+        ctx.fillStyle = `rgba(190,215,235,${0.35 * dim})`; ctx.fillRect(0.08, 0.44, 0.84, 0.12);
+      } else {   // flat: a parapet, AC units, a skylight
+        const e = Math.min(0.08, 4 / wid), eu = Math.min(0.08, 4 / len);
+        ctx.fillStyle = "rgba(0,0,0,0.2)"; ctx.fillRect(eu, e, 1 - 2 * eu, 1 - 2 * e);
+        ctx.fillStyle = shade(p.roof, dim * 1.08); ctx.fillRect(eu * 1.6, e * 1.6, 1 - 3.2 * eu, 1 - 3.2 * e);
+        const r = rng(Math.abs(p.x * 3 + p.y | 0) + 1), n = 1 + Math.floor(r() * 3);
+        for (let i = 0; i < n; i++) { const u = 0.15 + r() * 0.6, v = 0.2 + r() * 0.5, su = 12 / len, sv = 12 / wid;
+          ctx.fillStyle = shade("#b9bcc0", dim); ctx.fillRect(u, v, su, sv); ctx.fillStyle = "rgba(0,0,0,0.45)"; ctx.beginPath(); ctx.ellipse(u + su / 2, v + sv / 2, su * 0.32, sv * 0.32, 0, 0, 7); ctx.fill(); }
+        if (len > 80) { ctx.fillStyle = `rgba(150,190,220,${0.4 * dim})`; ctx.fillRect(0.62, 0.3, 0.2, 0.4); ctx.fillStyle = "rgba(255,255,255,0.18)"; ctx.fillRect(0.62, 0.3, 0.2, 0.08); }
+      }
+    }
+
     // Draw tall scenery in 2.5D. Emissive bits (lit windows, neon, signs, bulbs) are collected for the glow pass.
     function drawProps(ctx, cx, cy, radius, tod, time, glow) {
       const props = G.world.props, k = 0.0011, list = [], night = tod === "night", dusk = tod === "dusk";
@@ -376,6 +463,7 @@
           }
           ctx.fillStyle = shade(p.roof, dim);
           ctx.beginPath(); T.forEach(([x, y], i) => (i ? ctx.lineTo(x, y) : ctx.moveTo(x, y))); ctx.closePath(); ctx.fill();
+          if (p.windows && q > 1) roofDetail(ctx, p, T, dim);   // High only: it costs a draw per building
           if (p.board) {   // billboard face: an affine map from a unit box onto the leaning face
             const a = B[p.face > 0 ? 3 : 0], b = B[p.face > 0 ? 2 : 1], ta = T[p.face > 0 ? 3 : 0];
             ctx.save(); ctx.transform(b[0] - a[0], b[1] - a[1], ta[0] - a[0], ta[1] - a[1], a[0], a[1]);
@@ -470,143 +558,337 @@
     }
 
     // ---------------------------------------------------------------- Cars: cached sprites + live parts
-    const SHAPES = {
-      open(ctx, w) { ctx.beginPath(); ctx.moveTo(-22, -9 - w); ctx.lineTo(14, -8); ctx.quadraticCurveTo(24, -5, 24, 0); ctx.quadraticCurveTo(24, 5, 14, 8); ctx.lineTo(-22, 9 + w); ctx.closePath(); },
-      gt(ctx, w) { rr(ctx, -23, -11 - w, 47, 22 + 2 * w, 7); },
-      rally(ctx, w) { rr(ctx, -20, -11 - w, 41, 22 + 2 * w, 4); },
-      muscle(ctx, w) { rr(ctx, -25, -12 - w, 51, 24 + 2 * w, 5); },
-      proto(ctx, w) { ctx.beginPath(); ctx.moveTo(-24, -11 - w); ctx.lineTo(8, -10 - w); ctx.lineTo(26, -3); ctx.lineTo(26, 3); ctx.lineTo(8, 10 + w); ctx.lineTo(-24, 11 + w); ctx.closePath(); },
-      hatch(ctx, w) { rr(ctx, -19, -11 - w, 38, 22 + 2 * w, 6); },
-      kei(ctx, w) { rr(ctx, -16, -10 - w, 32, 20 + 2 * w, 4); },
-      sedan(ctx, w) { rr(ctx, -24, -11 - w, 48, 22 + 2 * w, 5); },
-      wagon(ctx, w) { rr(ctx, -25, -11 - w, 50, 22 + 2 * w, 4); },
-      roadster(ctx, w) { rr(ctx, -21, -10 - w, 43, 20 + 2 * w, 8); },
-      coupe(ctx, w) { ctx.beginPath(); ctx.moveTo(-23, -10 - w); ctx.lineTo(10, -11 - w); ctx.quadraticCurveTo(25, -9, 25, 0); ctx.quadraticCurveTo(25, 9, 10, 11 + w); ctx.lineTo(-23, 10 + w); ctx.quadraticCurveTo(-25, 0, -23, -10 - w); ctx.closePath(); },
-      super(ctx, w) { ctx.beginPath(); ctx.moveTo(-24, -12 - w); ctx.lineTo(2, -12.5 - w); ctx.lineTo(20, -8); ctx.lineTo(27, -3); ctx.lineTo(27, 3); ctx.lineTo(20, 8); ctx.lineTo(2, 12.5 + w); ctx.lineTo(-24, 12 + w); ctx.lineTo(-26, 0); ctx.closePath(); },
+    // Each body style is a half outline (rear centre to nose centre, the left side) that is mirrored and smoothed, so
+    // cars have real shapes: fender bulges over the wheels, a waist, a shaped nose and tail. BODY also says where the
+    // glass, lights, wheels and details go. All coordinates are world units with the nose pointing +x.
+    const BODY = {
+      kei: { o: [[-16, 0], [-16, -8.6], [-15.2, -9.7], [-12, -10.2], [-6, -9.7], [3, -9.7], [8, -10.2], [14.6, -9.6], [16, -8.2], [16.1, 0]], arch: [3, 6],
+        glass: { type: "closed", ws: 7.2, rf: 3.6, rr: -10, rb: -14.4, wb: 8.7, w: 8 }, head: { k: "round", x: 15, y: 6.4, r: 1.9 }, tail: { k: "box", x: -15.4, y: 7.2, w: 1.2, h: 2.6 },
+        wheels: { rw: -10, fw: 9, y: 9.9, l: 7, w: 3 }, feat: ["wipers"] },
+      hatch: { o: [[-19, 0], [-19.2, -8.6], [-17.8, -10.4], [-12.5, -11], [-4, -10.4], [6, -10.6], [11.5, -11], [16.8, -10], [19, -7.2], [19.4, 0]], arch: [3, 7],
+        glass: { type: "closed", ws: 7.6, rf: 3.8, rr: -11.5, rb: -17, wb: 9.1, w: 8.3 }, head: { k: "box", x: 17.6, y: 7.1, w: 2.2, h: 3.4 }, tail: { k: "box", x: -18.4, y: 7.9, w: 1.3, h: 3.2 },
+        wheels: { rw: -12.5, fw: 11.5, y: 10.7, l: 8, w: 3.4 }, feat: ["wipers", "roofLip"] },
+      rally: { o: [[-20, 0], [-20.2, -8.8], [-18.8, -10.6], [-15.5, -12.1], [-10, -11.6], [-6, -10.6], [6, -10.6], [9.5, -11.7], [13.5, -12.1], [18.3, -10.2], [21, -7], [21.3, 0]], arch: [3, 4, 8, 9],
+        glass: { type: "closed", ws: 7, rf: 3.2, rr: -11, rb: -16.8, wb: 9.2, w: 8.4 }, head: { k: "round", x: 19.4, y: 7.4, r: 1.9 }, tail: { k: "box", x: -19.4, y: 8.4, w: 1.3, h: 3 },
+        wheels: { rw: -13, fw: 12, y: 11.3, l: 8.4, w: 3.8 }, feat: ["wipers", "roofVent", "bonnetVents", "mudflaps", "spots"] },
+      coupe: { o: [[-23, 0], [-23.2, -7.6], [-21.6, -10], [-15.5, -11.5], [-8, -10.6], [4, -10.3], [12, -10.9], [18, -10.3], [23, -7.6], [25, -3.6], [25.4, 0]], arch: [3, 7],
+        glass: { type: "closed", ws: 3.4, rf: -1.6, rr: -9, rb: -16.2, wb: 9, w: 7.6 }, head: { k: "slit", x: 23.4, y: 6.6, w: 1.4, h: 4 }, tail: { k: "bar", x: -22.6, y: 7.4, w: 1.2, h: 5 },
+        wheels: { rw: -15.5, fw: 13, y: 10.9, l: 8.6, w: 3.8 }, feat: ["wipers", "bonnetVents"] },
+      roadster: { o: [[-21, 0], [-21.2, -7], [-19.6, -9.6], [-14, -10.8], [-7, -9.6], [3, -9.4], [10, -10.4], [16, -9.8], [20.5, -7], [22, -3], [22.3, 0]], arch: [3, 6],
+        glass: { type: "open", ws: 2.2, cx: -4.6, cw: 6.6, ch: 7.6 }, head: { k: "round", x: 20.2, y: 6.6, r: 1.8 }, tail: { k: "round", x: -20.4, y: 6.8, r: 1.4 },
+        wheels: { rw: -14, fw: 11, y: 10.3, l: 8, w: 3.4 }, feat: ["hoops"] },
+      sedan: { o: [[-24, 0], [-24.2, -8.6], [-23, -10.6], [-17, -11.3], [-8, -10.8], [8, -10.8], [15, -11.3], [21.6, -10.2], [24, -8], [24.3, 0]], arch: [3, 6],
+        glass: { type: "closed", ws: 9.2, rf: 4.4, rr: -9, rb: -14.2, wb: 9.4, w: 8.4 }, head: { k: "box", x: 23, y: 7.6, w: 2, h: 3.6 }, tail: { k: "box", x: -23.6, y: 8, w: 1.4, h: 4 },
+        wheels: { rw: -16, fw: 15, y: 10.9, l: 8.4, w: 3.6 }, feat: ["wipers", "bootLine", "aerial"] },
+      wagon: { o: [[-25, 0], [-25.2, -9], [-24, -10.7], [-17, -11.3], [-8, -10.9], [8, -10.9], [15, -11.3], [22, -10.2], [25, -8], [25.3, 0]], arch: [3, 6],
+        glass: { type: "closed", ws: 9.4, rf: 4.6, rr: -20, rb: -22.6, wb: 9.5, w: 8.7 }, head: { k: "box", x: 24, y: 7.6, w: 2, h: 3.4 }, tail: { k: "vert", x: -24.6, y: 8.6, w: 1.2, h: 2.2 },
+        wheels: { rw: -16, fw: 15, y: 11.0, l: 8.4, w: 3.6 }, feat: ["wipers", "rails"] },
+      muscle: { o: [[-25, 0], [-25.2, -9.6], [-24, -11.6], [-17, -12.5], [-8, -11.7], [6, -11.7], [14, -12.3], [22, -11.9], [25.5, -10.2], [26, -6], [26.1, 0]], arch: [3, 6],
+        glass: { type: "closed", ws: 3.6, rf: -1, rr: -11, rb: -16.4, wb: 9.7, w: 8.6 }, head: { k: "quad", x: 25, y: 8.4, r: 1.5 }, tail: { k: "bar", x: -24.6, y: 9, w: 1.4, h: 7 },
+        wheels: { rw: -17, fw: 14, y: 11.7, l: 9.2, w: 4.4 }, feat: ["wipers", "scoop"] },
+      gt: { o: [[-23, 0], [-23.2, -7], [-21.2, -10.6], [-15, -12.5], [-8, -11.2], [2, -10.6], [11, -11.3], [18, -10.4], [22.6, -7.6], [24.3, -3], [24.5, 0]], arch: [3, 7],
+        glass: { type: "closed", ws: 3, rf: -2, rr: -9.5, rb: -17.2, wb: 9, w: 7.5 }, head: { k: "slant", x: 22, y: 7.6, w: 1.6, h: 4.2 }, tail: { k: "round", x: -22.6, y: 7.6, r: 1.5 },
+        wheels: { rw: -15, fw: 13, y: 11.5, l: 8.8, w: 4 }, feat: ["wipers", "bulge"] },
+      super: { o: [[-25, 0], [-25.6, -9.2], [-23.6, -12], [-16, -12.9], [-7, -12.1], [0, -11.1], [10, -10.6], [17, -9.7], [23, -6.7], [26.5, -3], [27.1, 0]], arch: [3, 9],
+        glass: { type: "closed", ws: 9.6, rf: 4.4, rr: -4.8, rb: -6.4, wb: 8.6, w: 7.2 }, head: { k: "slit", x: 23.8, y: 6.4, w: 1.2, h: 4.4 }, tail: { k: "strip", x: -25, y: 10, w: 1, h: 20 },
+        wheels: { rw: -15, fw: 14, y: 11.7, l: 9.4, w: 4.6 }, feat: ["intakes", "louvres", "splitter"] },
+      proto: { o: [[-24, 0], [-24.6, -10.6], [-22, -11.6], [-15, -11.7], [-9, -10], [0, -7.6], [8, -8.6], [13, -11.5], [19, -11.7], [23.6, -9], [26, -4], [26.4, 0]], arch: [2, 3, 7, 8],
+        glass: { type: "canopy", cx: 2.6, rx: 9, ry: 5.8 }, head: { k: "cluster", x: 24.4, y: 8.4, r: 1.2 }, tail: { k: "strip", x: -24.4, y: 6, w: 1, h: 12 },
+        wheels: { rw: -16, fw: 16, y: 11.1, l: 9.6, w: 4.8 }, feat: ["fin", "roofIntake", "splitter"] },
+      open: { o: [[-21, 0], [-21.4, -3.6], [-18, -6], [-10, -8.6], [-3, -8.6], [2, -6], [8, -4], [16, -3.1], [22, -2], [23.6, 0]], arch: [],
+        glass: { type: "formula", cx: -3 }, head: null, tail: { k: "rain", x: -23.2, y: 0, w: 1.2, h: 2.4 },
+        wheels: { rw: -15, fw: 13, y: 12.6, l: 8.6, w: 5, exposed: true }, feat: ["wings", "airbox"] },
     };
-    const CABIN = { open: [-6, 0, 7, 5, "e"], gt: [-4, 0, 11, 8, "r"], rally: [-4, 0, 12, 9, "r"], muscle: [-6, 0, 10, 8, "r"], proto: [0, 0, 10, 6, "e"],
-      hatch: [-2, 0, 11, 9, "r"], kei: [0, 0, 10, 8.5, "r"], sedan: [-3, 0, 13, 9, "r"], wagon: [-6, 0, 16, 9, "r"], roadster: [-5, 0, 7, 7, "o"], coupe: [-5, 0, 10, 8, "r"], super: [-2, 0, 9, 7, "r"] };
-    const ENDS = { open: [-23, 23], gt: [-23, 24], rally: [-20, 21], muscle: [-25, 26], proto: [-24, 26], hatch: [-19, 19], kei: [-16, 16], sedan: [-24, 24], wagon: [-25, 25], roadster: [-21, 22], coupe: [-23, 25], super: [-25, 27] };
+    // a smooth closed outline through the mirrored half outline (quadratic curves through the midpoints)
+    function outline(ctx, b, w) {
+      const h = b.o.map(([x, y], i) => [x, y - (b.arch.includes(i) ? w : 0) * (y < 0 ? 1 : 0)]);
+      const pts = [...h, ...h.slice(1, -1).reverse().map(([x, y]) => [x, -y])];
+      const n = pts.length, mid = (a, c) => [(a[0] + c[0]) / 2, (a[1] + c[1]) / 2];
+      let m = mid(pts[n - 1], pts[0]); ctx.beginPath(); ctx.moveTo(m[0], m[1]);
+      for (let i = 0; i < n; i++) { const p = pts[i], q = mid(p, pts[(i + 1) % n]); ctx.quadraticCurveTo(p[0], p[1], q[0], q[1]); }
+      ctx.closePath();
+    }
+    const SHAPES = Object.fromEntries(Object.entries(BODY).map(([k, b]) => [k, (ctx, w) => outline(ctx, b, w)]));
+    // A car's own variant of its body style: its proportions, its headlamps, details added or taken away.
+    const LAMPS = { round: { k: "round", r: 1.9 }, box: { k: "box", w: 2.2, h: 3.4 }, slit: { k: "slit", w: 1.3, h: 4.2 }, slant: { k: "slant", w: 1.6, h: 4.2 }, quad: { k: "quad", r: 1.5 }, popup: { k: "popup", w: 2.6, h: 4.4 } };
+    const variants = new Map();
+    function bodyFor(shape, art) {
+      const base = BODY[shape] || BODY.open;
+      if (!art || !Object.keys(art).length) return base;
+      const key = shape + JSON.stringify(art); let v = variants.get(key);
+      if (v) return v;
+      const lx = art.len || 1, wy = art.wid || 1, sx = (x) => x * lx, sy = (y) => y * wy, gl = { ...base.glass };
+      for (const k of ["ws", "rf", "rr", "rb", "cx", "cw"]) if (gl[k] !== undefined) gl[k] = sx(gl[k]);
+      for (const k of ["wb", "w", "ch"]) if (gl[k] !== undefined) gl[k] = sy(gl[k]);
+      if (gl.rx) { gl.rx *= lx; gl.ry *= wy; }
+      const ls = (L) => L && { ...L, x: sx(L.x), y: sy(L.y) };
+      let head = ls(base.head);
+      if (art.head && head) head = { ...LAMPS[art.head], x: head.x, y: head.y };
+      v = { ...base, o: base.o.map(([x, y]) => [sx(x), sy(y)]), glass: gl, head, tail: ls(base.tail), key,
+        wheels: { ...base.wheels, rw: sx(base.wheels.rw), fw: sx(base.wheels.fw), y: sy(base.wheels.y) },
+        feat: [...base.feat.filter((f) => !(art.remove || []).includes(f)), ...(art.add || [])] };
+      variants.set(key, v); return v;
+    }
+    const endsOf = (B) => [B.o[0][0], B.o[B.o.length - 1][0]];
+    const ENDS = Object.fromEntries(Object.entries(BODY).map(([k, b]) => [k, [b.o[0][0], b.o[b.o.length - 1][0]]]));
     function rr(ctx, x, y, w, h, r) { ctx.beginPath(); ctx.moveTo(x + r, y); ctx.arcTo(x + w, y, x + w, y + h, r); ctx.arcTo(x + w, y + h, x, y + h, r); ctx.arcTo(x, y + h, x, y, r); ctx.arcTo(x, y, x + w, y, r); ctx.closePath(); }
-    const SS = 3, SW = 64, SH = 44, sprites = new Map();
-    // The body, glass, livery, number and wings, drawn once per look at 3× and reused.
-    function sprite(shape, L, color, num) {
-      const key = [shape, L.paint || color, L.paint2, L.decal, L.body, L.spoiler, L.number || num, L.finish, L.tint, L.exhaust, L.numpos, L.livery].join("|");
+    const hexOk = (c) => /^#[0-9a-f]{6}$/i.test(c || "");
+    function lamp(g, L, mirror, col, glow) {   // one lamp (and its mirror image) by kind
+      for (const s of mirror ? [-1, 1] : [1]) {
+        const y = L.y * s; g.fillStyle = col;
+        if (L.k === "round") { g.beginPath(); g.arc(L.x, y, L.r, 0, 7); g.fill(); }
+        else if (L.k === "quad") { g.beginPath(); g.arc(L.x, y, L.r, 0, 7); g.arc(L.x, y - 2.8 * s, L.r, 0, 7); g.fill(); }
+        else if (L.k === "cluster") { g.beginPath(); g.arc(L.x, y, L.r, 0, 7); g.arc(L.x - 1.4, y - 2.1 * s, L.r * 0.8, 0, 7); g.arc(L.x - 2.8, y - 3.9 * s, L.r * 0.7, 0, 7); g.fill(); }
+        else if (L.k === "slant") { g.beginPath(); g.moveTo(L.x, y); g.lineTo(L.x + L.w, y - L.h * 0.25 * s); g.lineTo(L.x - L.w * 0.6, y - L.h * s); g.lineTo(L.x - L.w * 1.4, y - L.h * 0.85 * s); g.closePath(); g.fill(); }
+        else if (L.k === "strip") { g.fillRect(L.x - L.w / 2, -L.h / 2, L.w, L.h); return; }
+        else if (L.k === "rain") { g.fillRect(L.x - L.w / 2, -L.h / 2, L.w, L.h); return; }
+        else if (L.k === "popup") {
+          if (glow === "live") { g.beginPath(); g.arc(L.x - 1.2, y - 0.6 * s, 1.7, 0, 7); g.fill(); }
+          else { g.strokeStyle = "rgba(0,0,0,0.45)"; g.lineWidth = 0.4; g.strokeRect(L.x - L.w - 0.6, y - L.h / 2 - 0.4 * s, L.w, L.h); }
+          continue;
+        }
+        else if (L.k === "vert") { g.fillRect(L.x - L.w / 2, y - L.h / 2, L.w, L.h); }
+        else { const hh = L.h; g.fillRect(L.x - L.w / 2, s > 0 ? y - hh / 2 : y - hh / 2, L.w, hh); }
+        if (glow === true) { g.fillStyle = "rgba(255,255,255,0.55)"; g.beginPath(); g.arc(L.x + (L.w ? 0 : 0.3), y - 0.5 * s, Math.max(0.5, (L.r || L.w || 1) * 0.35), 0, 7); g.fill(); }
+      }
+    }
+    const SS = 3, SW = 66, SH = 46, sprites = new Map();
+    // The body, glass, livery, lights, number and wings, drawn once per look at 3× and reused.
+    function sprite(shape, L, color, num, art) {
+      const B = bodyFor(shape, art);
+      const key = [shape, B.key || "", L.paint || color, L.paint2, L.decal, L.body, L.spoiler, L.number || num, L.finish, L.tint, L.exhaust, L.numpos, L.livery, L.lights, L.bumper, L.bonnet].join("|");
       let cv = sprites.get(key);
       if (cv) return cv;
-      if (sprites.size > 80) sprites.clear();
+      if (sprites.size > 90) sprites.clear();
       cv = doc.createElement("canvas"); cv.width = SW * SS; cv.height = SH * SS;
-      const g = cv.getContext("2d"), paint = L.paint || color, wide = L.body === "wide" ? 2 : 0;
+      const g = cv.getContext("2d"), paint = hexOk(L.paint) ? L.paint : hexOk(color) ? color : "#888888", wide = L.body === "wide" ? 1.6 : 0, [rear, nose] = endsOf(B), body = (ctx, w) => outline(ctx, B, w);
+      const dark = shade(paint, 0.55), Gl = B.glass, KD = root.KerbsideData;
       g.setTransform(SS, 0, 0, SS, SW / 2 * SS, SH / 2 * SS);
-      SHAPES[shape](g, wide); g.fillStyle = paint; g.fill();
-      if (shape === "open") { g.fillStyle = paint; g.fillRect(-24, -12, 6, 24); g.fillRect(18, -11, 4, 22); }
-      // shading: a highlight down the spine, darker flanks, a hint of sky on top
-      g.save(); SHAPES[shape](g, wide); g.clip();
-      // paint finish: gloss (a bright spine), metallic (sparkle and a sharper highlight), matte (flat), pearl (a colour shift)
-      const fin = L.finish || "gloss", hi = fin === "matte" ? 0.08 : fin === "metallic" ? 0.42 : 0.32;
-      const lg = g.createLinearGradient(0, -13, 0, 13);
-      lg.addColorStop(0, `rgba(0,0,0,${fin === "matte" ? 0.22 : 0.32})`); lg.addColorStop(0.28, "rgba(255,255,255,0.05)"); lg.addColorStop(0.45, `rgba(255,255,255,${hi})`);
-      lg.addColorStop(0.6, "rgba(255,255,255,0.06)"); lg.addColorStop(1, `rgba(0,0,0,${fin === "matte" ? 0.28 : 0.38})`);
-      g.fillStyle = lg; g.fillRect(-30, -16, 60, 32);
-      if (fin === "metallic") { const rr2 = rng(7); g.fillStyle = "rgba(255,255,255,0.22)"; for (let i = 0; i < 70; i++) g.fillRect(-26 + rr2() * 52, -13 + rr2() * 26, 0.5, 0.5); }
-      if (fin === "pearl") { const pg = g.createLinearGradient(-26, -13, 26, 13); pg.addColorStop(0, "rgba(120,200,255,0.16)"); pg.addColorStop(0.5, "rgba(255,255,255,0)"); pg.addColorStop(1, "rgba(255,120,220,0.16)"); g.fillStyle = pg; g.fillRect(-30, -16, 60, 32); }
-      const fg = g.createLinearGradient(-26, 0, 26, 0); fg.addColorStop(0, "rgba(0,0,0,0.18)"); fg.addColorStop(0.5, "rgba(0,0,0,0)"); fg.addColorStop(1, "rgba(255,255,255,0.10)");
-      g.fillStyle = fg; g.fillRect(-30, -16, 60, 32);
-      // livery
-      const dec = L.decal;
-      const p2 = L.paint2 && L.paint2 !== "#14100a" ? L.paint2 : null;   // the second livery colour, if chosen
-      if (dec === "stripe") { g.fillStyle = p2 || "rgba(255,255,255,0.88)"; g.fillRect(-26, -3.5, 52, 2.2); g.fillRect(-26, 1.3, 52, 2.2); }
-      else if (dec === "hoops") { g.fillStyle = p2 || "rgba(255,255,255,0.85)"; g.fillRect(-6, -14, 4, 28); g.fillRect(4, -14, 2, 28); }
-      else if (dec === "sash") { g.fillStyle = p2 || "#14161a"; g.beginPath(); g.moveTo(-26, -14); g.lineTo(-14, -14); g.lineTo(14, 14); g.lineTo(2, 14); g.closePath(); g.fill(); }
-      else if (dec === "flame") { g.fillStyle = "#ff7a1a"; g.beginPath(); g.moveTo(26, -8); g.lineTo(4, -4); g.lineTo(12, -1); g.lineTo(0, 0); g.lineTo(12, 1); g.lineTo(4, 4); g.lineTo(26, 8); g.closePath(); g.fill(); g.fillStyle = "#ffd23a"; g.beginPath(); g.moveTo(26, -4); g.lineTo(10, 0); g.lineTo(26, 4); g.fill(); }
-      else if (dec === "checker") { for (let i = 0; i < 5; i++) for (let j = 0; j < 3; j++) if ((i + j) % 2) { g.fillStyle = "rgba(20,20,20,0.75)"; g.fillRect(6 + i * 3.5, -5 + j * 3.5, 3.5, 3.5); } }
-      else if (dec === "bolt") { g.fillStyle = "#ffe14a"; g.beginPath(); g.moveTo(-18, -6); g.lineTo(0, -1); g.lineTo(-4, 1); g.lineTo(16, 6); g.lineTo(-2, 2.5); g.lineTo(2, 0); g.closePath(); g.fill(); }
-      // panel lines
-      g.strokeStyle = "rgba(0,0,0,0.25)"; g.lineWidth = 0.5;
-      g.beginPath(); g.moveTo(10, -12); g.lineTo(10, 12); g.moveTo(-12, -12); g.lineTo(-12, 12); g.stroke();
+      // a soft shadow under the car, baked in (no extra draw per frame)
+      g.save(); g.translate(1.6, 2.4);
+      if ("filter" in g) { g.filter = `blur(${1.8 * SS}px)`; body(g, wide + 0.8); g.fillStyle = "rgba(0,0,0,0.5)"; g.fill(); g.filter = "none"; }
+      else for (let i = 3; i >= 0; i--) { g.save(); g.scale(1 + i * 0.03, 1 + i * 0.07); body(g, wide); g.fillStyle = "rgba(0,0,0,0.13)"; g.fill(); g.restore(); }
       g.restore();
-      // cabin glass with a reflection streak
-      const cb = CABIN[shape];
-      const glass = (root.KerbsideData && root.KerbsideData.LOOKS.tint[L.tint] || {}).color || "#0b1220";
-      if (cb[4] === "e") { g.fillStyle = glass; g.beginPath(); g.ellipse(cb[0], cb[1], cb[2], cb[3], 0, 0, 7); g.fill(); }
-      else if (cb[4] === "o") {   // open two-seater: interior, two seats, a windscreen
-        g.fillStyle = "#1a1512"; rr(g, cb[0] - cb[2], -cb[3], cb[2] * 2, cb[3] * 2, 3); g.fill();
-        g.fillStyle = "#3a2a22"; g.beginPath(); g.ellipse(cb[0] - 1, -3.4, 3.4, 2.6, 0, 0, 7); g.ellipse(cb[0] - 1, 3.4, 3.4, 2.6, 0, 0, 7); g.fill();
-        g.strokeStyle = "rgba(180,220,255,0.7)"; g.lineWidth = 1.2; g.beginPath(); g.moveTo(cb[0] + cb[2], -cb[3]); g.quadraticCurveTo(cb[0] + cb[2] + 2, 0, cb[0] + cb[2], cb[3]); g.stroke();
+      // single-seater wings sit outside the body: draw them first
+      if (B.feat.includes("wings")) {
+        g.fillStyle = "#1b1c1f"; rr(g, 19.5, -11.5, 4.5, 23, 1.2); g.fill(); g.fillStyle = paint; rr(g, 20.2, -11, 3.2, 22, 1); g.fill();
+        g.fillStyle = "#1b1c1f"; rr(g, -25.6, -10.2, 5.2, 20.4, 1); g.fill(); g.fillStyle = shade(paint, 0.8); g.fillRect(-25, -9.6, 1.6, 19.2);
       }
-      else {
-        g.fillStyle = glass; rr(g, cb[0] - cb[2], -cb[3], cb[2] * 2, cb[3] * 2, 3); g.fill();
-        g.fillStyle = paint; rr(g, cb[0] - cb[2] + 4, -cb[3] + 1.6, cb[2] * 2 - 8, cb[3] * 2 - 3.2, 2); g.fill();
-        g.fillStyle = "rgba(255,255,255,0.18)"; rr(g, cb[0] - cb[2] + 4, -cb[3] + 1.6, cb[2] * 2 - 8, cb[3] - 1.6, 2); g.fill();
+      body(g, wide); g.fillStyle = paint; g.fill();
+      g.save(); body(g, wide); g.clip();
+      // paint: rounded flanks (dark edges, a bright crown slightly toward the sun), front-to-back fall-off, clear-coat streaks
+      const fin = L.finish || "gloss", hi = fin === "matte" ? 0.1 : fin === "metallic" ? 0.42 : 0.34, edge = fin === "matte" ? 0.26 : 0.4;
+      const lg = g.createLinearGradient(0, -14, 0, 14);
+      lg.addColorStop(0, `rgba(0,0,0,${edge})`); lg.addColorStop(0.16, "rgba(0,0,0,0.08)"); lg.addColorStop(0.38, `rgba(255,255,255,${hi})`);
+      lg.addColorStop(0.5, "rgba(255,255,255,0.08)"); lg.addColorStop(0.82, "rgba(0,0,0,0.1)"); lg.addColorStop(1, `rgba(0,0,0,${edge + 0.08})`);
+      g.fillStyle = lg; g.fillRect(-30, -16, 60, 32);
+      const fg = g.createLinearGradient(rear, 0, nose, 0); fg.addColorStop(0, "rgba(0,0,0,0.16)"); fg.addColorStop(0.5, "rgba(0,0,0,0)"); fg.addColorStop(1, "rgba(255,255,255,0.08)");
+      g.fillStyle = fg; g.fillRect(-30, -16, 60, 32);
+      if (fin !== "matte") { g.fillStyle = "rgba(255,255,255,0.12)"; g.beginPath(); g.moveTo(nose - 14, -14); g.lineTo(nose - 9, -14); g.lineTo(nose - 19, 14); g.lineTo(nose - 24, 14); g.closePath(); g.fill();
+        g.fillStyle = "rgba(255,255,255,0.07)"; g.beginPath(); g.moveTo(rear + 12, -14); g.lineTo(rear + 15, -14); g.lineTo(rear + 7, 14); g.lineTo(rear + 4, 14); g.closePath(); g.fill(); }
+      if (fin === "metallic") { const r2 = rng(7); g.fillStyle = "rgba(255,255,255,0.24)"; for (let i = 0; i < 90; i++) g.fillRect(-26 + r2() * 52, -13 + r2() * 26, 0.45, 0.45); }
+      if (fin === "pearl") { const pg = g.createLinearGradient(-26, -13, 26, 13); pg.addColorStop(0, "rgba(120,200,255,0.18)"); pg.addColorStop(0.5, "rgba(255,255,255,0)"); pg.addColorStop(1, "rgba(255,120,220,0.18)"); g.fillStyle = pg; g.fillRect(-30, -16, 60, 32); }
+      // livery
+      const dec = L.decal, p2 = L.paint2 && L.paint2 !== "#14100a" ? L.paint2 : null;
+      if (dec === "stripe") { g.fillStyle = p2 || "rgba(255,255,255,0.9)"; g.fillRect(-30, -3.6, 60, 2.2); g.fillRect(-30, 1.4, 60, 2.2); }
+      else if (dec === "hoops") { g.fillStyle = p2 || "rgba(255,255,255,0.88)"; g.fillRect(-6, -14, 4, 28); g.fillRect(4, -14, 2, 28); }
+      else if (dec === "sash") { g.fillStyle = p2 || "#14161a"; g.beginPath(); g.moveTo(-26, -14); g.lineTo(-14, -14); g.lineTo(14, 14); g.lineTo(2, 14); g.closePath(); g.fill(); }
+      else if (dec === "flame") { g.fillStyle = "#ff7a1a"; g.beginPath(); g.moveTo(nose, -8); g.lineTo(4, -5); g.lineTo(12, -1.6); g.lineTo(-1, 0); g.lineTo(12, 1.6); g.lineTo(4, 5); g.lineTo(nose, 8); g.closePath(); g.fill(); g.fillStyle = "#ffd23a"; g.beginPath(); g.moveTo(nose, -4); g.lineTo(10, 0); g.lineTo(nose, 4); g.fill(); }
+      else if (dec === "checker") { for (let i = 0; i < 6; i++) for (let j = 0; j < 4; j++) if ((i + j) % 2) { g.fillStyle = "rgba(20,20,20,0.78)"; g.fillRect(nose - 24 + i * 3, -6 + j * 3, 3, 3); } }
+      else if (dec === "bolt") { g.fillStyle = "#ffe14a"; g.beginPath(); g.moveTo(-18, -7); g.lineTo(0, -2); g.lineTo(-4, 0.6); g.lineTo(16, 7); g.lineTo(-2, 2.5); g.lineTo(2, 0); g.closePath(); g.fill(); }
+      if (L.livery === "police") { g.fillStyle = "#14161a"; g.fillRect(rear, -14, nose - rear, 3.2); g.fillRect(rear, 10.8, nose - rear, 3.2); g.fillStyle = "#f4f4f4"; g.fillRect(-12, -10.8, 22, 21.6); }
+      // shut lines: bonnet, doors, boot; fender creases over the wheels
+      g.strokeStyle = "rgba(0,0,0,0.3)"; g.lineWidth = 0.4;
+      if (Gl.type === "closed") {
+        g.beginPath(); g.moveTo(Gl.ws + 1.2, -Gl.wb + 0.6); g.quadraticCurveTo(Gl.ws + 2.6, 0, Gl.ws + 1.2, Gl.wb - 0.6); g.stroke();
+        for (const s of [-1, 1]) { g.beginPath(); g.moveTo(Gl.rf, s * (Gl.wb + 0.9)); g.lineTo(Gl.rf, s * 14); g.moveTo((Gl.rf + Gl.rr) / 2 - 1, s * (Gl.wb + 0.9)); g.lineTo((Gl.rf + Gl.rr) / 2 - 1, s * 14); g.stroke(); }
+        if (B.feat.includes("bootLine")) { g.beginPath(); g.moveTo(Gl.rb - 0.8, -Gl.wb + 0.6); g.quadraticCurveTo(Gl.rb - 2, 0, Gl.rb - 0.8, Gl.wb - 0.6); g.stroke(); }
       }
-      g.strokeStyle = "rgba(180,220,255,0.5)"; g.lineWidth = 0.8; g.beginPath(); g.moveTo(cb[0] + cb[2] - 2, -cb[3] + 1.5); g.lineTo(cb[0] + cb[2] - 4, cb[3] - 1.5); g.stroke();
-      // shape details: intakes on supercars, a bonnet scoop on muscle cars, a roof vent on rally cars, police livery
-      if (shape === "super") { g.fillStyle = "rgba(0,0,0,0.6)"; g.beginPath(); g.moveTo(-8, -12.5); g.lineTo(-2, -9); g.lineTo(-12, -9); g.closePath(); g.moveTo(-8, 12.5); g.lineTo(-2, 9); g.lineTo(-12, 9); g.closePath(); g.fill(); }
-      if (shape === "muscle") { g.fillStyle = "rgba(0,0,0,0.45)"; rr(g, 10, -3, 8, 6, 1.5); g.fill(); }
-      if (shape === "rally" || shape === "hatch") { g.fillStyle = "rgba(0,0,0,0.35)"; g.fillRect(-6, -2.5, 4, 5); }
-      if (L.livery === "police") { g.fillStyle = "#f4f4f4"; g.fillRect(-12, -12, 22, 24); g.fillStyle = "#14161a"; g.fillRect(-11, -1.2, 20, 2.4); }
-      // spoiler
-      if (L.spoiler === "duck" && shape !== "open") { g.fillStyle = shade(/^#[0-9a-f]{6}$/i.test(paint) ? paint : "#888888", 0.75); g.beginPath(); g.moveTo(ENDS[shape][0] + 1, -10); g.quadraticCurveTo(ENDS[shape][0] - 3, 0, ENDS[shape][0] + 1, 10); g.lineTo(ENDS[shape][0] + 4, 10); g.lineTo(ENDS[shape][0] + 4, -10); g.fill(); }
-      // exhaust tips at the rear
-      const ex = { single: [6], dual: [-6, 6], quad: [-7, -4, 4, 7] }[L.exhaust || "single"] || [6];
-      g.fillStyle = "#2a2a2c"; for (const y of ex) { g.beginPath(); g.arc(ENDS[shape][0] - 0.5, y, 1.4, 0, 7); g.fill(); g.fillStyle = "#8a8d92"; g.beginPath(); g.arc(ENDS[shape][0] - 0.5, y, 0.8, 0, 7); g.fill(); g.fillStyle = "#2a2a2c"; }
+      g.strokeStyle = "rgba(255,255,255,0.14)"; g.lineWidth = 0.5;
+      for (const x of [B.wheels.fw, B.wheels.rw]) for (const s of [-1, 1]) { g.beginPath(); g.arc(x, s * (B.wheels.y + 4.6 + wide), 4.6, s > 0 ? Math.PI * 1.15 : Math.PI * 0.15, s > 0 ? Math.PI * 1.85 : Math.PI * 0.85); g.stroke(); }
+      g.restore();
+      // grille and plates (closed bodies)
+      if (Gl.type !== "formula") {
+        g.fillStyle = "rgba(12,12,14,0.8)"; rr(g, nose - 1.8, -4.2, 1.6, 8.4, 0.6); g.fill();
+        g.fillStyle = "#e8e4d8"; g.fillRect(nose - 1, -2, 0.7, 4); g.fillRect(rear + 0.3, -2, 0.7, 4);
+      }
+      // glass: windscreen, side windows and rear window (tinted, with sky), then the roof panel over them
+      const tint = (KD && KD.LOOKS.tint[L.tint] || {}).color || "#0b1220";
+      const glassFill = (x0, x1) => { const gg = g.createLinearGradient(x0, -9, x1, 9); gg.addColorStop(0, shade(tint, 1.9)); gg.addColorStop(0.5, tint); gg.addColorStop(1, shade(tint, 1.4)); return gg; };
+      if (Gl.type === "closed") {
+        g.fillStyle = glassFill(Gl.rb, Gl.ws);
+        g.beginPath(); g.moveTo(Gl.ws, -Gl.wb + 1.6); g.quadraticCurveTo(Gl.ws + 1.2, 0, Gl.ws, Gl.wb - 1.6); g.lineTo(Gl.rf, Gl.wb); g.lineTo(Gl.rr, Gl.wb); g.lineTo(Gl.rb, Gl.wb - 1.8);
+        g.quadraticCurveTo(Gl.rb - 1, 0, Gl.rb, -Gl.wb + 1.8); g.lineTo(Gl.rr, -Gl.wb); g.lineTo(Gl.rf, -Gl.wb); g.closePath(); g.fill();
+        // roof
+        g.fillStyle = paint; rr(g, Gl.rr + 0.4, -Gl.w + 0.4, Gl.rf - Gl.rr - 0.8, (Gl.w - 0.4) * 2, 2.2); g.fill();
+        const rg = g.createLinearGradient(0, -Gl.w, 0, Gl.w); rg.addColorStop(0, "rgba(0,0,0,0.22)"); rg.addColorStop(0.35, "rgba(255,255,255,0.28)"); rg.addColorStop(1, "rgba(0,0,0,0.25)");
+        g.fillStyle = rg; rr(g, Gl.rr + 0.4, -Gl.w + 0.4, Gl.rf - Gl.rr - 0.8, (Gl.w - 0.4) * 2, 2.2); g.fill();
+        // pillars and the sky reflection on the windscreen
+        g.strokeStyle = dark; g.lineWidth = 0.7; g.beginPath(); for (const s of [-1, 1]) { g.moveTo(Gl.ws, s * (Gl.wb - 1.6)); g.lineTo(Gl.rf, s * Gl.wb); } g.stroke();
+        g.fillStyle = "rgba(200,225,255,0.32)"; g.beginPath(); g.moveTo(Gl.ws - 0.4, -Gl.wb + 2.5); g.lineTo(Gl.ws + 0.5, -Gl.wb + 4.4); g.lineTo(Gl.rf + 0.6, 1); g.lineTo(Gl.rf + 0.2, -1.2); g.closePath(); g.fill();
+        if (B.feat.includes("wipers")) { g.strokeStyle = "rgba(10,10,10,0.7)"; g.lineWidth = 0.35; g.beginPath(); g.moveTo(Gl.ws + 0.6, -4); g.lineTo(Gl.ws - 1.4, 0.5); g.moveTo(Gl.ws + 0.7, 2); g.lineTo(Gl.ws - 1.2, 5.5); g.stroke(); }
+        // mirrors
+        g.fillStyle = paint; for (const s of [-1, 1]) { g.beginPath(); g.ellipse(Gl.ws - 1.4, s * (Gl.wb + 2.1), 1.1, 1.5, 0, 0, 7); g.fill(); }
+        g.fillStyle = "rgba(10,14,22,0.8)"; for (const s of [-1, 1]) { g.beginPath(); g.ellipse(Gl.ws - 1.8, s * (Gl.wb + 2.1), 0.5, 1, 0, 0, 7); g.fill(); }
+      } else if (Gl.type === "open") {   // an open two-seater: dark interior, two seats, steering wheel, a raked windscreen
+        g.fillStyle = "#17120f"; rr(g, Gl.cx - Gl.cw, -Gl.ch, Gl.cw * 2, Gl.ch * 2, 3); g.fill();
+        g.fillStyle = "#4a3426"; for (const s of [-1, 1]) { rr(g, Gl.cx - 4, s * 3.7 - 2.4, 5.4, 4.8, 1.6); g.fill(); }
+        g.strokeStyle = "#0c0c0c"; g.lineWidth = 0.7; g.beginPath(); g.arc(Gl.cx + 3.2, -3.7, 1.5, 0, 7); g.stroke();
+        g.strokeStyle = "rgba(190,225,255,0.75)"; g.lineWidth = 1.1; g.beginPath(); g.moveTo(Gl.ws, -Gl.ch - 0.6); g.quadraticCurveTo(Gl.ws + 2, 0, Gl.ws, Gl.ch + 0.6); g.stroke();
+      } else if (Gl.type === "canopy") {   // a prototype's bubble canopy
+        const cg = g.createRadialGradient(Gl.cx + 2, -2, 1, Gl.cx, 0, Gl.rx); cg.addColorStop(0, shade(tint, 2.2)); cg.addColorStop(1, tint);
+        g.fillStyle = cg; g.beginPath(); g.ellipse(Gl.cx, 0, Gl.rx, Gl.ry, 0, 0, 7); g.fill();
+        g.strokeStyle = dark; g.lineWidth = 0.6; g.stroke();
+        g.fillStyle = "rgba(220,235,255,0.35)"; g.beginPath(); g.ellipse(Gl.cx + 3, -2, 3.5, 1.4, -0.3, 0, 7); g.fill();
+      } else {   // a single-seater: cockpit opening, helmet, halo
+        g.fillStyle = "#101012"; g.beginPath(); g.ellipse(Gl.cx, 0, 5.2, 3.6, 0, 0, 7); g.fill();
+        const hc = p2 || "#f2f2f2"; g.fillStyle = hc; g.beginPath(); g.arc(Gl.cx - 0.6, 0, 2.5, 0, 7); g.fill();
+        g.fillStyle = "#0b1220"; g.beginPath(); g.ellipse(Gl.cx + 1, 0, 1, 1.8, 0, 0, 7); g.fill();
+        g.strokeStyle = "#2a2b2e"; g.lineWidth = 0.9; g.beginPath(); g.moveTo(Gl.cx - 3, -3.2); g.quadraticCurveTo(Gl.cx + 5, -3.4, Gl.cx + 5.5, 0); g.quadraticCurveTo(Gl.cx + 5, 3.4, Gl.cx - 3, 3.2); g.stroke();
+      }
+      // body details by type
+      const F = B.feat, blk = "rgba(8,8,10,0.62)";
+      if (F.includes("scoop")) { g.fillStyle = shade(paint, 0.85); rr(g, 9, -3.2, 10, 6.4, 1.8); g.fill(); g.fillStyle = blk; rr(g, 17, -2.2, 1.6, 4.4, 0.6); g.fill(); }
+      if (F.includes("bonnetVents")) { g.fillStyle = blk; for (const s of [-1, 1]) for (let i = 0; i < 3; i++) g.fillRect(nose - 12 + i * 1.4, s * 4.2 - 1.6, 0.6, 3.2); }
+      if (F.includes("bulge")) { const bg2 = g.createLinearGradient(0, -4, 0, 4); bg2.addColorStop(0, "rgba(0,0,0,0.12)"); bg2.addColorStop(0.5, "rgba(255,255,255,0.18)"); bg2.addColorStop(1, "rgba(0,0,0,0.14)"); g.fillStyle = bg2; rr(g, Gl.ws + 3, -3.5, nose - Gl.ws - 7, 7, 3); g.fill(); }
+      if (F.includes("roofVent")) { g.fillStyle = blk; rr(g, Gl.rf - 4, -1.6, 3, 3.2, 0.8); g.fill(); }
+      if (F.includes("roofLip")) { g.fillStyle = shade(paint, 0.7); g.fillRect(Gl.rr - 1.2, -Gl.w + 0.4, 1.2, (Gl.w - 0.4) * 2); }
+      if (F.includes("rails")) { g.fillStyle = "#1c1c1e"; for (const s of [-1, 1]) g.fillRect(Gl.rr + 1, s * (Gl.w - 1.4) - 0.4, Gl.rf - Gl.rr - 2, 0.8); }
+      if (F.includes("aerial")) { g.strokeStyle = "#111"; g.lineWidth = 0.4; g.beginPath(); g.moveTo(Gl.rb - 2, 5); g.lineTo(Gl.rb - 6, 6); g.stroke(); }
+      if (F.includes("mudflaps")) { g.fillStyle = "#151515"; for (const s of [-1, 1]) g.fillRect(B.wheels.rw - 5.6, s * (B.wheels.y + 0.6) - 1.8, 0.9, 3.6); }
+      if (F.includes("spots")) { for (const s of [-1, 1]) { g.fillStyle = "#101010"; g.beginPath(); g.arc(nose - 2.2, s * 3, 1.5, 0, 7); g.fill(); g.fillStyle = "#fff3c4"; g.beginPath(); g.arc(nose - 2.2, s * 3, 1, 0, 7); g.fill(); } }
+      if (F.includes("hoops")) { g.fillStyle = "#2a2a2c"; for (const s of [-1, 1]) { rr(g, Gl.cx - 5.6, s * 3.7 - 2.2, 1.5, 4.4, 0.6); g.fill(); } }
+      if (F.includes("intakes")) { g.fillStyle = blk; for (const s of [-1, 1]) { g.beginPath(); g.moveTo(-3, s * 12); g.lineTo(-11, s * 12.4); g.lineTo(-9, s * 9.2); g.lineTo(-4, s * 9.6); g.closePath(); g.fill(); } }
+      if (F.includes("louvres")) { g.fillStyle = blk; for (let i = 0; i < 5; i++) g.fillRect(-9 - i * 2.2, -5.5, 1, 11); }
+      if (F.includes("splitter")) { g.fillStyle = "#121214"; g.fillRect(nose - 0.6, -9, 1.2, 18); }
+      if (F.includes("fin")) { g.fillStyle = shade(paint, 0.7); g.fillRect(-22, -0.6, 14, 1.2); }
+      if (F.includes("roofIntake")) { g.fillStyle = blk; rr(g, -8, -1.8, 3.2, 3.6, 1); g.fill(); }
+      if (F.includes("airbox")) { g.fillStyle = shade(paint, 0.8); rr(g, -12, -2.4, 7, 4.8, 2); g.fill(); g.fillStyle = blk; g.beginPath(); g.ellipse(-5.6, 0, 0.9, 1.6, 0, 0, 7); g.fill(); }
+      // more details: each car's own (art) and the body parts you fit (bumper, bonnet)
+      const wn = Math.abs(B.o[B.o.length - 2][1]) + wide * 0.3, closed = Gl.type === "closed", bon0 = closed ? Gl.ws + 1.6 : nose - 13, bonW = closed ? Gl.wb - 1.2 : 4;
+      if (F.includes("towhook")) { g.fillStyle = "#d23c3c"; g.fillRect(nose - 0.4, 4.6, 1.8, 1.4); }
+      if (F.includes("lightbar") && closed) { g.fillStyle = "#151515"; rr(g, Gl.rf - 1.8, -Gl.w + 0.8, 1.6, (Gl.w - 0.8) * 2, 0.5); g.fill(); g.fillStyle = "#fff3c4"; for (let y = -Gl.w + 1.8; y < Gl.w - 1.2; y += 2.1) g.fillRect(Gl.rf - 1.5, y, 1, 1.3); }
+      if (F.includes("snorkel") && closed) { g.fillStyle = "#151515"; g.fillRect(Gl.ws - 1.2, Gl.wb + 0.2, nose - Gl.ws - 8, 1.3); g.fillRect(Gl.ws - 1.2, Gl.wb - 2, 1.5, 3.4); }
+      if (F.includes("spare") && closed) { g.fillStyle = "#121212"; g.beginPath(); g.arc(Gl.rr + 3.8, 0, 3.6, 0, 7); g.fill(); g.fillStyle = "#6a6d72"; g.beginPath(); g.arc(Gl.rr + 3.8, 0, 1.7, 0, 7); g.fill(); }
+      if (F.includes("fenderVents")) { g.fillStyle = blk; for (const s of [-1, 1]) for (let i = 0; i < 3; i++) { g.save(); g.translate(B.wheels.fw - 6 - i * 1.3, s * (B.wheels.y - 2.4 + wide)); g.rotate(0.5 * s); g.fillRect(-0.3, -1.3, 0.6, 2.6); g.restore(); } }
+      if (F.includes("louvresRear") && closed) { g.fillStyle = shade(paint, 0.55); for (let x = Gl.rr - 1; x > Gl.rb + 0.6; x -= 1.15) g.fillRect(x, -Gl.wb + 2.2, 0.55, (Gl.wb - 2.2) * 2); }
+      if (F.includes("hoodPins") || L.bonnet === "pins") { g.fillStyle = "#d4d7dc"; for (const s of [-1, 1]) { g.beginPath(); g.arc(nose - 3.6, s * 5.6, 0.65, 0, 7); g.fill(); } }
+      if (F.includes("sidePipes")) { for (const s of [-1, 1]) { g.fillStyle = "#6f7378"; g.fillRect(B.wheels.rw + 4.4, s * (B.wheels.y - 1.6 + wide) - 0.7, B.wheels.fw - B.wheels.rw - 9.6, 1.4); g.fillStyle = "rgba(255,255,255,0.35)"; g.fillRect(B.wheels.rw + 4.4, s * (B.wheels.y - 1.6 + wide) - 0.7, B.wheels.fw - B.wheels.rw - 9.6, 0.4); } }
+      if (F.includes("roofBox") && closed) { g.fillStyle = "#26282c"; rr(g, Gl.rr + 2, -4, Gl.rf - Gl.rr - 5, 8, 2.6); g.fill(); g.fillStyle = "rgba(255,255,255,0.16)"; g.fillRect(Gl.rr + 3, -3.3, Gl.rf - Gl.rr - 7, 1); }
+      if (F.includes("cage") && closed) { g.strokeStyle = "rgba(40,40,44,0.85)"; g.lineWidth = 0.6; g.beginPath(); g.moveTo(Gl.rf + 1, -Gl.wb + 1.5); g.lineTo(Gl.rr - 0.5, Gl.wb - 1.5); g.moveTo(Gl.rf + 1, Gl.wb - 1.5); g.lineTo(Gl.rr - 0.5, -Gl.wb + 1.5); g.stroke(); }
+      if (F.includes("blower")) { g.fillStyle = "#b9bec4"; rr(g, bon0 + 2, -3.4, 8, 6.8, 1.2); g.fill(); g.fillStyle = "#121214"; rr(g, bon0 + 4, -2.4, 4.4, 4.8, 1); g.fill(); g.fillStyle = "rgba(255,255,255,0.4)"; g.fillRect(bon0 + 2, -3.4, 8, 0.6); }
+      if (F.includes("wingFactory") && (!L.spoiler || L.spoiler === "none")) { g.fillStyle = shade(paint, 0.7); rr(g, rear + 0.6, -10.5 - wide, 2.6, 21 + 2 * wide, 0.8); g.fill(); g.fillStyle = "rgba(255,255,255,0.25)"; g.fillRect(rear + 2.6, -10.5 - wide, 0.6, 21 + 2 * wide); }
+      if (L.bonnet === "vented") { g.fillStyle = blk; for (const s of [-1, 1]) for (let i = 0; i < 4; i++) g.fillRect(bon0 + 3 + i * 1.3, s * 3.6 - 1.4, 0.55, 2.8); }
+      if (L.bonnet === "carbon" && !F.includes("blower")) {
+        g.save(); g.beginPath(); g.rect(bon0, -bonW, nose - bon0 - 2.2, bonW * 2); g.clip();
+        g.fillStyle = "#1b1c1f"; g.fillRect(bon0, -bonW, nose - bon0 - 2.2, bonW * 2);
+        g.fillStyle = "rgba(255,255,255,0.07)"; for (let x = bon0; x < nose; x += 1.2) for (let y = -bonW; y < bonW; y += 1.2) if (((x - bon0) / 1.2 + (y + bonW) / 1.2 | 0) % 2) g.fillRect(x, y, 1.2, 1.2);
+        g.restore();
+      }
+      if (L.bonnet === "scoop" && !F.includes("scoop")) { g.fillStyle = shade(paint, 0.82); rr(g, bon0 + 2, -2.6, 7, 5.2, 1.6); g.fill(); g.fillStyle = blk; rr(g, bon0 + 7.6, -1.8, 1.3, 3.6, 0.5); g.fill(); }
+      if (L.bumper === "lip") { g.fillStyle = "#141416"; g.fillRect(nose - 0.9, -wn + 0.6, 1.5, (wn - 0.6) * 2); }
+      if (F.includes("pushbar") || L.bumper === "pushbar") { g.fillStyle = "#1a1a1c"; rr(g, nose - 0.4, -wn + 0.4, 2.6, (wn - 0.4) * 2, 1); g.fill(); g.fillStyle = "#62666b"; g.fillRect(nose + 0.4, -wn + 1.2, 0.8, (wn - 1.2) * 2); }
+      if (F.includes("canards") || L.bumper === "canards") { g.fillStyle = "#18191c"; for (const s of [-1, 1]) { g.beginPath(); g.moveTo(nose - 6, s * (wn - 0.2)); g.lineTo(nose - 2, s * (wn - 0.6)); g.lineTo(nose - 4.6, s * (wn + 1.8)); g.closePath(); g.fill(); } }
+      // lamp lenses (lit live in drawCar)
+      if (B.head) lamp(g, B.head, true, "#d9d6c8", true);
+      lamp(g, B.tail, true, "#7a1414", false);
+      // spoilers: a duck tail lip, a low wing, or a high wing on stands with endplates
+      if (L.spoiler === "duck" && shape !== "open") { g.fillStyle = shade(paint, 0.75); g.beginPath(); g.moveTo(rear + 1, -10); g.quadraticCurveTo(rear - 3, 0, rear + 1, 10); g.lineTo(rear + 4, 10); g.lineTo(rear + 4, -10); g.fill(); }
       if (L.spoiler === "high" || (shape !== "open" && L.spoiler === "low")) {
-        const x = L.spoiler === "high" ? -28 : -24.5, w2 = L.spoiler === "high" ? 5 : 3;
-        g.fillStyle = shade(/^#[0-9a-f]{6}$/i.test(paint) ? paint : "#888888", 0.55); g.fillRect(x, -12 - wide, w2, 24 + 2 * wide);
-        g.fillStyle = "rgba(255,255,255,0.25)"; g.fillRect(x, -12 - wide, w2, 1);
+        const x = L.spoiler === "high" ? rear - 1.6 : rear + 0.5, w2 = L.spoiler === "high" ? 4.4 : 2.6, hw = (L.spoiler === "high" ? 12.5 : 11) + wide;
+        if (L.spoiler === "high") { g.fillStyle = "#1a1a1c"; for (const s of [-1, 1]) g.fillRect(x + 2, s * 5 - 0.6, 5, 1.2); }
+        g.fillStyle = shade(paint, 0.6); rr(g, x, -hw, w2, hw * 2, 0.8); g.fill();
+        g.fillStyle = "rgba(255,255,255,0.28)"; g.fillRect(x + w2 - 0.8, -hw, 0.8, hw * 2);
+        if (L.spoiler === "high") { g.fillStyle = "#1a1a1c"; g.fillRect(x - 0.4, -hw - 0.6, w2 + 0.8, 1.2); g.fillRect(x - 0.4, hw - 0.6, w2 + 0.8, 1.2); }
       }
+      // exhaust tips
+      const ex = { single: [6], dual: [-6, 6], quad: [-7.4, -4.6, 4.6, 7.4] }[L.exhaust || "single"] || [6];
+      for (const y of ex) { g.fillStyle = "#26262a"; g.beginPath(); g.arc(rear - 0.4, y, 1.3, 0, 7); g.fill(); g.fillStyle = "#9a9da2"; g.beginPath(); g.arc(rear - 0.4, y, 0.75, 0, 7); g.fill(); }
       // number roundel: on the bonnet (or a single-seater's side pod), on the roof, or none
-      if (L.numpos !== "none") { g.save(); g.translate(shape === "open" ? -13 : L.numpos === "roof" && cb[4] === "r" ? cb[0] : 13, 0); g.rotate(Math.PI / 2);
-      g.fillStyle = "rgba(255,255,255,0.9)"; g.beginPath(); g.arc(0, 0, 5, 0, 7); g.fill();
-      g.fillStyle = "#14120f"; g.font = '700 7.5px "Rajdhani", system-ui, sans-serif'; g.textAlign = "center"; g.textBaseline = "middle"; g.fillText(String(L.number || num), 0, 0.4); g.restore(); }
-      // outline for definition at a distance
-      SHAPES[shape](g, wide); g.strokeStyle = "rgba(10,10,12,0.75)"; g.lineWidth = 0.9; g.stroke();
+      if (L.numpos !== "none") {
+        const nx = shape === "open" ? -14 : L.numpos === "roof" && Gl.type === "closed" ? (Gl.rf + Gl.rr) / 2 : Gl.type === "closed" ? (Gl.ws + nose) / 2 + 0.5 : nose - 8;
+        g.save(); g.translate(nx, 0); g.rotate(Math.PI / 2);
+        g.fillStyle = "rgba(255,255,255,0.92)"; g.beginPath(); g.arc(0, 0, 3.5, 0, 7); g.fill();
+        g.fillStyle = "#14120f"; g.font = '700 5.4px "Rajdhani", system-ui, sans-serif'; g.textAlign = "center"; g.textBaseline = "middle"; g.fillText(String(L.number || num), 0, 0.4); g.restore();
+      }
+      // a crisp outline for definition at speed, and a thin highlight on the sun side
+      body(g, wide); g.strokeStyle = "rgba(8,8,10,0.85)"; g.lineWidth = 0.8; g.stroke();
+      g.save(); body(g, wide); g.clip(); g.strokeStyle = "rgba(255,255,255,0.22)"; g.lineWidth = 0.7; g.translate(0.6, 0.8); body(g, wide); g.stroke(); g.restore();
       sprites.set(key, cv);
       return cv;
     }
-
     function drawCar(ctx, c, o = {}) {
-      const L = c.look || {}, shape = SHAPES[c.shape] ? c.shape : "open", wide = L.body === "wide" ? 2 : 0, paint = L.paint || c.color;
-      const wcol = (root.KerbsideData && root.KerbsideData.LOOKS.wheels[L.wheels] || {}).color || "#5a5e64";
-      const sp = sprite(shape, L, c.color, c.num), [rear, nose] = ENDS[shape];
-      ctx.save(); ctx.translate(c.x, c.y); ctx.rotate(c.a);
+      const L = c.look || {}, shape = BODY[c.shape] ? c.shape : "open", B = bodyFor(shape, c.art), wide = L.body === "wide" ? 1.6 : 0;
+      const wcol = (root.KerbsideData && root.KerbsideData.LOOKS.wheels[L.wheels] || {}).color || "#8a8e94";
+      const sp = sprite(shape, L, c.color, c.num, c.art), [rear, nose] = endsOf(B);
+      ctx.save(); ctx.translate(c.x, c.y);
+      ctx.rotate(c.a);
       if (o.ghost) ctx.globalAlpha = 0.4;
       if (c.out) ctx.globalAlpha = 0.35;
-      // soft shadow, offset by the sun
-      if (!o.ghost) { ctx.fillStyle = "rgba(0,0,0,0.33)"; ctx.beginPath(); ctx.ellipse(3, 5, 27, 14, 0, 0, 7); ctx.fill(); ctx.fillStyle = "rgba(0,0,0,0.25)"; ctx.beginPath(); ctx.ellipse(2, 3, 23, 11, 0, 0, 7); ctx.fill(); }
-      // wheels with moving tread; the fronts turn with the steering
-      const ty = shape === "open" ? 13 : 11.5, wy = ty + wide, ph = ((c.wheelPh || 0) % 6 + 6) % 6;
-      for (const [x, y, front] of [[-15, -wy, 0], [-15, wy, 0], [11, -wy, 1], [11, wy, 1]]) {
+      // wheels: tyre with sidewall shading and moving tread, rim on the outside face; the fronts steer
+      const W = B.wheels, wy = W.y + wide, ph = ((c.wheelPh || 0) % 4 + 4) % 4;
+      for (const [x, y, front] of [[W.rw, -wy, 0], [W.rw, wy, 0], [W.fw, -wy, 1], [W.fw, wy, 1]]) {
         ctx.save(); ctx.translate(x, y); if (front) ctx.rotate(clamp(c.steerIn || 0, -1, 1) * 0.42);
-        ctx.fillStyle = "#101113"; rr(ctx, -5.5, -3, 11, 6, 1.6); ctx.fill();
-        ctx.fillStyle = "rgba(255,255,255,0.10)"; for (let k = -6 + ph; k < 6; k += 3) ctx.fillRect(k, -3, 0.9, 6);
-        ctx.fillStyle = wcol; ctx.fillRect(-2.2, -1.3, 4.4, 2.6); ctx.restore();
+        const tyre = L.tyres || "road", tw = tyre === "offroad" ? W.w + 0.8 : W.w;
+        ctx.fillStyle = "#0e0f11"; rr(ctx, -W.l / 2, -tw / 2, W.l, tw, 1.4); ctx.fill();
+        if (tyre === "slick") { ctx.fillStyle = "rgba(255,255,255,0.12)"; ctx.fillRect(-W.l / 2 + 0.8, -tw / 2 + 0.4, W.l - 1.6, 0.6); }
+        else if (tyre === "offroad") { ctx.fillStyle = "rgba(255,255,255,0.14)"; for (let k = -W.l / 2 + ph * 0.8; k < W.l / 2; k += 1.6) { ctx.fillRect(k, -tw / 2, 0.9, tw * 0.45); ctx.fillRect(k + 0.8, 0.05 * tw, 0.9, tw * 0.45); } }
+        else { ctx.fillStyle = "rgba(255,255,255,0.09)"; for (let k = -W.l / 2 + ph; k < W.l / 2; k += 2) ctx.fillRect(k, -tw / 2, 0.7, tw); }
+        if (tyre === "lettered") { ctx.fillStyle = "rgba(240,240,240,0.85)"; const sd = y > 0 ? 1 : -1; for (let k = -W.l / 2 + 1 + ph * 0.5; k < W.l / 2 - 1; k += 2.4) ctx.fillRect(k, sd * (tw / 2 - 0.5) - 0.25, 1.2, 0.5); }
+        const out = y > 0 ? 1 : -1;
+        ctx.fillStyle = wcol; ctx.fillRect(-W.l * 0.32, out * W.w * 0.18 - (out > 0 ? 0 : W.w * 0.32), W.l * 0.64, W.w * 0.32);
+        ctx.fillStyle = "rgba(0,0,0,0.35)"; for (let k = -W.l * 0.3 + ph * 0.6; k < W.l * 0.3; k += 1.6) ctx.fillRect(k, out * W.w * 0.18 - (out > 0 ? 0 : W.w * 0.32), 0.4, W.w * 0.32);
+        ctx.restore();
       }
-      const sway = clamp((c.latAcc || 0) * 0.05, -2, 2), pitch = c.brakeOn ? 1.2 : c.boost ? -1 : 0;
+      const sway = clamp((c.latAcc || 0) * 0.05, -1.6, 1.6), pitch = c.brakeOn ? 0.9 : c.boost ? -0.8 : 0;
       ctx.translate(pitch, sway);
       ctx.drawImage(sp, -SW / 2, -SH / 2, SW, SH);
-      if (c.wet) { ctx.fillStyle = "rgba(200,225,255,0.10)"; SHAPES[shape](ctx, wide); ctx.fill(); }
-      // damage: scuffs, then a bent nose
-      if (c.dmg > 0.12) { ctx.fillStyle = "rgba(25,22,20,0.55)"; ctx.fillRect(nose - 9, -7, 5, 3); if (c.dmg > 0.3) ctx.fillRect(rear + 4, 6, 7, 3); if (c.dmg > 0.5) { ctx.fillRect(-8, -9, 6, 2); ctx.strokeStyle = "rgba(20,20,20,0.75)"; ctx.lineWidth = 1.2; ctx.beginPath(); ctx.moveTo(nose - 5, -9); ctx.lineTo(nose - 1, -3); ctx.lineTo(nose - 4, 2); ctx.stroke(); } }
-      // lights
-      ctx.fillStyle = c.brakeOn ? "#ff2a2a" : "rgba(150,20,20,0.9)"; ctx.fillRect(rear - 1, -8, 2.5, 4); ctx.fillRect(rear - 1, 4, 2.5, 4);
-      if (o.lights) { ctx.fillStyle = (root.KerbsideData && root.KerbsideData.LOOKS.lights[L.lights] || {}).color || "#fff6d6"; ctx.fillRect(nose - 2.5, -8.5, 2.8, 3.8); ctx.fillRect(nose - 2.5, 4.7, 2.8, 3.8); }
+      if (c.wet) { ctx.fillStyle = "rgba(200,225,255,0.08)"; outline(ctx, B, wide); ctx.fill(); }
+      // damage builds up: scratches, then dents, a cracked windscreen, a hanging bumper
+      if (c.dmg > 0.1) drawDamage(ctx, c, B, shape, wide, rear, nose);
+      // lights: tail lamps (bright when braking), headlamps when they're on
+      const tl = c.brakeOn ? "#ff2a2a" : "rgba(170,24,24,0.95)";
+      ctx.save(); lampLive(ctx, B.tail, tl); ctx.restore();
+      if (c.brakeOn && G && G.q && G.q.glow) { ctx.globalCompositeOperation = "lighter"; for (const s of [-1, 1]) ctx.drawImage(glowSprite("#ff222266"), rear - 8, s * (B.tail.k === "strip" || B.tail.k === "rain" ? 0 : B.tail.y) - 6, 12, 12); ctx.globalCompositeOperation = "source-over"; }
+      if (o.lights && B.head) { ctx.save(); lampLive(ctx, B.head, (root.KerbsideData && root.KerbsideData.LOOKS.lights[L.lights] || {}).color || "#fff6d6"); ctx.restore(); }
       // indicators: an AI driver signals the side it's moving to when it sets up a pass
-      if (c.side && G && (G.race.simT * 3 | 0) % 2 === 0) { const y = c.side > 0 ? 9.5 : -12; ctx.fillStyle = "#ffb020"; ctx.fillRect(nose - 4, y, 3, 2.5); ctx.fillRect(rear + 1, y, 3, 2.5); }
-      if (c.police) {   // light bar: red and blue, alternating
-        const ph = ((G ? G.race.simT : 0) * 8 | 0) % 2;
-        ctx.fillStyle = "#1a1a1a"; ctx.fillRect(-3, -7, 4, 14);
-        ctx.fillStyle = ph ? "#ff2a3a" : "#5a1010"; ctx.fillRect(-3, -7, 4, 6.5); ctx.fillStyle = ph ? "#103060" : "#2a6aff"; ctx.fillRect(-3, 0.5, 4, 6.5);
+      if (c.side && G && (G.race.simT * 3 | 0) % 2 === 0) { const y = c.side > 0 ? 9.5 : -12; ctx.fillStyle = "#ffb020"; ctx.fillRect(nose - 4, y, 2.4, 2.5); ctx.fillRect(rear + 1, y, 2.4, 2.5); }
+      if (c.police) {   // light bar: red and blue, alternating, with a chrome housing
+        const ph2 = ((G ? G.race.simT : 0) * 8 | 0) % 2, bx = B.glass.rf !== undefined ? (B.glass.rf + B.glass.rr) / 2 : -3;
+        ctx.fillStyle = "#1a1a1a"; rr(ctx, bx - 2, -7.2, 4, 14.4, 1); ctx.fill();
+        ctx.fillStyle = ph2 ? "#ff2a3a" : "#5a1010"; ctx.fillRect(bx - 1.4, -6.6, 2.8, 6); ctx.fillStyle = ph2 ? "#103060" : "#2a6aff"; ctx.fillRect(bx - 1.4, 0.6, 2.8, 6);
       }
       if (c.pop > 0) {   // a backfire on lifting off at high revs
         ctx.fillStyle = `rgba(255,170,60,${Math.min(1, c.pop * 4)})`; ctx.beginPath(); ctx.arc(rear - 4, 3, 3 + c.pop * 8, 0, 7); ctx.fill();
       }
-      if (c.boost) {   // nitro flame at the exhausts
-        const f = 14 + Math.random() * 12;
-        ctx.fillStyle = "rgba(255,120,40,0.85)"; ctx.beginPath(); ctx.moveTo(rear, -4); ctx.lineTo(rear - f, 0); ctx.lineTo(rear, 4); ctx.fill();
-        ctx.fillStyle = "rgba(255,240,200,0.95)"; ctx.beginPath(); ctx.moveTo(rear, -2); ctx.lineTo(rear - f * 0.55, 0); ctx.lineTo(rear, 2); ctx.fill();
+      if (c.boost) {   // nitro: a blue-white core in an orange plume, flickering
+        const f = 14 + Math.random() * 12, ex = { single: [6], dual: [-6, 6], quad: [-6, 6] }[L.exhaust || "single"] || [6];
+        for (const y of ex) {
+          ctx.fillStyle = "rgba(255,120,40,0.85)"; ctx.beginPath(); ctx.moveTo(rear, y - 2.6); ctx.lineTo(rear - f, y); ctx.lineTo(rear, y + 2.6); ctx.fill();
+          ctx.fillStyle = "rgba(160,210,255,0.95)"; ctx.beginPath(); ctx.moveTo(rear, y - 1.3); ctx.lineTo(rear - f * 0.5, y); ctx.lineTo(rear, y + 1.3); ctx.fill();
+        }
       }
       ctx.restore();
+    }
+    function lampLive(ctx, Lm, col) { lamp(ctx, Lm, true, col, "live"); }
+    function drawDamage(ctx, c, B, shape, wide, rear, nose) {
+      let h = 0; for (const ch of String(c.id || c.code || "x")) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
+      const r = rng(h || 7), d = c.dmg;
+      ctx.save(); outline(ctx, B, wide); ctx.clip();
+      ctx.strokeStyle = "rgba(235,235,235,0.55)"; ctx.lineWidth = 0.35;   // scratches
+      for (let i = 0; i < Math.round(d * 12); i++) { const x = rear + r() * (nose - rear), s = r() > 0.5 ? 1 : -1, y = s * (7 + r() * 4); ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x + 2 + r() * 4, y + (r() - 0.5) * 1.5); ctx.stroke(); }
+      if (d > 0.3) for (let i = 0; i < Math.round((d - 0.2) * 6); i++) {   // dents: a dark crease with a lit lip
+        const x = r() > 0.5 ? nose - 3 - r() * 6 : rear + 2 + r() * 6, y = (r() - 0.5) * 18;
+        ctx.fillStyle = "rgba(10,10,12,0.42)"; ctx.beginPath(); ctx.ellipse(x, y, 2.6, 1.6, r(), 0, 7); ctx.fill();
+        ctx.strokeStyle = "rgba(255,255,255,0.3)"; ctx.lineWidth = 0.4; ctx.beginPath(); ctx.ellipse(x - 0.5, y - 0.4, 2.6, 1.6, r(), 3.6, 5.6); ctx.stroke();
+      }
+      ctx.restore();
+      const Gl = B.glass;
+      if (d > 0.5 && Gl.type === "closed") {   // a cracked windscreen
+        ctx.strokeStyle = "rgba(235,240,255,0.75)"; ctx.lineWidth = 0.3; const cx = (Gl.ws + Gl.rf) / 2, cy = -2;
+        ctx.beginPath(); for (let i = 0; i < 6; i++) { const a = i * 1.05 + r(); ctx.moveTo(cx, cy); ctx.lineTo(cx + Math.cos(a) * 2.6, cy + Math.sin(a) * 4); } ctx.stroke();
+      }
+      if (d > 0.7) { ctx.fillStyle = "#1a1a1a"; ctx.beginPath(); ctx.moveTo(nose - 0.5, 4); ctx.lineTo(nose + 1.6, 7); ctx.lineTo(nose + 0.8, 9); ctx.lineTo(nose - 1.6, 6); ctx.closePath(); ctx.fill(); }   // a hanging bumper corner
     }
 
     // ---------------------------------------------------------------- Particles (fixed pool)
@@ -626,11 +908,46 @@
         part.vx[i] *= drag; part.vy[i] *= drag; part.x[i] += part.vx[i] * dt; part.y[i] += part.vy[i] * dt;
       }
     }
+    const puffs = {};
+    function puff(night) {   // one soft smoke sprite (a radial fall-off), shared by every puff
+      const k = night ? "n" : "d"; if (puffs[k]) return puffs[k];
+      const cv = doc.createElement("canvas"); cv.width = cv.height = 32; const g = cv.getContext("2d"), gr = g.createRadialGradient(16, 16, 1, 16, 16, 16);
+      const c = night ? "150,160,180" : "238,238,236"; gr.addColorStop(0, `rgba(${c},0.9)`); gr.addColorStop(0.5, `rgba(${c},0.45)`); gr.addColorStop(1, `rgba(${c},0)`);
+      g.fillStyle = gr; g.fillRect(0, 0, 32, 32); return (puffs[k] = cv);
+    }
+    // The start: the track's name and the conditions, then each driver's tag over their car on the grid.
+    function gridIntro(ctx, W, H, toScreen, race) {
+      const t = race.lightsT, a = Math.min(1, t / 0.4) * Math.max(0, Math.min(1, (3.6 - t) / 0.5));
+      if (a <= 0) return;
+      ctx.save(); ctx.globalAlpha = a;
+      const title = race.trk.name.toUpperCase(), sub = `${race.laps > 99 ? ({ pursuit: "Police pursuit", drag: "Drag race", delivery: "Delivery" }[race.mode] || "") : race.laps + " laps"}  ·  ${{ day: "Day", dawn: "Dawn", dusk: "Dusk", night: "Night" }[race.tod]}  ·  ${{ dry: "Dry", rain: "Rain", fog: "Fog" }[race.weather]}`;
+      const y = H * 0.74, sl = Math.min(1, t / 0.6);
+      ctx.fillStyle = "rgba(10,8,4,0.72)"; ctx.fillRect(0, y - 34, W * sl, 66);
+      ctx.fillStyle = "#e9c44a"; ctx.fillRect(0, y + 32, W * sl, 2);
+      ctx.textAlign = "center"; ctx.textBaseline = "middle"; ctx.fillStyle = "#fff6e0";
+      ctx.font = `700 ${Math.round(Math.min(34, W / 18))}px "Rajdhani", system-ui, sans-serif`; ctx.fillText(title, W / 2, y - 6);
+      ctx.fillStyle = "#e9c44a"; ctx.font = '600 14px "Rajdhani", system-ui, sans-serif'; ctx.fillText(sub.toUpperCase(), W / 2, y + 18);
+      if (t > 0.6) {   // name tags on the grid, front to back
+        const order = standings(race), tagA = Math.min(1, (t - 0.6) / 0.5);
+        ctx.globalAlpha = a * tagA; ctx.font = '700 12px "Rajdhani", system-ui, sans-serif';
+        order.forEach((c, i) => {
+          const [sx, sy] = toScreen(c.x, c.y), label = `P${i + 1}  ${c.ai ? c.code : "YOU"}`, w = ctx.measureText(label).width + 16;
+          if (sx < -40 || sx > W + 40 || sy < -40 || sy > H + 40) return;
+          ctx.fillStyle = c.ai ? "rgba(10,8,4,0.8)" : "rgba(233,196,74,0.95)"; ctx.fillRect(sx - w / 2, sy - 44, w, 20);
+          ctx.fillStyle = (c.look && c.look.paint) || c.color || "#fff"; ctx.fillRect(sx - w / 2, sy - 44, 3, 20);
+          ctx.fillStyle = c.ai ? "#fff6e0" : "#14100a"; ctx.fillText(label, sx + 1, sy - 34);
+        });
+      }
+      ctx.restore();
+    }
     function drawParticles(ctx, above, night) {
       for (let i = 0; i < part.n; i++) {
         const k = part.kind[i], f = part.life[i] / part.max[i];
         if ((k === K.spark || k === K.confetti || k === K.flame) !== above) continue;
-        if (k === K.smoke) { const s = part.size[i] * (1 + (1 - f) * 2.6); ctx.fillStyle = night ? `rgba(150,160,180,${0.22 * f})` : `rgba(235,235,235,${0.3 * f})`; ctx.beginPath(); ctx.arc(part.x[i], part.y[i], s, 0, 7); ctx.fill(); }
+        if (k === K.smoke) {
+          if (G.q.level > 1) { const s = part.size[i] * (1.4 + (1 - f) * 3.4); ctx.globalAlpha = (night ? 0.42 : 0.6) * f; ctx.drawImage(puff(night), part.x[i] - s, part.y[i] - s, s * 2, s * 2); ctx.globalAlpha = 1; }
+          else { const s = part.size[i] * (1 + (1 - f) * 2.6); ctx.fillStyle = night ? `rgba(150,160,180,${0.22 * f})` : `rgba(235,235,235,${0.3 * f})`; ctx.beginPath(); ctx.arc(part.x[i], part.y[i], s, 0, 7); ctx.fill(); }
+        }
         else if (k === K.dust) { ctx.fillStyle = `rgba(196,165,112,${0.32 * f})`; ctx.beginPath(); ctx.arc(part.x[i], part.y[i], part.size[i] * (2.2 - f), 0, 7); ctx.fill(); }
         else if (k === K.spray) { ctx.fillStyle = `rgba(205,220,240,${0.24 * f})`; ctx.beginPath(); ctx.arc(part.x[i], part.y[i], part.size[i] * (1.8 - f), 0, 7); ctx.fill(); }
         else if (k === K.splash) { ctx.strokeStyle = `rgba(210,225,245,${0.5 * f})`; ctx.lineWidth = 1; ctx.beginPath(); ctx.arc(part.x[i], part.y[i], part.size[i] * (1.4 - f), 0, 7); ctx.stroke(); }
@@ -730,7 +1047,7 @@
       setHud(true);
       G.ui.stage.focus({ preventScroll: true });
       status(`${G.race.trk.name}${cfg.title ? " · " + cfg.title : ""}: wait for the lights.`);
-      if (G.audio) { G.audio.raceStart(); if (G.audio.voice) G.audio.voice(G.race.cars[0].shape); if (G.audio.music) G.audio.music(G.race.mode === "pursuit" ? "pursuit" : "race", 1); }
+      if (G.audio) { G.audio.raceStart(); if (G.audio.voice) G.audio.voice(G.race.cars[0].shape, G.race.cars[0].voice); if (G.audio.music) G.audio.music(G.race.mode === "pursuit" ? "pursuit" : "race", 1); }
     }
     function snapCamera() { const me = G.race.cars[0]; G.cam.x = me.x; G.cam.y = me.y; G.cam.vx = G.cam.vy = 0; G.cam.rot = G.chase ? -me.a - Math.PI / 2 : 0; G.cam.z = 0; }
     function status(t) { if (G.onStatus) G.onStatus(t); }
@@ -847,10 +1164,10 @@
     // and sits low, looking down the road. Speed widens the view, nitro punches it out, impacts shake it. The start
     // is an orbiting shot that settles behind your car as the lights go out; the finish slows time and orbits again.
     function camera(dt, W, H, focus) {
-      G.camBase = Math.max(0.42, Math.min(1.3, Math.min(W, H) / 620));
+      G.camBase = Math.max(0.42, Math.min(1.45, Math.min(W, H) / 560));
       if (G.mode === "photo" && G.ph) { const P = G.ph; return { cx: P.x, cy: P.y, z: P.z * G.camBase, rot: P.rot, eyeX: W / 2, eyeY: H / 2 }; }
       const race = G.race, chase = G.chase || G.mode === "replay", me = focus, sp = Math.hypot(me.vx, me.vy), top = me.acc / me.spec.drag;
-      let z = Math.max(0.42, Math.min(1.3, Math.min(W, H) / 620)) * (1 - 0.2 * Math.min(1, sp / Math.max(500, top)));
+      let z = Math.max(0.42, Math.min(1.45, Math.min(W, H) / 560)) * (1 - 0.22 * Math.min(1, sp / Math.max(500, top)));
       if (me.boost && !G.wasBoost && !G.reduce) G.punch = 0.08; G.wasBoost = me.boost;
       G.punch = Math.max(0, G.punch - dt * 0.15); z *= 1 - G.punch;
       const ahead = chase ? 0.5 : 0.32;
@@ -919,6 +1236,18 @@
       if (race.wetness > 0.02 && (race.change || race.weather !== "rain")) {   // live puddles when the rain wasn't baked into the world picture
         ctx.fillStyle = `rgba(160,185,220,${(0.2 * race.wetness).toFixed(3)})`;
         for (const [x, y, rx, ry, a] of puddlesOf(t)) if (Math.abs(x - cx) < radius && Math.abs(y - cy) < radius) { ctx.beginPath(); ctx.ellipse(x, y, rx, ry, a, 0, 7); ctx.fill(); }
+      }
+      // a wet road mirrors the cars' lights: long soft streaks ahead of headlamps and behind tail lamps
+      if (race.wetness > 0.3 && q.reflect && G.mode !== "menu") {
+        ctx.globalCompositeOperation = "lighter"; const wa = Math.min(1, (race.wetness - 0.3) / 0.5);
+        for (const c of race.cars) {
+          if (c.hidden || c.out || Math.abs(c.x - cx) > radius || Math.abs(c.y - cy) > radius) continue;
+          ctx.save(); ctx.translate(c.x, c.y); ctx.rotate(c.a); ctx.globalAlpha = wa;
+          if (lightsOn) ctx.drawImage(glowSprite("#fff4d455"), 18, -14, 90, 28);
+          ctx.drawImage(glowSprite(c.brakeOn ? "#ff303077" : "#ff303033"), -70, -11, 52, 22);
+          ctx.restore();
+        }
+        ctx.globalAlpha = 1; ctx.globalCompositeOperation = "source-over";
       }
       drawParticles(ctx, false, night);
       drawCrowd(ctx, cx, cy, radius, time, night ? 0.55 : dusk ? 0.85 : 1);
@@ -1032,6 +1361,7 @@
       if (G.mode === "photo" && G.ph) { ctx.globalAlpha = Math.min(1, G.ph.vignette * 2.6); ctx.drawImage(G.vig.cv, 0, 0, W, H); ctx.globalAlpha = 1; }   // photo: your vignette, no bars
       else ctx.drawImage(G.vig.cv, 0, 0, W, H);
       if (G.bars > 0.01 && G.mode !== "photo") { const b = H * 0.085 * G.bars; ctx.fillStyle = "#000"; ctx.fillRect(0, 0, W, b); ctx.fillRect(0, H - b, W, b); }
+      if (G.mode === "race" && race.state === "lights" && !G.reduce) gridIntro(ctx, W, H, toScreen, race);
       if (G.mode === "race") hud(race, me, rot);
     }
 
@@ -1246,7 +1576,7 @@
         G.acc += rdt; let n = 0;
         while (G.acc >= 1 / 60 && n++ < 6) { step(G.race, 1 / 60, null); G.acc -= 1 / 60; }
         G.race.events.length = 0; G.race.impacts.length = 0;
-        G.attract.t += rdt; if (G.attract.t > 9) { G.attract.t = 0; G.attract.car++; }
+        G.attract.t += rdt; if (G.attract.t > 9 && !G.attract.hold) { G.attract.t = 0; G.attract.car++; }
         effects(rdt); handleEvents();
       } else if (G.mode === "replay" && G.rp) replayTick(rdt);
       else G.acc = 0;
@@ -1298,7 +1628,7 @@
       while (R0.next <= r.simT && R0.frames.length < REC_MAX) {
         const f = {};
         for (const c of r.cars) {
-          if (!R0.meta[c.id]) R0.meta[c.id] = { id: c.id, code: c.code, name: c.name, color: c.color, look: c.look, shape: c.shape, police: c.police, parked: c.parked, num: c.num, spec: c.spec, acc: c.acc, ai: c.ai };
+          if (!R0.meta[c.id]) R0.meta[c.id] = { id: c.id, code: c.code, name: c.name, color: c.color, look: c.look, shape: c.shape, art: c.art, car: c.car, police: c.police, parked: c.parked, num: c.num, spec: c.spec, acc: c.acc, ai: c.ai };
           f[c.id] = [Math.round(c.x), Math.round(c.y), Math.round(c.a * 1000) / 1000, Math.round(c.fwd), (c.boost ? 1 : 0) | (c.brakeOn ? 2 : 0) | (c.on ? 4 : 0) | (c.out ? 8 : 0), Math.round(c.slip), Math.round((c.steerIn || 0) * 100) / 100, Math.round((c.dmg || 0) * 100) / 100];
         }
         R0.frames.push(f); R0.next += REC_DT;
@@ -1534,6 +1864,8 @@
       replay: (onExit) => !!G && replay(onExit), get canReplay() { return !!(G && G.rec && G.rec.frames.length >= 20); },
       // photo mode from the pause menu (or the replay); onExit runs when you leave it
       photo: (onExit) => !!G && photo(onExit),
+      // the menu backdrop's camera holds on one driver's car (a story scene); null lets it wander again
+      focus: (id) => { if (!G || G.mode !== "menu" || !G.attract) return false; const i = id ? G.race.cars.findIndex((c) => c.id === id) : -1; G.attract.hold = i >= 0; if (i >= 0) { G.attract.car = i; G.attract.t = 0; } return i >= 0; },
     };
     Object.assign(R, { mount, unmount, restart: () => view.restart(), view, drawCar });
   }

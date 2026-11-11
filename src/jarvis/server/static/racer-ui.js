@@ -52,7 +52,6 @@
     };
     const chip = (text, cls = "") => el("span", "race-tag" + (cls ? " " + cls : ""), text);
     const swatch = (color) => { const s = el("span", "race-sw"); s.style.background = color; return s; };
-    const portrait = (who) => { const c = D.CAST[who] || { initials: "?", color: "#888888" }, p = el("span", "race-portrait", who === "you" ? (save.profile.name[0] || "Y").toUpperCase() : c.initials); p.style.background = c.color; return p; };
     function show(fn, opts = {}) {
       cancelAnimationFrame(previewRaf);
       if (screen && !opts.replace && screen !== fn) history.push(screen);
@@ -79,7 +78,7 @@
       view.backdrop(D.DISTRICTS[ch ? ch.district : "park"].track, "dusk");
       view.status("Kerbside Grand Prix: pick a mode.");
       const career = save.story.ended ? "Career: champion. Free roam" : next ? `Career · Chapter ${save.story.chapter}: ${ch.title}` : "Career";
-      const hero = el("canvas", "race-hero"); hero.width = 360; hero.height = 200; hero.setAttribute("aria-hidden", "true");
+      const hero = el("canvas", "race-hero"); hero.width = 720; hero.height = 400; hero.setAttribute("aria-hidden", "true");
       startPreview(hero, save.garage.current, save.garage.owned[save.garage.current], true);
       return frame("Kerbside Grand Prix", `${save.profile.name} · ${D.CARS[save.garage.current].name}`, [hero,
         wallet(),
@@ -207,15 +206,89 @@
     }
     function intro(ctx) {
       const lines = ctx.kind === "story" ? C.lines(save, ctx.event.intro) : [];
-      if (lines.length) dialogue(lines, () => run(ctx)); else run(ctx);
+      if (lines.length) dialogue(lines, () => run(ctx), ctx.kind === "story" ? ctx.event.scene : null); else run(ctx);
     }
-    function dialogue(lines, done) {
-      let i = 0;
+    // A drawn portrait: head and shoulders in the speaker's colours, with their hair, jacket and one detail.
+    function portraitOf(who, size = 160) {
+      const c = D.CAST[who] || D.CAST.you, F = c.face || { skin: "#c68863", hair: "#2a1d14", style: "short", jacket: c.color || "#888888", extra: "" };
+      const cv = el("canvas", "race-face"); cv.width = cv.height = size; cv.setAttribute("aria-hidden", "true");
+      const g = cv.getContext("2d"), s = size / 160, sh = (hex, f) => { const n = parseInt(hex.slice(1), 16), m = (v) => Math.max(0, Math.min(255, Math.round(v * f))); return `rgb(${m(n >> 16)},${m((n >> 8) & 255)},${m(n & 255)})`; };
+      g.scale(s, s);
+      const bg = g.createRadialGradient(80, 60, 10, 80, 80, 90); bg.addColorStop(0, sh(c.color || "#888888", 0.75)); bg.addColorStop(1, sh(c.color || "#888888", 0.22));
+      g.fillStyle = bg; g.beginPath(); g.arc(80, 80, 80, 0, 7); g.fill();
+      g.save(); g.beginPath(); g.arc(80, 80, 79, 0, 7); g.clip();
+      const back = { long: true, braid: true, bob: true, puff: true }[F.style];
+      if (back) { g.fillStyle = F.hair; g.beginPath(); F.style === "puff" ? g.arc(80, 58, 44, 0, 7) : g.ellipse(80, 82, F.style === "bob" ? 38 : 40, F.style === "long" ? 56 : 44, 0, 0, 7); g.fill(); }
+      // shoulders and jacket
+      g.fillStyle = sh(F.jacket, 1); g.beginPath(); g.ellipse(80, 168, 66, 44, 0, 0, 7); g.fill();
+      g.fillStyle = sh(F.jacket, 0.7); g.beginPath(); g.moveTo(58, 132); g.lineTo(80, 158); g.lineTo(102, 132); g.lineTo(96, 128); g.lineTo(80, 146); g.lineTo(64, 128); g.closePath(); g.fill();
+      g.fillStyle = sh(F.skin, 0.85); g.fillRect(70, 104, 20, 28);   // neck
+      // head
+      const hg = g.createLinearGradient(52, 0, 108, 0); hg.addColorStop(0, sh(F.skin, 1.08)); hg.addColorStop(1, sh(F.skin, 0.82));
+      g.fillStyle = hg; g.beginPath(); g.ellipse(80, 78, 27, 33, 0, 0, 7); g.fill();
+      g.fillStyle = sh(F.skin, 0.9); g.beginPath(); g.ellipse(53, 82, 4, 7, 0, 0, 7); g.ellipse(107, 82, 4, 7, 0, 0, 7); g.fill();   // ears
+      // face
+      if (F.style !== "visor") {
+        g.fillStyle = "#1a1210"; g.beginPath(); g.ellipse(70, 78, 3.2, 3.8, 0, 0, 7); g.ellipse(90, 78, 3.2, 3.8, 0, 0, 7); g.fill();
+        g.fillStyle = "rgba(255,255,255,0.8)"; g.fillRect(70.5, 76, 1.4, 1.4); g.fillRect(90.5, 76, 1.4, 1.4);
+        g.strokeStyle = sh(F.hair === "#e6e2da" || F.hair === "#f2f2f2" ? "#8a8070" : F.hair, 0.9); g.lineWidth = 2.4; g.beginPath(); g.moveTo(64, 70); g.lineTo(75, 69); g.moveTo(85, 69); g.lineTo(96, 70); g.stroke();
+        g.strokeStyle = sh(F.skin, 0.68); g.lineWidth = 2; g.beginPath(); g.moveTo(80, 80); g.lineTo(77, 92); g.lineTo(81, 93); g.stroke();
+        g.strokeStyle = sh(F.skin, 0.55); g.lineWidth = 2.2; g.beginPath(); g.moveTo(72, 101); g.quadraticCurveTo(80, 105, 88, 101); g.stroke();
+      }
+      // hair on top
+      g.fillStyle = F.hair;
+      const top = { short: () => { g.beginPath(); g.ellipse(80, 56, 28, 16, 0, Math.PI, 0); g.fill(); g.fillRect(52, 54, 6, 14); g.fillRect(102, 54, 6, 14); },
+        buzz: () => { g.globalAlpha = 0.7; g.beginPath(); g.ellipse(80, 58, 27, 14, 0, Math.PI, 0); g.fill(); g.globalAlpha = 1; },
+        long: () => { g.beginPath(); g.ellipse(80, 54, 30, 18, 0, Math.PI, 0); g.fill(); g.beginPath(); g.moveTo(52, 56); g.quadraticCurveTo(62, 60, 70, 50); g.lineTo(52, 50); g.fill(); },
+        bob: () => { g.beginPath(); g.ellipse(80, 55, 30, 18, 0, Math.PI, 0); g.fill(); g.fillRect(50, 54, 9, 40); g.fillRect(101, 54, 9, 40); },
+        bun: () => { g.beginPath(); g.ellipse(80, 54, 28, 15, 0, Math.PI, 0); g.fill(); g.beginPath(); g.arc(80, 34, 11, 0, 7); g.fill(); },
+        braid: () => { g.beginPath(); g.ellipse(80, 54, 29, 16, 0, Math.PI, 0); g.fill(); for (let i = 0; i < 5; i++) { g.beginPath(); g.ellipse(106, 88 + i * 9, 5, 5.5, 0, 0, 7); g.fill(); } },
+        puff: () => { g.beginPath(); g.arc(80, 50, 30, Math.PI, 0); g.fill(); },
+        curly: () => { for (let i = 0; i < 9; i++) { g.beginPath(); g.arc(56 + i * 6, 52 - Math.sin(i / 8 * Math.PI) * 8, 7, 0, 7); g.fill(); } },
+        slick: () => { g.beginPath(); g.ellipse(80, 55, 28, 15, 0, Math.PI, 0); g.fill(); g.strokeStyle = "rgba(255,255,255,0.35)"; g.lineWidth = 2; g.beginPath(); g.moveTo(62, 50); g.quadraticCurveTo(78, 42, 98, 48); g.stroke(); },
+        messy: () => { g.beginPath(); for (let i = 0; i < 8; i++) { const x = 54 + i * 7; g.moveTo(x, 58); g.lineTo(x + 4, 36 + (i % 3) * 5); g.lineTo(x + 8, 58); } g.fill(); g.beginPath(); g.ellipse(80, 56, 27, 13, 0, Math.PI, 0); g.fill(); },
+        bald: () => { g.globalAlpha = 0.9; g.fillRect(52, 64, 5, 18); g.fillRect(103, 64, 5, 18); g.globalAlpha = 1; g.fillStyle = "rgba(255,255,255,0.25)"; g.beginPath(); g.ellipse(72, 52, 9, 5, -0.4, 0, 7); g.fill(); },
+        visor: () => { g.fillStyle = "#0b2a33"; rrect(g, 52, 68, 56, 18, 8); g.fill(); g.fillStyle = F.skin; g.fillRect(56, 75, 48, 3); },
+      }[F.style];
+      if (top) top();
+      // one detail
+      const X = F.extra;
+      if (X === "glasses") { g.strokeStyle = "#141414"; g.lineWidth = 2.2; g.beginPath(); g.arc(70, 78, 7.5, 0, 7); g.moveTo(97.5, 78); g.arc(90, 78, 7.5, 0, 7); g.moveTo(77.5, 78); g.lineTo(82.5, 78); g.stroke(); }
+      else if (X === "cap") { g.fillStyle = sh(F.jacket, 0.8); g.beginPath(); g.ellipse(80, 52, 30, 14, 0, Math.PI, 0); g.fill(); g.fillRect(80, 48, 36, 6); }
+      else if (X === "headset") { g.strokeStyle = "#1a1a1a"; g.lineWidth = 4; g.beginPath(); g.arc(80, 76, 31, Math.PI * 1.05, Math.PI * 1.95); g.stroke(); g.fillStyle = "#1a1a1a"; g.fillRect(48, 76, 8, 14); g.lineWidth = 2; g.beginPath(); g.moveTo(52, 90); g.quadraticCurveTo(58, 104, 72, 103); g.stroke(); }
+      else if (X === "scar") { g.strokeStyle = sh(F.skin, 0.6); g.lineWidth = 1.6; g.beginPath(); g.moveTo(93, 68); g.lineTo(99, 88); g.stroke(); }
+      else if (X === "earring") { g.fillStyle = "#ffd23a"; g.beginPath(); g.arc(107, 92, 2.6, 0, 7); g.fill(); }
+      else if (X === "chain") { g.strokeStyle = "#ffd23a"; g.lineWidth = 2.4; g.beginPath(); g.arc(80, 126, 18, 0.25, Math.PI - 0.25); g.stroke(); }
+      else if (X === "moustache") { g.fillStyle = "#e6e2da"; g.beginPath(); g.ellipse(74, 97, 8, 3.4, 0.2, 0, 7); g.ellipse(86, 97, 8, 3.4, -0.2, 0, 7); g.fill(); }
+      else if (X === "wrench") { g.save(); g.translate(118, 136); g.rotate(-0.7); g.fillStyle = "#b8bcc4"; g.fillRect(-4, -26, 8, 40); g.beginPath(); g.arc(0, -28, 9, 0, 7); g.fill(); g.fillStyle = sh(F.jacket, 1); g.fillRect(-3, -40, 6, 10); g.restore(); }
+      else if (X === "helmet") { g.fillStyle = "#e9c44a"; g.beginPath(); g.arc(122, 136, 20, 0, 7); g.fill(); g.fillStyle = "#14100a"; rrect(g, 108, 128, 26, 10, 4); g.fill(); }
+      else if (X === "glow") { g.globalCompositeOperation = "lighter"; const gl = g.createRadialGradient(80, 77, 2, 80, 77, 40); gl.addColorStop(0, "rgba(168,236,255,0.5)"); gl.addColorStop(1, "rgba(168,236,255,0)"); g.fillStyle = gl; g.fillRect(30, 30, 100, 100); g.globalCompositeOperation = "source-over"; }
+      g.restore();
+      g.strokeStyle = sh(c.color || "#888888", 1.15); g.lineWidth = 3; g.beginPath(); g.arc(80, 80, 78.5, 0, 7); g.stroke();
+      return cv;
+    }
+    function rrect(g, x, y, w, h, r) { g.beginPath(); g.moveTo(x + r, y); g.arcTo(x + w, y, x + w, y + h, r); g.arcTo(x + w, y + h, x, y + h, r); g.arcTo(x, y + h, x, y, r); g.arcTo(x, y, x + w, y, r); g.closePath(); }
+    // A conversation: the speaker's portrait lit, the person they're talking to dimmed, a name plate, and the line
+    // typed out (instantly with reduced motion). A scene can set a place and point the backdrop's camera at a car.
+    function dialogue(lines, done, scene) {
+      let i = 0, typing = 0;
+      if (scene && scene.focus) view.focus(scene.focus);
+      const finish = () => { if (scene && scene.focus) view.focus(null); done(); };
       const render = () => {
-        const L = lines[i];
-        const box = frame(L.name, L.cast.role || "", [el("div", "race-dialog", portrait(L.who), el("p", "race-line", L.text)),
-          el("div", "race-grid2", btn(i < lines.length - 1 ? "Next" : "Continue", () => { i++; if (i < lines.length) view.overlay(render(), true); else done(); }, "", { "data-autofocus": "" }),
-            lines.length > 1 && i < lines.length - 1 ? btn("Skip", () => done(), "alt") : null),
+        const L = lines[i], prev = lines.slice(0, i).reverse().find((x) => x.who !== L.who) || lines.slice(i + 1).find((x) => x.who !== L.who);
+        const other = prev ? prev.who : L.who === "jarvis" || L.who === "you" ? null : "you";
+        const speaker = el("div", "race-convo-p on", portraitOf(L.who)), listener = other ? el("div", "race-convo-p", portraitOf(other)) : null;
+        const text = el("p", "race-line", ""), full = L.text;
+        const reduce = root.matchMedia && root.matchMedia("(prefers-reduced-motion: reduce)").matches;
+        clearInterval(typing);
+        if (reduce) text.textContent = full;
+        else { let n = 0; typing = setInterval(() => { n = Math.min(full.length, n + 2); text.textContent = full.slice(0, n); if (n >= full.length) clearInterval(typing); }, 16); }
+        const next = () => { if (text.textContent !== full) { clearInterval(typing); text.textContent = full; return; } i++; if (i < lines.length) view.overlay(render(), true); else { clearInterval(typing); finish(); } };
+        const box = frame(L.name, (scene && scene.place) || L.cast.role || "", [
+          el("div", "race-convo" + (L.who === "you" ? " right" : ""), speaker, listener),
+          el("div", "race-plate", el("b", "", L.name), L.cast.role ? el("span", "", L.cast.role) : null), text,
+          el("div", "race-grid2", btn(i < lines.length - 1 ? "Next" : "Continue", next, "", { "data-autofocus": "" }),
+            lines.length > 1 && i < lines.length - 1 ? btn("Skip", () => { clearInterval(typing); finish(); }, "alt") : null),
           el("p", "race-note", `${i + 1} of ${lines.length}`)], { noBack: true });
         return box;
       };
@@ -224,7 +297,11 @@
     function choiceScreen(m, done) {
       const ch = m.choice;
       return frame("Your call", m.title, [el("p", "race-line", ch.prompt),
-        el("div", "race-stack", ...ch.options.map((o, i) => btn(o.label, () => { const r = C.choose(save, m.id, i); persist(); if (r.ok && r.lines.length) dialogue(r.lines, done); else done(); }, "alt")))], { noBack: true });
+        el("div", "race-stack", ...ch.options.map((o, i) => btn(o.label, () => {
+          const r = C.choose(save, m.id, i); persist();
+          if (r.ok && r.consequence) toast(`This will be remembered: ${r.consequence}`, "gold");
+          if (r.ok && r.lines.length) dialogue(r.lines, done); else done();
+        }, "alt"))), el("p", "race-note", "Choices change what happens later: who races you, how they race, what people say and which events open.")], { noBack: true });
     }
     function run(ctx) {
       const cfg = C.config(save, ctx.event, ctx.kind), raceId = uid();
@@ -504,7 +581,8 @@
     // a test lap run on the spot, and tabs: upgrades (with a preview of the next level), tuning, and looks.
     let gSel = null, gTab = "upgrades", gClass = "all", gTest = {};
     const KMH = (spec) => Math.round(spec.acc * (1 + (spec.turbo || 0)) / spec.drag * 0.34);
-    const TRAITS = (c) => [c.turbo && "Turbo", c.slide && "Drifts easily", c.offroad && "Shrugs off gravel", c.wet && "Wet-weather grip", c.mass >= 1.3 && "Heavy: wins the shoving", c.mass <= 0.85 && "Featherweight"].filter(Boolean);
+    const TRAITS = (c) => [c.band <= -0.4 && "Torque monster", c.band >= 0.5 && "High-revving", c.turbo && "Turbo", c.voice && c.voice.sc && "Supercharged", c.slide && "Drifts easily",
+      c.offroad && "Shrugs off gravel", c.wet && "Wet-weather grip", c.mass >= 1.3 && "Heavy: wins the shoving", c.mass <= 0.85 && "Featherweight", c.voice && c.voice.cyl && `${{ 3: "Three", 4: "Four", 5: "Five", 6: "Six", 8: "V8", 10: "V10", 12: "V12" }[c.voice.cyl]}${c.voice.cyl < 8 ? "-cylinder" : ""}`].filter(Boolean);
     function testLap(spec, track) {   // one standing lap and one flying lap, driven by the AI line, timed on the flying one
       const r = R.newRace({ track, mode: "timetrial", laps: 2, player: { spec } }); let t = 0;
       while (!r.cars[0].done && t < 120) { R.step(r, 1 / 120, null); t += 1 / 120; }
@@ -523,7 +601,7 @@
           el("span", "", `${c.cls} · ${c.cat}`), el("span", "", o ? (k === curId ? "Driving" : "Owned") : c.price === null ? "Story reward" : a.ok ? money(c.price) : a.why));
         b.type = "button"; b.addEventListener("click", () => { gSel = k; if (audio) audio.click(); show(garage, { replace: true }); }); return b;
       }));
-      const preview = el("canvas", "race-preview"); preview.width = 360; preview.height = 200;
+      const preview = el("canvas", "race-preview"); preview.width = 720; preview.height = 400;
       startPreview(preview, id, shown);
       const barBox = el("div", "race-bars");
       const drawBars = (sp2) => {
@@ -542,18 +620,19 @@
         const mine = testLap(spec, "ridge"), c2 = id === curId ? mine : testLap(cur, "ridge");
         gTest[id + JSON.stringify(shown.upgrades) + JSON.stringify(shown.tune)] = { mine, cur: c2 }; show(garage, { replace: true });
       }, "alt small");
+      const handling = car.handling ? el("p", "race-note race-handling", car.handling) : null;
       const facts = el("div", "race-tags", chip(`${car.cls} · ${car.cat}`), chip(`Top ≈ ${KMH(spec)} km/h`), chip(`${Math.round((spec.mass || 1) * 1000)} kg`), ...TRAITS(car).map((t) => chip(t, "small")));
       const action = owned ? (id === curId ? chip("Driving this car", "gold") : btn("Drive this car", () => { save.garage.current = id; persist(); show(garage, { replace: true }); }))
         : av.ok && car.price !== null ? btn(`Buy for ${money(car.price)}`, () => { const r = C.buyCar(save, id); if (!r.ok) return toast(r.error, "warn"); persist(); toast(`${car.name} is yours.`, "gold"); r.achievements.forEach((a) => toast(`Achievement unlocked: ${D.ACHIEVEMENTS[a].name}`, "gold")); show(garage, { replace: true }); }, save.money >= car.price ? "" : "alt")
           : el("p", "race-note", av.why);
       const repairBtn = owned && st.dmg > 0.01 ? btn(`Repair ${Math.round(st.dmg * 100)}% damage · ${money(C.repairCost(id, st) * (save.crew.members.nia && save.crew.members.nia.hired ? 0.7 : 1))}`, () => { const r = C.repair(save, id); if (!r.ok) return toast(r.error, "warn"); persist(); toast(`Repaired for ${money(r.cost)}.`, "info"); show(garage, { replace: true }); }, "alt small") : null;
-      const TABS = { upgrades: "Upgrades", tune: "Tuning", paint: "Paint", decal: "Decals", wheels: "Wheels", body: "Body kit", spoiler: "Spoiler", finish: "Finish", tint: "Glass", lights: "Lights", exhaust: "Exhaust", number: "Number" };
+      const TABS = { upgrades: "Upgrades", tune: "Tuning", paint: "Paint", decal: "Decals", wheels: "Wheels", tyres: "Tyres", body: "Arches", bumper: "Bumper", bonnet: "Bonnet", spoiler: "Spoiler", finish: "Finish", tint: "Glass", lights: "Lights", exhaust: "Exhaust", number: "Number" };
       const tabs = el("div", "race-tabs", ...Object.entries(TABS).map(([t, n]) => {
         const b = el("button", "race-tab" + (t === gTab ? " on" : ""), n); b.type = "button"; b.setAttribute("aria-pressed", String(t === gTab)); b.disabled = !owned;
         b.addEventListener("click", () => { gTab = t; show(garage, { replace: true }); }); return b;
       }));
       return frame("Garage", `Okafor Motors · ${Object.keys(save.garage.owned).length} cars`, [wallet(), el("div", "race-garage", el("div", "race-garage-l", filter, cars),
-        el("div", "race-garage-r", el("b", "race-title", owned || av.ok ? car.name : "Locked car"), el("p", "race-note", owned || av.ok ? car.blurb : av.why), preview, facts, barBox,
+        el("div", "race-garage-r", el("b", "race-title", owned || av.ok ? car.name : "Locked car"), el("p", "race-note", owned || av.ok ? car.blurb : av.why), preview, facts, owned || av.ok ? handling : null, barBox,
           el("p", "race-note", id === curId ? "Grey: stock. Gold: as built. The line marks your car." : "Grey: stock. Gold: as built. The line and the numbers compare it with the car you drive."),
           el("div", "race-stack row", action, testBtn, repairBtn), owned ? tabs : null, owned ? tabBody(id, st, drawBars) : null))]);
     }
@@ -591,27 +670,56 @@
         return el("div", "race-stack", el("div", "race-fields", el("label", "race-field", el("span", "race-lbl", "Racing number"), inp), btn("Set number", () => set("number", inp.value), "small")),
           el("div", "race-stack row", ...Object.entries(D.LOOKS.numpos).map(([k, o]) => btn(o.name + (st.numpos === k ? " ✓" : ""), () => set("numpos", k), st.numpos === k ? "small" : "small alt"))));
       }
-      const opts = D.LOOKS[gTab];
-      return el("div", "race-stack row", ...Object.entries(opts).map(([k, o]) => btn(`${o.name}${st[gTab] === k ? " ✓" : st.bought[gTab].includes(k) || !o.price ? "" : " · " + money(Math.round(o.price * D.CLASS_COST[D.CARS[id].cls] / 10) * 10)}`, () => set(gTab, k), st[gTab] === k ? "small" : "small alt")));
+      const opts = D.LOOKS[gTab], fit = Object.entries(opts).filter(([k]) => C.fits(id, gTab, k)), left = Object.keys(opts).length - fit.length;
+      return el("div", "race-stack", el("div", "race-stack row", ...fit.map(([k, o]) => btn(`${o.name}${st[gTab] === k ? " ✓" : st.bought[gTab].includes(k) || !o.price ? "" : " · " + money(Math.round(o.price * D.CLASS_COST[D.CARS[id].cls] / 10) * 10)}`, () => set(gTab, k), st[gTab] === k ? "small" : "small alt"))),
+        ["bumper", "bonnet", "tyres", "body"].includes(gTab) ? el("p", "race-note", `Looks only: body parts don't change performance.${left ? ` ${left} option${left > 1 ? "s don't" : " doesn't"} fit the ${D.CARS[id].name}.` : ""}`) : null);
     }
     // A lit turntable: spotlight, a rotating platform with ticks, a floor reflection and spinning wheels.
+    // The studio: a dark stage with two softboxes overhead (mirrored on the polished floor), a perspective floor grid,
+    // a turntable, a rim light, and the car turning slowly with its lights and steering working.
     function startPreview(cv, id, st, hero) {
-      const ctx = cv.getContext("2d"), car = D.CARS[id], t0 = performance.now(), W = cv.width, H = cv.height;
-      const look = C.lookOf(st);
+      const ctx = cv.getContext("2d"), car = D.CARS[id], t0 = performance.now(), W = cv.width, H = cv.height, k = W / 360;
+      const look = C.lookOf(st), off = document.createElement("canvas"); off.width = W; off.height = H; const og = off.getContext("2d");
+      const stage = document.createElement("canvas"); stage.width = W; stage.height = H; const sg = stage.getContext("2d");
+      const cx = W / 2, cy = H * 0.56;
+      if (!hero) {   // the stage is drawn once
+        const wall = sg.createLinearGradient(0, 0, 0, H); wall.addColorStop(0, "#15120d"); wall.addColorStop(0.5, "#221d15"); wall.addColorStop(0.52, "#0d0b08"); wall.addColorStop(1, "#050403");
+        sg.fillStyle = wall; sg.fillRect(0, 0, W, H);
+        for (const sx of [0.3, 0.7]) {   // softboxes and their reflections on the floor
+          const bx = W * sx, g1 = sg.createRadialGradient(bx, H * 0.08, 2, bx, H * 0.08, W * 0.2); g1.addColorStop(0, "rgba(255,244,214,0.55)"); g1.addColorStop(1, "rgba(255,244,214,0)");
+          sg.fillStyle = g1; sg.fillRect(0, 0, W, H * 0.5);
+          sg.fillStyle = "rgba(255,246,220,0.85)"; sg.fillRect(bx - 34 * k, H * 0.05, 68 * k, 6 * k);
+          const g2 = sg.createLinearGradient(0, H * 0.55, 0, H); g2.addColorStop(0, "rgba(255,240,205,0.12)"); g2.addColorStop(1, "rgba(255,240,205,0)");
+          sg.fillStyle = g2; sg.beginPath(); sg.moveTo(bx - 20 * k, H * 0.53); sg.lineTo(bx + 20 * k, H * 0.53); sg.lineTo(bx + 60 * k, H); sg.lineTo(bx - 60 * k, H); sg.closePath(); sg.fill();
+        }
+        sg.strokeStyle = "rgba(217,180,95,0.10)"; sg.lineWidth = 1;   // floor grid in perspective
+        for (let i = -12; i <= 12; i++) { sg.beginPath(); sg.moveTo(cx + i * 14 * k, H * 0.52); sg.lineTo(cx + i * 60 * k, H); sg.stroke(); }
+        for (let j = 0; j < 7; j++) { const y = H * 0.52 + (H * 0.48) * Math.pow(j / 6, 1.7); sg.beginPath(); sg.moveTo(0, y); sg.lineTo(W, y); sg.stroke(); }
+      }
       const draw = (now) => {
         if (!cv.isConnected || !alive) return;
-        const t = (now - t0) / 1000, a = t * 0.55, cx = W / 2, cy = H * 0.55;
+        const t = (now - t0) / 1000, a = t * 0.5;
         ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.clearRect(0, 0, W, H);
-        if (!hero) { const g = ctx.createRadialGradient(cx, cy, 10, cx, cy, W * 0.6); g.addColorStop(0, "#2c261c"); g.addColorStop(1, "#0b0906"); ctx.fillStyle = g; ctx.fillRect(0, 0, W, H); }
-        const sp = ctx.createRadialGradient(cx, cy - 10, 0, cx, cy, W * 0.42); sp.addColorStop(0, "rgba(255,236,190,0.32)"); sp.addColorStop(1, "rgba(255,236,190,0)");
-        ctx.fillStyle = sp; ctx.beginPath(); ctx.ellipse(cx, cy, W * 0.42, H * 0.36, 0, 0, 7); ctx.fill();
-        ctx.strokeStyle = "rgba(217,180,95,0.45)"; ctx.lineWidth = 2; ctx.beginPath(); ctx.ellipse(cx, cy, W * 0.34, H * 0.3, 0, 0, 7); ctx.stroke();
-        ctx.strokeStyle = "rgba(217,180,95,0.25)"; ctx.lineWidth = 1.5;
-        for (let k = 0; k < 24; k++) { const q = k / 24 * 6.283 + a; ctx.beginPath(); ctx.moveTo(cx + Math.cos(q) * W * 0.31, cy + Math.sin(q) * H * 0.27); ctx.lineTo(cx + Math.cos(q) * W * 0.34, cy + Math.sin(q) * H * 0.3); ctx.stroke(); }
-        const c = { x: 0, y: 0, a, color: st.paint, look, shape: car.shape, num: st.number, steerIn: Math.sin(t * 1.1) * 0.6, dmg: 0, wheelPh: t * 18, brakeOn: Math.sin(t * 0.7) > 0.85 };
-        ctx.setTransform(3, 0, 0, 1.2, cx, cy + 26); ctx.globalAlpha = 0.18; view.drawCar(ctx, { ...c, a: -a }, {}); ctx.globalAlpha = 1;   // floor reflection
-        ctx.setTransform(3, 0, 0, 3, cx, cy - 6);
+        if (!hero) ctx.drawImage(stage, 0, 0);
+        // turntable: a lit disc with a ring of ticks that turns with the car
+        const tg = ctx.createRadialGradient(cx, cy, 4, cx, cy, W * 0.36); tg.addColorStop(0, "rgba(255,236,190,0.30)"); tg.addColorStop(0.7, "rgba(255,236,190,0.08)"); tg.addColorStop(1, "rgba(255,236,190,0)");
+        ctx.fillStyle = tg; ctx.beginPath(); ctx.ellipse(cx, cy, W * 0.38, H * 0.3, 0, 0, 7); ctx.fill();
+        ctx.strokeStyle = "rgba(217,180,95,0.5)"; ctx.lineWidth = 1.5 * k; ctx.beginPath(); ctx.ellipse(cx, cy, W * 0.33, H * 0.26, 0, 0, 7); ctx.stroke();
+        ctx.strokeStyle = "rgba(217,180,95,0.28)"; ctx.lineWidth = 1.2 * k;
+        for (let i = 0; i < 36; i++) { const q = i / 36 * 6.283 + a; ctx.beginPath(); ctx.moveTo(cx + Math.cos(q) * W * 0.3, cy + Math.sin(q) * H * 0.235); ctx.lineTo(cx + Math.cos(q) * W * 0.33, cy + Math.sin(q) * H * 0.26); ctx.stroke(); }
+        const c = { x: 0, y: 0, a, color: st.paint, look, shape: car.shape, art: car.art, car: id, num: st.number, steerIn: Math.sin(t * 1.1) * 0.6, dmg: 0, wheelPh: t * 18, brakeOn: Math.sin(t * 0.7) > 0.85, id };
+        // reflection: the car squashed below itself, faded out toward the viewer
+        og.setTransform(1, 0, 0, 1, 0, 0); og.clearRect(0, 0, W, H);
+        og.setTransform(3.4 * k, 0, 0, -1.2 * k, cx, cy + 34 * k); view.drawCar(og, { ...c }, { lights: true });
+        og.setTransform(1, 0, 0, 1, 0, 0); og.globalCompositeOperation = "destination-in";
+        const fade = og.createLinearGradient(0, cy, 0, H); fade.addColorStop(0, "rgba(0,0,0,0.3)"); fade.addColorStop(1, "rgba(0,0,0,0)"); og.fillStyle = fade; og.fillRect(0, 0, W, H); og.globalCompositeOperation = "source-over";
+        ctx.drawImage(off, 0, 0);
+        ctx.setTransform(3.4 * k, 0, 0, 3.4 * k, cx, cy - 4 * k);
         view.drawCar(ctx, c, { lights: true });
+        // a rim light sweeping over the body
+        ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.globalCompositeOperation = "lighter";
+        const rx = cx + Math.cos(t * 0.9) * W * 0.18, rim = ctx.createRadialGradient(rx, cy - 30 * k, 0, rx, cy - 30 * k, 70 * k); rim.addColorStop(0, "rgba(255,240,210,0.10)"); rim.addColorStop(1, "rgba(255,240,210,0)");
+        ctx.fillStyle = rim; ctx.fillRect(0, 0, W, H); ctx.globalCompositeOperation = "source-over";
         previewRaf = requestAnimationFrame(draw);
       };
       previewRaf = requestAnimationFrame(draw);

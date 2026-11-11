@@ -20,6 +20,11 @@
     const c = { paint: D.LOOKS.paint[0], paint2: "#14100a", number: 7, upgrades: Object.fromEntries(PARTS.map((p) => [p, 0])),
       bought: Object.fromEntries(LK.map((k) => [k, FREE[k].slice()])), tune: { preset: "balanced", gearing: 0, aero: 0, diff: 0, tyre: "sport" }, dmg: 0 };
     for (const k of LK) c[k] = FREE[k][0];
+    const fac = D.CARS[id] && D.CARS[id].factory;   // the car's factory livery, free with the car
+    if (fac) for (const [k, v] of Object.entries(fac)) {
+      if (k === "paint" || k === "paint2") c[k] = v;
+      else if (D.LOOKS[k] && D.LOOKS[k][v]) { c[k] = v; if (!c.bought[k].includes(v)) c.bought[k].push(v); }
+    }
     c.spoiler = id === "pacer" ? "none" : "low"; c.bought.spoiler = [...new Set([...c.bought.spoiler, "low"])];
     return c;
   }
@@ -228,7 +233,7 @@
       brake: c.brake * (1 + 0.09 * L("brakes")) * (1 + 0.03 * L("weight")), steer: c.steer * (1 + 0.04 * L("suspension")),
       nitro: { push: c.nitro.push * (1 + 0.06 * L("nitro")), burn: c.nitro.burn, fill: c.nitro.fill * nf, cap: c.nitro.cap },
       mass: (c.mass || 1) * (1 - 0.05 * L("weight")), turbo: (c.turbo || 0) + 0.05 * L("turbo"), aero, slide: Math.min(1, (c.slide || 0) + 0.8 * (T.diff || 0)),
-      tyre: { dry: ty.dry, wet: ty.wet * wet }, offroad: c.offroad || 0 };
+      tyre: { dry: ty.dry, wet: ty.wet * wet }, offroad: c.offroad || 0, band: c.band || 0 };
   }
   // 0..1 bars for the garage (fixed scales so cars compare honestly).
   function bars(spec) {
@@ -295,6 +300,8 @@
     return { ok: true, level: lv + 1, achievements: lv + 1 === 3 ? grant(save, "maxed") : [] };
   }
   // Looks: paint and number are free; decals, wheels, body kits and spoilers are bought once per car.
+  // Whether a body part can be fitted to this car (some parts only suit some body styles).
+  const fits = (id, key, value) => { const o = D.LOOKS[key] && D.LOOKS[key][value]; return !!o && (!o.fits || o.fits.includes((D.CARS[id] || {}).shape)); };
   function setLook(save, id, key, value) {
     const st = save.garage.owned[id];
     if (!st) return { ok: false, error: "You don't own that car." };
@@ -303,6 +310,7 @@
     if (key === "number") { const n = Math.round(Number(value)); if (!(n >= 1 && n <= 99)) return { ok: false, error: "Pick a number from 1 to 99." }; st.number = n; return { ok: true, cost: 0 }; }
     const opt = D.LOOKS[key] && D.LOOKS[key][value];
     if (!opt) return { ok: false, error: "Not available." };
+    if (!fits(id, key, value)) return { ok: false, error: `That doesn't fit the ${D.CARS[id].name}.` };
     let cost = 0;
     if (!st.bought[key].includes(value)) {
       cost = round10(opt.price * D.CLASS_COST[D.CARS[id].cls]);
@@ -323,14 +331,15 @@
   }
   let NG = 0;   // New Game+ cycle of the save being raced: each one makes the field 1% quicker
   function driver(id, tier, over = {}, cls = null) {
-    const d = D.DRIVERS[id], car = cls && D.CARS[d.car].cls !== cls ? classCar(id, cls) : d.car, lvl = Math.min(3, d.lvl);
+    const d = D.DRIVERS[id], own = d.signature && tier >= d.sigTier ? d.signature : d.car;   // a rival brings their own car once things get serious
+    const car = cls && D.CARS[own].cls !== cls ? classCar(id, cls) : own, lvl = Math.min(3, d.lvl);
     const st = { upgrades: Object.fromEntries(D.AI_PARTS.map((p) => [p, lvl])) };
     return { id, code: d.code, name: d.name, color: d.color, num: d.num, personality: d.personality, skill: Math.min(1.02 + 0.01 * NG, d.skill + (tier - 3) * 0.008 + 0.01 * NG),
-      spec: carStats(car, st), shape: D.CARS[car].shape, look: { paint: d.color, decal: { aggressive: "flame", technical: "stripe", opportunistic: "bolt", defensive: "checker" }[d.personality] || "none", spoiler: "low", number: d.num }, ...over };
+      spec: carStats(car, st), shape: D.CARS[car].shape, car, art: D.CARS[car].art, voice: D.CARS[car].voice, look: { paint: d.color, decal: { aggressive: "flame", technical: "stripe", opportunistic: "bolt", defensive: "checker" }[d.personality] || "none", spoiler: "low", number: d.num }, ...over };
   }
   function playerRacer(save) {
     const id = save.garage.current, st = save.garage.owned[id];
-    return { code: "YOU", name: save.profile.name, color: st.paint, num: st.number, spec: carStats(id, st, save.sponsor), shape: D.CARS[id].shape,
+    return { code: "YOU", name: save.profile.name, color: st.paint, num: st.number, spec: carStats(id, st, save.sponsor), shape: D.CARS[id].shape, car: id, art: D.CARS[id].art, voice: D.CARS[id].voice,
       look: lookOf(st), dmg: save.settings.damage === "persistent" ? st.dmg || 0 : 0 };
   }
   function lookOf(st) {
@@ -343,7 +352,7 @@
   }
   function fieldFor(save, ev) {
     const f = save.story.flags, cls = ev.cls || ev.aiCls || null;   // aiCls: Free play puts only the opponents in one class
-    const list = baseField(save, ev, f).map((d) => (cls && D.CARS[D.DRIVERS[d.id].car].cls !== cls ? { ...driver(d.id, ev.tier, {}, cls), personality: d.personality, skill: d.skill, name: d.name } : d));
+    const list = baseField(save, ev, f).map((d) => (cls && D.CARS[d.car].cls !== cls ? { ...driver(d.id, ev.tier, {}, cls), personality: d.personality, skill: d.skill, name: d.name } : d));
     if (!ev.team) return list;
     const m = teammate(save), mate = driver(m.id, ev.tier, { personality: "ally", team: "you", name: D.DRIVERS[m.id].name + (m.hired ? " (your crew)" : " (hired gun)") }, cls);
     return [mate, ...list.filter((d) => d.id !== m.id).map((d) => ({ ...d, team: "them" }))];
@@ -355,6 +364,7 @@
       if (id === "dex" && f.dex_feud) return driver("dex", ev.tier, { skill: Math.min(1.02, D.DRIVERS.dex.skill + (ev.tier - 3) * 0.008 + 0.02) });
       // the rival's stage changes how they drive against you: a feud races harder, an ally gives you room
       const stage = rivalStage(save, id);
+      if (id === "benny" && f.benny_paid && ev.mode !== "rival") return driver(id, ev.tier, { personality: "aggressive" });   // he wants his money back
       if (stage === "feud") return driver(id, ev.tier, { personality: "aggressive" });   // harder racing, not a faster car
       if (stage === "ally" && ev.mode !== "rival") return driver(id, ev.tier, { personality: "ally" });
       return driver(id, ev.tier);
@@ -410,6 +420,7 @@
     if (opt.grant && opt.grant.upgrade) { const st = save.garage.owned[save.garage.current]; st.upgrades[opt.grant.upgrade] = Math.min(3, st.upgrades[opt.grant.upgrade] + 1); }
     if (opt.money) save.money += opt.money;
     if (opt.loyalty) for (const [id, v] of Object.entries(opt.loyalty)) loyal(save, id, v);
+    if (opt.influence) for (const [d, v] of Object.entries(opt.influence)) save.world.influence[d] = Math.max(0, Math.min(100, influence(save, d) + v));
     if (opt.flags && opt.flags.crew_otto) hire(save, "otto");
     if (opt.flags && opt.flags.crew_pip) hire(save, "pip");
     if (opt.crew) {
@@ -417,7 +428,7 @@
       if (!ok) { save.story.flags.dex_refused = true; return { ok: true, lines: lines(save, opt.refused || []), refused: true }; }
       hire(save, opt.crew);
     }
-    return { ok: true, lines: lines(save, opt.lines) };
+    return { ok: true, lines: lines(save, opt.lines), consequence: opt.consequence || null };
   }
   // ---------------------------------------------------------------- Crew
   const hired = (save, id) => !!(save.crew.members[id] && save.crew.members[id].hired);
@@ -538,15 +549,28 @@
   }
   function sideEvents(save) {
     const scout = hired(save, "lio") ? 0.7 : 1;
-    return D.SIDE.filter((e) => save.districts.includes(e.district) && !(e.crew && hired(save, e.crew))).map((e) => {
+    return D.SIDE.filter((e) => save.districts.includes(e.district) && !(e.crew && hired(save, e.crew)) && !(e.needFlag && !save.story.flags[e.needFlag])).map((e) => {
       const open = save.rep >= Math.round(e.rep * scout);
       if (open && !save.discovered[e.id]) save.discovered[e.id] = Date.now();
       return { ...e, open, done: !!save.sideDone[e.id], fresh: open && !save.sideDone[e.id] };
     });
   }
   function rivalEvents(save) {
-    return D.RIVAL_CHALLENGES.filter((r) => save.story.done[r.after]).map((r) => ({ ...r, title: `Rematch: ${D.DRIVERS[r.rival].name}`, mode: "rival", laps: 3, field: [r.rival],
-      time: ["night", "dusk", "day"][r.tier % 3], goal: { type: "place", max: 1 } }));
+    const f = save.story.flags;
+    const grudges = Object.entries(D.GRUDGE).filter(([id]) => f[`grudge_${id}_offered`] && !f[`grudge_${id}_won`] && !f[`grudge_${id}_lost`])
+      .map(([id, g]) => ({ id: "g-" + id, rival: id, grudge: id, title: `Grudge match: ${D.DRIVERS[id].name}`, mode: "rival", laps: 3, field: [id], track: g.track, time: g.time,
+        district: TRACK_DISTRICT[g.track], tier: Math.max(2, Math.min(5, save.story.chapter + 1)), goal: { type: "place", max: 1 } }));
+    return [...D.RIVAL_CHALLENGES.filter((r) => save.story.done[r.after]).map((r) => ({ ...r, title: `Rematch: ${D.DRIVERS[r.rival].name}`, mode: "rival", laps: 3, field: [r.rival],
+      time: ["night", "dusk", "day"][r.tier % 3], goal: { type: "place", max: 1 } })), ...grudges];
+  }
+  // A rival who has traded paint with you three times calls you out, quoting the real count from their memory.
+  function grudgeCheck(save, id, out) {
+    const f = save.story.flags, r = save.rivals[id], G = D.GRUDGE[id];
+    if (!G || !r || f[`grudge_${id}_offered`] || r.youHit + r.theyHit < 3) return;
+    f[`grudge_${id}_offered`] = true;
+    const text = G.offer.replace("{contacts}", r.youHit + r.theyHit).replace("{youHit}", r.youHit).replace("{theyHit}", r.theyHit).replace(/\{name\}/g, save.profile.name);
+    out.reactions.unshift({ who: id, name: D.DRIVERS[id].name, text, cast: D.CAST[id] || {}, kind: "grudge" });
+    out.notes.push(`${D.DRIVERS[id].name} wants a grudge match. It's on the world map.`);
   }
   const champOpen = (save, def) => (def.after >= 6 ? save.story.ended : save.story.chapter > def.after || save.story.ended);
   function champEvent(save) {
@@ -638,6 +662,7 @@
       if (after !== before) out.notes.push(`${D.DRIVERS[id].name}: ${{ feud: "this is a feud now", ally: "an ally now", respect: "respects you", rival: "a rival again" }[after]}.`);
       if (after === "ally") out.achievements.push(...grant(save, "first_ally"));
       if (D.RIVAL_LINES[id] && out.reactions.length < 2) { const x = rivalReaction(save, id, L, beat); if (x) out.reactions.push(x); }
+      grudgeCheck(save, id, out);
       if (s.mode === "rival" && s.place === 1 && s.finished) out.achievements.push(...grant(save, "beat_" + id));
     }
     // story progression
@@ -667,6 +692,14 @@
       if (ev.choice && ev.choice.when === "after" && save.story.choices[ev.id] === undefined) out.choice = ev.choice;
     } else if (kind === "story") out.lines = lines(save, ev.lose);
     if (kind === "side" && passed) save.sideDone[ev.id] = (save.sideDone[ev.id] || 0) + 1;
+    if (passed && ev.respectOnWin) for (const [id, v] of Object.entries(ev.respectOnWin)) { const r = rival(save, id); r.respect = Math.max(-10, Math.min(10, r.respect + v)); }
+    if (ev.grudge && D.GRUDGE[ev.grudge] && !save.story.flags[`grudge_${ev.grudge}_won`] && !save.story.flags[`grudge_${ev.grudge}_lost`]) {
+      const id = ev.grudge, G = D.GRUDGE[id], r = rival(save, id), won = passed;
+      save.story.flags[`grudge_${id}_${won ? "won" : "lost"}`] = true;
+      r.respect = Math.max(-10, Math.min(10, won ? Math.max(r.respect, 0) + 3 : r.respect - 1));
+      out.lines = [...lines(save, won ? G.win : G.lose), ...out.lines];
+      out.notes.push(won ? `Grudge settled: ${D.DRIVERS[id].name} respects you now.` : `${D.DRIVERS[id].name} won the grudge match. They'll remember it.`);
+    }
     if (kind === "side" && passed && ev.crew && hire(save, ev.crew)) out.unlocked.push({ type: "crew", id: ev.crew, name: D.CREW[ev.crew].name });
     if (passed) for (const [id, m] of Object.entries(save.crew.members)) if (m.hired && id !== "dex") { m.xp += out.xp; m.level = Math.min(5, 1 + Math.floor(m.xp / 4000)); }
     if (kind === "champ" && save.champ) out.champ = champRound(save, s);
@@ -872,9 +905,9 @@
     return { done: false, round: c.round, table, name: def.name };
   }
 
-  const api = { influence, runs, weekday, featured, secretEvents, turfEvents, rivalSim, worldTick, hire, hired, loyal, crewLoyalty, rivalStage, rivalReaction, endingFor, carAvailable, setTune, repair, repairCost, lookOf, VERSION, KEY, BAK, CORRUPT, LEGACY, fresh, carState, validate, migrateV2, load, persist, exportSave, importSave,
+  const api = { influence, runs, weekday, featured, secretEvents, turfEvents, rivalSim, worldTick, hire, hired, loyal, crewLoyalty, rivalStage, rivalReaction, endingFor, carAvailable, setTune, repair, repairCost, lookOf, fits, VERSION, KEY, BAK, CORRUPT, LEGACY, fresh, carState, validate, migrateV2, load, persist, exportSave, importSave,
     level, xpFor, carStats, bars, upgradeCost, buyCar, buyUpgrade, setLook, driver, playerRacer, config, missions, nextMission, mission,
-    lines, needsChoice, choose, goalMet, goalText, sideEvents, pursuitHeats, pursuitEvent, policeSpec, carAllowed, teammate, classCar,
+    lines, needsChoice, choose, goalMet, goalText, sideEvents, grudgeCheck, pursuitHeats, pursuitEvent, policeSpec, carAllowed, teammate, classCar,
     tourneyOpen, startTourney, tourneyEvent, wagerOptions, placeWager, setTeam, teamLivery, contractOffers, signContract, dropContract, contractTick, teamTable, newGamePlus, rivalEvents, champOpen, champEvent, startChamp, champTable, applyResult, medal, grant };
   if (typeof module !== "undefined" && module.exports) module.exports = api;
   else root.KerbsideCareer = api;

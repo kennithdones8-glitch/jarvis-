@@ -62,7 +62,7 @@
     const P = race.pursuit, t = race.trk, me = race.cars[0], k = P.units++, spec = specOf({ spec: P.spec });
     const skill = HEAT[P.heat].skill * LEVELS[race.level];
     const c = { id: "pol" + k, code: "PKPD", name: parked ? "Roadblock" : "Unit " + (k + 1), color: "#f4f4f4", num: 0, ai: true, police: true, parked: !!parked,
-      shape: "sedan", look: { livery: "police", color: "#f4f4f4" }, persona: PERSONA.aggressive, spec, skill, acc: spec.acc * skill, ...carFields(t, idx, lat, v) };
+      shape: "sedan", art: { add: ["pushbar", "aerial"] }, look: { livery: "police", color: "#f4f4f4" }, persona: PERSONA.aggressive, spec, skill, acc: spec.acc * skill, ...carFields(t, idx, lat, v) };
     if (parked) { c.a += Math.PI / 2 * (lat > 0 ? 1 : -1); c.spec = { ...spec, mass: 4 }; }
     c.prog = me.prog + idxGap(t, c.idx, me.idx); c.laps = Math.max(0, Math.floor(c.prog / t.N));
     race.cars.push(c);

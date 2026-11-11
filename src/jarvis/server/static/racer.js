@@ -103,7 +103,7 @@
   const specOf = (d) => {
     const s = d.spec || BASE_SPEC;
     return { acc: s.acc, drag: s.drag, grip: s.grip, brake: s.brake, steer: s.steer, nitro: { ...BASE_SPEC.nitro, ...(s.nitro || {}) },
-      mass: s.mass || 1, turbo: s.turbo || 0, aero: s.aero || 0, slide: s.slide || 0, tyre: s.tyre || { dry: 1, wet: 1 }, offroad: s.offroad || 0 };
+      mass: s.mass || 1, turbo: s.turbo || 0, aero: s.aero || 0, slide: s.slide || 0, tyre: s.tyre || { dry: 1, wet: 1 }, offroad: s.offroad || 0, band: s.band || 0 };
   };
 
   // opts: { track, level, seed, ghost: {time, pts}, mode, laps, field: [driver], player: {driver}, weather, time,
@@ -153,7 +153,10 @@
     else if (race.state === "race" && c.on && fwd > 200 && race.rules.nitro) c.nitro = Math.min(1, c.nitro + n.fill * dt);
     // a turbo builds boost over about half a second of throttle and loses it when you lift
     c.spool = Math.max(0, Math.min(1, c.spool + (inp.thr ? 2 : -3) * dt));
-    if (inp.thr) fwd += c.acc * (c.accF === undefined ? 1 : c.accF) * (1 + sp.turbo * c.spool) * dt * (c.on ? 1 : 0.55 + 0.3 * sp.offroad);
+    // power band: a torquey engine (band < 0) pulls harder low down, a revvy one (band > 0) harder near the top;
+    // the effect fades out approaching top speed, so top speed itself doesn't change
+    const fr = Math.min(1, Math.max(0, fwd) / top), bandF = 1 + (sp.band || 0) * 0.3 * (fr - 0.5) * (fr < 0.85 ? 1 : Math.max(0, (1 - fr) / 0.15));
+    if (inp.thr) fwd += c.acc * bandF * (c.accF === undefined ? 1 : c.accF) * (1 + sp.turbo * c.spool) * dt * (c.on ? 1 : 0.55 + 0.3 * sp.offroad);
     if (inp.brk) fwd -= (fwd > 15 ? sp.brake : 260) * dt;              // brake, then reverse
     fwd -= fwd * (c.on ? (c.boost ? sp.drag / 2 : sp.drag) * (1 + 0.04 * c.dmg) : 2.3 * (1 - 0.5 * sp.offroad)) * dt;   // drag; damage costs ≤4%
     if (!inp.thr && !inp.brk) fwd -= Math.sign(fwd) * Math.min(Math.abs(fwd), 70 * dt);

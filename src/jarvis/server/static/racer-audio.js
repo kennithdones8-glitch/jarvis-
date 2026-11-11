@@ -43,8 +43,12 @@
       const o1 = ac.createOscillator(), o2 = ac.createOscillator(), o3 = ac.createOscillator(), sub = ac.createGain(), mix = ac.createGain();
       const shaper = ac.createWaveShaper(), lp = ac.createBiquadFilter(), eg = ac.createGain();
       o1.type = "sawtooth"; o2.type = "square"; o3.type = "sine"; lp.type = "lowpass"; lp.Q.value = 3; eg.gain.value = 0;
-      o1.connect(mix); o2.connect(mix); o3.connect(sub); sub.connect(mix); mix.connect(shaper); shaper.connect(lp); lp.connect(eg); eg.connect(sfx);
-      o1.start(); o2.start(); o3.start();
+      // a peak for exhaust rasp, and a slow wobble in the volume for a V8's lumpy idle (the lope)
+      const pk = ac.createBiquadFilter(), amp = ac.createGain(), lfo2 = ac.createOscillator(), lope = ac.createGain();
+      pk.type = "peaking"; pk.frequency.value = 1800; pk.Q.value = 2; pk.gain.value = 0; amp.gain.value = 1; lfo2.frequency.value = 6; lope.gain.value = 0;
+      lfo2.connect(lope); lope.connect(amp.gain);
+      o1.connect(mix); o2.connect(mix); o3.connect(sub); sub.connect(mix); mix.connect(shaper); shaper.connect(pk); pk.connect(lp); lp.connect(amp); amp.connect(eg); eg.connect(sfx);
+      o1.start(); o2.start(); o3.start(); lfo2.start();
       // turbo whistle and the prototype's motor whine
       const tw = ac.createOscillator(), twg = ac.createGain(); tw.type = "sine"; tw.frequency.value = 2200; twg.gain.value = 0; tw.connect(twg); twg.connect(sfx); tw.start();
       // noise for tyres, nitro, crowd and rain
@@ -58,7 +62,7 @@
       const sr = ac.createOscillator(), srg = ac.createGain(), lfo = ac.createOscillator(), lfoG = ac.createGain();
       sr.type = "triangle"; sr.frequency.value = 950; lfo.frequency.value = 0.42; lfoG.gain.value = 380; srg.gain.value = 0;
       lfo.connect(lfoG); lfoG.connect(sr.frequency); sr.connect(srg); srg.connect(amb); sr.start(); lfo.start();
-      nodes = { master, sfx, music, amb, o1, o2, o3, sub, shaper, lp, eg, tw, twg, tyre, nitro, crowd, rain, sr, srg, lfo, buf };
+      nodes = { master, sfx, music, amb, o1, o2, o3, sub, shaper, pk, lp, amp, lfo2, lope, eg, tw, twg, tyre, nitro, crowd, rain, sr, srg, lfo, buf };
       setVoice("open");
       apply();
       return true;
@@ -68,10 +72,15 @@
       for (let i = 0; i < n; i++) { const x = i / (n - 1) * 2 - 1; c[i] = Math.tanh(x * (1 + k * 6)) / Math.tanh(1 + k * 6); }
       return c;
     }
-    function setVoice(shape) {
-      voice = VOICES[shape] || VOICES.open;
+    // A car's voice: its body style's voice with the car's own settings on top (cylinders, revs, lope, rasp, whine).
+    function setVoice(shape, own) {
+      voice = { ...(VOICES[shape] || VOICES.open), ...(own || {}) };
       if (!nodes) return;
       nodes.shaper.curve = curve(voice.drive); nodes.sub.gain.value = voice.sub;
+      nodes.pk.gain.value = (voice.rasp || 0) * 12;
+      // the second oscillator sets the character: an octave down for fours and V8s, a fifth for sixes, an octave up (smooth) for V10s and V12s
+      const cyl = voice.cyl || 4; voice.ratio = cyl >= 10 ? 2 : cyl === 6 || cyl === 5 ? 1.5 : cyl === 3 ? 0.75 : 0.5;
+      nodes.o2.type = cyl >= 10 ? "sawtooth" : "square";
     }
     function apply() {
       if (!nodes) return;
@@ -125,7 +134,7 @@
     const api = {
       unlock: safe(() => { init(); if (ac.state === "suspended") ac.resume(); }),
       settings: safe((s) => { set = { ...set, ...s }; apply(); }),
-      voice: safe((shape) => setVoice(shape)),
+      voice: safe((shape, own) => setVoice(shape, own)),
       // p: { speed, top, slip, boost, on, thr, turbo (0..1 of the car's turbo), gear and rpm (drag: real gears), wet, tunnel, crowd }
       update: safe((p) => {
         if (!nodes) return;
@@ -142,7 +151,8 @@
         if (gear !== lastGear) { if (gear > lastGear) { shiftDip = 0.12; blip(V.idle * 0.8, 0.05, "square", 0.05); } lastGear = gear; }
         shiftDip = Math.max(0, shiftDip - 1 / 60);
         const f = V.idle + V.span * (0.25 + 0.75 * within) * (1 + gear * 0.04);
-        nodes.o1.frequency.setTargetAtTime(f, t, 0.03); nodes.o2.frequency.setTargetAtTime(f / 2, t, 0.03); nodes.o3.frequency.setTargetAtTime(f / 4, t, 0.03);
+        nodes.o1.frequency.setTargetAtTime(f, t, 0.03); nodes.o2.frequency.setTargetAtTime(f * (V.ratio || 0.5), t, 0.03); nodes.o3.frequency.setTargetAtTime(f / 4, t, 0.03);
+        nodes.lfo2.frequency.setTargetAtTime(Math.max(3, f / 5), t, 0.05); nodes.lope.gain.setTargetAtTime((V.lope || 0) * 0.6 * Math.max(0, 1 - r * 1.6), t, 0.08);
         nodes.lp.frequency.setTargetAtTime(350 + V.cut * (0.25 + 0.75 * Math.min(1, r)) * (p.thr === false ? 0.6 : 1), t, 0.05);
         nodes.eg.gain.setTargetAtTime((0.05 + 0.1 * Math.min(1, r)) * (shiftDip > 0 ? 0.35 : 1) * (p.thr === false ? 0.75 : 1), t, 0.03);
         nodes.tyre.g.gain.setTargetAtTime(p.on && p.slip > 90 ? Math.min(0.12, (p.slip - 90) / 900) : 0, t, 0.04);
@@ -150,9 +160,10 @@
         // turbo: whistles as it spools, blows off when you lift
         const tb = p.turbo || 0;
         spool = Math.max(0, Math.min(1, spool + (p.thr ? 0.035 : -0.08)));
-        nodes.tw.frequency.setTargetAtTime(1600 + 2400 * spool, t, 0.05);
-        nodes.twg.gain.setTargetAtTime(tb > 0 ? 0.012 * tb * spool * (p.thr ? 1 : 0.3) : V.whine ? V.whine * Math.min(1, r) : 0, t, 0.05);
-        if (tb > 0 && lastThr && !p.thr && spool > 0.5) burst("bandpass", 3800, 900, 0.35, 0.12 * Math.min(1, tb * 2), "sfx", 2);
+        // a supercharger whines with the revs; a turbo whistles with the boost
+        nodes.tw.frequency.setTargetAtTime(V.sc ? 1800 + 3000 * within : 1600 + 2400 * spool, t, 0.05);
+        nodes.twg.gain.setTargetAtTime(V.sc ? V.sc * Math.min(1, r * 1.4) : tb > 0 ? 0.012 * tb * spool * (p.thr ? 1 : 0.3) : V.whine ? V.whine * Math.min(1, r) : 0, t, 0.05);
+        if ((tb > 0 || V.whoosh) && lastThr && !p.thr && spool > 0.5) burst("bandpass", 3800, 900, 0.35, 0.12 * Math.min(1, Math.max(tb, 0.25) * 2), "sfx", 2);
         lastThr = !!p.thr;
         // the world around you
         nodes.crowd.g.gain.setTargetAtTime(0.05 * Math.min(1, p.crowd || 0), t, 0.3);

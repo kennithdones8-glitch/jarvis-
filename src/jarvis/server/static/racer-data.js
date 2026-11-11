@@ -78,6 +78,70 @@
     interceptor: { name: "PKPD Interceptor", cls: "A", cat: "Police", shape: "sedan", price: null, police: true, blurb: "Port Kerbside Police. Heavy, fast, relentless.",
       acc: 492, drag: 0.645, grip: 6.9, brake: 1000, steer: 2.8, mass: 1.5, nitro: N(420, 0.4, 0.06, 1.3) },
   };
+  // Each car's identity: how its power arrives (band: −1 all low-down torque … +1 all top-end revs; top speed is
+  // unchanged), small stat changes that keep near-twins apart, a one-line handling note, its own body details (art)
+  // and its own engine voice. Merged into CARS below.
+  const IDENTITY = {
+    pacer: { factory: { paint: "#e9c44a" }, band: 0.2, handling: "Featherweight and honest: carries speed through corners, runs out of puff on straights.",
+      art: { len: 0.96, add: ["airbox"] }, voice: { cyl: 4, idle: 64, span: 140, rasp: 0.3 } },
+    kitsune: { factory: { paint: "#ff4fa3", wheels: "white" }, band: 0.7, handling: "Screams to the redline, darts into hairpins, sulks on long straights.",
+      art: { add: ["towhook"] }, voice: { cyl: 3, idle: 74, span: 160, rasp: 0.5 } },
+    mistral: { factory: { paint: "#2f7de1", decal: "checker" }, band: -0.2, set: { slide: 0.15 }, handling: "A forgiving rally hatch: grips in the wet, shrugs off the gravel, slides when you ask.",
+      art: { len: 0.95, remove: ["spots"], add: ["lightbar"] }, voice: { cyl: 4, idle: 56, span: 118, drive: 0.45 } },
+    vela: { factory: { paint: "#d23c3c", wheels: "black" }, band: 0, set: { turbo: 0.1, steer: 2.75, brake: 950 }, handling: "Modern hot hatch: a small turbo, strong brakes, pushes wide if you rush in.",
+      art: { add: ["fenderVents"] }, voice: { cyl: 4, idle: 60, span: 126, sc: 0, whoosh: 1 } },
+    ronin: { factory: { paint: "#f2f2f2", wheels: "bronze", decal: "bolt" }, band: 0.3, handling: "Rear-drive and loose: the drifters' favourite. Throttle steers it.",
+      art: { head: "popup", add: ["louvresRear"] }, voice: { cyl: 6, idle: 52, span: 132, drive: 0.4, rasp: 0.2 } },
+    dune: { factory: { paint: "#c7a27c", wheels: "black" }, band: -0.4, set: { grip: 6.6 }, handling: "Long-travel raider: heavy and slow to turn, but gravel barely slows it.",
+      art: { len: 1.04, wid: 1.05, add: ["snorkel", "spare"], remove: ["bonnetVents"] }, voice: { cyl: 5, idle: 50, span: 110, drive: 0.5, lope: 0.15 } },
+    kestrel: { factory: { paint: "#6b7280", finish: "metallic" }, band: 0, handling: "The honest grand tourer: no tricks, no vices, does everything well.",
+      art: { add: ["fenderVents"] }, voice: { cyl: 6, idle: 48, span: 128 } },
+    brute: { factory: { paint: "#ffd23a", paint2: "#14161a", decal: "stripe" }, band: -0.8, set: { slide: 0.35 }, handling: "All torque, little grip: launches like a train and the tail steps out on exit.",
+      art: { add: ["hoodPins"] }, voice: { cyl: 8, idle: 36, span: 84, lope: 0.45, drive: 0.75 } },
+    ardent: { factory: { paint: "#3a3f48", finish: "metallic", wheels: "black" }, band: 0.1, set: { wet: 0.06 }, handling: "Four-wheel-drive sports saloon: the best brakes in its class and sure-footed in the rain.",
+      art: { head: "slit", add: ["fenderVents"] }, voice: { cyl: 6, idle: 50, span: 124, rasp: 0.15 } },
+    longhaul: { factory: { paint: "#7a1f2b" }, band: -0.2, set: { turbo: 0.15 }, handling: "The sleeper: a big turbo that wakes up late, then pulls like a freight train.",
+      art: { remove: ["rails"], add: ["roofBox"] }, voice: { cyl: 5, idle: 46, span: 108, whoosh: 1 } },
+    hayate: { factory: { paint: "#1b1d22", wheels: "gold" }, band: 0.7, set: { turbo: 0.12, steer: 2.95, grip: 6.7 }, handling: "High-revving turbo coupe: lazy below half revs, then it flies. Turns in sharply.",
+      art: { len: 1.03, head: "slant", add: ["wingFactory", "hoodPins"] }, voice: { cyl: 6, idle: 54, span: 150, rasp: 0.35, whoosh: 1 } },
+    lumen: { factory: { paint: "#3cc7d6", wheels: "white" }, band: 0.3, handling: "A light roadster: the sweetest steering in B class, short on power.",
+      art: { head: "popup" }, voice: { cyl: 4, idle: 58, span: 136, rasp: 0.25 } },
+    stallion: { factory: { paint: "#2f7de1", decal: "stripe" }, band: -0.3, set: { mass: 1.4, slide: 0.15 }, handling: "A heavy muscle car that pulls hardest at speed: a straight-line weapon, a handful in the bends.",
+      art: { remove: ["scoop"], add: ["louvresRear", "sidePipes"], head: "round" }, voice: { cyl: 8, idle: 38, span: 92, lope: 0.3, drive: 0.65 } },
+    ironclad: { factory: { paint: "#ef7d22", decal: "flame", wheels: "black" }, band: -0.6, set: { mass: 1.5, slide: 0.15 }, handling: "Dex's car: supercharged, heavy as a bus, built to shove. It wins every argument at the door.",
+      art: { add: ["pushbar", "hoodPins", "cage"] }, voice: { cyl: 8, idle: 34, span: 88, lope: 0.4, drive: 0.8, sc: 0.025 } },
+    tidewater: { factory: { paint: "#1d9a6c", decal: "stripe" }, band: 0.2, handling: "Mara's car: precise, planted and unflappable in the rain. Rewards clean lines.",
+      art: { wid: 0.97, head: "slit", remove: ["mudflaps", "spots"], add: ["canards", "towhook"] }, voice: { cyl: 4, idle: 58, span: 130, rasp: 0.2, whoosh: 1 } },
+    brickyard: { factory: { paint: "#8a4fd8", decal: "checker", wheels: "gold" }, band: -0.5, set: { mass: 1.2, steer: 2.6, brake: 1020, turbo: 0.06 }, handling: "Benny's car: lazy steering, a heavy nose, huge brakes and torque everywhere. Waits for your mistake.",
+      art: { wid: 1.03, head: "quad", remove: ["bulge"], add: ["sidePipes"] }, voice: { cyl: 8, idle: 40, span: 96, lope: 0.2, drive: 0.55 } },
+    halcyon: { factory: { paint: "#d23c3c", decal: "hoops" }, band: 0.5, handling: "A track single-seater: featherlight, sharp, unforgiving of a lazy line.",
+      art: { len: 1.04, add: ["canards"] }, voice: { cyl: 4, idle: 70, span: 180, rasp: 0.45 } },
+    corvid: { factory: { paint: "#1b1d22", paint2: "#d23c3c", decal: "sash" }, band: 0.2, handling: "A prototype: stable at speed, needs commitment to turn in.",
+      art: { len: 0.97 }, voice: { cyl: 6, idle: 62, span: 170, rasp: 0.3 } },
+    vespera: { factory: { paint: "#f2f2f2", paint2: "#2f7de1", decal: "stripe" }, band: 0, set: { slide: 0 }, handling: "A European GT: stable, superbly braked, a little heavy when you hurry it.",
+      art: { len: 1.03, head: "slit", add: ["canards"] }, voice: { cyl: 8, idle: 46, span: 138, drive: 0.4, rasp: 0.25 } },
+    tempest: { factory: { paint: "#1f4fa8", paint2: "#e9c44a", decal: "stripe", wheels: "gold" }, band: -0.1, set: { slide: 0.2 }, handling: "The rally icon: four-wheel drive, a turbo, and a car that loves to be thrown sideways on any surface.",
+      art: { head: "box", add: ["fenderVents", "cage"] }, voice: { cyl: 4, idle: 54, span: 126, drive: 0.5, whoosh: 1 } },
+    goliath: { factory: { paint: "#14161a", decal: "flame" }, band: -0.9, set: { slide: 0.3 }, handling: "A supercharged monster: brutal launch, brutal weight, needs room to stop.",
+      art: { len: 1.04, wid: 1.04, remove: ["scoop"], add: ["blower", "sidePipes"] }, voice: { cyl: 8, idle: 32, span: 82, lope: 0.55, drive: 0.85, sc: 0.04 } },
+    kaze: { factory: { paint: "#c0c4cc", finish: "metallic" }, band: 0.8, set: { turbo: 0.1 }, handling: "A Japanese supercar: twin turbos, rev-happy, razor-sharp turn-in.",
+      art: { head: "slant", remove: ["louvres"], add: ["fenderVents"] }, voice: { cyl: 6, idle: 58, span: 175, rasp: 0.35, whoosh: 1 } },
+    summit: { factory: { paint: "#f2f2f2", paint2: "#14161a", decal: "stripe" }, band: 0.4, handling: "Sora's car: the grippiest thing short of a prototype, and it rewards precision.",
+      art: { len: 1.05, add: ["canards", "fin"] }, voice: { cyl: 4, idle: 72, span: 190, rasp: 0.5 } },
+    sirocco: { factory: { paint: "#7fd44a", finish: "pearl", wheels: "black" }, band: 0, set: { turbo: 0.06 }, handling: "A hybrid hypercar: electric shove off the line, a turbo up top, no gaps in between.",
+      art: { len: 1.03, add: ["canards"], remove: ["roofIntake"] }, voice: { cyl: 6, idle: 66, span: 165, whine: 0.05, whoosh: 1 } },
+    aurora: { factory: { paint: "#b0122a", finish: "metallic" }, band: -0.2, set: { slide: 0.1 }, handling: "A V12 supercar: torque everywhere, heavy, a little lively at the rear.",
+      art: { len: 1.03, add: ["wingFactory"] }, voice: { cyl: 12, idle: 52, span: 160, drive: 0.3, rasp: 0.2 } },
+    spectre: { factory: { paint: "#5a2d8a", finish: "metallic", wheels: "black" }, band: 0.4, handling: "The fastest road car in Port Kerbside: wants long straights and brave braking.",
+      art: { len: 1.05, wid: 1.03, add: ["canards", "fin"] }, voice: { cyl: 10, idle: 60, span: 185, rasp: 0.4, whoosh: 1 } },
+    phantom: { factory: { paint: "#e2ecf5", paint2: "#2f7de1", decal: "sash" }, band: 0.3, handling: "A track prototype: enormous grip and brakes, nervous over kerbs.",
+      art: { len: 1.05, wid: 1.03, add: ["canards", "louvres"] }, voice: { cyl: 8, idle: 68, span: 195, rasp: 0.45 } },
+    countess: { factory: { paint: "#d23c3c", finish: "pearl", wheels: "gold" }, band: 0.1, set: { wet: 0.06 }, handling: "Valentina's car: balanced to the last gram. Does nothing wrong and forgives nothing.",
+      art: { len: 1.05, head: "slant", add: ["fenderVents", "louvresRear"] }, voice: { cyl: 12, idle: 56, span: 170, rasp: 0.3 } },
+    interceptor: { band: -0.5, handling: "Port Kerbside Police: heavy, fast, built to shove.",
+      art: { add: ["pushbar", "aerial"] }, voice: { cyl: 8, idle: 40, span: 100, lope: 0.25, drive: 0.6 } },
+  };
+  for (const [id, x] of Object.entries(IDENTITY)) { const c = CARS[id]; Object.assign(c, x.set || {}); c.band = x.band; c.handling = x.handling; c.art = x.art || {}; c.voice = x.voice || {}; c.factory = x.factory || null; }
   const CLASS_COST = { C: 1, B: 1.45, A: 2.05, S: 2.9 };
 
   // Upgrades: three levels each. Effects are applied in KerbsideCareer.carStats() and tested.
@@ -119,8 +183,16 @@
     lights: { white: { name: "White", price: 0, color: "#fff6d6" }, amber: { name: "Amber", price: 120, color: "#ffd27a" }, ice: { name: "Ice blue", price: 160, color: "#cfe8ff" } },
     exhaust: { single: { name: "Single", price: 0 }, dual: { name: "Dual", price: 150 }, quad: { name: "Quad", price: 300 } },
     numpos: { bonnet: { name: "On the bonnet", price: 0 }, roof: { name: "On the roof", price: 0 }, none: { name: "No number", price: 0 } },
+    // body parts (looks only); fits: the body styles each part can be fitted to
+    bumper: { stock: { name: "Stock", price: 0 }, lip: { name: "Splitter lip", price: 220, fits: ["kei", "hatch", "rally", "coupe", "roadster", "sedan", "wagon", "muscle", "gt", "super"] },
+      pushbar: { name: "Push bar", price: 260, fits: ["kei", "hatch", "rally", "sedan", "wagon", "muscle"] }, canards: { name: "Canards", price: 300, fits: ["coupe", "gt", "super", "proto", "open", "rally"] } },
+    bonnet: { stock: { name: "Stock", price: 0 }, vented: { name: "Vented", price: 200, fits: ["kei", "hatch", "rally", "coupe", "roadster", "sedan", "wagon", "muscle", "gt"] },
+      carbon: { name: "Carbon", price: 380, fits: ["kei", "hatch", "rally", "coupe", "roadster", "sedan", "wagon", "muscle", "gt", "super", "proto"] },
+      scoop: { name: "Scoop", price: 300, fits: ["hatch", "rally", "coupe", "sedan", "wagon", "gt"] }, pins: { name: "Bonnet pins", price: 90, fits: ["kei", "hatch", "rally", "coupe", "roadster", "sedan", "wagon", "muscle", "gt"] } },
+    tyres: { road: { name: "Road tyres", price: 0 }, lettered: { name: "Raised white letters", price: 180 }, offroad: { name: "Chunky off-road tread", price: 220, fits: ["kei", "hatch", "rally", "wagon", "muscle"] },
+      slick: { name: "Shaved slick look", price: 160, fits: ["open", "proto", "super", "gt", "coupe", "roadster", "hatch"] } },
   };
-  const LOOK_KEYS = ["decal", "wheels", "body", "spoiler", "finish", "tint", "lights", "exhaust", "numpos"];
+  const LOOK_KEYS = ["decal", "wheels", "body", "spoiler", "finish", "tint", "lights", "exhaust", "numpos", "bumper", "bonnet", "tyres"];
 
   // ---------------------------------------------------------------- People
   // personality drives racer.js AI: aggressive, defensive, technical, opportunistic, balanced, beginner.
@@ -129,24 +201,41 @@
       crew: "Independent", bio: "Another rookie with a borrowed car and a lot of enthusiasm. Brakes early, waves a lot." },
     otto: { name: "Otto Brandt", code: "OTT", color: "#c7a27c", num: 9, personality: "balanced", skill: 0.93, car: "kestrel", lvl: 1,
       crew: "Retired champion", bio: "Won the league twice, twenty years ago. Still races Fridays to keep the kids honest." },
-    dex: { name: "Dex Varga", code: "DEX", color: "#ef7d22", num: 66, personality: "aggressive", skill: 0.94, car: "brute", lvl: 0,
+    dex: { name: "Dex Varga", code: "DEX", color: "#ef7d22", num: 66, personality: "aggressive", skill: 0.94, car: "brute", signature: "ironclad", sigTier: 3, lvl: 0,
       crew: "Ironclad", bio: "Ironclad's loudest driver. Fast, fearless, allergic to being passed." },
-    mara: { name: "Mara Quill", code: "MAR", color: "#1d9a6c", num: 12, personality: "defensive", skill: 0.95, car: "mistral", lvl: 2,
+    mara: { name: "Mara Quill", code: "MAR", color: "#1d9a6c", num: 12, personality: "defensive", skill: 0.95, car: "mistral", signature: "tidewater", sigTier: 3, lvl: 2,
       crew: "Tidewater", bio: "Tidewater's captain. Nobody gets past her on the harbour; she sees you coming." },
-    benny: { name: "Benny “Bricks” Kale", code: "BEN", color: "#8a4fd8", num: 3, personality: "opportunistic", skill: 0.955, car: "kestrel", lvl: 2,
+    benny: { name: "Benny “Bricks” Kale", code: "BEN", color: "#8a4fd8", num: 3, personality: "opportunistic", skill: 0.955, car: "ardent", signature: "brickyard", sigTier: 3, lvl: 2,
       crew: "The Brickyard", bio: "Runs Old Town's night races and every bet on them. Waits for your mistake." },
-    sora: { name: "Sora Lind", code: "SOR", color: "#f2f2f2", num: 5, personality: "technical", skill: 0.975, car: "halcyon", lvl: 2,
+    sora: { name: "Sora Lind", code: "SOR", color: "#f2f2f2", num: 5, personality: "technical", skill: 0.975, car: "halcyon", signature: "summit", sigTier: 4, lvl: 2,
       crew: "Summit Works", bio: "Engineer-driver from the ridge. Treats every corner like an equation and usually solves it." },
     valentina: { name: "Valentina Corsa", code: "VAL", color: "#d23c3c", num: 1, personality: "technical", skill: 0.99, car: "countess", lvl: 2,
       crew: "Scuderia Corsa", bio: "“The Countess.” Three-time league champion. Polite, precise, merciless." },
     jarvis: { name: "JARVIS", code: "JRV", color: "#d23c3c", num: 1, personality: "balanced", skill: 0.985, car: "kestrel", lvl: 1,
       crew: "Quick race", bio: "Your assistant, driving for fun in Quick Race." },
-    bleu: { name: "Bleu", code: "BLU", color: "#2f7de1", num: 4, personality: "opportunistic", skill: 0.965, car: "kestrel", lvl: 1, crew: "Quick race", bio: "" },
-    whitlock: { name: "Whitlock", code: "WIT", color: "#f2f2f2", num: 22, personality: "defensive", skill: 0.94, car: "kestrel", lvl: 1, crew: "Quick race", bio: "" },
+    bleu: { name: "Bleu", code: "BLU", color: "#2f7de1", num: 4, personality: "opportunistic", skill: 0.965, car: "lumen", lvl: 1, crew: "Quick race", bio: "" },
+    whitlock: { name: "Whitlock", code: "WIT", color: "#f2f2f2", num: 22, personality: "defensive", skill: 0.94, car: "longhaul", lvl: 1, crew: "Quick race", bio: "" },
   };
   // Who speaks in the story (portraits are drawn from these colours and initials).
+  // How each speaker is drawn in the story (skin, hair, hair style, jacket, one detail): see portraitOf() in racer-ui.js.
+  const FACES = {
+    jarvis: { skin: "#a8ecff", hair: "#3a8fb0", style: "visor", jacket: "#16343f", extra: "glow" },
+    nia: { skin: "#7a4a2e", hair: "#1a120c", style: "puff", jacket: "#ef9f4a", extra: "wrench" },
+    mags: { skin: "#e3b38c", hair: "#c9c2b4", style: "bob", jacket: "#2c2a26", extra: "headset" },
+    ines: { skin: "#d9a07a", hair: "#4a2a1a", style: "long", jacket: "#1d9a6c", extra: "" },
+    lio: { skin: "#c68863", hair: "#1d1612", style: "curly", jacket: "#7fd44a", extra: "cap" },
+    priya: { skin: "#9a5e3e", hair: "#120c0a", style: "bun", jacket: "#ff8ad1", extra: "glasses" },
+    theo: { skin: "#f0c9a4", hair: "#d9b45f", style: "slick", jacket: "#1f6fd6", extra: "" },
+    pip: { skin: "#f2c6a0", hair: "#d8642a", style: "messy", jacket: "#3cc7d6", extra: "" },
+    otto: { skin: "#e8b896", hair: "#e6e2da", style: "bald", jacket: "#c7a27c", extra: "moustache" },
+    dex: { skin: "#b9764e", hair: "#1a1410", style: "buzz", jacket: "#ef7d22", extra: "scar" },
+    mara: { skin: "#d9a582", hair: "#0f2e2a", style: "braid", jacket: "#1d9a6c", extra: "" },
+    benny: { skin: "#e0aa82", hair: "#3a2214", style: "slick", jacket: "#8a4fd8", extra: "chain" },
+    sora: { skin: "#efcfae", hair: "#f2f2f2", style: "bob", jacket: "#2a2c31", extra: "glasses" },
+    valentina: { skin: "#e8bf9a", hair: "#6a1010", style: "long", jacket: "#d23c3c", extra: "earring" },
+  };
   const CAST = {
-    you: { name: "{name}", color: "#e9c44a", initials: "YOU" },
+    you: { name: "{name}", color: "#e9c44a", initials: "YOU", face: { skin: "#c68863", hair: "#2a1d14", style: "short", jacket: "#e9c44a", extra: "helmet" } },
     jarvis: { name: "JARVIS", color: "#a8ecff", initials: "J", role: "Race engineer, on the radio" },
     nia: { name: "Nia Okafor", color: "#ef9f4a", initials: "NO", role: "Mechanic, Okafor Motors" },
     mags: { name: "Mags Delacroix", color: "#d9b45f", initials: "MD", role: "Port Kerbside Racing League" },
@@ -157,6 +246,7 @@
     ...Object.fromEntries(Object.entries(DRIVERS).filter(([k]) => !["jarvis", "bleu", "whitlock"].includes(k))
       .map(([k, d]) => [k, { name: d.name, color: d.color, initials: d.name.split(" ").filter((w) => /^[A-Z]/.test(w)).map((w) => w[0]).join("").slice(0, 2), role: d.crew }])),
   };
+  for (const [k, f] of Object.entries(FACES)) if (CAST[k]) CAST[k].face = f;
   // Your crew. perk is what they do for you (applied in racer-career.js); recruit says how they join.
   const CREW = {
     nia: { name: "Nia Okafor", role: "Lead mechanic", perk: "Repairs cost 30% less; she'll fit one free upgrade level when loyalty peaks.", recruit: "With you from day one." },
@@ -244,8 +334,15 @@
           lose: [L("otto", "You're quick in the fast stuff. Learn to wait in the slow stuff."), L("mags", "Come back next week. The licence isn't going anywhere.")] },
         { id: "c1-callout", title: "Dex Calls You Out", track: "kerbside", mode: "rival", laps: 3, field: ["dex"], time: "night", weather: "dry", tier: 1,
           goal: { type: "place", max: 1 },
-          intro: [L("dex", "One on one. Three laps. Loser buys the Ironclad crew dinner."), L("jarvis", "He brakes late and leaves the door open on exit. Patience, {name}.")],
-          win: [L("dex", "...Fine. You can drive."), L("jarvis", "Word travels. Harbourside has heard about you.")],
+          scene: { focus: "dex", place: "Ironclad territory · Kerbside Park, after dark" },
+          intro: [L("nia", "Orange car, number 66. That's Dex Varga. His dad built half the cars in the Ironclad garage."),
+            L("nia", "Dex has spent ten years proving he's more than the boss's son. Mostly by running people off the road."),
+            L("dex", "Okafor's little project. I hear you've been telling people the Pacer's quick."),
+            L("dex", "One on one. Three laps. Loser buys the Ironclad crew dinner."),
+            L("nia", "I rebuilt his first car when he was fifteen. He rolled it in a week and never paid me."),
+            L("dex", "You're still on about that? I was a kid, Nia. ...I'll pay you when I've beaten your new driver."),
+            L("jarvis", "He brakes late and leaves the door open on the exit. Patience, {name}.")],
+          win: [L("dex", "...Fine. You can drive."), L("nia", "And that's the first time anyone's seen him lose at home. He'll remember it."), L("jarvis", "Word travels. Harbourside has heard about you.")],
           lose: [L("dex", "Dinner's at eight. Bring your wallet."), L("nia", "He's all bark on the brakes. Get him on the exit of the hairpin.")],
           choice: { when: "after", prompt: "Dex holds out a hand. Sort of.", options: [
             { label: "Shake it. Good race.", flags: { dex_respect: true }, lines: [L("dex", "Don't get used to it.")], respect: { dex: 2 } },
@@ -295,9 +392,11 @@
           win: [L("benny", "Fine! Fine. Take the money. And maybe tell people I let you win."), L("nia", "Nobody will believe him.")],
           lose: [L("benny", "Pleasure doing business."), L("jarvis", "He nitros when he's within a car length. Stay further ahead or further behind.")],
           choice: { when: "after", prompt: "Benny's winnings are on the table. Half of it was promised to the Brickyard youth club.", options: [
-            { label: "Take it all. A bet's a bet. (+₭1,500)", flags: { benny_paid: true }, money: 1500, respect: { benny: -1 }, loyalty: { nia: -1, lio: -1 },
+            { label: "Take it all. A bet's a bet. (+₭1,500)", flags: { benny_paid: true }, money: 1500, respect: { benny: -1 }, loyalty: { nia: -1, lio: -1 }, influence: { oldtown: -10 },
+              consequence: "Old Town turns against you (−10% influence), and Benny races you hard from now on.",
               lines: [L("benny", "Cold. I like it. The kids won't."), L("nia", "We needed the money. I know. I still don't like it.")] },
             { label: "Give the club its share. (+₭500)", flags: { benny_kind: true }, money: 500, respect: { benny: 3 }, loyalty: { nia: 1, lio: 1 },
+              consequence: "The Brickyard youth club invites you to its charity sprint.",
               lines: [L("benny", "Huh. You're going to be bad for my business, superstar. I mean that kindly."), L("lio", "Word gets around Old Town fast. That one will help us.")] }] } },
         { id: "c3-league", title: "League Round: Kerbside", track: "kerbside", mode: "circuit", laps: 3, field: ["otto", "benny", "mara", "dex", "pip"], time: "dusk", weather: "dry", tier: 3,
           goal: { type: "place", max: 2 },
@@ -315,7 +414,10 @@
           lose: [L("sora", "Close is a number. It is not the number.")] },
         { id: "c4-fog", title: "Fog on the Ridge", track: "ridge", mode: "circuit", laps: 3, field: ["sora", "otto", "dex", "benny"], time: "dawn", weather: "dry", weatherChange: { at: 18, to: "fog" }, tier: 4,
           goal: { type: "place", max: 3 },
-          intro: [L("mags", "Ridge invitational. Fog's rolling in. Race is on."), L("dex", "Heard you're a big deal now. Prove it.", "dex_feud"), L("dex", "Good luck up here. Genuinely.", "dex_respect")],
+          intro: [L("mags", "Ridge invitational. Fog's rolling in. Race is on."), L("dex", "Heard you're a big deal now. Prove it.", "dex_feud"), L("dex", "Good luck up here. Genuinely.", "dex_respect"),
+            L("benny", "Brickyard's youth club is selling raffle tickets to fix the roof, superstar. You'd know why.", "benny_paid"),
+            L("benny", "The kids painted your number on the club wall. Don't let it go to your head.", "benny_kind"),
+            L("dex", "Since the harbour I check my mirrors for you. Happy?", "grudge_dex_won"), L("dex", "Still owe you for the harbour, {name}. Today's a good day to collect.", "grudge_dex_lost")],
           win: [L("nia", "You're going to need a proper crew for what's coming."), L("jarvis", "I can run the data. You need hands in the garage.")],
           lose: [L("sora", "The fog does not care how brave you are.")],
           rewards: { car: "halcyon" } },
@@ -346,7 +448,8 @@
       missions: [
         { id: "c5-qualifier", title: "Qualifier: Old Town", track: "oldtown", mode: "circuit", laps: 3, field: ["valentina", "sora", "dex", "mara", "benny"], time: "night", weather: "rain", tier: 5,
           goal: { type: "place", max: 3 },
-          intro: [L("mags", "Top three qualify for the Grand Prix. No second chances this week."), L("benny", "Odds on you are... honestly, I've stopped taking bets.")],
+          intro: [L("mags", "Top three qualify for the Grand Prix. No second chances this week."), L("benny", "Odds on you are... honestly, I've stopped taking bets.", "!benny_paid"),
+            L("benny", "No hard feelings? No. Hard feelings. I'm coming for you today, superstar.", "benny_paid")],
           win: [L("jarvis", "Qualified. Dex is asking for you, {name}.")],
           lose: [L("nia", "Car's fine. You're fine. Again.")],
           rewards: { car: "sirocco" } },
@@ -408,8 +511,24 @@
     { id: "s-old-drag", district: "oldtown", title: "Brickyard Drag Night", track: "harbour", mode: "drag", laps: 1, field: ["benny"], tier: 3, rep: 95, goal: { type: "place", max: 1 }, time: "night", weather: "rain" },
     { id: "s-old-class", district: "oldtown", title: "B-Class Night Cup", track: "oldtown", mode: "circuit", laps: 3, cls: "B", field: ["benny", "mara", "dex", "otto"], tier: 3, rep: 100, time: "night", goal: { type: "place", max: 2 } },
     { id: "s-ridge-touge", district: "ridge", title: "Summit Touge", track: "ridge", mode: "touge", laps: 1, field: ["sora"], tier: 4, rep: 140, goal: { type: "place", max: 1 }, time: "dawn" },
+    { id: "s-old-charity", district: "oldtown", title: "Youth Club Charity Sprint", track: "oldtown", mode: "sprint", laps: 1, field: ["benny", "pip", "mara"], tier: 3, rep: 0, needFlag: "benny_kind",
+      time: "dusk", goal: { type: "place", max: 1 }, respectOnWin: { benny: 2 }, blurb: "The kids you helped are racing for a new roof. Benny's driving for them." },
     { id: "s-ridge-endur", district: "ridge", title: "Ridge 12 Laps", track: "ridge", mode: "endurance", laps: 12, field: ["sora", "valentina", "benny", "mara", "otto"], tier: 5, rep: 190, goal: { type: "place", max: 3 }, weatherChange: { at: 90, to: "rain" } },
   ];
+  // Grudge matches: after you and a rival have traded paint three times, they call you out, quoting the real count.
+  // Win and the grudge is settled your way; lose and they remember. Their later lines change either way.
+  const GRUDGE = {
+    dex: { track: "harbour", time: "night", offer: "That's {contacts} times we've traded paint, and {youHit} of them were you. Harbour Loop. Midnight. No crews, no excuses.",
+      win: [["dex", "...Okay. You don't scare. I'll stop trying to make you."], ["nia", "That's the closest thing to an apology Dex Varga has ever said."]], lose: [["dex", "Now we're even. Mostly."]] },
+    mara: { track: "harbour", time: "dawn", offer: "{contacts} contacts, {name}. I don't race people who touch. Settle it on the sea wall at dawn, clean, or don't come near my harbour again.",
+      win: [["mara", "Clean. Thank you. You can have the inside line any time."]], lose: [["mara", "That's how it's done. Keep your distance next time."]] },
+    benny: { track: "oldtown", time: "night", offer: "You've cost me two mirrors and {contacts} favours. Let's make it official: one race, my canal, my rules.",
+      win: [["benny", "I'd call that robbery if I hadn't seen it. Mirrors are on me."]], lose: [["benny", "Pleasure, as always. Send the invoice for the mirrors to yourself."]] },
+    sora: { track: "ridge", time: "dusk", offer: "{contacts} contacts is not racing, it's a statistical problem. I would like to solve it. Summit road, tonight.",
+      win: [["sora", "Problem solved. Not the way I expected."]], lose: [["sora", "Problem solved."]] },
+    valentina: { track: "kerbside", time: "night", offer: "{contacts} times. I am not accustomed to being touched, {name}. One race. Then we will see what you are.",
+      win: [["valentina", "Now I see. Very well."]], lose: [["valentina", "As I thought."]] },
+  };
   // Rival challenges unlock once you've met the rival in the story (beat them once).
   const RIVAL_CHALLENGES = [
     { id: "r-dex", rival: "dex", after: "c1-callout", district: "park", track: "kerbside", tier: 2 },
@@ -518,7 +637,7 @@
     team: { name: "Team", blurb: "Two teams, points by finishing position." },
   };
 
-  const api = { CARS, CLASS_COST, UPGRADES, AI_PARTS, TYRES, PRESETS, LOOK_KEYS, LOOKS, DRIVERS, CAST, CREW, RIVAL_LINES, ENDINGS, SPONSORS, DISTRICTS, PAR, CHAPTERS, SIDE, RIVAL_CHALLENGES, CHAMPIONSHIPS, TOURNAMENTS, POINTS, CONTRACTS, TEAM_SEASON, SEASON_PRIZE, CREWS, ACHIEVEMENTS, MODES, TURF, WEEKDAYS, TURF_EVENTS, RUMORS };
+  const api = { CARS, CLASS_COST, UPGRADES, AI_PARTS, TYRES, PRESETS, LOOK_KEYS, LOOKS, DRIVERS, CAST, CREW, RIVAL_LINES, ENDINGS, SPONSORS, DISTRICTS, PAR, CHAPTERS, SIDE, RIVAL_CHALLENGES, GRUDGE, CHAMPIONSHIPS, TOURNAMENTS, POINTS, CONTRACTS, TEAM_SEASON, SEASON_PRIZE, CREWS, ACHIEVEMENTS, MODES, TURF, WEEKDAYS, TURF_EVENTS, RUMORS };
   if (typeof module !== "undefined" && module.exports) module.exports = api;
   else root.KerbsideData = api;
 })(typeof self !== "undefined" ? self : globalThis);
