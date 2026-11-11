@@ -214,12 +214,13 @@
   const LOOKS = {
     paint: ["#e9c44a", "#d23c3c", "#2f7de1", "#f2f2f2", "#1d9a6c", "#ef7d22", "#8a4fd8", "#1b1d22", "#3cc7d6", "#c7a27c", "#ff4fa3", "#7fd44a", "#6b7280", "#7a1f2b"],
     decal: { none: { name: "None", price: 0 }, stripe: { name: "Twin stripe", price: 150 }, flame: { name: "Flames", price: 300 },
-      checker: { name: "Chequer", price: 250 }, bolt: { name: "Bolt", price: 250 }, hoops: { name: "Hoops", price: 200 }, sash: { name: "Sash", price: 220 } },
+      checker: { name: "Chequer", price: 250 }, bolt: { name: "Bolt", price: 250 }, hoops: { name: "Hoops", price: 200 }, sash: { name: "Sash", price: 220 },
+      laurel: { name: "Champion's laurel", price: 0, earn: "story" } },
     wheels: { steel: { name: "Steel", price: 0, color: "#9aa0a6" }, gold: { name: "Gold mesh", price: 250, color: "#d9b45f" },
-      black: { name: "Black split", price: 200, color: "#2b2d31" }, white: { name: "White spoke", price: 200, color: "#e8e8e8" }, bronze: { name: "Bronze five-spoke", price: 260, color: "#a8743a" } },
+      black: { name: "Black split", price: 200, color: "#2b2d31" }, white: { name: "White spoke", price: 200, color: "#e8e8e8" }, bronze: { name: "Bronze five-spoke", price: 260, color: "#a8743a" }, chrome: { name: "Chrome", price: 0, color: "#eef1f5", earn: "collector" } },
     body: { stock: { name: "Stock", price: 0 }, wide: { name: "Wide arches", price: 600 } },
     spoiler: { none: { name: "None", price: 0 }, low: { name: "Lip", price: 200 }, high: { name: "High wing", price: 500 }, duck: { name: "Ducktail", price: 300 } },
-    finish: { gloss: { name: "Gloss", price: 0 }, metallic: { name: "Metallic", price: 400 }, matte: { name: "Matte", price: 350 }, pearl: { name: "Pearl", price: 500 } },
+    finish: { gloss: { name: "Gloss", price: 0 }, metallic: { name: "Metallic", price: 400 }, matte: { name: "Matte", price: 350 }, pearl: { name: "Pearl", price: 500 }, chrome: { name: "Mirror chrome", price: 0, earn: "champion" } },
     tint: { clear: { name: "Clear", price: 0, color: "#1a2838" }, dark: { name: "Dark", price: 120, color: "#05070a" }, smoke: { name: "Smoke blue", price: 150, color: "#0d1a2e" } },
     lights: { white: { name: "White", price: 0, color: "#fff6d6" }, amber: { name: "Amber", price: 120, color: "#ffd27a" }, ice: { name: "Ice blue", price: 160, color: "#cfe8ff" } },
     exhaust: { single: { name: "Single", price: 0 }, dual: { name: "Dual", price: 150 }, quad: { name: "Quad", price: 300 } },
@@ -299,7 +300,7 @@
     otto: { name: "Otto Brandt", role: "Race coach", perk: "+10% XP from every race.", recruit: "Choose him in “Build the Crew”, or win his “Master Class” challenge." },
     pip: { name: "Pip Hollis", role: "Teammate", perk: "Races team events with you and blocks for you in the finale.", recruit: "Choose Pip in “Build the Crew”, or help in “Pip's First Podium”." },
     lio: { name: "Lio Marchetti", role: "Scout", perk: "Finds events early: side events need 30% less reputation; hears rumours first.", recruit: "Pass “The Scout's Test” at Harbourside." },
-    priya: { name: "Priya Anand", role: "Sponsor manager", perk: "+10% prize money and a second sponsor contract slot.", recruit: "Win “The Pitch” in Old Town." },
+    priya: { name: "Priya Anand", role: "Sponsor manager", perk: "+10% prize money and one more sponsor contract at a time.", recruit: "Win “The Pitch” in Old Town." },
     dex: { name: "Dex Varga", role: "Specialist driver", perk: "Drives team events; rivals think twice before shoving you.", recruit: "Invite him after “Dex's Last Stand” (if he respects you)." },
   };
   // What rivals say after racing you, chosen from what actually happened between you (racer-career.js rivalReaction).
@@ -344,6 +345,19 @@
     "k-endurance": { sponsor: "Halden Tyres", title: "Long Haul", goal: { type: "endurance", n: 1 }, races: 4, pay: 4500, rep: 15, minRep: 80, blurb: "A podium in an endurance race within four races." },
     "k-elite": { sponsor: "Corsa Group", title: "Elite Series", goal: { type: "wins", n: 4 }, races: 8, pay: 9000, rep: 30, minRep: 250, blurb: "Four wins in eight races." },
   };
+  // Team levels: your team's reputation (from wins, podiums, contracts and seasons) moves Okafor Motors up; each
+  // level adds a perk on top of the last.
+  const TEAM_LEVELS = [
+    { rep: 0, name: "Back-street garage", perk: "" },
+    { rep: 40, name: "Licensed workshop", perk: "Repairs cost 15% less." },
+    { rep: 100, name: "Race team", perk: "+5% prize money in career races." },
+    { rep: 200, name: "Works team", perk: "Upgrades cost 10% less." },
+    { rep: 350, name: "Factory team", perk: "One more sponsor contract at a time." },
+  ];
+  // What some achievements pay: money, or an exclusive look (marked earn: in LOOKS).
+  const ACH_REWARDS = { first_win: { money: 500, text: "₭500" }, podium10: { money: 1500, text: "₭1,500" }, turf: { money: 2000, text: "₭2,000" }, full_crew: { money: 3000, text: "₭3,000" },
+    gold_all: { money: 5000, text: "₭5,000" }, escape_artist: { money: 5000, text: "₭5,000" }, every_ending: { money: 10000, text: "₭10,000" },
+    story: { text: "the Champion's laurel decal" }, champion: { text: "the Mirror chrome finish" }, collector: { text: "Chrome wheels" } };
   // Team championship: your team against the four home crews and Scuderia Corsa. A season is ten race days.
   const TEAM_SEASON = 10, SEASON_PRIZE = [8000, 4000, 2000, 0, 0, 0];
   const CREWS = { Ironclad: "dex", Tidewater: "mara", "The Brickyard": "benny", "Summit Works": "sora", "Scuderia Corsa": "valentina" };
@@ -855,7 +869,7 @@
     team: { name: "Team", blurb: "Two teams, points by finishing position." },
   };
 
-  const api = { CARS, CLASS_COST, UPGRADES, AI_PARTS, TYRES, PRESETS, LOOK_KEYS, LOOKS, DRIVERS, CAST, CREW, RIVAL_LINES, ENDINGS, SPONSORS, DISTRICTS, PAR, CHAPTERS, SIDE, RIVAL_CHALLENGES, GRUDGE, ARCS, TURNING_POINTS, CHAMPIONSHIPS, TOURNAMENTS, POINTS, CONTRACTS, TEAM_SEASON, SEASON_PRIZE, CREWS, ACHIEVEMENTS, MODES, TURF, WEEKDAYS, TURF_EVENTS, RUMORS };
+  const api = { CARS, CLASS_COST, UPGRADES, AI_PARTS, TYRES, PRESETS, LOOK_KEYS, LOOKS, DRIVERS, CAST, CREW, RIVAL_LINES, ENDINGS, SPONSORS, DISTRICTS, PAR, CHAPTERS, SIDE, RIVAL_CHALLENGES, GRUDGE, ARCS, TURNING_POINTS, CHAMPIONSHIPS, TOURNAMENTS, POINTS, CONTRACTS, TEAM_LEVELS, ACH_REWARDS, TEAM_SEASON, SEASON_PRIZE, CREWS, ACHIEVEMENTS, MODES, TURF, WEEKDAYS, TURF_EVENTS, RUMORS };
   if (typeof module !== "undefined" && module.exports) module.exports = api;
   else root.KerbsideData = api;
 })(typeof self !== "undefined" ? self : globalThis);

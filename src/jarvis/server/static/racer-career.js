@@ -15,7 +15,7 @@
 
   // ---------------------------------------------------------------- Save schema
   const LK = D.LOOK_KEYS;
-  const FREE = Object.fromEntries(LK.map((k) => [k, Object.entries(D.LOOKS[k]).filter(([, o]) => !o.price).map(([v]) => v)]));
+  const FREE = Object.fromEntries(LK.map((k) => [k, Object.entries(D.LOOKS[k]).filter(([, o]) => !o.price && !o.earn).map(([v]) => v)]));
   function carState(id) {
     const c = { paint: D.LOOKS.paint[0], paint2: "#14100a", number: 7, upgrades: Object.fromEntries(PARTS.map((p) => [p, 0])),
       bought: Object.fromEntries(LK.map((k) => [k, FREE[k].slice()])), tune: { preset: "balanced", gearing: 0, aero: 0, diff: 0, tyre: "sport" }, dmg: 0 };
@@ -283,14 +283,29 @@
     st.tune = t; return { ok: true };
   }
   const repairCost = (id, st) => round10((st.dmg || 0) * 900 * D.CLASS_COST[D.CARS[id].cls]);
+  function teamLevel(save) {
+    const r = save.team.rep, i = D.TEAM_LEVELS.reduce((k, L, j) => (r >= L.rep ? j : k), 0);
+    return { i, ...D.TEAM_LEVELS[i], next: D.TEAM_LEVELS[i + 1] || null };
+  }
   function repair(save, id) {
     const st = save.garage.owned[id]; if (!st || !st.dmg) return { ok: false, error: "Nothing to repair." };
-    const cost = repairCost(id, st) * (save.crew && save.crew.members.nia && save.crew.members.nia.hired ? 0.7 : 1);
+    const cost = repairCost(id, st) * (save.crew && save.crew.members.nia && save.crew.members.nia.hired ? 0.7 : 1) * (teamLevel(save).i >= 1 ? 0.85 : 1);
     if (save.money < cost) return { ok: false, error: `You need ${(cost - save.money).toLocaleString()} more.` };
     save.money -= Math.round(cost); st.dmg = 0; return { ok: true, cost: Math.round(cost) };
   }
   const round10 = (v) => Math.round(v / 10) * 10;
-  const upgradeCost = (id, part, lv) => (lv >= 3 ? null : round10(D.UPGRADES[part].cost[lv] * D.CLASS_COST[(D.CARS[id] || D.CARS.pacer).cls]));
+  const upgradeCost = (id, part, lv, save) => (lv >= 3 ? null : round10(D.UPGRADES[part].cost[lv] * D.CLASS_COST[(D.CARS[id] || D.CARS.pacer).cls] * (save && teamLevel(save).i >= 3 ? 0.9 : 1)));
+  // Performance rating: one number for how quick a car is (acceleration, top speed, grip, braking), open-ended so
+  // upgrades always show. Roughly 250 for a stock club racer, over 1,000 for a fully built hypercar.
+  function rating(sp) {
+    const gr = sp.grip * ((sp.tyre && sp.tyre.dry) || 1) * (1 + 0.05 * (sp.aero || 0)) * (1 - 0.1 * (sp.slide || 0)), acc = sp.acc * (1 + 0.6 * (sp.turbo || 0)), top = acc / sp.drag;
+    return Math.round(100 + 620 * (0.3 * (acc - 360) / 220 + 0.25 * (top - 560) / 320 + 0.3 * (gr - 5) / 4 + 0.15 * (sp.brake - 800) / 420));
+  }
+  // What an event asks of your car: the average rating of the cars you'll race, or a figure for its tier.
+  function recommended(save, ev) {
+    const cfg = config(save, ev, "brief"), field = cfg.field.filter((d) => d.spec);
+    return field.length ? Math.round(field.reduce((a, d) => a + rating(d.spec), 0) / field.length) : [0, 260, 330, 420, 500, 560][ev.tier || 1];
+  }
   // Collection: achievements for owning ten cars, a car in every class, and every car.
   function collectionCheck(save) {
     const owned = Object.keys(save.garage.owned).filter((id) => D.CARS[id]), all = Object.entries(D.CARS).filter(([, c]) => !c.police).map(([k]) => k), out = [];
@@ -328,7 +343,7 @@
   function buyUpgrade(save, id, part) {
     const st = save.garage.owned[id];
     if (!st || !D.UPGRADES[part]) return { ok: false, error: "Not available." };
-    const lv = st.upgrades[part], cost = upgradeCost(id, part, lv);
+    const lv = st.upgrades[part], cost = upgradeCost(id, part, lv, save);
     if (cost === null) return { ok: false, error: "Already at the top level." };
     if (save.money < cost) return { ok: false, error: `You need ${(cost - save.money).toLocaleString()} more.` };
     save.money -= cost; st.upgrades[part] = lv + 1;
@@ -346,6 +361,7 @@
     const opt = D.LOOKS[key] && D.LOOKS[key][value];
     if (!opt) return { ok: false, error: "Not available." };
     if (!fits(id, key, value)) return { ok: false, error: `That doesn't fit the ${D.CARS[id].name}.` };
+    if (opt.earn && !save.achievements[opt.earn]) return { ok: false, error: `Earn “${D.ACHIEVEMENTS[opt.earn].name}” to unlock it.` };
     let cost = 0;
     if (!st.bought[key].includes(value)) {
       cost = round10(opt.price * D.CLASS_COST[D.CARS[id].cls]);
@@ -656,7 +672,12 @@
   }
 
   // ---------------------------------------------------------------- Results → rewards (once per race id)
-  function grant(save, id) { if (!D.ACHIEVEMENTS[id] || save.achievements[id]) return []; save.achievements[id] = Date.now(); return [id]; }
+  function grant(save, id) {
+    if (!D.ACHIEVEMENTS[id] || save.achievements[id]) return [];
+    save.achievements[id] = Date.now();
+    const rw = D.ACH_REWARDS[id]; if (rw && rw.money) save.money += rw.money;   // looks are unlocked by the achievement itself
+    return [id];
+  }
   function medal(track, laps, total) {
     if (!(total > 0)) return null;
     const par = D.PAR[track] * laps;
@@ -679,15 +700,24 @@
     else if (s.mode === "delivery") money = s.delivery && s.delivery.delivered ? BASE[tier] * (0.3 + 0.7 * s.delivery.cargo) : 0;   // paid by what arrives
     else if (s.mode === "team") money = s.finished ? BASE[tier] * (s.team && s.team.won ? 0.9 : 0.25) : 0;
     else money = s.finished || s.eliminated ? BASE[tier] * (PLACE[s.place - 1] || 0.08) * (s.eliminated ? 0.4 : 1) : 0;
-    if (kind === "quick" || kind === "free") money *= 0.35;   // practice pays a little
-    if (kind === "story" && passed && !save.story.done[ev.id]) money *= 1.5;
-    if (kind === "story" && save.story.done[ev.id]) money *= 0.5;   // replaying a finished mission
-    if (kind === "side" && passed && !save.sideDone[ev.id]) { money *= 1.5; out.notes.push("First completion bonus."); }
-    if (save.sponsor) { const sp = D.SPONSORS[save.sponsor]; if (save.sponsor === "bluewater" || s.place <= 3) money *= 1 + sp.bonus; }
-    if (hired(save, "priya")) money *= 1.1;
-    if (save.ng && kind !== "quick" && kind !== "free") money *= 1 + 0.25 * Math.min(4, save.ng);   // New Game+ pays more
-    const fe = featured(save); if (kind === "side" && fe && fe.id === ev.id) { money *= 1.5; out.notes.push(`${weekday(save)} special: +50%.`); }
-    const dist = ev.district || TRACK_DISTRICT[s.track]; if (dist && runs(save, dist) && kind !== "quick" && kind !== "free") money *= 1.1;
+    const bd = [[s.mode === "timetrial" ? (out.medal ? `${out.medal[0].toUpperCase() + out.medal.slice(1)} medal` : "Time trial") : s.mode === "drift" ? "Drift score" : s.mode === "delivery" ? "Delivery" : s.of > 1 ? `P${s.place} prize` : "Prize", money]];
+    // skill: a clean race against others pays 10% more; every overtake pays a bonus
+    const base = money, practice = kind === "quick" || kind === "free";
+    if (base > 0 && s.of > 1 && s.finished && !s.contacts) { money += base * 0.1; bd.push(["Clean race, no contact (+10%)", base * 0.1]); }
+    const passes = Math.min(10, Object.values(s.rivals || {}).reduce((a2, L2) => a2 + (L2.passedThem || 0), 0));
+    if (passes > 0 && s.finished) { money += passes * 15 * tier; bd.push([`${passes} overtake${passes > 1 ? "s" : ""} (₭${15 * tier} each)`, passes * 15 * tier]); }
+    const mult = (cond, f, label) => { if (!cond || !money) return; const m0 = money; money *= f; bd.push([label, money - m0]); };
+    mult(practice, 0.35, "Practice pays 35%");
+    mult(kind === "story" && passed && !save.story.done[ev.id], 1.5, "First win of this mission (+50%)");
+    mult(kind === "story" && save.story.done[ev.id], 0.5, "Replaying a finished mission (half pay)");
+    if (kind === "side" && passed && !save.sideDone[ev.id]) { mult(true, 1.5, "First completion (+50%)"); out.notes.push("First completion bonus."); }
+    if (save.sponsor) { const sp = D.SPONSORS[save.sponsor]; mult(save.sponsor === "bluewater" || s.place <= 3, 1 + sp.bonus, `${sp.name} (+${Math.round(sp.bonus * 100)}%)`); }
+    mult(hired(save, "priya"), 1.1, "Priya's deals (+10%)");
+    mult(save.ng && !practice, 1 + 0.25 * Math.min(4, save.ng), `New Game+ (+${25 * Math.min(4, save.ng)}%)`);
+    const fe = featured(save); if (kind === "side" && fe && fe.id === ev.id) { mult(true, 1.5, `${weekday(save)} special (+50%)`); out.notes.push(`${weekday(save)} special: +50%.`); }
+    const dist = ev.district || TRACK_DISTRICT[s.track]; mult(dist && runs(save, dist) && !practice, 1.1, "You run this district (+10%)");
+    mult(teamLevel(save).i >= 2 && !practice, 1.05, `${teamLevel(save).name} (+5%)`);
+    out.breakdown = bd.filter(([, v]) => Math.round(v / 10) * 10 !== 0).map(([label, v]) => ({ label, amount: Math.round(v / 10) * 10 }));
     out.money = Math.round(money / 10) * 10;
     out.xp = Math.round((40 + tier * 60) * (passed ? 1.6 : 0.6) * (s.finished ? 1 : 0.5) * (hired(save, "otto") ? 1.1 : 1));
     out.rep = passed ? tier * 8 + (s.place === 1 ? 4 : 0) : s.finished ? 2 : 0;
@@ -823,11 +853,13 @@
   }
   // Contracts
   const contractOffers = (save) => Object.entries(D.CONTRACTS).filter(([id, k]) => k.minRep <= save.rep && !save.contracts.some((c) => c.id === id)).map(([id, k]) => ({ id, ...k }));
+  const contractSlots = (save) => 3 + (hired(save, "priya") ? 1 : 0) + (teamLevel(save).i >= 4 ? 1 : 0);
   function signContract(save, id) {
     const k = D.CONTRACTS[id];
     if (!k) return { ok: false, error: "No such contract." };
     if (save.contracts.some((c) => c.id === id)) return { ok: false, error: "Already signed." };
-    if (save.contracts.length >= 3) return { ok: false, error: "Three contracts at a time." };
+    const slots = contractSlots(save);
+    if (save.contracts.length >= slots) return { ok: false, error: `${slots} contracts at a time.` };
     if (k.minRep > save.rep) return { ok: false, error: `${k.sponsor} wants ${k.minRep} reputation first.` };
     save.contracts.push({ id, progress: 0, left: k.races }); return { ok: true };
   }
@@ -861,6 +893,9 @@
     if (s.pursuit || s.delivery || !(s.of > 1)) return;
     const pts = s.team ? s.team.you : s.finished || s.eliminated ? D.POINTS[s.place - 1] || 0 : 0;
     save.team.points += pts; out.teamPts = pts;
+    const lv0 = teamLevel(save).i, gain = s.finished && s.place === 1 ? 2 : s.finished && s.place <= 3 ? 1 : 0;   // wins and podiums build the team's name
+    if (gain) { save.team.rep += gain; out.teamRep = gain; }
+    const lv1 = teamLevel(save); if (lv1.i > lv0) out.notes.push(`${save.team.name} is now a ${lv1.name}: ${lv1.perk}`);
   }
   function crewDay(save, out) {   // one career race day of the team championship
     const T = save.team, day = save.world.day;
@@ -984,7 +1019,7 @@
     return { done: false, round: c.round, table, name: def.name };
   }
 
-  const api = { influence, runs, weekday, featured, secretEvents, turfEvents, rivalSim, worldTick, hire, hired, loyal, crewLoyalty, rivalStage, rivalReaction, endingFor, carAvailable, setTune, repair, repairCost, lookOf, fits, collection, newlyAvailable, collectionCheck, VERSION, KEY, BAK, CORRUPT, LEGACY, fresh, carState, validate, migrateV2, load, persist, exportSave, importSave,
+  const api = { influence, runs, weekday, featured, secretEvents, turfEvents, rivalSim, worldTick, hire, hired, loyal, crewLoyalty, rivalStage, rivalReaction, endingFor, carAvailable, setTune, repair, repairCost, lookOf, fits, collection, teamLevel, rating, recommended, contractSlots, newlyAvailable, collectionCheck, VERSION, KEY, BAK, CORRUPT, LEGACY, fresh, carState, validate, migrateV2, load, persist, exportSave, importSave,
     level, xpFor, carStats, bars, upgradeCost, buyCar, buyUpgrade, setLook, driver, playerRacer, config, missions, nextMission, mission,
     lines, needsChoice, choose, arcs, arcOpen, resolve, goalMet, goalText, sideEvents, grudgeCheck, pursuitHeats, pursuitEvent, policeSpec, carAllowed, teammate, classCar,
     tourneyOpen, startTourney, tourneyEvent, wagerOptions, placeWager, setTeam, teamLivery, contractOffers, signContract, dropContract, contractTick, teamTable, newGamePlus, rivalEvents, champOpen, champEvent, startChamp, champTable, applyResult, medal, grant };

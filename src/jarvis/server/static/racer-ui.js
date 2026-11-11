@@ -127,6 +127,14 @@
       })));
     }
     // ---------------------------------------------------------------- team, sponsors, New Game+
+    function teamLevelPanel() {
+      const lv = C.teamLevel(save), bar = el("div", "race-bar"), i = el("i", "up"), nx = lv.next;
+      i.style.width = (nx ? Math.round(Math.min(1, (save.team.rep - lv.rep) / (nx.rep - lv.rep)) * 100) : 100) + "%"; bar.append(i);
+      return el("div", "race-panel", el("p", "race-lbl", `${save.team.name}: ${lv.name}`),
+        el("div", "race-barrow", el("span", "race-lbl", `Team reputation ${save.team.rep}`), bar, el("span", "race-delta", nx ? `${nx.rep} for ${nx.name}` : "Top level")),
+        el("ul", "race-list", ...D.TEAM_LEVELS.slice(1).map((L, k) => el("li", "race-li" + (k + 1 <= lv.i ? " done" : " locked"), el("span", "", (k + 1 <= lv.i ? "✓ " : "") + L.name), el("span", "race-sub", `${L.rep} team reputation · ${L.perk}`)))),
+        el("p", "race-note", "Team reputation comes from wins (+2), podiums (+1), sponsor contracts and team championship seasons."));
+    }
     function teamScreen() {
       const T = save.team, name = el("input", "race-select"); name.id = "t-name"; name.maxLength = 24; name.value = T.name; name.autocomplete = "off";
       const sw = (key) => el("div", "race-swatches", ...D.LOOKS.paint.map((c) => { const b = el("button", "race-swbtn" + (T[key] === c ? " on" : "")); b.type = "button"; b.style.background = c;
@@ -138,24 +146,25 @@
           confirmBtn("Walk away", "Walk away (−5 rep)?", () => { C.dropContract(save, c.id); persist(); show(teamScreen, { replace: true }); }));
       });
       const offers = C.contractOffers(save).map((k) => el("li", "race-li", el("span", "", `${k.sponsor}: ${k.title}`), el("span", "race-sub", `${k.blurb} Pays ${money(k.pay)} and ${k.rep} rep.`),
-        save.contracts.length < 3 ? btn("Sign", () => { const r = C.signContract(save, k.id); if (!r.ok) return toast(r.error, "warn"); persist(); toast(`Signed with ${k.sponsor}.`, "info"); show(teamScreen, { replace: true }); }, "small") : null));
+        save.contracts.length < C.contractSlots(save) ? btn("Sign", () => { const r = C.signContract(save, k.id); if (!r.ok) return toast(r.error, "warn"); persist(); toast(`Signed with ${k.sponsor}.`, "info"); show(teamScreen, { replace: true }); }, "small") : null));
       const locked = Object.values(D.CONTRACTS).filter((k) => k.minRep > save.rep).length;
       const ng = save.story.ended ? el("div", "race-panel", el("p", "race-lbl", `New Game+${save.ng ? ` (you're on cycle ${save.ng})` : ""}`),
         el("p", "race-note", "Start the story again from chapter 1. You keep your cars and upgrades, money, level, crew, team, records, medals, best laps, ghosts, endings and achievements. The story, districts, rivals' memory, the map, championships in progress and contracts start over. The field is 1% quicker and prizes are 25% bigger for each cycle."),
         confirmBtn("Start New Game+", "Start New Game+? (a copy of this save is kept)", () => {
           const r = C.newGamePlus(save); if (!r.ok) return toast(r.error, "warn");
           try { store.setItem(C.KEY + "-before-ngplus", C.exportSave(save)); } catch { /* best effort, like a reset */ }
-          save = r.save; persist(); r.achievements.forEach((a) => toast(`Achievement unlocked: ${D.ACHIEVEMENTS[a].name}`, "gold")); toast(`New Game+ ${save.ng}: chapter 1 again.`, "gold"); show(hq, { replace: true });
+          save = r.save; persist(); r.achievements.forEach((a) => toast(`Achievement unlocked: ${D.ACHIEVEMENTS[a].name}${D.ACH_REWARDS[a] ? " · reward: " + D.ACH_REWARDS[a].text : ""}`, "gold")); toast(`New Game+ ${save.ng}: chapter 1 again.`, "gold"); show(hq, { replace: true });
         })) : null;
       return frame("Team and sponsors", `${T.name} · season ${T.season}`, [wallet(),
         el("div", "race-fields", el("label", "race-field", el("span", "race-lbl", "Team name"), name),
           btn("Save name", () => { const r = C.setTeam(save, { name: name.value }); if (!r.ok) return toast(r.error, "warn"); persist(); toast("Team name saved.", "info"); show(teamScreen, { replace: true }); }, "small")),
         el("p", "race-lbl", "Team colour"), sw("color"), el("p", "race-lbl", "Second colour"), sw("color2"),
         btn("Paint my car in team colours", () => { C.teamLivery(save); persist(); toast("Your car wears the team colours.", "info"); }, "alt small"),
+        teamLevelPanel(),
         el("p", "race-lbl", `Team championship · season ${T.season}, race day ${T.days} of ${D.TEAM_SEASON}`),
         el("table", "race-classif", el("tbody", "", ...table.map((r, i) => el("tr", r.you ? "me" : "", el("td", "", `P${i + 1}`), el("td", "", r.name), el("td", "", `${r.points} pts`))))),
         el("p", "race-note", `Your finishes score ${D.POINTS.join("/")} (team races: the team's points). Prizes at the end of a season: ${D.SEASON_PRIZE.filter(Boolean).map(money).join(", ")} for the top three. Titles won: ${T.titles}.`),
-        el("p", "race-lbl", `Sponsor contracts (${save.contracts.length} of 3)`),
+        el("p", "race-lbl", `Sponsor contracts (${save.contracts.length} of ${C.contractSlots(save)})`),
         active.length ? el("ul", "race-list", ...active) : el("p", "race-note", "No contracts signed. Quick races and free play don't count toward them."),
         offers.length ? el("ul", "race-list", ...offers) : null,
         locked ? el("p", "race-note", `${locked} more sponsor${locked > 1 ? "s want" : " wants"} more reputation first.`) : null,
@@ -202,6 +211,8 @@
           el("p", "race-goal", "Goal: " + (ctx.kind === "quick" || ctx.kind === "free" ? "win" : C.goalText(ev.goal))), medalLine,
           el("p", "race-lbl", "Field"), field,
           el("p", "race-note", `Your car: ${car.name} (class ${car.cls}). ${save.best[ev.track] && !LAPLESS.includes(ev.mode) ? "Your best lap here: " + fmt(save.best[ev.track]) + "." : ""}`),
+          (() => { const mine = C.rating(cfg.player.spec), rec = C.recommended(save, ev), gap = mine - rec;
+            return el("p", "race-goal " + (gap < -60 ? "bad" : ""), `Rating ${mine} · ${cfg.field.length ? "the field averages" : "suggested"} ${rec}${gap < -60 ? ". You're well short: an upgrade or a quicker car would help." : gap > 80 ? ". You have the faster car." : "."}`); })(),
           allowed.ok ? null : el("p", "race-goal bad", allowed.why + (allowed.owned.length ? ` You own: ${allowed.owned.map((id) => D.CARS[id].name).join(", ")}. Switch in the garage.` : " Buy one in the garage.")),
           wagerSel, ev.mode === "drag" ? el("p", "race-note", "Hold the throttle during the lights to rev (launch in the green), then E or the SHIFT pad to change up near the top of the revs.") : null,
           ev.mode === "endurance" ? el("p", "race-note", "Tyres wear as you go. Stop in the yellow pit box just before the line for fresh tyres and repairs (about 2.5 s).") : null,
@@ -350,7 +361,7 @@
         ? el("p", "race-goal " + (out.passed ? "ok" : "bad"), (out.passed ? "Goal met: " : "Goal missed: ") + C.goalText(ev.goal)) : null;
       const unlocks = out.unlocked.map((u) => el("li", "race-li", u.type === "district" ? `New district: ${u.name}` : u.gift ? `New car in your garage: ${u.name}` : `Car unlocked to buy: ${u.name}`));
       const ach = out.achievements.map((id) => el("li", "race-li", `Achievement: ${D.ACHIEVEMENTS[id].name}`));
-      for (const id of out.achievements) toast(`Achievement unlocked: ${D.ACHIEVEMENTS[id].name}`, "gold");
+      for (const id of out.achievements) toast(`Achievement unlocked: ${D.ACHIEVEMENTS[id].name}${D.ACH_REWARDS[id] ? " · reward: " + D.ACH_REWARDS[id].text : ""}`, "gold");
       const champ = out.champ ? el("div", "race-panel", el("p", "race-lbl", out.champ.done ? `${out.champ.name}: final standings` : `${out.champ.name}: standings after round ${out.champ.round}`),
         el("table", "race-classif", el("tbody", "", ...out.champ.table.map((r, i) => el("tr", r.id === "YOU" ? "me" : "", el("td", "", `P${i + 1}`), el("td", "", r.name), el("td", "", `${r.points} pts`))))),
         out.champ.done ? el("p", "race-note", `You finished P${out.champ.place}. Prize ${money(out.champ.prize)}.`) : null) : null;
@@ -379,9 +390,11 @@
       const extraLines = [
         out.wager ? el("p", "race-goal " + (out.wager.won ? "ok" : "bad"), out.wager.won ? `Wager won: ${money(out.wager.amount * 2)} back.` : `Wager lost: ${money(out.wager.amount)}.`) : null,
         out.tourney ? el("p", "race-goal " + (out.tourney.out ? "bad" : "ok"), out.tourney.out ? `Out of the ${out.tourney.name} at the ${out.tourney.stage.toLowerCase()}.` : out.tourney.won ? `You won the ${out.tourney.name}: ${money(out.tourney.prize)}.` : `Through to the ${out.tourney.next.toLowerCase()}.`) : null];
-      if (out.tourney && out.tourney.achievements) for (const id of out.tourney.achievements) toast(`Achievement unlocked: ${D.ACHIEVEMENTS[id].name}`, "gold");
+      if (out.tourney && out.tourney.achievements) for (const id of out.tourney.achievements) toast(`Achievement unlocked: ${D.ACHIEVEMENTS[id].name}${D.ACH_REWARDS[id] ? " · reward: " + D.ACH_REWARDS[id].text : ""}`, "gold");
       const body = [
         el("div", "race-stats", ...stats), ...extraLines,
+        out.breakdown && out.breakdown.length > 1 ? el("div", "race-panel", el("p", "race-lbl", "Prize money"), el("ul", "race-list", ...out.breakdown.map((b) => el("li", "race-li", el("span", "", b.label), el("span", "race-sub", (b.amount >= 0 ? "+" : "−") + money(Math.abs(b.amount))))))) : null,
+        out.teamRep ? el("p", "race-note", `${save.team.name}: +${out.teamRep} team reputation.`) : null,
         passLine, s.lapTimes.length && !LAPLESS.includes(s.mode) ? el("div", "race-laps", ...s.lapTimes.map((t, i) => el("span", t === s.best ? "best" : "", `L${i + 1} ${fmt(t)}`))) : null,
         out.levelUp ? el("p", "race-goal ok", `Level up: you're level ${out.levelUp}.`) : null,
         ...(out.rumours || []).map((r) => el("p", "race-note", `Rumour from ${(D.CAST[r.from] || {}).name || r.from}: “${r.text}” New secret event on the map.`)),
@@ -618,6 +631,11 @@
       const col = C.collection(save), colBar = el("div", "race-bar"), colI = el("i", "up"); colI.style.width = Math.round(col.owned / col.total * 100) + "%"; colBar.append(colI);
       const collectionPanel = el("div", "race-panel race-collection", el("div", "race-barrow", el("span", "race-lbl", `Collection ${col.owned} / ${col.total}`), colBar),
         el("p", "race-note", ["C", "B", "A", "S"].map((k) => `Class ${k}: ${col.by[k].owned}/${col.by[k].total}`).join("  ·  ") + ". Some cars can't be bought until you earn them: a drift score, gold medals, a pursuit, a tournament, a grudge match, a crew member."));
+      // the cars you're closest to unlocking, and what it takes
+      const progress = (cid) => { const U = D.CARS[cid].unlock || {}, golds = Object.values(save.medals).filter((m) => m === "gold").length;
+        return U.rep ? save.rep / U.rep : U.chapter ? save.story.chapter / U.chapter : U.medals ? golds / U.medals : U.rival ? ((save.rivals[U.rival] || {}).wins || 0) / U.wins : 0.1; };
+      const near = Object.entries(D.CARS).filter(([cid, c]) => !c.police && c.price !== null && !save.garage.owned[cid] && !C.carAvailable(save, cid).ok).sort((a, b) => progress(b[0]) - progress(a[0])).slice(0, 3);
+      const nearPanel = near.length ? el("div", "race-panel", el("p", "race-lbl", "Close to unlocking"), el("ul", "race-list", ...near.map(([cid, c]) => el("li", "race-li", el("span", "", `${c.name} · ${c.cls}`), el("span", "race-sub", C.carAvailable(save, cid).why))))) : null;
       const cars = el("div", "race-carlist", ...Object.entries(D.CARS).filter(([, c]) => !c.police && (gClass === "all" || c.cls === gClass)).map(([k, c]) => {
         const o = !!save.garage.owned[k], a = C.carAvailable(save, k);
         const b = el("button", "race-carbtn" + (k === id ? " on" : "") + (o ? " owned" : a.ok ? "" : " locked"), el("b", "", o || a.ok ? c.name : "???"),
@@ -645,9 +663,9 @@
         gTest[id + JSON.stringify(shown.upgrades) + JSON.stringify(shown.tune)] = { mine, cur: c2 }; show(garage, { replace: true });
       }, "alt small");
       const handling = car.handling ? el("p", "race-note race-handling", car.handling) : null;
-      const facts = el("div", "race-tags", chip(`${car.cls} · ${car.cat}`), chip(`Top ≈ ${KMH(spec)} km/h`), chip(`${Math.round((spec.mass || 1) * 1000)} kg`), ...TRAITS(car).map((t) => chip(t, "small")));
+      const facts = el("div", "race-tags", chip(`Rating ${car.cls} ${C.rating(spec)}`, "gold"), chip(`${car.cls} · ${car.cat}`), chip(`Top ≈ ${KMH(spec)} km/h`), chip(`${Math.round((spec.mass || 1) * 1000)} kg`), ...TRAITS(car).map((t) => chip(t, "small")));
       const action = owned ? (id === curId ? chip("Driving this car", "gold") : btn("Drive this car", () => { save.garage.current = id; persist(); show(garage, { replace: true }); }))
-        : av.ok && car.price !== null ? btn(`Buy for ${money(car.price)}`, () => { const r = C.buyCar(save, id); if (!r.ok) return toast(r.error, "warn"); persist(); toast(`${car.name} is yours.`, "gold"); r.achievements.forEach((a) => toast(`Achievement unlocked: ${D.ACHIEVEMENTS[a].name}`, "gold")); show(garage, { replace: true }); }, save.money >= car.price ? "" : "alt")
+        : av.ok && car.price !== null ? btn(`Buy for ${money(car.price)}`, () => { const r = C.buyCar(save, id); if (!r.ok) return toast(r.error, "warn"); persist(); toast(`${car.name} is yours.`, "gold"); r.achievements.forEach((a) => toast(`Achievement unlocked: ${D.ACHIEVEMENTS[a].name}${D.ACH_REWARDS[a] ? " · reward: " + D.ACH_REWARDS[a].text : ""}`, "gold")); show(garage, { replace: true }); }, save.money >= car.price ? "" : "alt")
           : el("p", "race-note", av.why);
       const repairBtn = owned && st.dmg > 0.01 ? btn(`Repair ${Math.round(st.dmg * 100)}% damage · ${money(C.repairCost(id, st) * (save.crew.members.nia && save.crew.members.nia.hired ? 0.7 : 1))}`, () => { const r = C.repair(save, id); if (!r.ok) return toast(r.error, "warn"); persist(); toast(`Repaired for ${money(r.cost)}.`, "info"); show(garage, { replace: true }); }, "alt small") : null;
       const TABS = { upgrades: "Upgrades", tune: "Tuning", paint: "Paint", decal: "Decals", wheels: "Wheels", tyres: "Tyres", body: "Arches", bumper: "Bumper", bonnet: "Bonnet", spoiler: "Spoiler", finish: "Finish", tint: "Glass", lights: "Lights", exhaust: "Exhaust", number: "Number" };
@@ -655,7 +673,7 @@
         const b = el("button", "race-tab" + (t === gTab ? " on" : ""), n); b.type = "button"; b.setAttribute("aria-pressed", String(t === gTab)); b.disabled = !owned;
         b.addEventListener("click", () => { gTab = t; show(garage, { replace: true }); }); return b;
       }));
-      return frame("Garage", `${save.team.name} · ${Object.keys(save.garage.owned).length} cars`, [wallet(), collectionPanel, el("div", "race-garage", el("div", "race-garage-l", filter, cars),
+      return frame("Garage", `${save.team.name} · ${Object.keys(save.garage.owned).length} car${Object.keys(save.garage.owned).length === 1 ? "" : "s"}`, [wallet(), collectionPanel, nearPanel, el("div", "race-garage", el("div", "race-garage-l", filter, cars),
         el("div", "race-garage-r", el("b", "race-title", owned || av.ok ? car.name : "Locked car"), el("p", "race-note", owned || av.ok ? car.blurb : av.why), preview, facts, owned || av.ok ? handling : null, barBox,
           el("p", "race-note", id === curId ? "Grey: stock. Gold: as built. The line marks your car." : "Grey: stock. Gold: as built. The line and the numbers compare it with the car you drive."),
           el("div", "race-stack row", action, testBtn, repairBtn), owned ? tabs : null, owned ? tabBody(id, st, drawBars) : null))]);
@@ -663,8 +681,8 @@
     function tabBody(id, st, drawBars) {
       const set = (key, value) => { const r = C.setLook(save, id, key, value); if (!r.ok) return toast(r.error, "warn"); if (r.cost) toast(`Bought for ${money(r.cost)}.`, "info"); persist(); show(garage, { replace: true }); };
       if (gTab === "upgrades") return el("ul", "race-list", ...Object.entries(D.UPGRADES).map(([p, u]) => {
-        const lv = st.upgrades[p], cost = C.upgradeCost(id, p, lv);
-        const b = cost === null ? chip("Max", "gold") : btn(money(cost), () => { const r = C.buyUpgrade(save, id, p); if (!r.ok) return toast(r.error, "warn"); persist(); r.achievements.forEach((a) => toast(`Achievement unlocked: ${D.ACHIEVEMENTS[a].name}`, "gold")); show(garage, { replace: true }); }, "small" + (save.money >= cost ? "" : " alt"));
+        const lv = st.upgrades[p], cost = C.upgradeCost(id, p, lv, save);
+        const b = cost === null ? chip("Max", "gold") : btn(money(cost), () => { const r = C.buyUpgrade(save, id, p); if (!r.ok) return toast(r.error, "warn"); persist(); r.achievements.forEach((a) => toast(`Achievement unlocked: ${D.ACHIEVEMENTS[a].name}${D.ACH_REWARDS[a] ? " · reward: " + D.ACH_REWARDS[a].text : ""}`, "gold")); show(garage, { replace: true }); }, "small" + (save.money >= cost ? "" : " alt"));
         if (cost !== null) {   // preview: hover or focus shows the next level on the bars
           const next = { ...st, upgrades: { ...st.upgrades, [p]: lv + 1 } };
           const on = () => drawBars(C.carStats(id, next, save.sponsor)), off = () => drawBars(C.carStats(id, st, save.sponsor));
@@ -695,7 +713,7 @@
           el("div", "race-stack row", ...Object.entries(D.LOOKS.numpos).map(([k, o]) => btn(o.name + (st.numpos === k ? " ✓" : ""), () => set("numpos", k), st.numpos === k ? "small" : "small alt"))));
       }
       const opts = D.LOOKS[gTab], fit = Object.entries(opts).filter(([k]) => C.fits(id, gTab, k)), left = Object.keys(opts).length - fit.length;
-      return el("div", "race-stack", el("div", "race-stack row", ...fit.map(([k, o]) => btn(`${o.name}${st[gTab] === k ? " ✓" : st.bought[gTab].includes(k) || !o.price ? "" : " · " + money(Math.round(o.price * D.CLASS_COST[D.CARS[id].cls] / 10) * 10)}`, () => set(gTab, k), st[gTab] === k ? "small" : "small alt"))),
+      return el("div", "race-stack", el("div", "race-stack row", ...fit.map(([k, o]) => o.earn && !save.achievements[o.earn] ? btn(`${o.name} · earn “${D.ACHIEVEMENTS[o.earn].name}”`, () => toast(`${D.ACHIEVEMENTS[o.earn].how}`, "info"), "small alt") : btn(`${o.name}${st[gTab] === k ? " ✓" : st.bought[gTab].includes(k) || !o.price ? "" : " · " + money(Math.round(o.price * D.CLASS_COST[D.CARS[id].cls] / 10) * 10)}`, () => set(gTab, k), st[gTab] === k ? "small" : "small alt"))),
         ["bumper", "bonnet", "tyres", "body"].includes(gTab) ? el("p", "race-note", `Looks only: body parts don't change performance.${left ? ` ${left} option${left > 1 ? "s don't" : " doesn't"} fit the ${D.CARS[id].name}.` : ""}`) : null);
     }
     // A lit turntable: spotlight, a rotating platform with ticks, a floor reflection and spinning wheels.
@@ -771,7 +789,7 @@
     function achievements() {
       const all = Object.entries(D.ACHIEVEMENTS), got = all.filter(([id]) => save.achievements[id]).length;
       return frame("Achievements", `${got} of ${all.length}`, [el("ul", "race-list", ...all.map(([id, a]) => el("li", "race-li" + (save.achievements[id] ? " done" : " locked"),
-        el("span", "", (save.achievements[id] ? "★ " : "☆ ") + a.name), el("span", "race-sub", save.achievements[id] ? `${a.how} · ${new Date(save.achievements[id]).toLocaleDateString()}` : a.how))))]);
+        el("span", "", (save.achievements[id] ? "★ " : "☆ ") + a.name), el("span", "race-sub", (save.achievements[id] ? `${a.how} · ${new Date(save.achievements[id]).toLocaleDateString()}` : a.how) + (D.ACH_REWARDS[id] ? ` · Reward: ${D.ACH_REWARDS[id].text}` : "")))))]);
     }
 
     // ---------------------------------------------------------------- settings and saves

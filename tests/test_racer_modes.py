@@ -195,7 +195,7 @@ const sum = (o) => ({ mode: "rival", track: "kerbside", laps: 3, place: 1, of: 2
 const s = C.fresh(); s.money = 3000; const rv = { id: "r-dex", rival: "dex", tier: 2, mode: "rival", track: "kerbside", field: ["dex"], goal: { type: "place", max: 1 } };
 const bad = C.placeWager(s, { id: "s-park-tt" }, 500).ok, tooMuch = C.placeWager(s, rv, 5000).ok;
 C.placeWager(s, rv, 2500); const staked = s.money;
-const win = apply(s, "rival", rv, sum({})); const afterWin = s.money - win.money;
+const win = apply(s, "rival", rv, sum({})); const afterWin = s.money - win.money - win.achievements.reduce((t, id) => t + ((D.ACH_REWARDS[id] || {}).money || 0), 0);   // achievement rewards aside
 C.placeWager(s, rv, 1000); const lose = apply(s, "rival", rv, sum({ place: 2, order: ["dex", "YOU"], beat: [] }));
 // tournament: drag kings, three stages; lose one and you're out
 const t = C.fresh(); t.story.chapter = 3; const st = C.startTourney(t, "dragkings").ok, ev1 = C.tourneyEvent(t);

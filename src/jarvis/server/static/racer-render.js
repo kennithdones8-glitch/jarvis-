@@ -690,6 +690,11 @@
       if (fin !== "matte") { g.fillStyle = "rgba(255,255,255,0.12)"; g.beginPath(); g.moveTo(nose - 14, -14); g.lineTo(nose - 9, -14); g.lineTo(nose - 19, 14); g.lineTo(nose - 24, 14); g.closePath(); g.fill();
         g.fillStyle = "rgba(255,255,255,0.07)"; g.beginPath(); g.moveTo(rear + 12, -14); g.lineTo(rear + 15, -14); g.lineTo(rear + 7, 14); g.lineTo(rear + 4, 14); g.closePath(); g.fill(); }
       if (fin === "metallic") { const r2 = rng(7); g.fillStyle = "rgba(255,255,255,0.24)"; for (let i = 0; i < 90; i++) g.fillRect(-26 + r2() * 52, -13 + r2() * 26, 0.45, 0.45); }
+      if (fin === "chrome") {   // mirror chrome: hard bands of sky and ground reflected along the body
+        const cg = g.createLinearGradient(0, -14, 0, 14);
+        [[0, "rgba(20,24,30,0.55)"], [0.22, "rgba(255,255,255,0.75)"], [0.32, "rgba(140,170,210,0.35)"], [0.48, "rgba(255,255,255,0.85)"], [0.56, "rgba(60,70,80,0.45)"], [0.78, "rgba(230,236,245,0.6)"], [1, "rgba(10,12,16,0.6)"]].forEach(([o, c]) => cg.addColorStop(o, c));
+        g.fillStyle = cg; g.fillRect(-30, -16, 60, 32);
+      }
       if (fin === "pearl") { const pg = g.createLinearGradient(-26, -13, 26, 13); pg.addColorStop(0, "rgba(120,200,255,0.18)"); pg.addColorStop(0.5, "rgba(255,255,255,0)"); pg.addColorStop(1, "rgba(255,120,220,0.18)"); g.fillStyle = pg; g.fillRect(-30, -16, 60, 32); }
       // livery
       const dec = L.decal, p2 = L.paint2 && L.paint2 !== "#14100a" ? L.paint2 : null;
@@ -698,6 +703,12 @@
       else if (dec === "sash") { g.fillStyle = p2 || "#14161a"; g.beginPath(); g.moveTo(-26, -14); g.lineTo(-14, -14); g.lineTo(14, 14); g.lineTo(2, 14); g.closePath(); g.fill(); }
       else if (dec === "flame") { g.fillStyle = "#ff7a1a"; g.beginPath(); g.moveTo(nose, -8); g.lineTo(4, -5); g.lineTo(12, -1.6); g.lineTo(-1, 0); g.lineTo(12, 1.6); g.lineTo(4, 5); g.lineTo(nose, 8); g.closePath(); g.fill(); g.fillStyle = "#ffd23a"; g.beginPath(); g.moveTo(nose, -4); g.lineTo(10, 0); g.lineTo(nose, 4); g.fill(); }
       else if (dec === "checker") { for (let i = 0; i < 6; i++) for (let j = 0; j < 4; j++) if ((i + j) % 2) { g.fillStyle = "rgba(20,20,20,0.78)"; g.fillRect(nose - 24 + i * 3, -6 + j * 3, 3, 3); } }
+      else if (dec === "laurel") {   // a gold laurel wreath on the bonnet
+        const lx = Gl.type === "closed" ? (Gl.ws + nose) / 2 + 0.5 : nose - 9;
+        g.strokeStyle = "#d9b45f"; g.lineWidth = 0.8; g.fillStyle = "#e9c44a";
+        for (const sd of [-1, 1]) { g.beginPath(); g.arc(lx, 0, 5.4, sd > 0 ? 0.35 : Math.PI + 0.35, sd > 0 ? Math.PI - 0.35 : Math.PI * 2 - 0.35); g.stroke();
+          for (let k = 0; k < 5; k++) { const a = (sd > 0 ? 0.5 : Math.PI + 0.5) + k * 0.5, x = lx + Math.cos(a) * 5.4, y = Math.sin(a) * 5.4; g.beginPath(); g.ellipse(x, y, 1.4, 0.7, a + Math.PI / 2, 0, 7); g.fill(); } }
+      }
       else if (dec === "bolt") { g.fillStyle = "#ffe14a"; g.beginPath(); g.moveTo(-18, -7); g.lineTo(0, -2); g.lineTo(-4, 0.6); g.lineTo(16, 7); g.lineTo(-2, 2.5); g.lineTo(2, 0); g.closePath(); g.fill(); }
       if (L.livery === "police") { g.fillStyle = "#14161a"; g.fillRect(rear, -14, nose - rear, 3.2); g.fillRect(rear, 10.8, nose - rear, 3.2); g.fillStyle = "#f4f4f4"; g.fillRect(-12, -10.8, 22, 21.6); }
       // shut lines: bonnet, doors, boot; fender creases over the wheels
