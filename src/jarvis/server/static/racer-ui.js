@@ -115,7 +115,16 @@
         el("div", "race-grid2", btn("World map", () => show(worldMap), "alt"), btn("Garage", () => show(garage), "alt"), btn("Team and sponsors", () => show(teamScreen), "alt")),
         save.sponsor ? el("p", "race-note", `Sponsor: ${D.SPONSORS[save.sponsor].name}. ${D.SPONSORS[save.sponsor].blurb}`) : null,
         chapters,
-        crewPanel(), rivalPanel()]);
+        storiesPanel(), crewPanel(), rivalPanel()]);
+    }
+    // Character stories: one card per person, their next mission or what opens it.
+    function storiesPanel() {
+      const list = C.arcs(save);
+      return el("div", "race-panel", el("p", "race-lbl", "Character stories"), el("div", "race-stories", ...list.map((a) => {
+        const face = portraitOf(a.who, 96), state = a.complete ? "Complete" : a.open ? `${a.done} of ${a.total}` : a.why;
+        return el("div", "race-story" + (a.open && !a.complete ? "" : " dim"), face, el("div", "", el("b", "", a.title), el("span", "race-sub", `${(D.CAST[a.who] || {}).name || a.who} · ${state}`),
+          el("p", "race-note", a.blurb), a.next ? btn(`Race: ${a.next.title}`, () => brief({ kind: "arc", event: a.next }), "small") : null));
+      })));
     }
     // ---------------------------------------------------------------- team, sponsors, New Game+
     function teamScreen() {
@@ -186,7 +195,7 @@
         const allowed = C.carAllowed(save, ev), stakes = ctx.kind === "rival" ? C.wagerOptions(save) : [];
         const wagerSel = stakes.length > 1 ? select("b-wager", "Wager (win pays double)", ctx.wager || 0, stakes.map((v) => [v, v ? money(v) : "No bet"]), (v) => { ctx.wager = Number(v); }) : null;
         const medalLine = ev.mode === "timetrial" ? el("p", "race-note", `Medals: gold ${fmt(D.PAR[ev.track] * cfg.laps)}, silver ${fmt(D.PAR[ev.track] * cfg.laps * 1.05)}, bronze ${fmt(D.PAR[ev.track] * cfg.laps * 1.12)}.`) : null;
-        return frame(ev.title || "Race", `${{ story: "Story mission", champ: "Championship", side: "Event", rival: "Rival challenge", tourney: "Tournament", pursuit: "Police pursuit" }[ctx.kind] || "Race"} · ${R.TRACKS[cfg.track].name}`, [
+        return frame(ev.title || "Race", `${{ story: "Story mission", arc: "Character story", champ: "Championship", side: "Event", rival: "Rival challenge", tourney: "Tournament", pursuit: "Police pursuit" }[ctx.kind] || "Race"} · ${R.TRACKS[cfg.track].name}`, [
           el("div", "race-tags", chip(MODE_NAME[ev.mode]), LAPLESS.includes(ev.mode) ? null : chip(`${cfg.laps} lap${cfg.laps > 1 ? "s" : ""}`), chip(TOD[cfg.time]), chip(WX[cfg.weather]),
             cfg.weatherChange ? chip(`then ${WX[cfg.weatherChange.to].toLowerCase()}`) : null, ev.cls ? chip(`Class ${ev.cls} only`, allowed.ok ? "" : "bad") : null, chip(`AI ${cfg.level}`)),
           el("p", "race-note", D.MODES[ev.mode] ? D.MODES[ev.mode].blurb : ""),
@@ -201,12 +210,12 @@
     }
     function go(ctx) {
       const m = ctx.event;
-      if (ctx.kind === "story" && C.needsChoice(save, m)) return show(() => choiceScreen(m, () => intro(ctx)), { replace: true });
+      if ((ctx.kind === "story" || ctx.kind === "arc") && C.needsChoice(save, m)) return show(() => choiceScreen(m, () => intro(ctx)), { replace: true });
       intro(ctx);
     }
     function intro(ctx) {
-      const lines = ctx.kind === "story" ? C.lines(save, ctx.event.intro) : [];
-      if (lines.length) dialogue(lines, () => run(ctx), ctx.kind === "story" ? ctx.event.scene : null); else run(ctx);
+      const lines = ctx.kind === "story" || ctx.kind === "arc" ? C.lines(save, ctx.event.intro) : [];
+      if (lines.length) dialogue(lines, () => run(ctx), ctx.kind === "story" || ctx.kind === "arc" ? ctx.event.scene : null); else run(ctx);
     }
     // A drawn portrait: head and shoulders in the speaker's colours, with their hair, jacket and one detail.
     function portraitOf(who, size = 160) {
@@ -298,12 +307,13 @@
       const ch = m.choice;
       return frame("Your call", m.title, [el("p", "race-line", ch.prompt),
         el("div", "race-stack", ...ch.options.map((o, i) => btn(o.label, () => {
-          const r = C.choose(save, m.id, i); persist();
+          const r = C.choose(save, m.id, i); if (!r.ok) return toast(r.error, "warn"); persist();
           if (r.ok && r.consequence) toast(`This will be remembered: ${r.consequence}`, "gold");
           if (r.ok && r.lines.length) dialogue(r.lines, done); else done();
         }, "alt"))), el("p", "race-note", "Choices change what happens later: who races you, how they race, what people say and which events open.")], { noBack: true });
     }
     function run(ctx) {
+      ctx.event = C.resolve(save, ctx.event);
       const cfg = C.config(save, ctx.event, ctx.kind), raceId = uid();
       if (ctx.kind === "rival") { const w = C.placeWager(save, ctx.event, ctx.wager || 0); if (!w.ok) { toast(w.error, "warn"); ctx.wager = 0; } }
       history = [mainMenu]; screen = null;   // after a race, Back always leads home rather than to stale screens
@@ -321,7 +331,7 @@
         el("div", "race-stack", btn("Resume", () => view.resume(), "", { "data-autofocus": "" }), btn("Restart", () => { view.quit(); run(ctx); }, "alt"),
           view.photo ? btn("Photo mode", () => view.photo(() => pauseMenu(ctx)), "alt") : null,
           btn(save.settings.sound ? "Sound: on" : "Sound: off", (e) => { save.settings.sound = !save.settings.sound; audio && audio.settings(save.settings); persist(); e.target.textContent = save.settings.sound ? "Sound: on" : "Sound: off"; }, "alt"),
-          btn(save.wager ? `Quit (forfeits your ${money(save.wager.amount)} stake)` : "Quit to menu (no result)", () => { view.quit(); save.interrupted = null; save.wager = null; persist(); show(ctx.kind === "story" ? hq : ctx.kind === "pursuit" ? pursuitScreen : mainMenu, { replace: true }); }, "alt"))],
+          btn(save.wager ? `Quit (forfeits your ${money(save.wager.amount)} stake)` : "Quit to menu (no result)", () => { view.quit(); save.interrupted = null; save.wager = null; persist(); show(ctx.kind === "story" || ctx.kind === "arc" ? hq : ctx.kind === "pursuit" ? pursuitScreen : mainMenu, { replace: true }); }, "alt"))],
         { noBack: true }), true);
     }
 
@@ -336,7 +346,7 @@
         : s.eliminated ? "Eliminated" : s.mode === "timetrial" ? (out.medal ? `${out.medal[0].toUpperCase() + out.medal.slice(1)} medal` : "Time trial")
         : s.mode === "drift" ? `${s.drift.toLocaleString()} points` : s.team ? (s.team.won ? `Team win · ${s.team.you}–${s.team.them}` : `Team loss · ${s.team.you}–${s.team.them}`)
         : s.place === 1 ? "Victory · P1" : `P${s.place} of ${s.of}`;
-      const passLine = ctx.kind === "story" || ctx.kind === "side" || ctx.kind === "rival" || ctx.kind === "champ" || ctx.kind === "tourney"
+      const passLine = ctx.kind === "story" || ctx.kind === "arc" || ctx.kind === "side" || ctx.kind === "rival" || ctx.kind === "champ" || ctx.kind === "tourney"
         ? el("p", "race-goal " + (out.passed ? "ok" : "bad"), (out.passed ? "Goal met: " : "Goal missed: ") + C.goalText(ev.goal)) : null;
       const unlocks = out.unlocked.map((u) => el("li", "race-li", u.type === "district" ? `New district: ${u.name}` : u.gift ? `New car in your garage: ${u.name}` : `Car unlocked to buy: ${u.name}`));
       const ach = out.achievements.map((id) => el("li", "race-li", `Achievement: ${D.ACHIEVEMENTS[id].name}`));
@@ -352,7 +362,7 @@
       const cont = () => {
         if (out.ending) return show(() => endingScreen(out.ending), { replace: true });
         if (out.chapter) return show(() => chapterScreen(out.chapter), { replace: true });
-        show(ctx.kind === "story" ? hq : ctx.kind === "champ" || ctx.kind === "tourney" ? champs : ctx.kind === "side" || ctx.kind === "rival" ? worldMap : ctx.kind === "pursuit" ? pursuitScreen : mainMenu, { replace: true });
+        show(ctx.kind === "story" || ctx.kind === "arc" ? hq : ctx.kind === "champ" || ctx.kind === "tourney" ? champs : ctx.kind === "side" || ctx.kind === "rival" ? worldMap : ctx.kind === "pursuit" ? pursuitScreen : mainMenu, { replace: true });
       };
       const next = () => {
         if (out.choice) return show(() => choiceScreen(ev, () => cont()), { replace: true });
@@ -401,9 +411,19 @@
       const f = save.story.flags, E = D.ENDINGS.find((e) => e.id === id) || D.ENDINGS[D.ENDINGS.length - 1];
       const epilogue = [f.dex_respect ? "Dex Varga now runs Ironclad's junior programme. He tells every rookie about club night." : "Dex Varga still won't say your name. He watches every one of your races.",
         f.crew_pip ? "Pip Hollis races for Okafor Motors, and blocks for you like a wall." : "Otto Brandt coaches at Okafor Motors and swears your tyres were his idea.",
+        f.nia_engine ? "Samuel Okafor's V8 sits on a stand in the garage window. Nia polishes it on Sundays." : "",
+        f.harlan_exposed ? "Victor Harlan sold the League at a loss. The new owners are the crews." : f.harlan_signed ? "Harlan Holdings owns the League, the circuit and your next three seasons." : f.harlan_refused ? "Victor Harlan still owns the circuit. He never comes to watch any more." : "",
+        f.mara_home ? "Tidewater still works out of your garage. Nobody mentions moving." : "", f.benny_saved ? "The Brickyard runs night races again, every Friday." : f.benny_lost ? "The Brickyard is flats now. Benny drives a taxi past it every night." : "",
         save.sponsor ? `${D.SPONSORS[save.sponsor].name} renewed your contract for three years.` : "", "Valentina Corsa has asked for a rematch. Next season."].filter(Boolean);
       const seen = Object.keys(save.endings).length;
-      return frame(E.title, `Ending ${D.ENDINGS.indexOf(E) + 1} of ${D.ENDINGS.length} · the end of the story, not of the racing`, [...E.lines.map((t) => el("p", "race-line", t)), ...epilogue.map((t) => el("p", "race-note", t)),
+      const turns = D.TURNING_POINTS.filter(([k]) => f[k]).map(([, t]) => t);
+      const people = ["dex", "mara", "benny", "sora", "valentina"].filter((id) => save.rivals[id]).map((id) => {
+        const st = C.rivalStage(save, id); return el("div", "race-endperson", portraitOf(id, 72), el("b", "", D.DRIVERS[id].name.split(" ")[0]), el("span", "race-sub", { feud: "Feud", rival: "Rival", respect: "Respect", ally: "Ally", stranger: "" }[st])); });
+      const crew = Object.entries(save.crew.members).filter(([, m]) => m.hired).map(([id, m]) => el("div", "race-endperson", portraitOf(id, 72), el("b", "", D.CREW[id].name.split(" ")[0]), el("span", "race-sub", `Loyalty ${m.loyalty}/10`)));
+      const look = el("div", "race-panel", el("p", "race-lbl", "How you got here"), el("ul", "race-list", ...turns.map((t) => el("li", "race-li", t))),
+        el("p", "race-lbl", "The rivals"), el("div", "race-endrow", ...people), el("p", "race-lbl", "Your crew"), el("div", "race-endrow", ...crew),
+        el("p", "race-note", `${save.stats.wins} wins in ${save.stats.races} races · ${Object.keys(save.garage.owned).length} cars · ${Object.values(save.champWins).reduce((a, b) => a + b, 0)} championship titles`));
+      return frame(E.title, `Ending ${D.ENDINGS.indexOf(E) + 1} of ${D.ENDINGS.length} · the end of the story, not of the racing`, [...E.lines.map((t) => el("p", "race-line", t)), ...epilogue.map((t) => el("p", "race-note", t)), look,
         el("p", "race-note", `You've seen ${seen} of ${D.ENDINGS.length} endings. Other roads: ${D.ENDINGS.filter((e) => e.id !== E.id).map((e) => `${e.title} (${e.needs})`).join(" ")}`),
         el("p", "race-note", "Every district and event stays open. The Champions' Masters is now open."),
         el("div", "race-grid2", btn("Main menu", () => show(mainMenu, { replace: true }), "", { "data-autofocus": "" }), btn("Championships", () => show(champs, { replace: true }), "alt"))], { noBack: true });

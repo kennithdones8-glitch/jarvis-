@@ -252,6 +252,8 @@
       crew: "Summit Works", bio: "Engineer-driver from the ridge. Treats every corner like an equation and usually solves it." },
     valentina: { name: "Valentina Corsa", code: "VAL", color: "#d23c3c", num: 1, personality: "technical", skill: 0.99, car: "countess", lvl: 2,
       crew: "Scuderia Corsa", bio: "“The Countess.” Three-time league champion. Polite, precise, merciless." },
+    rook: { name: "Rook", code: "RK", color: "#2b2d31", num: 13, personality: "aggressive", skill: 0.955, car: "stallion", signature: "vanguard", sigTier: 4, lvl: 1,
+      crew: "Harlan Holdings", bio: "Banned from the League twice, hired by Victor Harlan for the jobs that need a car and no conscience." },
     jarvis: { name: "JARVIS", code: "JRV", color: "#d23c3c", num: 1, personality: "balanced", skill: 0.985, car: "kestrel", lvl: 1,
       crew: "Quick race", bio: "Your assistant, driving for fun in Quick Race." },
     bleu: { name: "Bleu", code: "BLU", color: "#2f7de1", num: 4, personality: "opportunistic", skill: 0.965, car: "lumen", lvl: 1, crew: "Quick race", bio: "" },
@@ -274,6 +276,8 @@
     benny: { skin: "#e0aa82", hair: "#3a2214", style: "slick", jacket: "#8a4fd8", extra: "chain" },
     sora: { skin: "#efcfae", hair: "#f2f2f2", style: "bob", jacket: "#2a2c31", extra: "glasses" },
     valentina: { skin: "#e8bf9a", hair: "#6a1010", style: "long", jacket: "#d23c3c", extra: "earring" },
+    harlan: { skin: "#e6c3a5", hair: "#b8bcc4", style: "slick", jacket: "#1c2433", extra: "glasses" },
+    rook: { skin: "#c99b78", hair: "#0e0e10", style: "buzz", jacket: "#2b2d31", extra: "scar" },
   };
   const CAST = {
     you: { name: "{name}", color: "#e9c44a", initials: "YOU", face: { skin: "#c68863", hair: "#2a1d14", style: "short", jacket: "#e9c44a", extra: "helmet" } },
@@ -284,6 +288,7 @@
     lio: { name: "Lio Marchetti", color: "#7fd44a", initials: "LM", role: "Scout" },
     priya: { name: "Priya Anand", color: "#ff8ad1", initials: "PA", role: "Sponsor manager" },
     theo: { name: "Theo Marsh", color: "#6fb6ff", initials: "TM", role: "Bluewater Fuel" },
+    harlan: { name: "Victor Harlan", color: "#5b6b85", initials: "VH", role: "Harlan Holdings · owner of the League" },
     ...Object.fromEntries(Object.entries(DRIVERS).filter(([k]) => !["jarvis", "bleu", "whitlock"].includes(k))
       .map(([k, d]) => [k, { name: d.name, color: d.color, initials: d.name.split(" ").filter((w) => /^[A-Z]/.test(w)).map((w) => w[0]).join("").slice(0, 2), role: d.crew }])),
   };
@@ -312,12 +317,12 @@
   };
   // Endings, chosen in order: the first whose conditions you meet (racer-career.js endingFor).
   const ENDINGS = [
-    { id: "legend", title: "Legend of Port Kerbside", needs: "Win the Grand Prix with a loyal crew, two allies among the rivals and a championship title.",
+    { id: "legend", title: "Legend of Port Kerbside", needs: "Win the Grand Prix with a loyal crew and two allies among the rivals, and either a championship title or Harlan exposed.",
       lines: ["Every crew in Port Kerbside sends a car to your victory parade.", "Mags renames the Kerbside hairpin after you.", "Valentina asks to drive for Okafor Motors next season."] },
-    { id: "people", title: "The People's Champion", needs: "Win on the underground route, having given the Brickyard kids their share.",
+    { id: "people", title: "The People's Champion", needs: "Win having turned Harlan down, sided with the night crews and looked after the people Harlan was squeezing.",
       lines: ["The night crews paint your number on every wall in Old Town.", "Benny runs a youth racing school with your prize money matched.", "The League grumbles. The city doesn't care."] },
-    { id: "corporate", title: "The Champion of the League", needs: "Win on the League route with a sponsor manager on your crew.",
-      lines: ["Three sponsors fight over your next contract.", "Priya negotiates a factory deal for Okafor Motors.", "Your face is on a billboard on the Harbour straight."] },
+    { id: "corporate", title: "The Champion of the League", needs: "Win in Harlan's colours, or on the League route with a sponsor manager on your crew.",
+      lines: ["Three sponsors fight over your next contract.", "Your face is on a billboard on the Harbour straight.", "The trophy is Harlan's. The money is yours. Mostly."] },
     { id: "lone", title: "The Lone Wolf", needs: "Win the Grand Prix with two feuds or a crew that doesn't trust you.",
       lines: ["You won. The garage is quiet afterwards.", "Nobody from the old crews comes to the party.", "The trophy looks good on an empty shelf."] },
     { id: "champion", title: "Kerbside Champion", needs: "Win the Kerbside Grand Prix.", lines: [] },
@@ -442,7 +447,8 @@
         { id: "c3-league", title: "League Round: Kerbside", track: "kerbside", mode: "circuit", laps: 3, field: ["otto", "benny", "mara", "dex", "pip"], time: "dusk", weather: "dry", tier: 3,
           goal: { type: "place", max: 2 },
           intro: [L("mags", "Full grid. League points. The ridge teams are watching."), L("otto", "Back where you started. Show them how much you've learned.")],
-          win: [L("mags", "Summit Works asked for your number. That's never happened to a rookie."), L("jarvis", "The ridge roads are open to you.")],
+          win: [L("mags", "Summit Works asked for your number. That's never happened to a rookie."), L("mags", "And Victor Harlan was in the tower tonight. He bought the League last month. He was watching you, {name}."),
+            L("nia", "Harlan. That's the company that took Dad's engine."), L("jarvis", "The ridge roads are open to you.")],
           lose: [L("otto", "Second-best still learns something. Go again.")],
           rewards: { district: "ridge", car: "brute" } },
       ] },
@@ -476,9 +482,11 @@
           goal: { type: "survive", max: 2 },
           choice: { when: "before", prompt: "Two roads to the championship. Mags wants you in the League's elite programme; Benny says the real racing is underground.", options: [
             { label: "The League route: sponsors, rules, the tower's respect", flags: { route_league: true }, respect: { valentina: 1 }, loyalty: { priya: 1 },
-              lines: [L("mags", "Good. The League looks after its own. Mostly.")] },
+              consequence: "You race Harlan's League: the qualifier runs under his stewards in Old Town, and the underground crews stop calling.",
+              lines: [L("mags", "Good. The League looks after its own. Mostly."), L("harlan", "A sensible choice, {name}. The League rewards sensible people.")] },
             { label: "The underground route: night races, crews, no rules", flags: { route_underground: true }, respect: { benny: 2, dex: 1 }, loyalty: { lio: 1, priya: -1 },
-              lines: [L("benny", "Welcome to the real Port Kerbside. The Night Series is open to you, starting now.")] }] },
+              consequence: "You race with the night crews: Harlan's crackdown chases your qualifier to the docks, and Rook comes looking for you.",
+              lines: [L("benny", "Welcome to the real Port Kerbside. The Night Series is open to you, starting now."), L("harlan", "The underground. How romantic. I'll see you at the docks.")] }] },
           intro: [L("mags", "Six of the best. Rain. One car out each lap. The champion is watching from the tower."),
             L("valentina", "So this is the rookie. Show me something worth my attention.")],
           win: [L("valentina", "Very well. See you at the championship."), L("mags", "That's your invitation. The Kerbside Grand Prix.")],
@@ -488,8 +496,11 @@
     { id: 5, title: "The Championship", district: "park", blurb: "Everything comes back to Kerbside.",
       missions: [
         { id: "c5-qualifier", title: "Qualifier: Old Town", track: "oldtown", mode: "circuit", laps: 3, field: ["valentina", "sora", "dex", "mara", "benny"], time: "night", weather: "rain", tier: 5,
+          alt: [{ if: "route_underground", title: "Qualifier: The Docks", track: "harbour", field: ["valentina", "rook", "dex", "mara", "benny"], weather: "fog" }],
           goal: { type: "place", max: 3 },
-          intro: [L("mags", "Top three qualify for the Grand Prix. No second chances this week."), L("benny", "Odds on you are... honestly, I've stopped taking bets.", "!benny_paid"),
+          intro: [L("mags", "Top three qualify for the Grand Prix. No second chances this week.", "!route_underground"),
+            L("lio", "Underground qualifier, at the docks. Harlan's had the police close every road but this one. Rook's on the grid.", "route_underground"),
+            L("harlan", "My stewards will be watching very closely, {name}. Very closely.", "route_league"), L("benny", "Odds on you are... honestly, I've stopped taking bets.", "!benny_paid"),
             L("benny", "No hard feelings? No. Hard feelings. I'm coming for you today, superstar.", "benny_paid")],
           win: [L("jarvis", "Qualified. Dex is asking for you, {name}.")],
           lose: [L("nia", "Car's fine. You're fine. Again.")],
@@ -499,7 +510,9 @@
           intro: [L("dex", "Ironclad's sponsor walked. Said I'm yesterday's news. One more race, you and me. Where it started.", "dex_respect"),
             L("dex", "Ironclad's sponsor walked because of you. One more race. No rules.", "dex_feud"),
             L("jarvis", "He'll be more aggressive than ever. Let him make the mistake.", "dex_feud"),
-            L("jarvis", "He wants a clean fight. Give him one.", "dex_respect")],
+            L("jarvis", "He wants a clean fight. Give him one.", "dex_respect"),
+            L("dex", "And it wasn't the sponsor's idea. Harlan bought Ironclad's debt and pulled the money. I'm a line in his spreadsheet.", "!dex_free"),
+            L("dex", "No Ironclad, no Harlan, no contract. Just me. Feels lighter than I thought.", "dex_free")],
           win: [L("dex", "Go win the whole thing. Do it for the club.", "dex_respect"), L("dex", "...Fine. You earned it. Don't tell anyone I said that.", "dex_feud")],
           lose: [L("dex", "Still got it."), L("jarvis", "He leaves the door open on exit. You know this.")],
           choice: { when: "after", prompt: "Ironclad is finished. Dex has nowhere to race.", options: [
@@ -515,10 +528,19 @@
         { id: "c5-finale", title: "The Kerbside Grand Prix", track: "kerbside", mode: "circuit", laps: 4, field: ["valentina", "sora", "dex", "mara", "benny"], time: "night", weather: "dry", weatherChange: { at: 28, to: "rain" }, tier: 5,
           goal: { type: "place", max: 1 },
           intro: [L("mags", "The Kerbside Grand Prix. Four laps, night, and rain is on the radar. The whole city is here."), L("pip", "I'm right behind you. Nobody gets past me. Probably.", "crew_pip"),
-            L("otto", "Tyres are perfect. Trust them in the wet.", "crew_otto"), L("valentina", "Good luck, {name}. I mean it."), L("jarvis", "Whatever happens, this has been the best data I've ever logged.")],
+            L("otto", "Tyres are perfect. Trust them in the wet.", "crew_otto"), L("valentina", "Good luck, {name}. I mean it."),
+            L("harlan", "My colours suit you, {name}. Win this and Port Kerbside is ours.", "harlan_signed"), L("nia", "Just drive. We'll talk after.", "harlan_signed"),
+            L("rook", "Mr Harlan sends his regards. And me.", "harlan_refused"),
+            L("mags", "A word before the start: the Grand Prix stewards have been replaced overnight. Victor Harlan is... unavailable for comment.", "harlan_exposed"),
+            L("dex", "Harlan's paint. My driving. Sorry, {name}. Family's family.", "dex_signed"),
+            L("jarvis", "Whatever happens, this has been the best data I've ever logged.")],
           win: [L("mags", "Ladies and gentlemen, your new champion of the Kerbside Grand Prix!"), L("valentina", "Keep the car. The Contessa should belong to the champion."),
             L("dex", "From club night to champion. Ironclad drinks are on me.", "dex_respect"), L("dex", "Fine. FINE. You're the best. Happy?", "dex_feud"),
-            L("nia", "Okafor Motors, champions. Say it again. I want to hear it again."), L("jarvis", "Logged. Champion, {name}. Free roam is yours: every district, every event.")],
+            L("nia", "Okafor Motors, champions. Say it again. I want to hear it again."),
+            L("harlan", "Champion of Harlan Holdings. The contract renews automatically. Read the small print.", "harlan_signed"),
+            L("harlan", "...Enjoy it. I own the circuit you just won on.", "harlan_refused"),
+            L("nia", "And Dad's engine took the flag. He'd have cried. I'm crying.", "nia_engine"),
+            L("jarvis", "Logged. Champion, {name}. Free roam is yours: every district, every event.")],
           lose: [L("valentina", "Next year. I'll be waiting."), L("jarvis", "Go again, {name}. The grid will be here.")],
           rewards: { car: "countess", ending: true } },
       ] },
@@ -555,6 +577,158 @@
     { id: "s-old-charity", district: "oldtown", title: "Youth Club Charity Sprint", track: "oldtown", mode: "sprint", laps: 1, field: ["benny", "pip", "mara"], tier: 3, rep: 0, needFlag: "benny_kind",
       time: "dusk", goal: { type: "place", max: 1 }, respectOnWin: { benny: 2 }, blurb: "The kids you helped are racing for a new roof. Benny's driving for them." },
     { id: "s-ridge-endur", district: "ridge", title: "Ridge 12 Laps", track: "ridge", mode: "endurance", laps: 12, field: ["sora", "valentina", "benny", "mara", "otto"], tier: 5, rep: 190, goal: { type: "place", max: 3 }, weatherChange: { at: 90, to: "rain" } },
+  ];
+  // ---------------------------------------------------------------- Character stories
+  // Personal arcs, raced from headquarters between story missions. Each opens when the story reaches it (and, for
+  // the crew, when they've joined you). Their turning points set flags that change later missions, the finale and
+  // the ending. A mission's alt entries change it when a flag is set (a different track, mode or field).
+  const ARCS = {
+    nia: { who: "nia", title: "The Okafor Engine", blurb: "Nia's father built engines for half this city. Harlan Holdings took the last one.", open: { chapter: 2 }, missions: [
+      { id: "a-nia-1", title: "The Ledger", track: "harbour", mode: "timetrial", laps: 2, field: [], time: "dusk", tier: 2, goal: { type: "time", max: 30 },
+        intro: [L("nia", "Found this in Dad's desk. The garage ledger. Every page since 1994."),
+          L("nia", "Samuel Okafor built engines for half of Port Kerbside. When he got sick, the bank sold his debt to a company called Harlan Holdings."),
+          L("nia", "They took the one thing he never let me touch: the Okafor V8. Said it covered the interest."),
+          L("jarvis", "Harlan Holdings owns the repo yard on the harbour. And, since last month, the Racing League."),
+          L("nia", "Two quick laps of the harbour. I want to see that yard at speed before we decide anything.")],
+        win: [L("nia", "Okay. I know where it is. Next question is how we get it back.")],
+        lose: [L("nia", "Again. I'm not walking into Harlan's yard with a driver who can't find the apex.")] },
+      { id: "a-nia-2", title: "Lot Seven", track: "harbour", mode: "circuit", laps: 3, field: ["rook", "mara", "otto"], time: "night", tier: 3, goal: { type: "place", max: 1 },
+        choice: { when: "before", prompt: "The Okafor V8 sits in Harlan's repo yard as lot seven. How do we get it back?", options: [
+          { label: "Take it back tonight. It's ours.", flags: { nia_steal: true }, loyalty: { nia: 1 }, consequence: "A midnight run out of the repo yard. Harlan will know it was you.",
+            lines: [L("nia", "Midnight, then. Bring the truck. Don't stop for anything.")] },
+          { label: "Win it in the League's auction race.", flags: { nia_buy: true }, consequence: "A clean race for the engine, with Harlan's driver on the grid.",
+            lines: [L("nia", "The legal way. Dad would have liked that. I hate it.")] }] },
+        alt: [{ if: "nia_steal", title: "Midnight at the Repo Yard", mode: "delivery", stops: 4, pace: 290, field: [], weather: "rain", goal: { type: "delivery", cargo: 0.6 } }],
+        intro: [L("harlan", "Lot seven: an Okafor V8, slightly used. Tonight's winner takes it home. Do try, Ms Okafor.", "nia_buy"),
+          L("nia", "That's Rook in the black car. Harlan's hired driver. Don't let him lean on you.", "nia_buy"),
+          L("nia", "Gate's open for four minutes. Four stops to lose anyone following, then the garage.", "nia_steal"),
+          L("jarvis", "The engine's strapped down in the back. Drive smoothly or we're bringing home scrap.", "nia_steal")],
+        win: [L("nia", "It's home. Dad's engine is home."), L("harlan", "Ms Okafor. I'll be sending you an invoice. And a lawyer.", "nia_steal"),
+          L("harlan", "Well driven. A deal is a deal. I always keep mine. Remember that.", "nia_buy")],
+        lose: [L("nia", "Not tonight. It's still there. We go again.")] },
+      { id: "a-nia-3", title: "Samuel's Lap", track: "kerbside", mode: "circuit", laps: 3, field: ["dex", "mara", "pip", "otto"], time: "dusk", tier: 3, goal: { type: "place", max: 1 },
+        rewards: { upgrade: "engine", money: 1500, loyalty: { nia: 3 }, flags: { nia_engine: true } },
+        intro: [L("nia", "It's in. Dad's V8, in your car. He'd have hated the paint."), L("nia", "He used to say an engine remembers who built it. Let's find out."),
+          L("otto", "Samuel and I raced each other in '89. He won. Make it sing, kid.")],
+        win: [L("nia", "...That's the sound. That's exactly the sound."), L("nia", "Thank you. I mean it. Okafor Motors is yours as much as mine now.")],
+        lose: [L("nia", "It's not the engine. It's us. Again.")] }] },
+
+    dex: { who: "dex", title: "Ironclad Blood", blurb: "Harlan bought Ironclad's debt and put his own driver in Dex's seat.", open: { chapter: 3, done: "c1-callout" }, missions: [
+      { id: "a-dex-1", title: "Dad's Garage", track: "kerbside", mode: "rival", laps: 3, field: ["rook"], time: "night", tier: 3, goal: { type: "place", max: 1 }, respectOnWin: { dex: 2 },
+        intro: [L("dex", "Harlan bought Ironclad's debt. First thing he did: put his own driver in my seat."),
+          L("dex", "Rook. Banned from the League twice. Dad thinks he's the future."),
+          L("dex", "I can't race him. I'm not even allowed in the garage. You can.", "!dex_feud"),
+          L("dex", "I know. I'm the last person you'd help. Do it to annoy Harlan, then.", "dex_feud")],
+        win: [L("dex", "Dad watched the whole thing. He didn't say anything. He didn't have to.")],
+        lose: [L("dex", "Yeah. That's what Dad saw too.")] },
+      { id: "a-dex-2", title: "The Seat", track: "oldtown", mode: "circuit", laps: 3, field: ["rook", "dex", "benny", "mara"], time: "night", tier: 4, goal: { type: "place", max: 2 },
+        intro: [L("dex", "Dad says I can have the seat back. If I sign Harlan's contract. One more race to show him what I'm worth.")],
+        win: [L("dex", "Two Ironclad cars, both behind you. Dad's going to make me an offer tonight.")],
+        lose: [L("dex", "Rook's in front of me again. Great.")],
+        choice: { when: "after", prompt: "Dex's father offers him the seat back, if he signs Harlan's contract. Dex asks what you'd do.", options: [
+          { label: "Race for yourself, not for Harlan.", flags: { dex_free: true }, respect: { dex: 3 }, consequence: "Dex walks away from Ironclad and Harlan. He'll be easier to bring onto your team.",
+            lines: [L("dex", "No contract, no seat, no Harlan. Okay. Okay. I'm going to need a ride.")] },
+          { label: "Take the seat. It's your family's garage.", flags: { dex_signed: true }, respect: { dex: 1 }, consequence: "Dex drives Harlan's Ironclad in the Grand Prix.",
+            lines: [L("dex", "Yeah. That's what Dad would want. Thanks. I think.")] }] } }] },
+
+    mara: { who: "mara", title: "The Sea Wall", blurb: "Harlan's marina project is bulldozing Tidewater's boathouse.", open: { chapter: 3, done: "c2-wall" }, missions: [
+      { id: "a-mara-1", title: "High Tide", track: "harbour", mode: "delivery", stops: 5, laps: 1, field: [], time: "dawn", weather: "rain", tier: 3, goal: { type: "delivery", cargo: 0.8 },
+        intro: [L("mara", "Harlan's marina. The bulldozers come Friday. Tidewater's boathouse is in the way."),
+          L("mara", "Thirty years of crew records. Trophies. My mother's helmet. Help me move it before the trucks come."),
+          L("jarvis", "Five drops along the sea wall. The cargo is irreplaceable. Gently.")],
+        win: [L("mara", "Everything's out. Mum's helmet too. I owe you.")], lose: [L("mara", "We'll go again at the next tide. There's still time. Barely.")] },
+      { id: "a-mara-2", title: "Last Race at the Boathouse", track: "harbour", mode: "circuit", laps: 3, field: ["mara", "rook", "pip", "otto"], time: "night", tier: 4, goal: { type: "place", max: 2 },
+        intro: [L("mara", "One last Tidewater race on our own water. Rook's entered. Harlan wants a picture of him winning it.")],
+        win: [L("mara", "No picture for Harlan. Good.")], lose: [L("mara", "He got his picture.")],
+        choice: { when: "after", prompt: "Tidewater has nowhere to go. Mara asks if her crew can work out of Okafor Motors.", options: [
+          { label: "Yes. There's room. (−₭1,500)", flags: { mara_home: true }, money: -1500, respect: { mara: 3 }, loyalty: { nia: 1 }, influence: { harbour: 15 },
+            consequence: "Tidewater moves into your garage: Harbourside backs you (+15% influence) and Mara becomes a close ally.", lines: [L("mara", "Tidewater at Okafor Motors. My mother would laugh.")] },
+          { label: "We can't afford it.", flags: { mara_alone: true }, respect: { mara: -1 }, influence: { harbour: -5 }, consequence: "Tidewater scatters, and Harlan's marina goes ahead.",
+            lines: [L("mara", "Fair. I'd have said the same. Probably.")] }] } }] },
+
+    benny: { who: "benny", title: "House Rules", blurb: "Harlan bought every marker in Old Town. Including Benny's.", open: { chapter: 4, done: "c3-bet" }, missions: [
+      { id: "a-benny-1", title: "Collections", track: "oldtown", mode: "rival", laps: 3, field: ["rook"], time: "night", tier: 4, goal: { type: "place", max: 1 }, respectOnWin: { benny: 2 },
+        intro: [L("benny", "Harlan bought my markers. Every debt in Old Town pays his office now."), L("benny", "Rook collects. Tonight he's collecting from me, on the canal road. Race him for it?"),
+          L("benny", "And yes, I know. You took the youth club's money. Funny how it comes round.", "benny_paid")],
+        win: [L("benny", "Rook went home without his envelope. I could kiss you. I won't.")], lose: [L("benny", "Envelope's gone. So's my watch.")] },
+      { id: "a-benny-2", title: "The Brickyard's Last Night", track: "oldtown", mode: "circuit", laps: 3, field: ["benny", "rook", "dex", "mara", "pip"], time: "night", tier: 4, goal: { type: "place", max: 2 },
+        intro: [L("benny", "Last night race at the Brickyard, maybe ever. Harlan wants the building for flats.")],
+        win: [L("benny", "What a night. What a stupid, perfect night.")], lose: [L("benny", "Not the send-off I wanted.")],
+        choice: { when: "after", prompt: "Benny can keep the Brickyard if someone covers his last payment to Harlan.", options: [
+          { label: "Pay it. (−₭2,500)", flags: { benny_saved: true }, money: -2500, respect: { benny: 3 }, influence: { oldtown: 10 },
+            consequence: "The Brickyard stays open: Old Town backs you (+10% influence) and Benny's on your side for good.", lines: [L("benny", "Nobody's ever paid my debts. I don't know what to do with my face.")] },
+          { label: "It's not my debt.", flags: { benny_lost: true }, respect: { benny: -1 }, influence: { oldtown: -5 }, consequence: "Harlan takes the Brickyard. Old Town's night races end.",
+            lines: [L("benny", "No. It isn't. See you around, superstar.")] }] } }] },
+
+    sora: { who: "sora", title: "The Equation", blurb: "Summit Works lost its funding. Harlan wants Sora's designs.", open: { chapter: 4, done: "c4-trial" }, missions: [
+      { id: "a-sora-1", title: "Data", track: "ridge", mode: "timetrial", laps: 3, field: [], time: "dusk", tier: 4, goal: { type: "time", max: 63 },
+        intro: [L("sora", "Summit Works lost its funding. Harlan Holdings has offered to buy my designs. All of them."),
+          L("sora", "I'd like to prove they're worth more than his offer. Drive your line through the switchbacks for my sensors.")],
+        win: [L("sora", "Seventeen hundredths better than my model. I'll put that in the presentation.")], lose: [L("sora", "The sensors need a cleaner run.")] },
+      { id: "a-sora-2", title: "The Pitch", track: "ridge", mode: "touge", laps: 1, field: ["sora"], time: "dawn", tier: 4, goal: { type: "place", max: 1 },
+        intro: [L("sora", "The investors are on the summit. One run, you and me. Show them the line is real.")],
+        win: [L("sora", "They saw it. Now the question is whose name goes on the data.")], lose: [L("sora", "They saw me win. Not quite the point.")],
+        choice: { when: "after", prompt: "Sora can win her funding back if she uses your telemetry, with your name on it.", options: [
+          { label: "Share it. Put both our names on it.", flags: { sora_shared: true }, respect: { sora: 3 }, unlockCar: "summit", consequence: "Sora keeps Summit Works and offers you her car early.",
+            lines: [L("sora", "Summit Works, with Okafor Motors. It looks right on paper.")] },
+          { label: "Keep it. It's our edge.", flags: { sora_kept: true }, respect: { sora: -1 }, consequence: "You keep your advantage, and Sora sells her designs to Harlan.",
+            lines: [L("sora", "Understandable. Inefficient, but understandable.")] }] } }] },
+
+    valentina: { who: "valentina", title: "The Countess's Secret", blurb: "Valentina has raced for Harlan's money for three years.", open: { done: "c5-countess" }, missions: [
+      { id: "a-val-1", title: "After Hours", track: "kerbside", mode: "rival", laps: 3, field: ["valentina"], time: "night", tier: 5, goal: { type: "place", max: 1 },
+        intro: [L("valentina", "I have raced for Harlan's money for three years. I did not know what it bought until last week."),
+          L("valentina", "The stewards for the Grand Prix are his. Penalties for whoever he chooses."), L("valentina", "Race me once more, with nobody watching. Then decide if I am worth trusting.")],
+        win: [L("valentina", "Good. Then listen.")], lose: [L("valentina", "Not yet, then. Come back when you can beat me.")],
+        choice: { when: "after", prompt: "Valentina has the stewards' emails. Going public ends her contract, and maybe her career.", options: [
+          { label: "Go public together.", flags: { harlan_exposed: true }, respect: { valentina: 3 }, consequence: "Harlan's stewards are removed before the Grand Prix, and the city learns what he did.",
+            lines: [L("valentina", "Together, then. Tomorrow the city will be very loud.")] },
+          { label: "Keep it quiet. Win on the track.", flags: { harlan_hidden: true }, consequence: "The Grand Prix runs under Harlan's stewards.",
+            lines: [L("valentina", "On the track, then. As it should be. I hope you are right.")] }] } }] },
+
+    harlan: { who: "harlan", title: "The Tower", blurb: "Victor Harlan owns the League, the circuit and most of the city's debts. Now he wants a champion.", open: { done: "c5-qualifier" }, missions: [
+      { id: "a-harlan-1", title: "The Exhibition", track: "harbour", mode: "circuit", laps: 3, field: ["rook", "mara", "dex", "sora"], time: "night", tier: 5, goal: { type: "place", max: 3 },
+        intro: [L("harlan", "{name}. Victor Harlan. I own the League, this circuit, and most of the debts in this city."),
+          L("harlan", "I'd like to own a champion. Race my exhibition tonight. We'll talk after."), L("nia", "Whatever he offers, it's got a hook in it.")],
+        win: [L("harlan", "Impressive. Come up to the tower.")], lose: [L("harlan", "Hm. Come up to the tower anyway.")],
+        choice: { when: "after", prompt: "Harlan offers ₭10,000 and the Okafor Motors debt cleared, if you race the Grand Prix in Harlan colours.", options: [
+          { label: "Sign.", flags: { harlan_signed: true }, money: 10000, loyalty: { nia: -3, lio: -2 }, consequence: "₭10,000 and the debt cleared, but Nia and Lio lose faith in you and the Grand Prix becomes Harlan's show.",
+            lines: [L("harlan", "Excellent. Welcome to the future of Port Kerbside."), L("nia", "...I'll be in the garage. Don't follow me.")] },
+          { label: "Refuse.", flags: { harlan_refused: true }, loyalty: { nia: 2 }, consequence: "Harlan sends Rook into the Grand Prix to stop you.",
+            lines: [L("harlan", "A pity. Then I'll beat you the old-fashioned way. With money."), L("nia", "That's my driver.")] }] } }] },
+
+    otto: { who: "otto", title: "One Last Race", blurb: "Otto's knees are done. He wants one more race, beside you.", open: { chapter: 4, hired: "otto" }, missions: [
+      { id: "a-otto-1", title: "One Last Race", track: "ridge", mode: "team", team: true, mate: "otto", laps: 3, field: ["sora", "benny"], time: "dusk", tier: 4, goal: { type: "team" },
+        rewards: { loyalty: { otto: 3 }, flags: { otto_last: true } },
+        intro: [L("otto", "Doctor says no more racing. My wife says no more racing. So: one more race. You and me, a team, on my ridge."), L("otto", "Don't wait for me. I'll be fine. I'll be slow, but fine.")],
+        win: [L("otto", "Thirty years. That's a good last one. Thank you, kid.")], lose: [L("otto", "Not the last one I wanted. Ask me again next week.")] }] },
+    pip: { who: "pip", title: "Shaken", blurb: "Pip crashed at the Ridge and hasn't been the same since.", open: { chapter: 4, hired: "pip" }, missions: [
+      { id: "a-pip-1", title: "Shaken", track: "kerbside", mode: "touge", laps: 1, field: ["pip"], time: "day", tier: 3, goal: { type: "place", max: 1 }, rewards: { loyalty: { pip: 3 }, flags: { pip_back: true } },
+        intro: [L("pip", "Since the crash I brake for corners that aren't there."), L("pip", "Chase me. Push me. If I can't hold you off for one lap, I'll hang up the helmet."), L("nia", "Push him hard. He needs to know he can take it.")],
+        win: [L("pip", "You got me. And I didn't flinch once. Not once!"), L("pip", "Again tomorrow. Same time.")], lose: [L("pip", "I held you off! I held YOU off. Okay. Okay, I'm back.")] }] },
+    lio: { who: "lio", title: "Old Debts", blurb: "Lio owes money he borrowed from Benny. Harlan owns that marker now.", open: { chapter: 4, hired: "lio" }, missions: [
+      { id: "a-lio-1", title: "Old Debts", track: "oldtown", mode: "delivery", stops: 4, laps: 1, field: [], time: "night", tier: 4, goal: { type: "delivery", cargo: 0.5 }, rewards: { loyalty: { lio: 3 }, flags: { lio_clear: true } },
+        intro: [L("lio", "Before I scouted for you I borrowed from Benny. Harlan bought the marker. His office closes at midnight."),
+          L("lio", "Four stops: the cash is in four envelopes with four of my friends. Then his office. Please hurry.")],
+        win: [L("lio", "Paid. Clean. First time in six years I don't owe anyone. Except you.")], lose: [L("lio", "Midnight. Doors locked. Interest doubles. Great.")] }] },
+    priya: { who: "priya", title: "Blacklisted", blurb: "Harlan had Priya fired from Bluewater. She has a new sponsor in mind, if you can impress them.", open: { chapter: 4, hired: "priya" }, missions: [
+      { id: "a-priya-1", title: "Blacklisted", track: "harbour", mode: "sprint", laps: 1, field: ["mara", "rook", "dex"], time: "dusk", tier: 4, goal: { type: "place", max: 1 }, rewards: { money: 4000, loyalty: { priya: 3 }, flags: { priya_corvo: true } },
+        intro: [L("priya", "Bluewater fired me last week. Harlan's board asked them to. I want a sponsor he doesn't own."),
+          L("priya", "Corvo Coffee. Small, independent, loud. They're watching this sprint. Win it.")],
+        win: [L("priya", "Signed. ₭4,000 up front and they hate Harlan as much as I do.")], lose: [L("priya", "Corvo passed. I'll find another one. I always do.")] }] },
+  };
+  // The big turning points, for the ending's look back: the flag, and what it says about your career.
+  const TURNING_POINTS = [
+    ["dex_respect", "You shook Dex's hand on club night."], ["dex_feud", "You told Dex to watch his mirrors."],
+    ["benny_paid", "You kept the Brickyard kids' money."], ["benny_kind", "You gave the Brickyard kids their share."],
+    ["crew_otto", "You brought Otto in as coach."], ["crew_pip", "You brought Pip in as teammate."],
+    ["route_league", "You took the League route."], ["route_underground", "You took the underground route."],
+    ["nia_steal", "You stole the Okafor V8 back from Harlan's yard."], ["nia_buy", "You won the Okafor V8 back in Harlan's auction."],
+    ["dex_free", "You told Dex to race for himself."], ["dex_signed", "You told Dex to take Harlan's seat."],
+    ["mara_home", "You gave Tidewater a home."], ["mara_alone", "You let Tidewater scatter."],
+    ["benny_saved", "You paid Benny's last debt."], ["benny_lost", "You let Harlan take the Brickyard."],
+    ["sora_shared", "You shared your data with Sora."], ["sora_kept", "You kept your data."],
+    ["harlan_exposed", "You and Valentina exposed Harlan's stewards."], ["harlan_hidden", "You kept Harlan's secret and raced anyway."],
+    ["harlan_signed", "You signed Harlan's contract."], ["harlan_refused", "You turned Harlan down."],
   ];
   // Grudge matches: after you and a rival have traded paint three times, they call you out, quoting the real count.
   // Win and the grudge is settled your way; lose and they remember. Their later lines change either way.
@@ -681,7 +855,7 @@
     team: { name: "Team", blurb: "Two teams, points by finishing position." },
   };
 
-  const api = { CARS, CLASS_COST, UPGRADES, AI_PARTS, TYRES, PRESETS, LOOK_KEYS, LOOKS, DRIVERS, CAST, CREW, RIVAL_LINES, ENDINGS, SPONSORS, DISTRICTS, PAR, CHAPTERS, SIDE, RIVAL_CHALLENGES, GRUDGE, CHAMPIONSHIPS, TOURNAMENTS, POINTS, CONTRACTS, TEAM_SEASON, SEASON_PRIZE, CREWS, ACHIEVEMENTS, MODES, TURF, WEEKDAYS, TURF_EVENTS, RUMORS };
+  const api = { CARS, CLASS_COST, UPGRADES, AI_PARTS, TYRES, PRESETS, LOOK_KEYS, LOOKS, DRIVERS, CAST, CREW, RIVAL_LINES, ENDINGS, SPONSORS, DISTRICTS, PAR, CHAPTERS, SIDE, RIVAL_CHALLENGES, GRUDGE, ARCS, TURNING_POINTS, CHAMPIONSHIPS, TOURNAMENTS, POINTS, CONTRACTS, TEAM_SEASON, SEASON_PRIZE, CREWS, ACHIEVEMENTS, MODES, TURF, WEEKDAYS, TURF_EVENTS, RUMORS };
   if (typeof module !== "undefined" && module.exports) module.exports = api;
   else root.KerbsideData = api;
 })(typeof self !== "undefined" ? self : globalThis);

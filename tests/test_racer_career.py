@@ -201,7 +201,7 @@ def test_the_whole_campaign_can_be_finished(pick, level):
     # A simulated player (the AI driving your car; in drift events a corner-committing driver who lifts when the slide
     # gets too big, in the owned car that slides best) plays the story in order, takes choice `pick` everywhere,
     # grinds a classic side event (circuit, sprint, elimination, time trial or drift; it doesn't pit or deliver)
-    # after a loss, and spends like a sensible player.
+    # after a loss, and spends like a sensible player (it only buys a car at least 6% better than the one it drives).
     r = js(f"""
 const save = C.fresh(); save.settings.difficulty = {json.dumps(level)}; let n = 0; const tries = {{}};
 const race = (kind, ev) => {{
@@ -219,7 +219,7 @@ const race = (kind, ev) => {{
 const score = (c) => (c.acc / c.drag) * Math.sqrt(c.grip);
 const spend = () => {{
   const buy = Object.entries(D.CARS).filter(([id, c]) => !save.garage.owned[id] && C.carAvailable(save, id).ok && c.price !== null && c.price <= save.money).sort((a, b) => score(b[1]) - score(a[1]))[0];
-  if (buy && score(buy[1]) > score(D.CARS[save.garage.current])) return C.buyCar(save, buy[0]).ok;
+  if (buy && score(buy[1]) > score(D.CARS[save.garage.current]) * 1.06) return C.buyCar(save, buy[0]).ok;
   return ["engine", "tires", "suspension", "brakes", "nitro"].some((p) => C.buyUpgrade(save, save.garage.current, p).ok);
 }};
 let blocked = null;

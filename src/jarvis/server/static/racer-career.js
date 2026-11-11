@@ -389,12 +389,14 @@
     const f = save.story.flags, cls = ev.cls || ev.aiCls || null;   // aiCls: Free play puts only the opponents in one class
     const list = baseField(save, ev, f).map((d) => (cls && D.CARS[d.car].cls !== cls ? { ...driver(d.id, ev.tier, {}, cls), personality: d.personality, skill: d.skill, name: d.name } : d));
     if (!ev.team) return list;
-    const m = teammate(save), mate = driver(m.id, ev.tier, { personality: "ally", team: "you", name: D.DRIVERS[m.id].name + (m.hired ? " (your crew)" : " (hired gun)") }, cls);
+    const m = ev.mate ? { id: ev.mate, hired: hired(save, ev.mate) } : teammate(save), mate = driver(m.id, ev.tier, { personality: "ally", team: "you", name: D.DRIVERS[m.id].name + (m.hired ? " (your crew)" : " (hired gun)") }, cls);
     return [mate, ...list.filter((d) => d.id !== m.id).map((d) => ({ ...d, team: "them" }))];
   }
   // Story consequences that change who you race and how they drive.
   function baseField(save, ev, f) {
     return (ev.field || []).map((id) => {
+      if (ev.id === "c5-finale" && id === "mara" && f.harlan_refused && !f.harlan_exposed) return driver("rook", ev.tier, { personality: "aggressive", name: "Rook (Harlan Holdings)" });
+      if (ev.id === "c5-finale" && id === "dex" && f.dex_signed) return driver("dex", ev.tier, { personality: "aggressive", name: "Dex Varga (Harlan's Ironclad)" });
       if (ev.id === "c5-finale" && id === "benny" && f.crew_pip) return driver("pip", ev.tier, { personality: "defensive", skill: 0.95, name: "Pip Hollis (your team)", ally: true });
       if (id === "dex" && f.dex_feud) return driver("dex", ev.tier, { skill: Math.min(1.02, D.DRIVERS.dex.skill + (ev.tier - 3) * 0.008 + 0.02) });
       // the rival's stage changes how they drive against you: a feud races harder, an ally gives you room
@@ -406,7 +408,7 @@
     });
   }
   function config(save, ev, kind) {
-    NG = Math.min(5, save.ng || 0);
+    NG = Math.min(5, save.ng || 0); ev = resolve(save, ev);
     const S = save.settings, mode = ev.mode || "circuit", tr = ev.track;
     const par = D.PAR[tr] * (ev.laps || 3);
     const target = mode === "timetrial" ? (ev.goal && ev.goal.type === "time" ? { label: "Target", value: ev.goal.max } : { label: "Gold", value: par })
@@ -432,7 +434,30 @@
 
   // ---------------------------------------------------------------- Story
   const allMissions = () => D.CHAPTERS.flatMap((c) => c.missions.map((m) => ({ ...m, chapter: c.id })));
-  const mission = (id) => allMissions().find((m) => m.id === id);
+  const arcMissions = () => Object.entries(D.ARCS).flatMap(([arc, a]) => a.missions.map((m, i) => ({ ...m, arc, arcIndex: i, scene: m.scene || { focus: a.who } })));
+  const mission = (id) => allMissions().find((m) => m.id === id) || arcMissions().find((m) => m.id === id);
+  // A mission as it is for this save: alt entries apply when their flag is set (a different track, mode or field).
+  function resolve(save, ev) {
+    if (!ev || !ev.alt) return ev;
+    let out = ev;
+    for (const a of ev.alt) if (save.story.flags[a.if]) { const { if: _, ...rest } = a; out = { ...out, ...rest }; }
+    return out;
+  }
+  // Character stories: open when the story reaches them; one mission at a time, in order.
+  function arcOpen(save, a) {
+    const o = a.open || {};
+    if (o.chapter && !(save.story.chapter >= o.chapter || save.story.ended)) return { ok: false, why: `Opens in chapter ${o.chapter}.` };
+    if (o.done && !save.story.done[o.done]) { const m = mission(o.done); return { ok: false, why: `Opens after “${m ? m.title : o.done}”.` }; }
+    if (o.hired && !hired(save, o.hired)) return { ok: false, why: `${D.CREW[o.hired].name} has to join your crew.` };
+    return { ok: true };
+  }
+  function arcs(save) {
+    return Object.entries(D.ARCS).map(([id, a]) => {
+      const op = arcOpen(save, a), ms = a.missions.map((m, i) => ({ ...m, arc: id, arcIndex: i, scene: m.scene || { focus: a.who } }));
+      const done = ms.filter((m) => save.story.done[m.id]).length, next = op.ok ? ms.find((m) => !save.story.done[m.id]) || null : null;
+      return { id, who: a.who, title: a.title, blurb: a.blurb, open: op.ok, why: op.why, done, total: ms.length, next, complete: done === ms.length };
+    });
+  }
   function missions(save) {
     return D.CHAPTERS.map((c) => ({ ...c, state: c.id < save.story.chapter || save.story.ended ? "done" : c.id === save.story.chapter ? "current" : "locked",
       missions: c.missions.map((m, i) => ({ ...m, chapter: c.id, state: save.story.done[m.id] ? "done" : c.id === save.story.chapter && c.missions.slice(0, i).every((x) => save.story.done[x.id]) ? "available" : "locked" })) }));
@@ -448,12 +473,14 @@
     const m = mission(missionId), opt = m && m.choice && m.choice.options[i];
     if (!opt) return { ok: false, error: "No such choice." };
     if (save.story.choices[missionId] !== undefined) return { ok: false, error: "Already chosen." };
+    if (opt.money < 0 && save.money < -opt.money) return { ok: false, error: `You need ₭${(-opt.money).toLocaleString()} for that.` };
     save.story.choices[missionId] = i;
     Object.assign(save.story.flags, opt.flags || {});
     if (opt.sponsor) save.sponsor = opt.sponsor;
     if (opt.respect) for (const [id, v] of Object.entries(opt.respect)) { const r = rival(save, id); r.respect = Math.max(-10, Math.min(10, r.respect + v)); }
     if (opt.grant && opt.grant.upgrade) { const st = save.garage.owned[save.garage.current]; st.upgrades[opt.grant.upgrade] = Math.min(3, st.upgrades[opt.grant.upgrade] + 1); }
     if (opt.money) save.money += opt.money;
+    if (opt.unlockCar && !save.garage.unlocked.includes(opt.unlockCar)) save.garage.unlocked.push(opt.unlockCar);
     if (opt.loyalty) for (const [id, v] of Object.entries(opt.loyalty)) loyal(save, id, v);
     if (opt.influence) for (const [d, v] of Object.entries(opt.influence)) save.world.influence[d] = Math.max(0, Math.min(100, influence(save, d) + v));
     if (opt.flags && opt.flags.crew_otto) hire(save, "otto");
@@ -576,8 +603,10 @@
     const f = save.story.flags, ids = Object.keys(save.rivals).filter((id) => D.RIVAL_LINES[id]);
     const allies = ids.filter((id) => rivalStage(save, id) === "ally").length, feuds = ids.filter((id) => rivalStage(save, id) === "feud").length;
     const champs = Object.values(save.champWins).reduce((a, b) => a + b, 0), loyalty = crewLoyalty(save);
-    if (loyalty >= 7 && allies >= 2 && champs >= 1) return "legend";
-    if (f.route_underground && f.benny_kind) return "people";
+    if (loyalty >= 7 && allies >= 2 && (champs >= 1 || f.harlan_exposed)) return "legend";
+    if (f.harlan_signed) return "corporate";
+    const helped = ["benny_kind", "benny_saved", "mara_home", "sora_shared", "dex_free"].filter((k) => f[k]).length;
+    if ((f.route_underground && f.benny_kind) || (f.harlan_refused && f.route_underground && helped >= 2)) return "people";
     if (f.route_league && hired(save, "priya")) return "corporate";
     if (feuds >= 2 || loyalty <= 3) return "lone";
     return "champion";
@@ -726,6 +755,20 @@
       }
       if (ev.choice && ev.choice.when === "after" && save.story.choices[ev.id] === undefined) out.choice = ev.choice;
     } else if (kind === "story") out.lines = lines(save, ev.lose);
+    if (kind === "arc") {
+      if (passed) {
+        const first = !save.story.done[ev.id]; save.story.done[ev.id] = true; out.lines = lines(save, ev.win);
+        const R2 = ev.rewards;
+        if (first && R2) {
+          if (R2.money) { save.money += R2.money; out.notes.push(`Reward: ₭${R2.money.toLocaleString()}.`); }
+          if (R2.upgrade) { const st = save.garage.owned[save.garage.current]; if (st.upgrades[R2.upgrade] < 3) { st.upgrades[R2.upgrade]++; out.notes.push(`Reward: a free ${D.UPGRADES[R2.upgrade].name.toLowerCase()} level on your ${D.CARS[save.garage.current].name}.`); } }
+          if (R2.loyalty) for (const [id, v] of Object.entries(R2.loyalty)) loyal(save, id, v);
+          if (R2.flags) Object.assign(save.story.flags, R2.flags);
+        }
+        if (ev.choice && ev.choice.when === "after" && save.story.choices[ev.id] === undefined) out.choice = ev.choice;
+        const a = D.ARCS[ev.arc]; if (a && a.missions.every((m) => save.story.done[m.id])) out.notes.push(`Story complete: ${a.title}.`);
+      } else out.lines = lines(save, ev.lose);
+    }
     if (kind === "side" && passed) save.sideDone[ev.id] = (save.sideDone[ev.id] || 0) + 1;
     if (passed && ev.respectOnWin) for (const [id, v] of Object.entries(ev.respectOnWin)) { const r = rival(save, id); r.respect = Math.max(-10, Math.min(10, r.respect + v)); }
     if (ev.grudge && D.GRUDGE[ev.grudge] && !save.story.flags[`grudge_${ev.grudge}_won`] && !save.story.flags[`grudge_${ev.grudge}_lost`]) {
@@ -943,7 +986,7 @@
 
   const api = { influence, runs, weekday, featured, secretEvents, turfEvents, rivalSim, worldTick, hire, hired, loyal, crewLoyalty, rivalStage, rivalReaction, endingFor, carAvailable, setTune, repair, repairCost, lookOf, fits, collection, newlyAvailable, collectionCheck, VERSION, KEY, BAK, CORRUPT, LEGACY, fresh, carState, validate, migrateV2, load, persist, exportSave, importSave,
     level, xpFor, carStats, bars, upgradeCost, buyCar, buyUpgrade, setLook, driver, playerRacer, config, missions, nextMission, mission,
-    lines, needsChoice, choose, goalMet, goalText, sideEvents, grudgeCheck, pursuitHeats, pursuitEvent, policeSpec, carAllowed, teammate, classCar,
+    lines, needsChoice, choose, arcs, arcOpen, resolve, goalMet, goalText, sideEvents, grudgeCheck, pursuitHeats, pursuitEvent, policeSpec, carAllowed, teammate, classCar,
     tourneyOpen, startTourney, tourneyEvent, wagerOptions, placeWager, setTeam, teamLivery, contractOffers, signContract, dropContract, contractTick, teamTable, newGamePlus, rivalEvents, champOpen, champEvent, startChamp, champTable, applyResult, medal, grant };
   if (typeof module !== "undefined" && module.exports) module.exports = api;
   else root.KerbsideCareer = api;
