@@ -35,24 +35,67 @@
   an older Intel Mac. It recommends the richest level that stays smooth (40 ms a frame or less); nothing changes
   unless you press Use, and your setting is restored after the check. Auto still adjusts on its own.
 
-### Games: Kerbside Grand Prix, a race against JARVIS
+### Games: Kerbside Grand Prix, next generation
 
-- **Race** joins the Games page (◆ tab): a top-down, three-lap race against JARVIS (#1) and two other cars. Five red
-  lights, then go; grass, gravel and water cost you speed, cars bump each other. A timing tower, lap times, a
-  minimap and "Wrong way" warnings; at the flag, your place, each lap and the full classification.
-- **Three tracks**, picked on the start screen: Kerbside Circuit (parkland, a hairpin), Harbour Loop (long straights
-  by the water, one chicane) and Ridge Hairpins (switchbacks among the rocks). A test checks no track runs into itself.
-- **Nitro.** The meter under your speed fills as you drive on the tarmac; hold Space (or the NOS pad) for about
-  2.5 seconds of extra speed. On Medium and Hard the other drivers use it on straights too; on Easy they don't.
-- **Ghost car.** A see-through replay of your best flying lap (lap 2 or 3, never the standing start) on each track,
-  from lap 2 on. A faster lap replaces it at once. On/off on the start screen.
-- Easy, Medium and Hard set how fast JARVIS and the others drive. Arrow keys or WASD, P pauses; on an iPhone or iPad,
-  on-screen steering, brake, gas and NOS pads. Leaving the Games page pauses the race.
-- Laps count from continuous progress round the track, so reversing over the line never scores one (test). Best lap
-  and best race (per track and level), wins and ghosts are kept in this browser only. Written for JARVIS
-  (`static/racer.js`, `static/racer.css`): no library, model or network; the CSP is unchanged.
-- **Standalone copy:** `python games/kerbside/make_zip.py` builds `kerbside-grand-prix.zip` (open `index.html`, no
-  JARVIS or internet needed), from the same game files.
+- **Police pursuit**, a mode of its own apart from the Grand Prix. Heat 1–5; units follow your line, pin you when you
+  slow, cut in from ahead, ram and set roadblocks (always with a gap) from heat 3; four hard hits disable a unit.
+  Escape by getting out of sight (the Ridge tunnel and Old Town bridges hide you faster) or keeping well clear; get
+  pinned and you're busted. Escaping pays 30% of the bounty; a fine never takes more than half your money; each heat
+  unlocks by escaping the one below.
+- **New race types**: drag (launch revs, six gears, shift near the top; SHIFT pad on touch), touge (pull 66 m clear
+  and it's over), endurance (tyre wear up to 30% grip, pit box with fresh tyres and repairs, the AI pits too),
+  delivery (checkpoints against the clock, fragile cargo) and 2 v 2 team races (the turf wars). Class-restricted
+  events, a Storm Series with changing weather, two knockout tournaments, wagers on rival rematches.
+- **Free play is a race creator**: any mode, laps, opponents and their car class, AI difficulty, nitro / collisions /
+  damage on or off, weather that changes mid-race.
+- **Garage**: 28 cars to collect (each with weight, turbo, grip and handling of its own), nine upgrades, tuning with
+  presets, a live comparison and a test lap, and many more looks; damage can carry over until repaired.
+- **Story and world**: rivals remember what happened on track and move between feud, rival, respect and ally (which
+  changes how they race you); a crew of six with perks; new choices; five endings; districts with home crews to
+  take over, a weekly special, rumours and secret events, and rivals who race each other between your races.
+- **Team and career**: name and colours, eight sponsor contracts, a team championship against the home crews in
+  ten-day seasons, and New Game+ (keep your cars and money; quicker rivals, bigger prizes).
+- **Sound, replays, photos**: an engine voice per car type with gear changes and turbo, crowd, rain, sirens, police
+  radio, music that follows the race; replays of every race with four cameras and highlights; a photo mode with
+  filters that saves a PNG. All synthesised or drawn in the browser: no audio or image files.
+- **Graphics**: a cinematic chase camera, letterbox moments, a podium, a living menu backdrop, police light bars,
+  mode meters and track markings (pit box, delivery gates, drag lines).
+- Code: the race view moved to `racer-render.js`; the new modes live in `racer-modes.js` behind four hooks; the save
+  is v4 (v3 saves upgrade in place, nothing lost). 74 game tests; the dashboard and standalone page were checked in
+  Chromium on desktop and iPhone emulation. Not yet checked on a real iPhone, and nobody has listened to the audio.
+
+### Games: Kerbside Grand Prix becomes a full racing game
+
+- **Cinematic graphics pass.** A chase camera that turns with your car (spring-smoothed, speed and nitro zoom,
+  impact shake; Classic north-up in Settings, and automatically with reduced motion), letterboxed orbit shots at the
+  start and finish, and a menu background where the field actually races. Cars are pre-rendered sprites with
+  shading, glass, panel lines and outlines, plus live wheels (steering, tread), brake lights, headlights, underglow at
+  night and ribbon nitro trails. Tracks gain a textured road, bevelled kerbs, a start gantry whose lights follow the
+  countdown, billboards, chevron boards, and their own scenery: a pond and flower beds, piers and bobbing boats,
+  neon roof strips and festoon lights over the street, pines and autumn trees. Light: a vivid day grade, a sunset
+  sky with lens flare at dusk, a glow pass at night (neon, signs, windows, lamps) with wet-road reflections,
+  drifting cloud shadows, lightning in night rain. A canvas speedometer (gear, nitro ring), a big position readout,
+  lap progress, a heading arrow on the minimap; slanted menus with a wordmark, light sweeps and screen transitions.
+  The physics, AI, tracks and saves are unchanged.
+- **Career.** Five chapters, 18 story missions in an original setting (Port Kerbside): a rookie with a rebuilt car,
+  a mechanic, a league organiser, six rivals with personalities, two sponsors, and JARVIS as your race engineer on
+  the radio. Short dialogue scenes with portraits; choices (how you treat Dex, which sponsor, who joins your crew)
+  change later opponents, dialogue and the ending. Rivals keep a win/loss record and respect.
+- **World map** of four districts with side events revealed by reputation, rival rematches, a first-visit bonus.
+- **Modes:** circuit, sprint, elimination, time trial (medals), drift (chains and multipliers), rival; three
+  championships with points; Quick Race against JARVIS; Free Play with any track, laps, field, time and weather.
+- **Garage:** eight cars in four classes, five upgrade paths with real physics effects, paint, decals, numbers,
+  wheels, body kits, spoilers; prices scale by class. A fourth track, Old Town Streets, with canal bridges.
+- **Driving:** tyres now have a cornering limit (simulation showed every corner could be taken flat out), AI corner
+  speeds come from each car's grip and steering, AI personalities overtake, block and recover, rain costs grip,
+  contact causes damage, cars that leave the world are put back on the road.
+- **Looks and sound:** 2.5D buildings, trees, rocks and cranes; day, dawn, dusk and night with headlights and lamps;
+  rain and fog; smoke, dust, spray, sparks and confetti; start and finish cinematics; quality levels that adapt.
+  Sound is synthesised (engine, tyres, nitro, impacts, lights, music) and fully optional.
+- **Saves:** versioned (v3) with validation, a backup on every write, damaged saves kept rather than erased,
+  migration of the earlier Quick Race records, export/import with a checksum, rewards paid once per race.
+- Tests: `test_racer_engine.py`, `test_racer_career.py` (incl. two complete simulated campaigns); `test_racer.py`
+  keeps the original rules. Not yet confirmed on a real iPhone. Notes: `games/kerbside/ARCHITECTURE.md`.
 
 ### Games: Connect Four, Checkers, and a chess coach
 

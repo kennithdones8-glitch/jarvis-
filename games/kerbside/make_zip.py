@@ -10,7 +10,7 @@ STATIC = HERE.parents[1] / "src" / "jarvis" / "server" / "static"
 FILES = {
     "index.html": HERE / "index.html",
     "README.txt": HERE / "README.txt",
-    "racer.js": STATIC / "racer.js",
+    **{n: STATIC / n for n in ("racer-data.js", "racer-career.js", "racer-audio.js", "racer.js", "racer-modes.js", "racer-render.js", "racer-ui.js")},
     "racer.css": STATIC / "racer.css",
     **{f"fonts/{n}": STATIC / "fonts" / n for n in ("rajdhani-500.woff2", "rajdhani-600.woff2", "rajdhani-700.woff2", "OFL-Rajdhani.txt")},
 }

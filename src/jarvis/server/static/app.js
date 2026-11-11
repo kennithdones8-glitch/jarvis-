@@ -1550,12 +1550,11 @@ function renderCK() {
 function renderRace() {
   const R = window.JarvisRacer, el = gameBody();
   if (!el || el.querySelector(".race-stage")) return;
-  const status = h("p", { class: "chess-turn", role: "status", "aria-live": "polite" }, "Pick a track and a level, then start.");
+  const status = h("p", { class: "chess-turn", role: "status", "aria-live": "polite" }, "Kerbside Grand Prix: pick a mode.");
   const stage = R.mount({ onStatus: (t) => { status.textContent = t; } });
   fill(el, h("div", { class: "race" }, stage, h("div", { class: "chess-side" }, status,
-    h("div", { class: "row" }, h("button", { class: "btn btn-sm", type: "button", onclick: () => R.restart() }, "Restart race")),
-    h("p", { class: "d-why" }, "Three tracks: Kerbside Circuit, Harbour Loop and Ridge Hairpins. Arrow keys or WASD to drive, Space for nitro, P to pause. On a phone or iPad, use the pads on the track."),
-    h("p", { class: "d-why" }, "Your ghost replays your best flying lap on each track. The race runs in this browser: no model, nothing sent anywhere. Best times and ghosts are saved here."))));
+    h("p", { class: "d-why" }, "A racing career in five chapters across four districts, 28 cars to collect and tune, police pursuits, drag, touge, endurance, deliveries, team races, championships, tournaments, sponsors, Quick Race against JARVIS and Free Play, with replays and a photo mode. Arrow keys or WASD to drive, Space for nitro, E to shift in a drag race, P to pause; on a phone or iPad, use the pads."),
+    h("p", { class: "d-why" }, "The game runs in this browser: no model, nothing sent anywhere. Your career is saved here; export it from the game's Settings to keep a copy."))));
 }
 function openGames() {
   if (!GM.loaded) { gamesLoad(); GM.loaded = true; }

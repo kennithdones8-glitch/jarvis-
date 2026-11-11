@@ -15,7 +15,7 @@ from jarvis.server.app import STATIC
 
 NODE = shutil.which("node")
 RACER = str(STATIC / "racer.js")
-TRACKS = ["kerbside", "harbour", "ridge"]
+TRACKS = ["kerbside", "harbour", "ridge", "oldtown"]
 
 
 def js(code: str):
@@ -87,7 +87,7 @@ for (let k = 0; k < t.N + 40; k++) {                 // a whole lap the wrong wa
   i = (i - 1 + t.N) % t.N; me.x = t.P[i][0]; me.y = t.P[i][1]; me.vx = me.vy = 0;
   R.step(r, 1 / 120, { steer: 0, thr: false, brk: false });
 }
-console.log(JSON.stringify({ laps: me.laps, prog: me.prog, events: r.events.filter((e) => e.type !== "go").length }));""")
+console.log(JSON.stringify({ laps: me.laps, prog: me.prog, events: r.events.filter((e) => e.type === "lap" || e.type === "finish").length }));""")
     assert r["laps"] == 0 and r["events"] == 0 and r["prog"] < 0
 
 
