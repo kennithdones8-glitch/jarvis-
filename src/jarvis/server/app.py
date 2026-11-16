@@ -1508,6 +1508,9 @@ class Dashboard:
             return self._json(h, 200, self.kernel.audit.entries(task_id=m.group(1), limit=300))
         if url.path == "/api/briefing":
             return self._json(h, 200, self.briefing())
+        if url.path == "/api/weekly":   # the last 7 days, counted from the records (read-only)
+            from .. import weekly
+            return self._json(h, 200, weekly.review(self.kernel))
         if url.path == "/api/objectives":
             return self._json(h, 200, {"objectives": _objectives(self.kernel)})
         if url.path == "/api/files/search":   # your approved folders, if file search is on (Mac only)
@@ -1803,6 +1806,10 @@ class Dashboard:
                 return {"task_id": self.run_plan(m.group(1))}
             self.jobs.pop(m.group(1), None)
             self._forget_job(m.group(1))
+            return {"ok": True}
+        if path == "/api/weekly/seen":
+            from .. import weekly
+            weekly.mark_seen(k)
             return {"ok": True}
         if path == "/api/whatsnew/seen":
             from .. import whatsnew

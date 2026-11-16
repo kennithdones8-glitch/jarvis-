@@ -1939,6 +1939,34 @@ async function dismissSuggestion(it) {
   loadIntel();
 }
 const INITIATIVE_SOURCE = { mission: "Mission", health: "Problem", project: "Project", lesson: "Lesson", proposal: "Improvement" };
+// Your week: counted from the tasks, approvals, objectives and audit log of the last 7 days (nothing estimated)
+const MISSION_WORD = { completed: "completed", failed: "failed", cancelled: "stopped", awaiting_approval: "waiting for you" };
+async function loadWeekly() {
+  const box = $("#weekly");
+  box.replaceChildren(h("div", { class: "empty" }, "Loading…"));
+  let r;
+  try { r = await api("/api/weekly"); } catch (e) { box.replaceChildren(h("div", { class: "empty" }, `Couldn't build your week: ${e.message}`)); return; }
+  const day = (iso) => new Date(iso).toLocaleDateString([], { weekday: "short", day: "numeric", month: "short" });
+  const tile = (n, label) => h("div", { class: "wk" }, h("b", {}, String(n)), h("span", {}, label));
+  const m = r.missions, dc = r.decisions, s = r.safety, u = r.upkeep;
+  $("#weeksum").textContent = `${day(r.from)} – ${day(r.to)}`;
+  box.replaceChildren(
+    r.audit_ok ? null : h("div", { class: "brief-sec alert" }, h("h3", {}, "Audit log problem"), h("p", {}, "The audit log's chain doesn't verify, so these counts may be incomplete. See Trust.")),
+    h("div", { class: "job-title" }, r.headline),
+    h("div", { class: "week-grid" },
+      tile(m.started, "missions started"), tile(m.completed, `completed (${m.verified} verified)`), tile(m.failed, "failed"), tile(m.open, "still open"),
+      tile(dc.asked, "decisions asked"), tile(dc.approved, "approved"), tile(dc.rejected, "declined"),
+      tile(r.models.on_mac, "model calls on this Mac"), tile(r.models.claude, "sent to Claude"),
+      tile(s.refused_by_rules, "refused by your rules"), tile(s.kept_private, "kept private"),
+      tile(r.memory.added, "memories added"), tile(u.backups, `backups${u.backup_failures ? ` (${u.backup_failures} failed)` : ""}`)),
+    m.list.length ? h("div", { class: "brief-sec" }, h("h3", {}, "Missions"), h("ul", { class: "week-list" },
+      m.list.map((t) => h("li", {}, `${t.goal} — ${MISSION_WORD[t.state] || t.state.replace("_", " ")}`)))) : null,
+    r.objectives.length ? h("div", { class: "brief-sec" }, h("h3", {}, "Objectives"), h("ul", { class: "week-list" },
+      r.objectives.map((o) => h("li", {}, `${o.outcome} (${o.state}): ${plural(o.missions_moved, "mission")} moved, ${o.missions_done} done`)))) : null,
+    h("p", { class: "hl-sub" }, "Counted from JARVIS's own records for the last 7 days: the missions table, your decisions, your objectives and the audit log. Nothing here is estimated or written by a model."));
+  api("/api/weekly/seen", {}).catch(() => {});
+}
+
 async function loadIntel() {
   const box = $("#intel");
   box.replaceChildren(h("div", { class: "empty" }, "Loading…"));
@@ -2710,7 +2738,7 @@ const PROJ_MODULES = [["workflow", "Workflow map"], ["architecture", "Software a
 
 // ---------------------------------------------------------------- shell: sections, badges, sidebar, drafts
 // Sections are views of the same live page: switching never pauses, resumes or changes anything.
-const VIEWS = ["home", "command", "workspace", "missions", "objectives", "decisions", "games", "memory", "systems", "evolution", "intelligence", "projects"];
+const VIEWS = ["home", "command", "workspace", "missions", "objectives", "decisions", "games", "memory", "systems", "evolution", "intelligence", "weekly", "projects"];
 function viewFromHash() {
   const m = location.hash.match(/^#\/(\w+)/);
   return m && VIEWS.includes(m[1]) ? m[1] : null;
@@ -2723,7 +2751,7 @@ function setView(view) {
   document.querySelectorAll("#sidenav a[data-view]").forEach((a) => {
     if (a.dataset.view === view) a.setAttribute("aria-current", "page"); else a.removeAttribute("aria-current");
   });
-  if (changed) { window.scrollTo(0, 0); if (ui.data) renderMissions(ui.data.tasks); if (view === "intelligence") loadIntel(); if (view === "evolution") loadEvolution(); if (view === "projects") loadProjects(true); if (view === "games") openGames(); if (view === "command" && ui.data) { ui.ccKey = ""; renderCommand(ui.data); } }
+  if (changed) { window.scrollTo(0, 0); if (ui.data) renderMissions(ui.data.tasks); if (view === "intelligence") loadIntel(); if (view === "evolution") loadEvolution(); if (view === "projects") loadProjects(true); if (view === "games") openGames(); if (view === "weekly") loadWeekly(); if (view === "command" && ui.data) { ui.ccKey = ""; renderCommand(ui.data); } }
 }
 function badge(name, n) {
   const el = $(`#badge-${name}`);

@@ -104,6 +104,14 @@ def candidates(kernel, *, health: dict[str, Any] | None = None, now: datetime | 
                              value=2, urgency=2, confidence=0.9, href="#/memory"))
     except Exception:  # noqa: BLE001
         pass
+    try:   # Sundays (and the next two days until you've looked): your week, counted from the records
+        from . import weekly
+        if weekly.due(kernel, now=now):
+            r = weekly.review(kernel, now=now)
+            out.append(_item(f"weekly:{r['week']}", "weekly", "Your week", r["headline"],
+                             value=2, urgency=2, confidence=1.0, href="#/weekly"))
+    except Exception:  # noqa: BLE001
+        pass
     try:
         from .objectives import feed_items
         out += feed_items(kernel)

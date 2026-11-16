@@ -1614,6 +1614,7 @@ body[data-view="objectives"] .recent-panel, body[data-view="objectives"] .summar
 
 /* ---- games: chess with JARVIS ---- */
 body:not([data-view="games"]) .games-panel { display: none; }
+body:not([data-view="weekly"]) .weekly-panel { display: none; }
 body[data-view="games"] .missions-panel, body[data-view="games"] .decision-panel, body[data-view="games"] .projects-panel,
 body[data-view="games"] .objectives-panel, body[data-view="games"] .memory-panel, body[data-view="games"] .systems-panel,
 body[data-view="games"] .intel-panel, body[data-view="games"] .recent-panel, body[data-view="games"] .summary-panel,
@@ -1667,3 +1668,10 @@ body[data-view="games"] .context-panel { display: none; }
 .race { display: grid; gap: 14px; padding: 0 10px 8px; }
 @media (min-width: 1100px) { .race { grid-template-columns: minmax(0, 1fr) 260px; align-items: start; } }
 @media (max-width: 560px) { .race { padding: 0 0 8px; } }
+
+/* Your week (weekly review): counted from the records */
+.week-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; margin: 10px 0; }
+.week-grid .wk { border: 1px solid var(--line, rgba(255,255,255,.12)); border-radius: 8px; padding: 10px 12px; }
+.week-grid .wk b { display: block; font-size: 22px; }
+.week-grid .wk span { font-size: 13px; color: var(--muted, #b9aa91); }
+.week-list { margin: 6px 0; padding-left: 18px; font-size: 14px; }

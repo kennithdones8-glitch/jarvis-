@@ -6,6 +6,15 @@
   before planning, nothing left out, retries routed by the question, the first-event check). Both sides kept; one
   conflict: `Orchestrator.plan` runs main's premise check first and keeps this branch's replan history.
 
+### Your week
+
+- **Weekly review** ("Your week" in the menu). The last seven days on one page: missions started, completed (and how
+  many verified), failed and still open; the decisions you made; how your objectives moved; model calls on this Mac
+  and to Claude; what your rules refused or kept private; memories added; backups, updates and tool errors. All
+  counted from JARVIS's own records (tasks, approvals, objectives, the audit log); nothing estimated or written by a
+  model. If the audit log's chain doesn't verify, it says so first. On Sundays (and until Tuesday if you haven't
+  looked) "Your week" appears in Worth your attention.
+
 ### Ask about your files
 
 - **Chat answers from your files** when file search is on: "What does my lease say about pets?" finds the files that
