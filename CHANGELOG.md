@@ -9,6 +9,13 @@ owner's Mac and iPhone: see the checklist in the pull request.
   before planning, nothing left out, retries routed by the question, the first-event check). Both sides kept; one
   conflict: `Orchestrator.plan` runs main's premise check first and keeps this branch's replan history.
 
+### Trials fail closed where there is no sandbox (Stage 5 groundwork)
+
+- A level-6 trial (and "Draft a fix", which uses one) used to run with a bare environment only on anything that isn't
+  macOS. It now refuses there: no sandbox, no trial. Your Mac is unchanged (sandbox required, as before). Only an
+  environment flag set by the person developing JARVIS (`JARVIS_TRIAL_UNSANDBOXED=1`, used by the test suite on
+  Linux) overrides, and the flag cannot unsandbox a Mac. Added to the release gate's security items.
+
 ### Faster to answer, and there when the browser opens
 
 - **The fastest model stays loaded all day.** Ollama unloads a model after 30 idle minutes, and reloading costs

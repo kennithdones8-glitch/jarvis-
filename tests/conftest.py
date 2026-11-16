@@ -49,6 +49,9 @@ def _never_touch_the_real_mac(monkeypatch):
     # Anything that still reaches for these programs finds a refusing stand-in first, not the real one: no Keychain
     # prompts, no Apple events, no service changes. (Tests that need their own stand-in put it in front of these.)
     monkeypatch.setenv("PATH", f"{_refusing_bin()}:{os.environ.get('PATH', '')}")
+    # Trials fail closed where there is no sandbox (anything but macOS). The suite itself is development, so it
+    # sets the development flag; test_security_phase1 checks the refusal without it.
+    monkeypatch.setenv("JARVIS_TRIAL_UNSANDBOXED", "1")
 
 
 _BIN: list[str] = []

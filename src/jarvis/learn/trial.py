@@ -18,7 +18,8 @@ Isolation (the branch's tests are code you haven't vetted yet, so they run as if
   SSH keys, cloud credentials or Keychains, and never JARVIS's data folder); no Keychain, no remote control of other
   apps (Apple events), no clipboard; no starting osascript, open, security, screencapture, pbcopy/pbpaste,
   automator or shortcuts; no local socket into a home folder or to Docker. If the sandbox can't start, the suite
-  doesn't run and the trial reports that it proves nothing; it never falls back to running unsandboxed on a Mac;
+  doesn't run and the trial reports that it proves nothing; it never falls back to running unsandboxed on a Mac.
+  On any other system there is no sandbox, so trials are refused (a development-only environment flag overrides);
 - limits on everything it starts: 2 GB per file, 2,048 open files, 30 minutes of CPU, and the trial folder at most
   6 GB; on the time limit or a full folder its whole process group is stopped.
 """
@@ -185,9 +186,18 @@ def contained_run(argv: list[str], *, cwd: Path, env: dict[str, str], timeout: i
     return (proc.returncode if not reason else -9), text[0], (text[1] + ("\n" + reason if reason else ""))
 
 
+UNSANDBOXED_FLAG = "JARVIS_TRIAL_UNSANDBOXED"   # development machines only; see isolation()
+
+
 def isolation() -> str:
-    """How trials are isolated on this machine: "macOS sandbox" or "environment only" (not macOS; development)."""
+    """How trials are isolated on this machine. Fails closed: on a Mac the system sandbox is required; anywhere else
+    there is no sandbox JARVIS can use, so a trial is refused unless the person developing JARVIS has set
+    JARVIS_TRIAL_UNSANDBOXED=1 for that process (then: "environment only", and the result says so). The flag is
+    read from the environment JARVIS was started with; nothing in JARVIS, a trial or a draft can set it."""
     if sys.platform != "darwin":
+        if os.environ.get(UNSANDBOXED_FLAG) != "1":
+            raise TrialError("no sandbox is available on this system, so trials don't run here (JARVIS's trial "
+                             "sandbox is the macOS one)")
         return "environment only"
     if not Path("/usr/bin/sandbox-exec").exists():
         raise TrialError("the macOS sandbox (sandbox-exec) isn't available, so trials can't run safely here")

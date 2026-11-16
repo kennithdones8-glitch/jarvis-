@@ -57,6 +57,7 @@ SECURITY: dict[str, tuple[str, list[str]]] = {
         "test_security_phase1::mac_check_calls_only_read_actions",
         "test_security_phase1::every_server_path_that_runs_a_tool_uses_the_gateway",
         "test_security_phase1::a_trial_runs_with_no_secrets_and_a_throwaway_home",
+        "test_security_phase1::without_a_sandbox_trials_are_refused_unless_the_developer_flag_is_set",
         "test_security_phase1::the_macos_sandbox_rules_deny_network_writes_and_private_reads",
         "test_security_phase1::on_a_mac_the_suite_runs_inside_the_sandbox_or_not_at_all",
         "test_remote::a_phone_can_never_start_a_change_trial",

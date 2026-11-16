@@ -242,3 +242,24 @@ def test_socket_rules_deny_home_then_allow_the_trial(tmp_path):
     deny_home = next(i for i, x in enumerate(p) if "unix-socket (path-regex" in x and "docker" not in x)
     allow_trial = next(i for i, x in enumerate(p) if x.startswith("(allow network-outbound (remote unix-socket"))
     assert deny_home < allow_trial          # the trial folder lives inside home: its allow must come after (last wins)
+
+
+def test_without_a_sandbox_trials_are_refused_unless_the_developer_flag_is_set(monkeypatch, tmp_path):
+    """Fail closed (Evolution 4.0, Stage 5): where JARVIS has no sandbox (anything but macOS), a trial doesn't run.
+    Only an environment flag set by the person developing JARVIS overrides, and the flag can't unsandbox a Mac."""
+    monkeypatch.setattr(trial.sys, "platform", "linux")
+    monkeypatch.delenv("JARVIS_TRIAL_UNSANDBOXED", raising=False)
+    with pytest.raises(trial.TrialError, match="no sandbox"):
+        trial.isolation()
+    with pytest.raises(trial.TrialError, match="no sandbox"):       # refused before anything is checked out
+        trial.run("HEAD", work=tmp_path / "work")
+    assert not (tmp_path / "work").exists()
+    monkeypatch.setenv("JARVIS_TRIAL_UNSANDBOXED", "yes")           # only exactly "1" counts
+    with pytest.raises(trial.TrialError):
+        trial.isolation()
+    monkeypatch.setenv("JARVIS_TRIAL_UNSANDBOXED", "1")
+    assert trial.isolation() == "environment only"
+    monkeypatch.setattr(trial.sys, "platform", "darwin")            # on a Mac the flag changes nothing
+    monkeypatch.setattr(trial.Path, "exists", lambda self: False if str(self) == "/usr/bin/sandbox-exec" else os.path.exists(self))
+    with pytest.raises(trial.TrialError, match="sandbox"):
+        trial.isolation()
