@@ -1037,7 +1037,7 @@ class Dashboard:
         if found.checked:
             stage({"stage": "lookup", "checked": list(found.checked)})
         msgs = list(priming_messages(chat_abilities(memory.settings.enabled, lookups=bool(self.lookup.available()))))
-        recalled = memory.recall(message)
+        recalled = memory.recall(message, include_private=True)   # split just below: private ones never leave
         stays_here = mode == "quick" or self.kernel.models.chat_stays_local(
             message, local_only=local_only, level=found.level if mode == "balanced" else None)
         # Memories you marked private never leave this Mac: with an answer that stays here they join as local-only
@@ -1848,9 +1848,21 @@ class Dashboard:
         if path == "/api/memory/remember":
             mid = self.kernel.memory.remember(text("text", 500), origin="explicit", by=actor)
             return {"id": mid, "stored": mid is not None}
-        if m := re.fullmatch(r"/api/memory/([\w-]+)/(confirm|delete|important|edit)", path):
+        if m := re.fullmatch(r"/api/memory/([\w-]+)/(confirm|delete|important|edit|privacy|review)", path):
             mem, op = self.kernel.memory, m.group(2)
-            if op == "confirm":
+            if op == "privacy":   # private = never leaves this Mac; making one un-private asks for Face ID / Touch ID
+                if not isinstance(body.get("private"), bool):
+                    raise HttpError(400, "'private' must be true or false")
+                mem.set_privacy(m.group(1), body["private"], by=actor)
+            elif op == "review":
+                date = body.get("date")
+                if date is not None and not (isinstance(date, str) and re.fullmatch(r"\d{4}-\d{2}-\d{2}", date)):
+                    raise HttpError(400, "'date' must be YYYY-MM-DD, or null to clear it")
+                try:
+                    mem.set_review(m.group(1), date, by=actor)
+                except ValueError:
+                    raise HttpError(400, "that isn't a real date") from None
+            elif op == "confirm":
                 mem.confirm(m.group(1), by=actor)
             elif op == "delete":
                 mem.delete(m.group(1), by=actor)
@@ -1875,6 +1887,7 @@ class Dashboard:
             if not dry and query.strip():   # the dashboard's own copy of saved plans goes too
                 with self._lock:
                     self.jobs = {i: j for i, j in self.jobs.items() if query.strip().lower() not in j["request"].lower()}
+                self.lookup._cache.clear()   # looked-up text kept for two minutes for a re-sent question
             return out
         if path == "/api/feedback":
             from .. import learn

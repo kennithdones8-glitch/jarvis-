@@ -115,3 +115,85 @@ def test_insights_find_what_needs_attention_and_change_nothing(k):
     assert k.db.one("SELECT COUNT(*) FROM memories")[0] == before          # findings only: nothing settled for you
     later = datetime.now(timezone.utc) + timedelta(days=400)
     assert any(x["title"].startswith("Never confirmed") for x in knowledge.insights(k, now=later)["outdated"])
+
+
+# ---- privacy: private memories, verified forgetting, export --------------------------------------------------------
+def test_private_memories_are_left_out_by_default_and_only_you_set_them(k):
+    a = k.memory.remember("My bank PIN hint is the year we met", by="user:dashboard")
+    with pytest.raises(PermissionError):
+        k.memory.set_privacy(a, True, by="jarvis")
+    k.memory.set_privacy(a, True, by="user:dashboard")
+    assert k.memory.recall("bank PIN hint") == []                                  # the safe default for every caller
+    assert [m["id"] for m in k.memory.recall("bank PIN hint", include_private=True)] == [a]
+    it = knowledge.context(k, "bank PIN hint")[0]
+    assert it["private"] is True
+    assert any(e["event"] == "memory.privacy" for e in k.audit.entries(limit=20))
+
+
+def test_a_private_memory_never_reaches_a_cloud_answer(dash, monkeypatch):
+    d, _, _ = dash
+    a = d.kernel.memory.remember("My bank PIN hint is the year we met", by="user:dashboard")
+    assert call(d, f"/api/memory/{a}/privacy", {"private": True})[0] == 200
+    seen = []
+    old = d.kernel.models.complete
+
+    def spy(need, request, **kw):
+        seen.append(request)
+        return old(need, request, **kw)
+    d.kernel.models.complete = spy
+    r = json.loads(call(d, "/api/chat", {"message": "What is my bank PIN hint?", "history": []})[2])
+    mine = [m for req in seen for m in req.messages if "year we met" in m.content]
+    assert mine and all(m.local_only for m in mine) and r["private_held_back"] == 0     # stayed here: used, locally only
+    seen.clear()
+    monkeypatch.setattr(d.kernel.models, "chat_stays_local", lambda *a, **kw: False)    # an answer that would leave
+    r = json.loads(call(d, "/api/chat", {"message": "What is my bank PIN hint?", "history": []})[2])
+    assert not [m for req in seen for m in req.messages if "year we met" in m.content]
+    assert r["private_held_back"] == 1 and not any("year we met" in u["text"] for u in r["used"])
+
+
+def test_privacy_change_needs_face_id_or_touch_id_and_review_dates_are_checked(dash):
+    import re
+    d, _, _ = dash
+    from jarvis.remote.passkeys import STEP_UP
+    assert any(re.fullmatch(p, "/api/memory/mem-1/privacy") for p in STEP_UP)
+    js = call(d, "/static/app.js")[2].decode()
+    assert "(delete|edit|privacy)$/" in js
+    a = d.kernel.memory.remember("My passport expires in 2027", by="user:dashboard")
+    assert call(d, f"/api/memory/{a}/review", {"date": "2027-01-01"})[0] == 200
+    assert call(d, f"/api/memory/{a}/review", {"date": "2027-13-45"})[0] == 400
+    assert call(d, f"/api/memory/{a}/review", {"date": "soon"})[0] == 400
+    assert call(d, f"/api/memory/{a}/privacy", {"private": "yes"})[0] == 400
+    assert d.kernel.memory.get(a)["review_after"] == "2027-01-01"
+
+
+def test_forget_is_verified_across_every_store_including_the_project_board(dash):
+    d, _, root = dash
+    k = d.kernel
+    from jarvis import files_index
+    k.memory.remember("The Lisbon trip is in August", by="user:dashboard")
+    objectives.create(k, "Plan the Lisbon trip", by="user:dashboard")
+    _mission(k, "Book Lisbon flights")
+    p = k.board.open("Lisbon trip", "Planning", by="user:dashboard")
+    k.board.save(p["id"], "Packing list", "Sun cream, passport", by="user:dashboard")
+    other = k.board.open("Garden", "", by="user:dashboard")
+    k.board.save(other["id"], "Ideas", "A bench like the one in Lisbon", by="user:dashboard")
+    k.board.save(other["id"], "Plants", "Lavender", by="user:dashboard")
+    (root / "lisbon.md").write_text("Lisbon hotel booking reference ABC123")
+    call(d, "/api/settings/files", {"on": True})
+    d.files_tick()
+    preview = json.loads(call(d, "/api/memory/forget", {"query": "Lisbon"})[2])
+    assert preview["board"] == 3 and preview["indexed_files"] == 1 and "verified" not in preview   # project + its item + one mention
+    out = json.loads(call(d, "/api/memory/forget", {"query": "Lisbon", "confirm": True})[2])
+    v = out["verified"]
+    assert v["clean"] is True and all(v[x] == 0 for x in ("memories", "records", "tasks", "board", "objectives", "indexed_files"))
+    assert [i["title"] for pr in k.board.overview() for i in pr["items"]] == ["Plants"]          # unrelated work is kept
+    assert files_index.search(k, "Lisbon") == [] and knowledge.context(k, "Lisbon trip") == []
+    assert any(e["event"] == "memory.forget_verified" and e["payload"]["clean"] for e in k.audit.entries(limit=60))
+
+
+def test_export_is_readable_and_complete(k):
+    k.memory.remember("I like tea", by="user:dashboard")
+    objectives.create(k, "Drink more water", by="user:dashboard")
+    ex = k.memory.export()
+    assert {"memories", "records", "objectives", "lessons", "links", "exported_at"} <= set(ex)
+    assert ex["memories"][0]["privacy"] == "normal" and ex["objectives"][0]["outcome"] == "Drink more water"

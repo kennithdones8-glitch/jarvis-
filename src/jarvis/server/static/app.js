@@ -69,7 +69,7 @@ const b64u = {
 // The fingerprint is for signing in. After that only the dangerous few ask again (must match the server's STEP_UP,
 // which enforces it regardless of what this page does): releasing the emergency stop, changing or forgetting
 // memories, removing a phone, plus approving a high-risk action (risk tier 4).
-const FACE_ID = [/^\/api\/release$/, /^\/api\/memory\/conflicts\/resolve$/, /^\/api\/memory\/[\w-]+\/(delete|edit)$/, /^\/api\/devices\/[\w-]+\/revoke$/];
+const FACE_ID = [/^\/api\/release$/, /^\/api\/memory\/conflicts\/resolve$/, /^\/api\/memory\/[\w-]+\/(delete|edit|privacy)$/, /^\/api\/devices\/[\w-]+\/revoke$/];
 const TOUCH_ID = [...FACE_ID, /^\/api\/update\/start$/, /^\/api\/settings\/(coding|files|backup-copy|stay-signed-in|play)$/, /^\/api\/devices\/pair$/, /^\/api\/touchid\/enroll\/options$/, /^\/api\/touchid\/[\w-]+\/remove$/];
 const HIGH_RISK = 4;
 const highRiskApproval = (path, body) => {

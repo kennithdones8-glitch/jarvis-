@@ -1250,7 +1250,9 @@ def _memory(kernel: Kernel, args) -> int:
         if not args.yes:
             print("Run again with --yes to delete them.")
     elif args.op == "export":
-        Path(args.arg).expanduser().write_text(_json.dumps(mem.export(), indent=2, default=str))
+        target = Path(args.arg).expanduser()
+        target.write_text(_json.dumps(mem.export(), indent=2, default=str))
+        target.chmod(0o600)   # it holds your memories in plain text: readable by you only
         print(f"Exported to {args.arg}")
     return 0
 
