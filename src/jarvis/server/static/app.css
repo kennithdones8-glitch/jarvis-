@@ -799,7 +799,7 @@ body.cinematic .cmd { position: sticky; bottom: calc(12px + env(safe-area-inset-
 body:not([data-view="workspace"]) .context-panel { display: none; }
 body[data-view="workspace"] .missions-panel, body[data-view="workspace"] .decision-panel, body[data-view="workspace"] .memory-panel,
 body[data-view="workspace"] .systems-panel, body[data-view="workspace"] .recent-panel, body[data-view="workspace"] .summary-panel,
-body[data-view="workspace"] .intel-panel, body[data-view="workspace"] .projects-panel, body[data-view="workspace"] .objectives-panel, body[data-view="workspace"] .games-panel { display: none !important; }
+body[data-view="workspace"] .intel-panel, body[data-view="workspace"] .projects-panel, body[data-view="workspace"] .objectives-panel, body[data-view="workspace"] .games-panel, body[data-view="workspace"] .weekly-panel { display: none !important; }
 body[data-view="workspace"] .hud > .center { display: flex !important; grid-area: auto; }
 body[data-view="workspace"] .matters { display: none; }
 body[data-view="workspace"] .hud > .center > .core-wrap { width: min(120px, 30vw); }
@@ -1615,6 +1615,10 @@ body[data-view="objectives"] .recent-panel, body[data-view="objectives"] .summar
 /* ---- games: chess with JARVIS ---- */
 body:not([data-view="games"]) .games-panel { display: none; }
 body:not([data-view="weekly"]) .weekly-panel { display: none; }
+body[data-view="weekly"] .missions-panel, body[data-view="weekly"] .decision-panel, body[data-view="weekly"] .projects-panel,
+body[data-view="weekly"] .objectives-panel, body[data-view="weekly"] .memory-panel, body[data-view="weekly"] .systems-panel,
+body[data-view="weekly"] .intel-panel, body[data-view="weekly"] .recent-panel, body[data-view="weekly"] .summary-panel,
+body[data-view="weekly"] .context-panel, body[data-view="weekly"] .games-panel { display: none; }
 body[data-view="games"] .missions-panel, body[data-view="games"] .decision-panel, body[data-view="games"] .projects-panel,
 body[data-view="games"] .objectives-panel, body[data-view="games"] .memory-panel, body[data-view="games"] .systems-panel,
 body[data-view="games"] .intel-panel, body[data-view="games"] .recent-panel, body[data-view="games"] .summary-panel,

@@ -145,6 +145,8 @@ def test_the_feed_ranks_what_matters_and_explains_why(make_kernel):
     tid = _failed_mission(k)
     _proposal(k, "slow-model", 2)
     health = {"items": [{"name": "Backups", "ok": False, "detail": "no backup for 9 days"}, {"name": "Database", "ok": True}]}
+    from jarvis import weekly
+    weekly.mark_seen(k)   # on Sunday–Tuesday "Your week" would join the list; this test is about the other three
     items = initiative.feed(k, health=health)["items"]
     assert [i["source"] for i in items] == ["health", "mission", "proposal"]
     assert items[1]["key"] == f"mission-failed:{tid}" and "plan it once more" in items[1]["why"]

@@ -64,8 +64,12 @@ def test_feed_item_and_routes(dash):
     d, _, _ = dash
     from jarvis import initiative
     sunday = datetime(2026, 11, 15, 18, 0).astimezone()
+    assert not any(i["source"] == "weekly" for i in initiative.feed(d.kernel, now=sunday)["items"])   # quiet: no item
+    d.kernel.memory.remember("I like tea", by="user:dashboard")
+    _mission(d.kernel, "Tidy the notes folder")
     items = initiative.feed(d.kernel, now=sunday)["items"]
-    assert any(i["source"] == "weekly" and i["href"] == "#/weekly" for i in items)
+    week = [i for i in items if i["source"] == "weekly"]
+    assert week and week[0]["href"] == "#/weekly" and week[0]["score"] < initiative.NOTIFY_SCORE
     r = json.loads(call(d, "/api/weekly")[2])
     assert r["days"] == 7 and "headline" in r
     assert call(d, "/api/weekly/seen", {})[0] == 200

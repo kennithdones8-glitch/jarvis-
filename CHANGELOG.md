@@ -6,6 +6,18 @@
   before planning, nothing left out, retries routed by the question, the first-event check). Both sides kept; one
   conflict: `Orchestrator.plan` runs main's premise check first and keeps this branch's replan history.
 
+### Backups: a second copy off this Mac, and Test restore
+
+- **Second copy** (Systems, Mac only, Touch ID to choose). Each encrypted backup is also copied to a folder you
+  pick: a connected drive or iCloud Drive (offered as buttons, with a "JARVIS backups" folder made for you), or any
+  folder you type. Each copy is written to a temporary name, flushed, checked byte for byte, then renamed; old copies
+  beyond your keep count are removed there too. An unplugged drive is skipped and caught up when it's back. Health
+  shows "Second copy" and warns after a week without one. It's the same encrypted file; the passphrase stays in
+  this Mac's Keychain (keep your own copy of it). Choosing a folder inside JARVIS's data folder is refused.
+- **Test restore** (Systems). Opens the newest backup (the second copy, if you have one) in a temporary folder and
+  checks it the same way a new backup is checked: decrypts, file checksums, database integrity, audit chain. It
+  shows what's inside and replaces nothing. A damaged backup is reported plainly.
+
 ### Your week
 
 - **Weekly review** ("Your week" in the menu). The last seven days on one page: missions started, completed (and how

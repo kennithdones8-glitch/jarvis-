@@ -325,6 +325,7 @@ class Dashboard:
         self.jobs: dict[str, dict[str, Any]] = {}
         self._autoplanned: dict[str, float] = {}   # objective id → when autopilot last asked for a plan
         self._lock = threading.Lock()
+        self._copy_lock = threading.Lock()
         self._inflight: set[str] = set()
         self._pool = cf.ThreadPoolExecutor(max_workers=workers, thread_name_prefix="jarvis-runner")
         self._stop = threading.Event()
@@ -486,7 +487,48 @@ class Dashboard:
     def backup_settings(self) -> dict[str, Any]:
         cfg = self.kernel.model_config.backup
         folder = Path(os.path.expanduser(cfg["dir"])) if cfg.get("dir") else self.kernel.home / "backups"
-        return {"auto": bool(cfg.get("auto", True)), "keep": int(cfg.get("keep", 14)), "dir": folder}
+        from ..backup import COPY_META
+        row = self.kernel.db.one("SELECT value FROM meta WHERE key = ?", (COPY_META,))
+        return {"auto": bool(cfg.get("auto", True)), "keep": int(cfg.get("keep", 14)), "dir": folder,
+                "copy_to": Path(row["value"]) if row and row["value"] else None}
+
+    def sync_offsite(self) -> dict[str, Any] | None:
+        """Second copy: every backup (up to your keep count) that isn't in the folder you chose yet goes there. A
+        drive that isn't connected is simply skipped (and caught up when it's back); Health says how old the copy is."""
+        with self._copy_lock:   # the maintenance loop and "Back up now" may both get here: one copy at a time
+            return self._sync_offsite()
+
+    def _sync_offsite(self) -> dict[str, Any] | None:
+        from ..backup import BackupError, copy_out, list_backups
+        b = self.backup_settings()
+        dest = b["copy_to"]
+        if dest is None or not dest.is_dir():
+            return None
+        missing = [p for p in list_backups(b["dir"])[:b["keep"]] if not (dest / p.name).exists()][::-1]  # oldest first
+        if not missing:
+            return None
+        copied = []
+        for src in missing:
+            try:
+                copy_out(src, dest, keep=b["keep"])
+            except (BackupError, OSError) as exc:
+                self.kernel.audit.record("backup.copy_failed", error=str(exc)[:300])
+                return {"ok": False, "error": str(exc), "copied": copied}
+            copied.append(src.name)
+        self.kernel.audit.record("backup.copied", files=len(copied), newest=copied[-1])
+        return {"ok": True, "copied": copied}
+
+    def backup_copy_status(self) -> dict[str, Any]:
+        from ..backup import last_backup
+        b = self.backup_settings()
+        dest = b["copy_to"]
+        if dest is None:
+            from ..backup import copy_places
+            return {"set": False, "places": [{**pl, "path": tilde(pl["path"])} for pl in copy_places()]}
+        reachable = dest.is_dir()
+        last = last_backup(dest) if reachable else None
+        return {"set": True, "folder": tilde(str(dest)), "connected": reachable,
+                "last_age_hours": last["age_hours"] if last else None, "count": last["count"] if last else 0}
 
     def check_health(self) -> dict[str, Any]:
         from ..backup import get_passphrase, last_backup
@@ -525,6 +567,13 @@ class Dashboard:
             add("Backups", False, "no backups yet")
         else:
             add("Backups", last["age_hours"] < 48, f"last {last['age_hours']:.0f}h ago · {last['count']} kept")
+        cp = self.backup_copy_status()
+        if cp["set"]:   # a week without a second copy is worth knowing about (a drive left unplugged, say)
+            age = cp["last_age_hours"]
+            add("Second copy", age is not None and age < 24 * 7,
+                f"{cp['folder']}: last copy {age / 24:.0f} days ago" if age is not None and age >= 48 else
+                f"{cp['folder']}: last copy {age:.0f}h ago" if age is not None else
+                f"{cp['folder']}: " + ("no copy yet" if cp["connected"] else "not connected"))
         return {"items": items, "ok": all(i["ok"] for i in items), "checked": time.time(),
                 "service": os.environ.get("JARVIS_SERVICE") == "1"}
 
@@ -651,6 +700,7 @@ class Dashboard:
         while not self._stop.is_set():
             try:
                 self.maybe_backup()
+                self.sync_offsite()
                 before = self._health.get("ok")
                 self._health = self.check_health()
                 if before is not None and before != self._health["ok"]:
@@ -1258,6 +1308,7 @@ class Dashboard:
             "objectives": _objectives(k),
             "whatsnew": _whatsnew(k),
             "files": None if device else _files_status(k),
+            "backup_copy": None if device else self.backup_copy_status(),
             "coding": {"self_test": bool(k.model_config.coding.get("self_test")), "compute": bool(k.model_config.coding.get("compute")),
                        "sandbox": sys.platform == "darwin"},
             "briefing": {"last_date": _last_briefing(k)},
@@ -1829,8 +1880,43 @@ class Dashboard:
                 k.audit.record("backup.failed", error=str(exc)[:300])
                 raise HttpError(400, f"backup failed: {exc}") from None
             k.audit.record("backup.created", actor=actor, file=r.path.name, bytes=r.bytes, verified=r.verified)
+            self.sync_offsite()
+            dest = self.backup_settings()["copy_to"]
             self._health = self.check_health()
-            return {"ok": True, "file": r.path.name}
+            return {"ok": True, "file": r.path.name, "copied": bool(dest and (dest / r.path.name).exists())}
+        if path == "/api/backup/test":   # Mac only: open the newest backup (the second copy, if you have one) and check it
+            from ..backup import BackupError, list_backups, verify_backup
+            b = self.backup_settings()
+            where = "second copy" if b["copy_to"] is not None and list_backups(b["copy_to"]) else "this Mac"
+            found = list_backups(b["copy_to"] if where == "second copy" else b["dir"])
+            if not found:
+                raise HttpError(400, "no backup to test yet")
+            try:
+                v = verify_backup(found[0])
+            except (BackupError, OSError, ValueError) as exc:
+                k.audit.record("backup.tested", actor=actor, where=where, ok=False)
+                return {"ok": False, "where": where, "file": found[0].name, "error": str(exc)[:300]}
+            k.audit.record("backup.tested", actor=actor, where=where, ok=True)
+            return {"ok": True, "where": where, "file": found[0].name, "created": v["created"], "counts": v["counts"],
+                    "audit_entries": v["audit_entries"]}
+        if path == "/api/settings/backup-copy":   # Mac only, Touch ID when set up: where the second copy goes
+            from ..backup import COPY_META, BackupError, check_copy_folder
+            raw = body.get("folder")
+            if raw in (None, ""):
+                folder = ""
+            else:
+                try:
+                    folder = str(check_copy_folder(str(raw)[:500], k.home, self.backup_settings()["dir"]))
+                except BackupError as exc:
+                    raise HttpError(400, str(exc)) from None
+            with k.db.tx() as c:
+                c.execute("INSERT INTO meta (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+                          (COPY_META, folder))
+            k.audit.record("backup.copy_folder", actor=actor, on=bool(folder))
+            if folder:
+                self.sync_offsite()
+            self._health = self.check_health()
+            return self.backup_copy_status()
         if path == "/api/objectives":
             from .. import objectives
             try:

@@ -62,7 +62,7 @@ const b64u = {
 // which enforces it regardless of what this page does): releasing the emergency stop, changing or forgetting
 // memories, removing a phone, plus approving a high-risk action (risk tier 4).
 const FACE_ID = [/^\/api\/release$/, /^\/api\/memory\/conflicts\/resolve$/, /^\/api\/memory\/[\w-]+\/(delete|edit)$/, /^\/api\/devices\/[\w-]+\/revoke$/];
-const TOUCH_ID = [...FACE_ID, /^\/api\/update\/start$/, /^\/api\/settings\/(coding|files)$/, /^\/api\/devices\/pair$/, /^\/api\/touchid\/enroll\/options$/, /^\/api\/touchid\/[\w-]+\/remove$/];
+const TOUCH_ID = [...FACE_ID, /^\/api\/update\/start$/, /^\/api\/settings\/(coding|files|backup-copy)$/, /^\/api\/devices\/pair$/, /^\/api\/touchid\/enroll\/options$/, /^\/api\/touchid\/[\w-]+\/remove$/];
 const HIGH_RISK = 4;
 const highRiskApproval = (path, body) => {
   const m = path.match(/^\/api\/approvals\/([\w-]+)$/);
@@ -1717,7 +1717,9 @@ function renderSystems(d) {
     part("Health"), healthBlock || h("div", { class: "empty" }, "Checking…"),
     onPhone() ? null : h("div", { class: "row mt" },
       h("button", { class: "btn btn-ghost btn-sm", type: "button", onclick: () => act("/api/health/check", {}) }, "Check again"),
-      h("button", { class: "btn btn-ghost btn-sm", type: "button", onclick: () => act("/api/backup/now", {}) }, "Back up now")),
+      h("button", { class: "btn btn-ghost btn-sm", type: "button", onclick: () => act("/api/backup/now", {}) }, "Back up now"),
+      h("button", { class: "btn btn-ghost btn-sm", type: "button", onclick: testRestore, title: "Opens the newest backup (the second copy, if you have one) and checks every part of it; nothing is replaced" }, "Test restore")),
+    onPhone() ? null : backupCopyBlock(d.backup_copy),
     onPhone() ? null : part("Updates"), onPhone() ? null : updateBlock(d.update),
     onPhone() ? null : part("Test this version"), onPhone() ? null : benchBlock(d.benchtest),
     h("div", { class: "lights" }, lights.length ? lights : h("div", { class: "empty" }, "No models configured")),
@@ -1941,6 +1943,39 @@ async function dismissSuggestion(it) {
 const INITIATIVE_SOURCE = { mission: "Mission", health: "Problem", project: "Project", lesson: "Lesson", proposal: "Improvement" };
 // Your week: counted from the tasks, approvals, objectives and audit log of the last 7 days (nothing estimated)
 const MISSION_WORD = { completed: "completed", failed: "failed", cancelled: "stopped", awaiting_approval: "waiting for you" };
+// Second copy of the backups, off this Mac (Systems). The folder can only be chosen here, with Touch ID.
+function backupCopyBlock(c) {
+  if (!c) return null;
+  const choose = (folder) => act("/api/settings/backup-copy", { folder });
+  if (!c.set) {
+    return h("div", { class: "devices mt" },
+      h("div", { class: "ro" }, h("span", {}, "Second copy"), h("b", {}, "Off")),
+      h("div", { class: "d-why" }, "Also copy each encrypted backup to a drive or to iCloud Drive, so losing this Mac doesn't lose JARVIS. The copy is the same encrypted file; the passphrase stays in this Mac's Keychain (keep your own copy of it)."),
+      h("div", { class: "row" }, ...(c.places || []).map((pl) => h("button", { class: "btn btn-ghost btn-sm", type: "button", title: pl.path,
+        onclick: () => choose(pl.path) }, `Use ${pl.label}`)),
+        h("button", { class: "btn btn-ghost btn-sm", type: "button", onclick: async () => {
+          const f = await ask("Folder for the second copy (full path):", { input: "/Volumes/", ok: "Use this folder" });
+          if (f) choose(f);
+        } }, "Other folder…")));
+  }
+  const age = c.last_age_hours;
+  const when = age === null ? (c.connected ? "no copy yet" : "not connected") : age >= 48 ? `last copy ${Math.round(age / 24)} days ago` : `last copy ${Math.round(age)}h ago`;
+  return h("div", { class: "devices mt" },
+    h("div", { class: "ro" }, h("span", {}, "Second copy"), h("b", { class: age !== null && age < 168 ? "ok" : null }, `${c.folder} · ${when}${c.count ? ` · ${plural(c.count, "backup")}` : ""}`)),
+    c.connected ? null : h("div", { class: "d-why" }, "The folder isn't reachable right now (drive unplugged?). JARVIS catches up the next time it is."),
+    h("button", { class: "btn btn-ghost btn-sm", type: "button", onclick: async () => {
+      if (await ask("Stop making a second copy? Copies already there are left as they are.", { ok: "Stop copying" })) choose("");
+    } }, "Stop copying"));
+}
+async function testRestore() {
+  note("Testing the newest backup…");
+  let r;
+  try { r = await api("/api/backup/test", {}); } catch (e) { note(`Test restore: ${e.message}`); return; }
+  if (!r.ok) { await ask(`The backup on ${r.where} (${r.file}) did NOT pass: ${r.error}\n\nMake a new backup now and test again.`, { ok: "OK" }); return; }
+  const c = r.counts || {};
+  await ask(`The backup on ${r.where} opens and checks out.\n\n${r.file} · made ${new Date(r.created).toLocaleString()}\n${c.tasks ?? 0} tasks, ${c.memories ?? 0} memories, ${r.audit_entries} audit entries (chain intact).\n\nNothing was replaced: this only opened a temporary copy.`, { ok: "OK" });
+}
+
 async function loadWeekly() {
   const box = $("#weekly");
   box.replaceChildren(h("div", { class: "empty" }, "Loading…"));
@@ -1950,7 +1985,7 @@ async function loadWeekly() {
   const tile = (n, label) => h("div", { class: "wk" }, h("b", {}, String(n)), h("span", {}, label));
   const m = r.missions, dc = r.decisions, s = r.safety, u = r.upkeep;
   $("#weeksum").textContent = `${day(r.from)} – ${day(r.to)}`;
-  box.replaceChildren(
+  box.replaceChildren(...[
     r.audit_ok ? null : h("div", { class: "brief-sec alert" }, h("h3", {}, "Audit log problem"), h("p", {}, "The audit log's chain doesn't verify, so these counts may be incomplete. See Trust.")),
     h("div", { class: "job-title" }, r.headline),
     h("div", { class: "week-grid" },
@@ -1963,7 +1998,7 @@ async function loadWeekly() {
       m.list.map((t) => h("li", {}, `${t.goal} — ${MISSION_WORD[t.state] || t.state.replace("_", " ")}`)))) : null,
     r.objectives.length ? h("div", { class: "brief-sec" }, h("h3", {}, "Objectives"), h("ul", { class: "week-list" },
       r.objectives.map((o) => h("li", {}, `${o.outcome} (${o.state}): ${plural(o.missions_moved, "mission")} moved, ${o.missions_done} done`)))) : null,
-    h("p", { class: "hl-sub" }, "Counted from JARVIS's own records for the last 7 days: the missions table, your decisions, your objectives and the audit log. Nothing here is estimated or written by a model."));
+    h("p", { class: "hl-sub" }, "Counted from JARVIS's own records for the last 7 days: the missions table, your decisions, your objectives and the audit log. Nothing here is estimated or written by a model.")].filter(Boolean));
   api("/api/weekly/seen", {}).catch(() => {});
 }
 
