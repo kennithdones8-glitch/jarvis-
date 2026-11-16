@@ -114,3 +114,46 @@ def test_dashboard_switch_and_search(dash):
     data = json.loads(call(d, "/api/files/search?q=lease")[2])
     assert data["on"] is True and [r["name"] for r in data["results"]] == ["lease.md"]
     assert call(d, "/api/settings/files", {"on": "yes"})[0] == 400
+
+
+# ---- ask about your files: chat answers from the index ------------------------------------------------------------
+def test_passages_need_every_meaningful_word_and_pick_the_right_stretch(k, root):
+    long = ("General terms. " * 80) + "Pets: one cat or small dog is allowed with written consent. " + ("Other. " * 80)
+    (root / "lease.md").write_text("Flat lease. " + long)
+    (root / "recipe.txt").write_text("Lemon cake for the cat's birthday.")
+    files_index.set_enabled(k, True, by="user:dashboard")
+    files_index.refresh(k)
+    assert files_index.terms("What does my lease say about pets?") == ["lease", "pets"]
+    found = files_index.passages(k, "What does my lease say about pets?")
+    assert [f["name"] for f in found] == ["lease.md"] and "written consent" in found[0]["text"]
+    assert len(found[0]["text"]) < 800
+    assert files_index.passages(k, "What's on tomorrow?") == []           # no file has every word
+    files_index.set_enabled(k, False, by="user:dashboard")
+    assert files_index.passages(k, "What does my lease say about pets?") == []
+
+
+def test_passages_recheck_permission_now(k, root, monkeypatch):
+    (root / "lease.md").write_text("lease pets allowed")
+    files_index.set_enabled(k, True, by="user:dashboard")
+    files_index.refresh(k)
+    monkeypatch.setattr(files_index, "_allowed", lambda kernel, p: False)    # folder removed since indexing
+    assert files_index.passages(k, "lease pets") == []
+
+
+def test_chat_answers_from_your_files_as_private_content(dash):
+    d, _, root = dash
+    (root / "lease.md").write_text("Pets: one cat is allowed with written consent from the landlord.")
+    seen = []
+    old = d.kernel.models.complete
+
+    def spy(need, request, **kw):
+        seen.append(request)
+        return old(need, request, **kw)
+    d.kernel.models.complete = spy
+    call(d, "/api/settings/files", {"on": True})
+    d.files_tick()
+    r = json.loads(call(d, "/api/chat", {"message": "What does my lease say about pets?", "history": []})[2])
+    assert any(c.startswith("Your files: lease.md") for c in r["checked"])
+    ctx = [m for req in seen for m in req.messages if "## Your files" in m.content]
+    assert ctx and ctx[0].category.value == "file_content" and "written consent" in ctx[0].content
+    assert any(e["event"] == "files.answered_from" for e in d.kernel.audit.entries(limit=50))

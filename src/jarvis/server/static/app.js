@@ -1731,7 +1731,7 @@ function renderSystems(d) {
       ro("Budget", `$${(m.budget.spent_this_month_usd || 0).toFixed(2)} of $${(m.budget.monthly_limit_usd || 0).toFixed(2)}`),
       ro("Audit log", chain ? (chain.ok ? `Intact · ${chain.checked}` : `Broken at #${chain.first_bad_seq}`) : "Checking…", chain ? (chain.ok ? "ok" : "bad") : null),
       ro("Folders", d.roots.length ? d.roots.map(base).join(", ") : "None approved"),
-      ...(onPhone() || !d.files ? [] : [h("div", { class: "ro", title: "Search inside the folders you've approved (Mac only; off deletes the index)" },
+      ...(onPhone() || !d.files ? [] : [h("div", { class: "ro", title: "Search inside the folders you've approved, and let chat answer from them (Mac only; off deletes the index)" },
         h("span", {}, "File search"),
         h("button", { class: `btn btn-ghost btn-xs${d.files.on ? " on" : ""}`, type: "button", disabled: d.files.folders.length ? null : true,
           title: d.files.folders.length ? null : "Approve a folder first", onclick: async () => {

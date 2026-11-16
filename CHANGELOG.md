@@ -6,6 +6,15 @@
   before planning, nothing left out, retries routed by the question, the first-event check). Both sides kept; one
   conflict: `Orchestrator.plan` runs main's premise check first and keeps this branch's replan history.
 
+### Ask about your files
+
+- **Chat answers from your files** when file search is on: "What does my lease say about pets?" finds the files that
+  contain every meaningful word of the question (lease, pets) with a plain word match (no model), takes the best
+  ~700-character passage of each (at most three), and gives them to the answering model as private file content.
+  "Checked: Your files: lease.md" under the reply says which files were used. Each file is re-checked by the
+  permission engine at that moment, so a folder you've since removed stays out. If the answer would go to Claude,
+  the privacy gate asks first, as for any file. Planning doesn't use it.
+
 ### Talk with JARVIS hands-free
 
 - **Conversation mode** (the "Conversation" button under the chat, needs voice set up). Tap it once and talk: the

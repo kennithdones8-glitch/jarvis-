@@ -133,6 +133,57 @@ def search(kernel, query: str, *, limit: int = 10) -> list[dict[str, Any]]:
     return [{"path": r["path"].replace(home, "~", 1), "name": r["name"], "snippet": r["snip"]} for r in rows]
 
 
+# Words that say nothing about which file you mean ("what does my lease say about pets?" → lease, pets).
+STOP = set("""a about after again all also am an and any are as at be been before but by can could did do does
+doing for from had has have how i if in into is it its just me my of on or our say says said should so some tell
+than that the their them then there these they this to up was we were what when where which who why will with would
+you your please find show look check file files document documents doc docs pdf folder folders""".split())
+PASSAGE = 700
+MAX_PASSAGES = 3
+
+
+def terms(question: str) -> list[str]:
+    import re
+    return list(dict.fromkeys(w for w in re.findall(r"\w+", question.lower()) if len(w) >= 3 and w not in STOP))[:8]
+
+
+def passages(kernel, question: str, *, limit: int = MAX_PASSAGES) -> list[dict[str, Any]]:
+    """For a chat question: the passages of your indexed files that contain *every* meaningful word of it (so "what's
+    on tomorrow" doesn't drag in a random document), best match first, each file re-checked by the permission engine
+    now (a folder you've since removed stays out). Empty when file search is off. Nothing leaves the Mac here; the
+    caller marks the text as private file content, so the privacy gate applies before any cloud model sees it."""
+    words = terms(question)
+    if not words or not enabled(kernel) or kernel.killswitch.engaged():
+        return []
+    q = " AND ".join(f'"{w}"' for w in words)
+    try:
+        rows = kernel.db.query("SELECT path, name, body FROM file_index WHERE file_index MATCH ? ORDER BY rank LIMIT ?",
+                               (q, limit * 2))
+    except Exception:  # noqa: BLE001 - a query FTS can't parse is simply no match
+        return []
+    home, out = str(Path.home()), []
+    for r in rows:
+        if len(out) >= limit or not _allowed(kernel, Path(r["path"])):
+            continue
+        out.append({"path": r["path"].replace(home, "~", 1), "name": r["name"], "text": _best(r["body"] or "", words, r["name"])})
+    return out
+
+
+def _best(body: str, words: list[str], name: str = "") -> str:
+    """The ~700-character stretch of ``body`` that mentions the most of ``words`` (plain counting, no model). A word in
+    the file's name ("lease" in lease.md) found the file; the passage is chosen mostly by the others ("pets")."""
+    if len(body) <= PASSAGE:
+        return body.strip()
+    low, step, nm = body.lower(), PASSAGE // 2, name.lower()
+    weight = {w: 0.1 if w in nm else 1.0 for w in words}
+    best, at = -1.0, 0
+    for i in range(0, max(1, len(body) - step), step):
+        n = sum(weight[w] * low.count(w, i, i + PASSAGE) for w in words)
+        if n > best:
+            best, at = n, i
+    return ("…" if at else "") + body[at:at + PASSAGE].strip() + ("…" if at + PASSAGE < len(body) else "")
+
+
 def forget(kernel, query: str, *, dry_run: bool = True) -> int:
     from .memory import fts_query
     q = fts_query(query)
