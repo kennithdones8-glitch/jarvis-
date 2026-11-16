@@ -3,7 +3,8 @@ is Dr Patel" / "My dentist is Dr Shah"). Found with plain rules on the memory te
 Memory and the suggestions feed for you to settle: keep one, and the other is deleted (as a deletion you make).
 
 Recognised shapes: "my/our X is/are Y", "X is my Y", "I live in / work at / work for / was born in / am from Y",
-"I am N years old". Two memories disagree when the subject matches and the answers differ.
+"I am N years old", and the same thing liked and not liked ("I like X" / "I don't like X" / "I hate X"). Two memories
+disagree when the subject matches and the answers differ.
 """
 
 from __future__ import annotations
@@ -38,6 +39,22 @@ def claim(text: str) -> tuple[str, str] | None:
     return None
 
 
+_LIKE = re.compile(r"^i\s+(?P<neg>don't|do not|no longer|never)?\s*(?P<verb>like|love|eat|drink|enjoy|use|want)s?\s+(?P<what>.+)$")
+_HATE = re.compile(r"^i\s+(?:hate|dislike|can't stand|avoid)\s+(?P<what>.+)$")
+
+
+def stance(text: str) -> tuple[str, bool] | None:
+    """(thing, likes?) for "I like/love/eat X", "I don't like X", "I hate X"; else None. Two memories with the same
+    thing and opposite stance disagree ("I like coffee" / "I don't drink coffee" is not the same verb, so it isn't
+    matched: only the same thing said both ways)."""
+    t = _norm(text)
+    if m := _HATE.match(t):
+        return m["what"].strip(), False
+    if m := _LIKE.match(t):
+        return m["what"].strip(), not m["neg"]
+    return None
+
+
 def find(memories: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """Pairs that disagree, newest first: [{"subject", "a": memory, "b": memory}] (a is the newer one)."""
     by_key: dict[str, list[tuple[str, dict[str, Any]]]] = {}
@@ -52,6 +69,18 @@ def find(memories: list[dict[str, Any]]) -> list[dict[str, Any]]:
         for val, other in items[1:]:
             if val != newest_val:
                 out.append({"subject": key, "a": newest, "b": other})
+                break
+    stances: dict[str, list[tuple[bool, dict[str, Any]]]] = {}
+    for mem in memories:
+        st = stance(mem.get("text", ""))
+        if st:
+            stances.setdefault(st[0], []).append((st[1], mem))
+    for thing, items in stances.items():
+        items.sort(key=lambda x: x[1].get("created_at") or "", reverse=True)
+        newest_side, newest = items[0]
+        for side, other in items[1:]:
+            if side != newest_side:
+                out.append({"subject": f"whether you like {thing}", "a": newest, "b": other})
                 break
     out.sort(key=lambda p: p["a"].get("created_at") or "", reverse=True)
     return out

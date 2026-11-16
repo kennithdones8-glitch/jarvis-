@@ -289,4 +289,81 @@ def related(kernel, item_id: str, *, limit: int = 12) -> dict[str, Any]:
     return {"item": me, "related": out[:limit]}
 
 
-__all__ = ["context", "context_text", "doc_sections", "memory_item", "related", "words_of"]
+# ---- knowledge intelligence: what needs your attention in what JARVIS knows ---------------------------------------
+def _wordset(text: str) -> frozenset[str]:
+    return frozenset(w for w in re.findall(r"\w+", text.lower()) if len(w) >= 3 and w not in STOP)
+
+
+def insights(kernel, *, now: datetime | None = None) -> dict[str, list[dict[str, Any]]]:
+    """Plain-rule checks over memories, objectives and task history (no model). Each finding names the items, says
+    why, and what you could do. Nothing is changed here: settling a conflict, confirming or deleting is yours.
+
+    - ``conflicts``: memories that give different answers to the same question.
+    - ``duplicates``: memories that say the same thing (the same meaningful words).
+    - ``outdated``: a review date that has passed; an unconfirmed memory more than a year old; the older side of a
+      conflict (superseded unless you say otherwise).
+    - ``unconfirmed``: things JARVIS noticed and you haven't confirmed (they are never treated as fact).
+    - ``missing``: objectives with no "done means", none in flight and none done, or a deadline that has passed.
+    - ``patterns``: the same kind of mission asked for three times or more (a candidate for an objective)."""
+    now = now or datetime.now(timezone.utc)
+    db = kernel.db
+    mems = [dict(r) for r in db.query("SELECT * FROM memories ORDER BY created_at DESC LIMIT 2000")]
+    out: dict[str, list[dict[str, Any]]] = {k: [] for k in ("conflicts", "duplicates", "outdated", "unconfirmed", "missing", "patterns")}
+    from .memory.conflicts import find as find_conflicts
+    superseded = set()
+    for c in find_conflicts(mems):
+        superseded.add(c["b"]["id"])
+        out["conflicts"].append({"title": f"Two memories disagree about {c['subject']}", "items": [memory_item(c["a"], now), memory_item(c["b"], now)],
+                                 "why": "same subject, different answers", "do": "Keep the right one (Memory page)."})
+    groups: dict[frozenset[str], list[dict[str, Any]]] = {}
+    for m in mems:
+        ws = _wordset(m["text"])
+        if len(ws) >= 2:
+            groups.setdefault(ws, []).append(m)
+    for same in groups.values():
+        if len(same) > 1:
+            out["duplicates"].append({"title": f"{len(same)} memories say the same thing", "items": [memory_item(m, now) for m in same],
+                                      "why": "the same meaningful words", "do": "Delete the extra ones."})
+    today = now.date().isoformat()
+    for m in mems:
+        it = memory_item(m, now)
+        if m.get("review_after") and m["review_after"] <= today:
+            out["outdated"].append({"title": "Due for a check", "items": [it], "why": f"you asked to review it after {m['review_after']}",
+                                    "do": "Confirm it is still true, edit it, or delete it."})
+        elif m["id"] in superseded:
+            out["outdated"].append({"title": "Probably replaced by a newer memory", "items": [it], "why": "a newer memory gives a different answer",
+                                    "do": "Settle the conflict."})
+        elif it["status"] == "outdated":
+            out["outdated"].append({"title": "Never confirmed, and over a year old", "items": [it], "why": "noticed in a conversation, not confirmed since",
+                                    "do": "Confirm or delete it."})
+        elif it["status"] == "inferred":
+            out["unconfirmed"].append({"title": "Not confirmed", "items": [it], "why": "JARVIS noticed it; you haven't confirmed it",
+                                       "do": "Confirm it if it's right."})
+    for o in db.query("SELECT id, outcome, criteria, deadline, state, created_at FROM objectives WHERE state = 'active'"):
+        item = {"id": f"objective:{o['id']}", "kind": "objective", "text": o["outcome"], "since": o["created_at"], "status": "stated",
+                "confidence": 1.0, "source": "an objective you set (active)", "private": False, "why": []}
+        n = db.one("SELECT COUNT(*) FROM links WHERE dst = ? AND rel = 'mission of'", (o["id"],))[0]
+        if not json.loads(o["criteria"] or "[]"):
+            out["missing"].append({"title": "No “done means” yet", "items": [item], "why": "JARVIS can't tell when this objective is achieved",
+                                   "do": "Add what done means (Objectives)."})
+        if n == 0:
+            out["missing"].append({"title": "No mission has been started", "items": [item], "why": "nothing has been planned for it",
+                                   "do": "Plan the next step (Objectives)."})
+        if o["deadline"] and o["deadline"] < today:
+            out["missing"].append({"title": "Deadline has passed", "items": [item], "why": f"it was due {o['deadline']} and is still active",
+                                   "do": "Mark it achieved, move the date, or drop it."})
+    goals: dict[frozenset[str], list[Any]] = {}
+    for t in db.query("SELECT id, goal, state, error, created_at, updated_at FROM tasks ORDER BY created_at DESC LIMIT 500"):
+        ws = _wordset(t["goal"])
+        if len(ws) >= 2:
+            goals.setdefault(ws, []).append(t)
+    for same in goals.values():
+        if len(same) >= 3:
+            out["patterns"].append({"title": f"Asked for {len(same)} times: “{same[0]['goal'][:80]}”", "items": [_task_item(t) for t in same[:3]],
+                                    "why": "the same request keeps coming back", "do": "Consider making it an objective, so JARVIS keeps it moving."})
+    for v in out.values():
+        del v[40:]
+    return out
+
+
+__all__ = ["insights", "context", "context_text", "doc_sections", "memory_item", "related", "words_of"]

@@ -84,3 +84,34 @@ def test_chat_says_what_it_used_and_why(dash):
     assert any(u["id"] == f"objective:{o['id']}" for u in r["used"]) and r["private_held_back"] == 0
     quick = json.loads(call(d, "/api/chat", {"message": "How is the garden project going?", "history": [], "mode": "quick"})[2])
     assert {u["kind"] for u in quick["used"]} == {"memory"}          # Quick stays quick: memories only
+
+
+# ---- knowledge intelligence: conflicts, duplicates, outdated, gaps, patterns ---------------------------------------
+def test_insights_find_what_needs_attention_and_change_nothing(k):
+    from jarvis.memory.conflicts import stance
+    assert stance("I like coffee") == ("coffee", True) and stance("I don't like coffee") == ("coffee", False)
+    assert stance("I hate coffee") == ("coffee", False) and stance("The coffee is hot") is None
+    k.memory.remember("I like coffee", by="user:dashboard")
+    k.memory.remember("I don't like coffee", by="user:dashboard")
+    k.memory.remember("The boiler was serviced in March", by="user:dashboard")
+    k.memory.remember("In March the boiler was serviced", by="user:dashboard")
+    old = k.memory.remember("My gym is on Park Road", origin="observed", confidence=0.5, by="jarvis")
+    due = k.memory.remember("My passport expires in 2027", by="user:dashboard")
+    with k.db.tx() as c:
+        c.execute("UPDATE memories SET review_after = '2020-01-01' WHERE id = ?", (due,))
+    o = objectives.create(k, "Sort the garage", by="user:dashboard", deadline="2020-01-01")
+    for _ in range(3):
+        _mission(k, "Summarise my meeting notes")
+    before = k.db.one("SELECT COUNT(*) FROM memories")[0]
+    ins = knowledge.insights(k)
+    assert [c["title"] for c in ins["conflicts"]] == ["Two memories disagree about whether you like coffee"]
+    assert len(ins["duplicates"]) == 1 and len(ins["duplicates"][0]["items"]) == 2
+    titles = {x["title"] for x in ins["outdated"]}
+    assert {"Due for a check", "Probably replaced by a newer memory"} <= titles
+    assert [x["items"][0]["id"] for x in ins["unconfirmed"]] == [f"memory:{old}"]
+    assert {m["title"] for m in ins["missing"] if m["items"][0]["id"] == f"objective:{o['id']}"} == {
+        "No “done means” yet", "No mission has been started", "Deadline has passed"}
+    assert ins["patterns"][0]["title"].startswith("Asked for 3 times")
+    assert k.db.one("SELECT COUNT(*) FROM memories")[0] == before          # findings only: nothing settled for you
+    later = datetime.now(timezone.utc) + timedelta(days=400)
+    assert any(x["title"].startswith("Never confirmed") for x in knowledge.insights(k, now=later)["outdated"])
