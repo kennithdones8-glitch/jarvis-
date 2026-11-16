@@ -43,6 +43,8 @@ SECURITY: dict[str, tuple[str, list[str]]] = {
         "test_mac::note_body_is_escaped_html"]),
     "Permission bypass": ("Every change passes the permission engine and, where needed, your approval", [
         "test_settle_steps::settling_from_the_phone_is_one_tap_once_signed_in",
+        "test_board::saving_is_a_routine_change_that_asks_first_and_reading_does_not",
+        "test_board::the_switch_is_mac_only_with_touch_id",
         "test_learn::autonomy_tiers_pauses_and_the_emergency_stop", "test_learn::autonomy_is_mac_only",
         "test_trial::trials_need_tier_6_from_the_terminal", "test_trial::refs_are_validated",
         "test_update::update_and_backup_routes_are_mac_only_and_update_needs_touch_id",
@@ -131,6 +133,9 @@ SECURITY: dict[str, tuple[str, list[str]]] = {
         "test_orchestrator::validator_rejects_oversized_and_forward_references"]),
     "Privacy and data disclosure": ("Private data leaves the Mac only with permission; logs hold no content", [
         "test_models::quality_floor_selects_cloud_but_private_data_needs_approval",
+        "test_board::animations_play_only_when_turned_on_and_only_sealed_off",
+        "test_board::the_page_plays_in_a_sandboxed_frame_without_same_origin",
+        "test_board::save_opens_the_project_replaces_by_title_and_retries_change_nothing",
         "test_models::local_only_data_never_routes_to_cloud",
         "test_models::local_failure_falls_back_but_never_silently_sends_private_data",
         "test_models::approval_is_bound_to_exact_request", "test_models::secret_content_blocked",

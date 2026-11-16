@@ -1530,6 +1530,29 @@ class Dashboard:
             return self._send(h, 200, (STATIC / "proposals.html").read_bytes(), "text/html; charset=utf-8")
         if url.path == "/api/projects":
             return self._json(h, 200, {"ideas": self.projects.list(), **self.projects.status()})
+        if url.path == "/api/board":   # the project board: projects JARVIS opened and what it made (no contents)
+            from ..board import KIND_LABELS, play_enabled
+            archived = parse_qs(url.query).get("archived", [""])[0] == "1"
+            return self._json(h, 200, {"projects": self.kernel.board.overview(include_archived=archived),
+                                       "kinds": KIND_LABELS, "play": play_enabled(self.kernel),
+                                       "can_set_play": device is None})
+        if m := re.fullmatch(r"/api/board/items/([\w-]+)", url.path):
+            try:
+                return self._json(h, 200, self.kernel.board.item(m.group(1)))
+            except KeyError:
+                raise HttpError(404, "no such item") from None
+        if m := re.fullmatch(r"/play/([\w-]+)", url.path):
+            # A page JARVIS made, played in a sealed frame (see board.PLAY_HEADERS). Only when you turned it on.
+            from ..board import PLAY_HEADERS, play_enabled
+            if not play_enabled(self.kernel):
+                raise HttpError(403, "playing animations is off (Projects page → Play animations, on the Mac)")
+            try:
+                item = self.kernel.board.item(m.group(1))
+            except KeyError:
+                raise HttpError(404, "no such item") from None
+            if item["kind"] != "page":
+                raise HttpError(404, "only pages can be played")
+            return self._send(h, 200, item["content"].encode("utf-8"), "text/html; charset=utf-8", PLAY_HEADERS)
         if url.path == "/api/proposals":
             if time.monotonic() - self._proposals_checked > 600:  # look for new findings at most every 10 minutes
                 self.proposals.refresh()
@@ -1942,7 +1965,39 @@ class Dashboard:
                 self.projects.decide(m.group(1), state, by=actor)
             except KeyError:
                 raise HttpError(404, "no such idea") from None
+            if state == "active":   # starting an idea opens it on the project board, with its first plan
+                idea = next((x for x in self.projects.list(include_closed=True) if x["id"] == m.group(1)), None)
+                if idea:
+                    plan = "\n".join(f"{i + 1}. {st['text']}" for i, st in enumerate(idea.get("steps") or []))
+                    k.board.save(idea["title"], "Plan", plan or idea["title"], "plan", by=actor,
+                                 summary=idea.get("why") or "")
             return {"ok": True, "state": state}
+        if path == "/api/board/projects":   # you open a project yourself; JARVIS plans it when you ask
+            from ..board import BoardError
+            try:
+                p = k.board.open(body.get("title"), body.get("summary") or "", by=actor)
+            except BoardError as exc:
+                raise HttpError(400, str(exc)) from None
+            return {"project": p}
+        if m := re.fullmatch(r"/api/board/projects/([\w-]+)/state", path):
+            from ..board import BoardError
+            try:
+                return {"project": k.board.set_state(m.group(1), str(body.get("state")), by=actor)}
+            except BoardError as exc:
+                raise HttpError(400, str(exc)) from None
+            except KeyError:
+                raise HttpError(404, "no such project") from None
+        if m := re.fullmatch(r"/api/board/items/([\w-]+)/delete", path):
+            try:
+                k.board.delete_item(m.group(1), by=actor)
+            except KeyError:
+                raise HttpError(404, "no such item") from None
+            return {"ok": True}
+        if path == "/api/settings/play":   # Mac only, Touch ID when set up: lets pages JARVIS made play (sealed)
+            from ..board import set_play
+            if not isinstance(body.get("on"), bool):
+                raise HttpError(400, "on must be true or false")
+            return set_play(k, body["on"], by=actor)
         if m := re.fullmatch(r"/api/projects/([\w-]+)/steps/(\d+)", path):
             if not isinstance(body.get("done"), bool):
                 raise HttpError(400, "done must be true or false")
