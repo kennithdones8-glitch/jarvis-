@@ -363,6 +363,27 @@ MIGRATIONS: list[str] = [
         UNIQUE (project_id, title_key)
     );
     """,
+    # v14: knowledge intelligence (Evolution 4.0, Stage 4). Additions only; nothing existing is rewritten.
+    # - memories: when one was last changed, a privacy class ('private' never leaves this Mac, whatever you approve),
+    #   and an optional date after which it should be checked again.
+    # - links: how sure the connection is (1.0 = stated or structural; lower = worked out by word overlap).
+    # - file search: whole documents in chunks (was: the first 20,000 characters as one block), a content hash for
+    #   duplicate detection, and a flag for text that reads like instructions to an AI. The old one-block index is a
+    #   rebuildable cache, so it is emptied here and rebuilt in the background from your approved folders.
+    """
+    ALTER TABLE memories ADD COLUMN updated_at TEXT;
+    ALTER TABLE memories ADD COLUMN privacy TEXT NOT NULL DEFAULT 'normal';
+    ALTER TABLE memories ADD COLUMN review_after TEXT;
+    ALTER TABLE links ADD COLUMN confidence REAL NOT NULL DEFAULT 1.0;
+    CREATE VIRTUAL TABLE file_chunks USING fts5(path UNINDEXED, chunk UNINDEXED, name, body, tokenize='porter unicode61');
+    ALTER TABLE file_index_meta ADD COLUMN sha256 TEXT;
+    ALTER TABLE file_index_meta ADD COLUMN chunks INTEGER NOT NULL DEFAULT 0;
+    ALTER TABLE file_index_meta ADD COLUMN duplicate_of TEXT;
+    ALTER TABLE file_index_meta ADD COLUMN flagged INTEGER NOT NULL DEFAULT 0;
+    CREATE INDEX file_index_sha ON file_index_meta(sha256);
+    DELETE FROM file_index;
+    DELETE FROM file_index_meta;
+    """,
 ]
 
 
