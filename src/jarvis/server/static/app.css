@@ -1690,3 +1690,9 @@ body[data-view="games"] .context-panel { display: none; }
 .week-grid .wk b { display: block; font-size: 22px; }
 .week-grid .wk span { font-size: 13px; color: var(--muted, #b9aa91); }
 .week-list { margin: 6px 0; padding-left: 18px; font-size: 14px; }
+
+/* "Used N things JARVIS knows" under a reply: what was retrieved and why */
+.msg .used { margin-top: 6px; font-size: 12.5px; opacity: .9; }
+.msg .used summary { cursor: pointer; color: var(--muted, #b9aa91); min-height: 24px; }
+.msg .used ul { margin: 4px 0 0; padding-left: 18px; display: grid; gap: 3px; overflow-wrap: anywhere; }
+.msg .used small { color: var(--muted, #b9aa91); }

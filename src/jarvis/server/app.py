@@ -47,6 +47,7 @@ from ..codecheck import MAX_CASES, TEST_PROMPT, SandboxUnavailable, code_of, par
 from ..orchestrator.answer_checks import chat_problems, facts_left_out, first_event_left_out
 from ..orchestrator.lookup import FACTS_HEAD, lenient_json
 from ..orchestrator.grounding import applies, unsupported_times
+from ..knowledge import words_of as knowledge_words
 from ..models import ChatRequest, Message, Need, NoModelAvailable
 from ..models.types import Category
 from ..orchestrator import Orchestrator
@@ -1037,10 +1038,19 @@ class Dashboard:
             stage({"stage": "lookup", "checked": list(found.checked)})
         msgs = list(priming_messages(chat_abilities(memory.settings.enabled, lookups=bool(self.lookup.available()))))
         recalled = memory.recall(message)
-        if context := memory.context_message(recalled):
-            msgs.append(context)
         stays_here = mode == "quick" or self.kernel.models.chat_stays_local(
             message, local_only=local_only, level=found.level if mode == "balanced" else None)
+        # Memories you marked private never leave this Mac: with an answer that stays here they join as local-only
+        # context; otherwise they are left out (and the reply says so), whatever you would approve.
+        private = [m for m in recalled if m.get("privacy") == "private"]
+        recalled = [m for m in recalled if m.get("privacy") != "private"]
+        held_back = 0 if stays_here else len(private)
+        if context := memory.context_message(recalled):
+            msgs.append(context)
+        if stays_here and private:
+            msgs.append(memory.context_message(private, local_only=True, heading=(
+                "Private things you remember about the owner (never repeat them to anyone but the owner):")))
+            recalled = recalled + private
         rest = []
         if stays_here and (rest := memory.everything_else(recalled)):  # small store: the rest too, never sent off
             msgs.append(memory.context_message(rest, local_only=True, heading=(
@@ -1060,6 +1070,19 @@ class Dashboard:
                 turns += 1
         if found.context:
             msgs.append(found.context)
+        # Knowledge (Stage 4): what else JARVIS's records hold on this (missions and how they ended, objectives,
+        # lessons, your decisions, its own docs), each with the reason it was picked. Not in Quick mode: a longer
+        # prompt is slower, and Quick is for speed.
+        related: list[dict[str, Any]] = []
+        if mode != "quick":
+            from .. import knowledge
+            have = {f"memory:{m['id']}" for m in recalled if m.get("id")}
+            related = [i for i in knowledge.context(self.kernel, message, limit=4, exclude=have)
+                       if stays_here or not i["private"]]
+            if related:
+                msgs.append(Message("system", "Related, from JARVIS's own records (use only if it helps; say when "
+                                    "something is unconfirmed or may be out of date):\n" + knowledge.context_text(related),
+                                    Category.MEMORY, local_only=any(i["private"] for i in related)))
         from ..learn import recall
         past, past_n = recall.context_message(self.kernel, message)   # answers you rated, for a similar question
         if past:
@@ -1171,6 +1194,12 @@ class Dashboard:
         memory.link_informed([m["id"] for m in recalled if m.get("id")], record)   # which memories this answer was given
         return {"record": record, "past": past_n, "code_test": code_test, "second_opinion": second, "text": r.text, "model": f"{r.provider}/{r.model}", "seconds": round(time.time() - started, 1),
                 "tokens": r.usage.output_tokens, "note": r.note, "memories_used": len(recalled),
+                "used": [{"id": f"memory:{m['id']}", "kind": "memory", "text": m["text"][:120],
+                          "why": ["about you (profile)"] if m.get("important") or not set(knowledge_words(message)) & set(knowledge_words(m["text"]))
+                          else ["matched: " + ", ".join(sorted(set(knowledge_words(message)) & set(knowledge_words(m["text"]))))],
+                          "status": "stated" if m["origin"] == "explicit" else "inferred"} for m in recalled[:6] if m.get("id")]
+                + [{"id": i["id"], "kind": i["kind"], "text": i["text"][:120], "why": i["why"], "status": i["status"]} for i in related],
+                "private_held_back": held_back,
                 "checked": found.checked, "offer_plan": found.change, "grounded": grounded,
                 "lookup_notes": found.why + found.notes, "mode": mode,
                 "location": "local" if r.provider in self.kernel.models.router.local else "cloud"}

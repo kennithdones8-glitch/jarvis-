@@ -125,6 +125,7 @@ async function call(path, body) {
 const clock = (ts) => new Date(typeof ts === "number" ? ts * 1000 : ts).toLocaleTimeString([], { hour12: false, hour: "2-digit", minute: "2-digit" });
 const base = (p) => (p || "").split("/").filter(Boolean).pop() || p || "";
 const folder = (p) => { const parts = (p || "").split("/").filter(Boolean); parts.pop(); return parts.length ? parts.slice(-2).join("/") : "/"; };
+const KNOW_KIND = { memory: "Memory", mission: "Mission", objective: "Objective", lesson: "Lesson", decision: "Your decision", doc: "JARVIS's docs", answer: "Answer" };
 const plural = (n, w) => `${n} ${w}${n === 1 ? "" : "s"}`;
 const STATE_WORDS = {
   queued: "Queued", running: "In progress", awaiting_approval: "Needs your decision", verifying: "Verifying",
@@ -535,7 +536,7 @@ async function sendChat(payload, endpoint = "/api/chat") {
       meta: [r.model.split("/").pop(), `${r.seconds}s`, `${r.searches.length} searches`, `${r.pages_read.length} pages read`,
              `${r.verified_sources}/${r.sources.length} sources verified`].join(" · ") });
     else if (r.error) ui.convo.push({ ...base, text: r.partial ? `${r.partial}\n\n— ${r.error}` : r.error, error: true, activity: r.activity });
-    else ui.convo.push({ ...base, text: r.text, checked: r.checked || [], plan: r.offer_plan ? payload.message : null, activity: r.activity,
+    else ui.convo.push({ ...base, text: r.text, checked: r.checked || [], used: r.used || [], heldBack: r.private_held_back || 0, plan: r.offer_plan ? payload.message : null, activity: r.activity,
       ref: r.record || `${ui.session}:${Date.now()}`, rmodel: r.location === "local" ? `local/${String(r.model).split("/").pop()}` : r.model, rmode: r.mode,
       meta: [r.model.split("/").pop(), r.location === "cloud" ? "cloud" : null, r.mode && r.mode !== "balanced" ? INTEL_LABEL[r.mode] : null,
       r.first ? `first words ${r.first.toFixed(2)}s` : null, `${r.seconds}s`,
@@ -641,6 +642,11 @@ function renderFeed(d) {
             h("a", { href: s.url, target: "_blank", rel: "noopener noreferrer" }, s.url.replace(/^https?:\/\//, "")),
             s.verified ? " ✓" : " — not seen by the research tools"))) : null,
         m.checked && m.checked.length ? h("div", { class: "checked" }, "Checked: ", m.checked.join(" · ")) : null,
+        // what JARVIS's own knowledge contributed, and why each item was picked (Knowledge, Stage 4)
+        (m.used && m.used.length) || m.heldBack ? h("details", { class: "used" },
+          h("summary", {}, `Used ${plural((m.used || []).length, "thing")} JARVIS knows${m.heldBack ? ` · ${plural(m.heldBack, "private memory").replace("memorys", "memories")} held back (this answer left the Mac)` : ""}`),
+          h("ul", {}, (m.used || []).map((u) => h("li", {}, h("b", {}, `${KNOW_KIND[u.kind] || u.kind}: `), u.text,
+            h("small", {}, ` — ${u.why.join("; ")}${u.status === "inferred" ? " · unconfirmed" : u.status === "outdated" ? " · may be out of date" : ""}`))))) : null,
         m.plan ? h("div", { class: "row mt" }, h("button", { class: "btn btn-sm", type: "button", onclick: () => makePlan(m) },
           "Make a plan")) : null,
         m.live && ui.stage ? h("div", { class: "stage-line", role: "status" }, stageLabel(ui.stage)) : null,
