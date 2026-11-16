@@ -1,6 +1,9 @@
 # Changelog
 
-## Unreleased — after 0.19.4 (work branch `claude/funny-allen-ygy8kk`, not yet released)
+## 0.20.0 — Evolution 4.0: safe updates, objectives, games, file search, voice conversation, your week, off-Mac backups (2026-11-16)
+
+Database schema v12 (from v9/v10/v11; an encrypted backup is made before the upgrade). Not yet verified on the
+owner's Mac and iPhone: see the checklist in the pull request.
 
 - **Merged 0.19.4 from `main`** (careful answers on the 7B, the calendar premise check, contradictions asked about
   before planning, nothing left out, retries routed by the question, the first-event check). Both sides kept; one
