@@ -56,6 +56,7 @@ from ..status import models_status
 
 STATIC = Path(__file__).parent / "static"
 COOKIE = "jarvis_session"
+STAY_SIGNED_IN = "signin.stay"   # meta key: "1" when you chose to stay signed in on this Mac's browser
 TOUCHID_COOKIE = "jarvis_touchid"
 TOUCHID_SIGNIN = "Touch ID sign-in required"
 # Reachable before Touch ID sign-in (once it is set up): the page shell and its files, signing in, and the
@@ -326,6 +327,7 @@ class Dashboard:
         self._autoplanned: dict[str, float] = {}   # objective id → when autopilot last asked for a plan
         self._lock = threading.Lock()
         self._copy_lock = threading.Lock()
+        self._kept_ready = time.time()   # start-up warms every model; the first keep-ready is 20 minutes later
         self._inflight: set[str] = set()
         self._pool = cf.ThreadPoolExecutor(max_workers=workers, thread_name_prefix="jarvis-runner")
         self._stop = threading.Event()
@@ -395,6 +397,13 @@ class Dashboard:
             self.httpd.serve_forever(poll_interval=0.25)
         finally:
             self.shutdown()
+
+    def keep_model_ready(self) -> str | None:
+        """Every 20 minutes, keep the fastest local model loaded so a reply starts at once (see ModelService.keep_ready)."""
+        if time.time() - self._kept_ready < 1200:
+            return None
+        self._kept_ready = time.time()
+        return self.kernel.models.keep_ready()
 
     def _warm_models(self) -> None:
         if self._stop.wait(2.0):
@@ -701,6 +710,7 @@ class Dashboard:
             try:
                 self.maybe_backup()
                 self.sync_offsite()
+                self.keep_model_ready()
                 before = self._health.get("ok")
                 self._health = self.check_health()
                 if before is not None and before != self._health["ok"]:
@@ -1309,6 +1319,7 @@ class Dashboard:
             "whatsnew": _whatsnew(k),
             "files": None if device else _files_status(k),
             "backup_copy": None if device else self.backup_copy_status(),
+            "stay_signed_in": None if device else {"on": self.stay_signed_in(), "url": f"http://localhost:{self.port}/"},
             "coding": {"self_test": bool(k.model_config.coding.get("self_test")), "compute": bool(k.model_config.coding.get("compute")),
                        "sandbox": sys.platform == "darwin"},
             "briefing": {"last_date": _last_briefing(k)},
@@ -1359,6 +1370,17 @@ class Dashboard:
                 return value
         return None
 
+    def stay_signed_in(self) -> bool:
+        row = self.kernel.db.one("SELECT value FROM meta WHERE key = ?", (STAY_SIGNED_IN,))
+        return bool(row and row["value"] == "1")
+
+    def _session_cookie(self) -> str:
+        """This Mac's browser sign-in. By default it ends when the browser quits. With "Stay signed in" (your choice,
+        off by default) it lasts 30 days, so JARVIS can be the browser's start page. Either way it is HttpOnly,
+        same-site, only ever sent to localhost, and Touch ID (when set up) is still asked for as before."""
+        keep = "; Max-Age=2592000" if self.stay_signed_in() else ""
+        return f"{COOKIE}={self.token}; HttpOnly; SameSite=Strict; Path=/{keep}"
+
     def _authed(self, h: BaseHTTPRequestHandler) -> bool:
         for part in (h.headers.get("Cookie") or "").split(";"):
             name, _, value = part.strip().partition("=")
@@ -1386,8 +1408,7 @@ class Dashboard:
             if method == "GET" and url.path == "/":
                 token = parse_qs(url.query).get("token", [""])[0]
                 if token and hmac.compare_digest(token, self.token):
-                    cookie = f"{COOKIE}={self.token}; HttpOnly; SameSite=Strict; Path=/"
-                    return self._send(h, 303, b"", "text/plain", {"Location": "/", "Set-Cookie": cookie})
+                    return self._send(h, 303, b"", "text/plain", {"Location": "/", "Set-Cookie": self._session_cookie()})
                 if not self._authed(h):
                     page = (b"<!doctype html><meta charset=utf-8><title>JARVIS</title><body style='font-family:"
                             b"system-ui;background:#05080d;color:#cfe3f0;padding:3rem'><h1>JARVIS</h1><p>Open the link "
@@ -1412,6 +1433,8 @@ class Dashboard:
             if url.path == "/api/touchid/signin":
                 return self._touchid_signin(h, body)
             result = self._post_local(url.path, body)
+            if url.path == "/api/settings/stay-signed-in":   # re-issue this browser's cookie with or without an expiry
+                return self._json(h, 200, result, {"Set-Cookie": self._session_cookie()})
             if url.path == "/api/touchid/enroll/finish" and not self.mac.signed_in(self._cookie(h, TOUCHID_COOKIE)):
                 # you just used Touch ID to set it up: that counts as signing in on this browser
                 return self._json(h, 200, result, {"Set-Cookie": self._touchid_cookie(self.mac.new_session())})
@@ -1858,6 +1881,14 @@ class Dashboard:
             self.jobs.pop(m.group(1), None)
             self._forget_job(m.group(1))
             return {"ok": True}
+        if path == "/api/settings/stay-signed-in":   # Mac only, Touch ID when set up
+            if not isinstance(body.get("on"), bool):
+                raise HttpError(400, "'on' must be true or false")
+            with k.db.tx() as c:
+                c.execute("INSERT INTO meta (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+                          (STAY_SIGNED_IN, "1" if body["on"] else "0"))
+            k.audit.record("signin.stay_signed_in", actor=actor, on=body["on"])
+            return {"on": body["on"], "url": f"http://localhost:{self.port}/"}
         if path == "/api/weekly/seen":
             from .. import weekly
             weekly.mark_seen(k)

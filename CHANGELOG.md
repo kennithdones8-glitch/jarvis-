@@ -9,6 +9,19 @@ owner's Mac and iPhone: see the checklist in the pull request.
   before planning, nothing left out, retries routed by the question, the first-event check). Both sides kept; one
   conflict: `Orchestrator.plan` runs main's premise check first and keeps this branch's replan history.
 
+### Faster to answer, and there when the browser opens
+
+- **The fastest model stays loaded all day.** Ollama unloads a model after 30 idle minutes, and reloading costs
+  10-30 seconds on an Intel Mac before the first word. Every 20 minutes JARVIS now re-loads the fastest everyday model
+  (only that one, a couple of GB; nothing is generated), so a Quick answer starts at once. Skipped while the
+  emergency stop is on.
+- **The page is there at once.** The projection's start-up assembly held the panels back for about 4 seconds on
+  every browser start; it now plays on the first visit of the day only.
+- **Stay signed in** (Systems, Mac only, Touch ID to switch, off by default). Off: this browser's sign-in ends when
+  the browser quits, as before. On: it lasts 30 days, so JARVIS can be Chrome's start page (Chrome → Settings → On
+  startup → Open a specific page → `http://localhost:8765/`). The cookie stays HttpOnly and same-site, and every
+  Touch ID check is unchanged.
+
 ### Backups: a second copy off this Mac, and Test restore
 
 - **Second copy** (Systems, Mac only, Touch ID to choose). Each encrypted backup is also copied to a folder you

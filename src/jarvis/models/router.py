@@ -285,6 +285,29 @@ class ModelService:
         self.audit.record("models.warmed", models=done)
         return done
 
+    def keep_ready(self) -> str | None:
+        """Keep the fastest everyday local model loaded (called every ~20 minutes while JARVIS runs): Ollama unloads a
+        model after 30 idle minutes, and reloading costs 10-30 s on an Intel Mac before the first word. Only the
+        fastest one (a couple of GB), so Quick answers start at once all day without holding every model in memory.
+        Nothing is generated or sent; skipped while the emergency stop is on. Returns the model kept ready."""
+        if self.killswitch.engaged():
+            return None
+        for provider in self.router.local.values():
+            warm = getattr(provider, "warm", None)
+            if warm is None:
+                continue
+            try:
+                everyday = [m for m in provider.available_models()
+                            if provider.models[m].capabilities != frozenset({"reasoning"})]
+                if not everyday:
+                    continue
+                mid = max(everyday, key=lambda m: provider.models[m].speed)
+                warm(mid)
+                return f"{provider.name}/{mid}"
+            except ProviderError:
+                continue
+        return None
+
     def _strong_local_for_reasoning(self, need: Need, request: ChatRequest, task_id: str | None,
                                     question: str | None = None) -> Need:
         """When a chat answer will come from this Mac anyway (local_first, or kept local), maths, logic and code go to

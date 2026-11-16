@@ -506,3 +506,14 @@ def test_a_careful_answer_in_hybrid_still_gets_the_reasoning_model(model_kernel)
     assert r.model == "mid:7b"
     deep = Need("chat", prefer="quality", local_only=True)  # Deep-style "quality" without careful: unchanged
     assert k.models.complete(deep, req(SYSTEM, Message("user", "What should I cook tonight?")), purpose="c").model == "mid:7b"
+
+
+# ---- kept ready all day (0.20.0): only the fastest everyday model is re-loaded, nothing is generated ---------------
+def test_only_the_fastest_model_is_kept_ready_and_the_stop_is_respected(model_kernel):
+    k, ollama, openai = model_kernel(local_installed=("small:3b", "mid:7b"), extra_local=(
+        f"[[providers.ollama.models]]\n{model_block('mid:7b', 3, 2)}"))
+    assert k.models.keep_ready() == "ollama/small:3b"
+    bodies = [r["body"] for r in ollama.received if r["path"] == "/api/chat"]
+    assert [b["model"] for b in bodies] == ["small:3b"] and bodies[0]["messages"] == [] and openai.received == []
+    k.killswitch.engage(reason="test", by="user:test")
+    assert k.models.keep_ready() is None and len([r for r in ollama.received if r["path"] == "/api/chat"]) == 1

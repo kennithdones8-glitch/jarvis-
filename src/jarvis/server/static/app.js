@@ -3,6 +3,14 @@
 // (never as HTML), so content from files or web pages cannot inject markup or scripts.
 
 const $ = (s) => document.querySelector(s);
+// The start-up assembly of the projection holds the panels back for ~4 s. It plays on the first visit of the day
+// only (avatar.js skips it when "jarvis-booted" is set for this browser session), so the page is there at once
+// every other time the browser opens.
+try {
+  const today = new Date().toISOString().slice(0, 10);
+  if (localStorage.getItem("jarvis-boot-day") === today) sessionStorage.setItem("jarvis-booted", "1");
+  else localStorage.setItem("jarvis-boot-day", today);
+} catch (e) { /* storage unavailable: the assembly plays as before */ }
 const ui = { mode: "ask", data: null, convo: [], chatBusy: false, online: true, open: new Set(), lastFeed: "",
              intel: "balanced", stage: null, abort: null, editIndex: null, copied: null,
              session: (crypto.randomUUID ? crypto.randomUUID() : String(Math.random()).slice(2)), memQ: "", memKey: "" };
@@ -62,7 +70,7 @@ const b64u = {
 // which enforces it regardless of what this page does): releasing the emergency stop, changing or forgetting
 // memories, removing a phone, plus approving a high-risk action (risk tier 4).
 const FACE_ID = [/^\/api\/release$/, /^\/api\/memory\/conflicts\/resolve$/, /^\/api\/memory\/[\w-]+\/(delete|edit)$/, /^\/api\/devices\/[\w-]+\/revoke$/];
-const TOUCH_ID = [...FACE_ID, /^\/api\/update\/start$/, /^\/api\/settings\/(coding|files|backup-copy)$/, /^\/api\/devices\/pair$/, /^\/api\/touchid\/enroll\/options$/, /^\/api\/touchid\/[\w-]+\/remove$/];
+const TOUCH_ID = [...FACE_ID, /^\/api\/update\/start$/, /^\/api\/settings\/(coding|files|backup-copy|stay-signed-in)$/, /^\/api\/devices\/pair$/, /^\/api\/touchid\/enroll\/options$/, /^\/api\/touchid\/[\w-]+\/remove$/];
 const HIGH_RISK = 4;
 const highRiskApproval = (path, body) => {
   const m = path.match(/^\/api\/approvals\/([\w-]+)$/);
@@ -1720,6 +1728,12 @@ function renderSystems(d) {
       h("button", { class: "btn btn-ghost btn-sm", type: "button", onclick: () => act("/api/backup/now", {}) }, "Back up now"),
       h("button", { class: "btn btn-ghost btn-sm", type: "button", onclick: testRestore, title: "Opens the newest backup (the second copy, if you have one) and checks every part of it; nothing is replaced" }, "Test restore")),
     onPhone() ? null : backupCopyBlock(d.backup_copy),
+    onPhone() || !d.stay_signed_in ? null : h("div", { class: "devices mt" },
+      h("div", { class: "ro", title: "Off: this browser's sign-in ends when the browser quits. On: it lasts 30 days, so JARVIS can be your browser's start page. Touch ID, when set up, is still asked for as before." },
+        h("span", {}, "Stay signed in"),
+        h("button", { class: `btn btn-ghost btn-xs${d.stay_signed_in.on ? " on" : ""}`, type: "button",
+          onclick: () => act("/api/settings/stay-signed-in", { on: !d.stay_signed_in.on }) }, d.stay_signed_in.on ? "On · 30 days" : "Off")),
+      d.stay_signed_in.on ? h("div", { class: "d-why" }, `To open JARVIS when Chrome starts: Chrome → Settings → On startup → “Open a specific page or set of pages” → Add a new page → ${d.stay_signed_in.url}`) : null),
     onPhone() ? null : part("Updates"), onPhone() ? null : updateBlock(d.update),
     onPhone() ? null : part("Test this version"), onPhone() ? null : benchBlock(d.benchtest),
     h("div", { class: "lights" }, lights.length ? lights : h("div", { class: "empty" }, "No models configured")),
