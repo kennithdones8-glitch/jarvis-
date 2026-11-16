@@ -47,7 +47,13 @@ ACTION_DOCS: dict[tuple[str, str], str] = {
     ("reminders", "complete"): 'reminders.complete {"title": "<exact title>", "list" (optional)} -> ticks it off',
     ("notes", "search"): 'notes.search {"query": "<words>"} -> {"results": [{"title", "modified", "snippet"}]} (Apple Notes)',
     ("notes", "read"): 'notes.read {"title": "<exact title>"} -> {"content"}',
-    ("notes", "create"): 'notes.create {"title", "body": "<text>", "folder" (optional)} -> new note in Apple Notes',
+    ("notes", "create"): 'notes.create {"title", "body": "<text>", "folder" (optional)} -> new note in Apple Notes (only when the owner asks for an Apple Note)',
+    ("projects", "list"): 'projects.list {} -> {"projects": [{"title", "state", "summary", "items"}]} (the owner\'s projects on the dashboard)',
+    ("projects", "read"): 'projects.read {"project": "<title>", "title": "<item title>" (optional)} -> {"content"} or the project\'s list of items',
+    ("projects", "open"): 'projects.open {"title": "<project name>", "summary": "<one sentence>"} -> opens a project on the dashboard',
+    ("projects", "save"): 'projects.save {"project": "<project name>", "title": "<e.g. Plan, Notes, Code, Animation>", "content": "<text>", '
+                          '"kind": "plan" | "note" | "code" | "page" (optional; "page" = an HTML page, e.g. an animation, which the owner '
+                          'can play on the dashboard)} -> saved to that project on the dashboard (opened if new)',
     ("mail", "draft"): 'mail.draft {"to": ["<email>"], "subject", "body"} -> saves a draft in Mail for the owner to send (never sends)',
     ("apps", "open"): 'apps.open {"name": "<app name>"} -> opens an app (only when asked to open one; to write an email use mail.draft)',
     ("music", "now"): 'music.now {} -> {"running", "state", "track": {"name", "artist", "album"}, "volume"} (what the Music app is playing)',
@@ -69,13 +75,15 @@ REQUIRED_ARGS: dict[tuple[str, str], dict[str, type]] = {
     ("reminders", "list"): {}, ("reminders", "add"): {"title": str}, ("reminders", "complete"): {"title": str},
     ("notes", "search"): {"query": str}, ("notes", "read"): {"title": str},
     ("notes", "create"): {"title": str, "body": str},
+    ("projects", "list"): {}, ("projects", "read"): {"project": str}, ("projects", "open"): {"title": str},
+    ("projects", "save"): {"project": str, "title": str, "content": str},
     ("mail", "draft"): {"to": list, "subject": str, "body": str}, ("apps", "open"): {"name": str},
     ("music", "now"): {}, ("music", "control"): {"action": str}, ("music", "playlist"): {"name": str},
     ("music", "volume"): {"level": int}, ("system", "status"): {}, ("system", "volume"): {"level": int},
     ("system", "focus"): {"state": str},
 }
 RETRIES = {"web": 3, "search": 3, "llm": 2, "fs": 2, "research": 2, "doc": 2,
-           "calendar": 2, "reminders": 2, "notes": 2, "mail": 1, "apps": 1, "music": 1, "system": 1}
+           "calendar": 2, "reminders": 2, "notes": 2, "projects": 2, "mail": 1, "apps": 1, "music": 1, "system": 1}
 
 PLANNER_PROMPT = """\
 You are the planning component of JARVIS, a personal assistant on the owner's Mac. Turn the \
@@ -87,7 +95,7 @@ Available actions (use nothing else):
 {catalog}
 
 Rules:
-- Files may only be read or written inside: {roots}. Save new documents in {notes}.
+- Files may only be read or written inside: {roots}. {save_rule}
 - Steps are numbered from 0. To use an earlier step's output write "{{{{steps.N.field}}}}", e.g. \
 "{{{{steps.0.content}}}}", and put N in that step's "depends_on".
 - Keep plans short (at most {max_steps} steps). Do not add steps the owner did not ask for.
@@ -352,8 +360,19 @@ class Planner:
 
     def system_prompt(self) -> str:
         catalog = "\n".join(f"- {ACTION_DOCS[k]}" for k in available_actions(self.registry))
-        return PLANNER_PROMPT.format(catalog=catalog, roots=", ".join(self.roots) or "(none)",
+        return PLANNER_PROMPT.format(catalog=catalog, roots=", ".join(self.roots) or "(none)", save_rule=self.save_rule(),
                                      notes=self.notes_dir, max_steps=MAX_STEPS, now=now_text())
+
+    def save_rule(self) -> str:
+        """Where new work goes. With the project board: a file only when the owner names a file or folder; projects,
+        plans, notes, code and animations go to a project on the dashboard (never to Notes unless asked)."""
+        if self.registry.action("projects", "save") is None:
+            return f"Save new documents in {self.notes_dir}."
+        return (f"When the owner names a file (e.g. summary.md) or a folder, write that file. Save new documents in "
+                f"{self.notes_dir}. Otherwise keep the work on the dashboard: when they ask to start, plan or "
+                "build a project, or for a plan, notes, code or an animation, save it with projects.save to a project "
+                "named after what they asked for (an HTML animation as kind \"page\", so they can play it there). "
+                "Never put project work in Apple Notes or files unless the owner asks for that.")
 
     def folder_context(self, request: str) -> str | None:
         """Names (not contents) of files in approved folders the request mentions, so the plan can refer

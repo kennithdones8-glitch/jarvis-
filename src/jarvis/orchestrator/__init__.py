@@ -73,7 +73,7 @@ class Orchestrator:
         kernel.engine.arg_resolver = resolve_step_args
         kernel.engine.verifiers.setdefault("writes_verified", writes_verified)
         from .criteria import make_verifier
-        kernel.engine.verifiers.setdefault("mission_verified", make_verifier(kernel.registry, writes_verified))
+        kernel.engine.verifiers.setdefault("mission_verified", make_verifier(kernel.registry, writes_verified, getattr(kernel, "board", None)))
         self.notes_dir = str(Path(notes_dir).expanduser())
         self.planner = Planner(kernel.models, kernel.registry, roots=[str(r) for r in kernel.policy.roots],
                                notes_dir=self.notes_dir)
@@ -226,8 +226,19 @@ class Orchestrator:
 
 
 def saved_text(steps: list[dict[str, Any]], limit: int = 4000) -> str | None:
-    """"Saved <file>:" and what the last finished fs.write saved (its arguments, references filled in)."""
+    """"Saved <file>:" and what the last finished fs.write saved (its arguments, references filled in); for a
+    projects.save, where on the dashboard it is (a page isn't printed: it's code, and it plays on the Projects page)."""
     for s in reversed(steps):
+        if (s["tool"], s["action"]) == ("projects", "save") and s["state"] == StepState.DONE and isinstance(s["result"], dict):
+            r = s["result"]
+            head = f"Saved “{r.get('title')}” to the project “{r.get('project')}” on the dashboard (Projects page)."
+            if r.get("kind") == "page":
+                return head + " It's a page: open it there and press Play (turn on Play animations in Settings first)."
+            try:
+                content = resolve_step_args(s, steps).get("content")
+            except Exception:
+                content = None
+            return head + (f"\n\n{content.strip()[:limit]}" if isinstance(content, str) and content.strip() else "")
         if (s["tool"], s["action"]) == ("fs", "write") and s["state"] == StepState.DONE:
             try:
                 args = resolve_step_args(s, steps)

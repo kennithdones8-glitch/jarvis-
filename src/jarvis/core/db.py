@@ -336,6 +336,33 @@ MIGRATIONS: list[str] = [
         indexed_at  TEXT NOT NULL
     );
     """,
+    # v13: the project board — projects JARVIS opens and plans on the dashboard (instead of files in Notes), and what
+    # it made for each: plans, notes, code and pages (animations play only if you turn that on, in a sealed frame).
+    """
+    CREATE TABLE board_projects (
+        id          TEXT PRIMARY KEY,
+        title_key   TEXT NOT NULL UNIQUE,          -- the title, lower-cased and trimmed: one project per name
+        title       TEXT NOT NULL,
+        summary     TEXT NOT NULL DEFAULT '',
+        state       TEXT NOT NULL DEFAULT 'planning' CHECK (state IN ('planning', 'active', 'done', 'archived')),
+        created_by  TEXT NOT NULL,
+        created_at  TEXT NOT NULL,
+        updated_at  TEXT NOT NULL
+    );
+    CREATE TABLE board_items (
+        id          TEXT PRIMARY KEY,
+        project_id  TEXT NOT NULL REFERENCES board_projects(id),
+        title_key   TEXT NOT NULL,
+        title       TEXT NOT NULL,
+        kind        TEXT NOT NULL CHECK (kind IN ('plan', 'note', 'code', 'page')),
+        content     TEXT NOT NULL,
+        sha256      TEXT NOT NULL,
+        task_id     TEXT,
+        created_at  TEXT NOT NULL,
+        updated_at  TEXT NOT NULL,
+        UNIQUE (project_id, title_key)
+    );
+    """,
 ]
 
 

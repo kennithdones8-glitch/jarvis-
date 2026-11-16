@@ -60,7 +60,7 @@
         <a class="btn btn-ghost" role="menuitem" href="/bench" title="Benchmark runs: scores over time, before vs after, failures">Benchmarks</a>
         <a class="btn btn-ghost" role="menuitem" href="/trust" title="What JARVIS does on its own, always asks about, and never does">Trust</a>
         <a class="btn btn-ghost" role="menuitem" href="#/intelligence" title="Today's briefing and improvement ideas">Briefing &amp; ideas</a>
-        <a class="btn btn-ghost" role="menuitem" href="#/projects" title="Projects JARVIS thinks you'd enjoy, with a first plan">Projects for you</a>
+        <a class="btn btn-ghost" role="menuitem" href="#/projects" title="Your projects: JARVIS opens and plans them here, with ideas that fit you">Projects</a>
       </div>
     </details>
     <button id="estop" class="btn btn-danger" title="Pause every task and block new actions">Emergency stop</button>
@@ -83,7 +83,7 @@
     <a href="#/evolution" data-view="evolution" title="Evolution center: learning, experiments, autonomy"><span class="ni" aria-hidden="true">⟁</span><span class="nl">Evolution</span></a>
     <a href="#/intelligence" data-view="intelligence" title="Briefing &amp; ideas"><span class="ni" aria-hidden="true">✧</span><span class="nl">Briefing &amp; ideas</span></a>
     <a href="#/weekly" data-view="weekly" title="Your week: what happened in the last 7 days, from the records"><span class="ni" aria-hidden="true">▦</span><span class="nl">Your week</span></a>
-    <a href="#/projects" data-view="projects" title="Projects for you"><span class="ni" aria-hidden="true">✚</span><span class="nl">Projects for you</span></a>
+    <a href="#/projects" data-view="projects" title="Projects"><span class="ni" aria-hidden="true">✚</span><span class="nl">Projects</span></a>
     <a href="/bench" title="Benchmarks"><span class="ni" aria-hidden="true">▥</span><span class="nl">Benchmarks</span></a>
     <a href="/trust" title="Trust"><span class="ni" aria-hidden="true">⛨</span><span class="nl">Trust</span></a>
     <button type="button" id="navcollapse" aria-expanded="true" title="Collapse or expand the menu"><span class="ni" aria-hidden="true">⇤</span><span class="nl">Collapse</span></button>
@@ -228,7 +228,8 @@
       <div id="objectives"></div>
     </section>
     <section class="panel projects-panel" aria-labelledby="proj-h">
-      <header class="ph"><h2 id="proj-h">Projects for you</h2></header>
+      <header class="ph"><h2 id="proj-h">Projects</h2></header>
+      <div id="board"></div>
       <div id="projects"></div>
     </section>
     <section class="panel command-panel" aria-labelledby="cc-h">

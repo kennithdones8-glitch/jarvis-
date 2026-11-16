@@ -16,6 +16,28 @@
 - **Not yet measured on the Mac.** Merge rule still applies: net ≥ +2 tasks, no new failures, ≥5 runs, on exactly the
   tested commit.
 
+### Projects live on the dashboard, and animations can play there (merged from `made-page-v1`, owner-approved)
+
+You asked: when you tell JARVIS to start a project, keep it on the dashboard instead of sending you to your Notes.
+
+- **Projects page.** The top of the page now shows *Your projects*: projects JARVIS opened, or that you opened
+  yourself with **New project**. Each one holds what JARVIS made for it: plans, notes, code and pages. Tap an item to
+  read it, then copy or delete it. **Plan with JARVIS** and **Ask JARVIS to make…** start the usual Make-a-plan flow.
+  Starting one of the suggested ideas opens it here too, with its first plan.
+- **The planner saves project work to the dashboard** (`projects.save`, a routine change, so you approve it first).
+  If you name a file (e.g. "save it as summary.md"), JARVIS still writes that file to your notes folder. Otherwise
+  project work no longer goes to files or Apple Notes. Each save is checked by reading it back (`board` criterion).
+  The reply says where the work is, and the chat persona no longer tells you to look in Notes.
+- **Play animations (off by default; Mac only; Touch ID when set up).** A page JARVIS made, such as an HTML
+  animation, plays inside the Projects page in a sealed frame. The frame is sandboxed with scripts allowed and
+  same-origin left out, so the page gets an empty origin of its own. It has no network (`connect-src 'none'`), and
+  no forms, popups, top-level navigation, camera or microphone. It can't read the dashboard, its cookies or your data,
+  even when its URL is opened on its own. Turning the switch off stops every page at once. Checked in Chromium: the
+  page could not read the dashboard, cookies, storage, the JARVIS API or the internet.
+- **Schema v13:** `board_projects` and `board_items`. Older code can't open a v13 database. Use a fresh bench folder.
+- Tests: `tests/test_board.py` (15). The player-sealing tests are now gate security items (Permission bypass,
+  Privacy).
+
 ## 0.20.0 — Evolution 4.0: safe updates, objectives, games, file search, voice conversation, your week, off-Mac backups (2026-11-16)
 
 Database schema v12 (from v9/v10/v11; an encrypted backup is made before the upgrade). Not yet verified on the

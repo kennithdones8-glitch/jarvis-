@@ -70,7 +70,7 @@ const b64u = {
 // which enforces it regardless of what this page does): releasing the emergency stop, changing or forgetting
 // memories, removing a phone, plus approving a high-risk action (risk tier 4).
 const FACE_ID = [/^\/api\/release$/, /^\/api\/memory\/conflicts\/resolve$/, /^\/api\/memory\/[\w-]+\/(delete|edit)$/, /^\/api\/devices\/[\w-]+\/revoke$/];
-const TOUCH_ID = [...FACE_ID, /^\/api\/update\/start$/, /^\/api\/settings\/(coding|files|backup-copy|stay-signed-in)$/, /^\/api\/devices\/pair$/, /^\/api\/touchid\/enroll\/options$/, /^\/api\/touchid\/[\w-]+\/remove$/];
+const TOUCH_ID = [...FACE_ID, /^\/api\/update\/start$/, /^\/api\/settings\/(coding|files|backup-copy|stay-signed-in|play)$/, /^\/api\/devices\/pair$/, /^\/api\/touchid\/enroll\/options$/, /^\/api\/touchid\/[\w-]+\/remove$/];
 const HIGH_RISK = 4;
 const highRiskApproval = (path, body) => {
   const m = path.match(/^\/api\/approvals\/([\w-]+)$/);
@@ -2072,6 +2072,7 @@ async function loadProjects(entering = false) {
     try { await api("/api/projects/generate", {}); d.running = true; } catch (e) { /* the button still works */ }
   }
   renderProjects(d);
+  if (entering || !BOARD.data) loadBoard();
   clearTimeout(PROJ.timer);
   if (d.running && document.body.dataset.view === "projects") PROJ.timer = setTimeout(() => loadProjects(), 2000);
 }
@@ -2081,6 +2082,7 @@ async function projAct(path, body = {}) {
   try { await api(path, body); } catch (e) { PROJ.notice = e.message; }
   PROJ.busy = false;
   await loadProjects();
+  if (/\/accept$/.test(path)) loadBoard();   // starting an idea opens it on the board
 }
 async function polishProjects() {
   PROJ.notice = "Asking Claude…";
@@ -2161,6 +2163,118 @@ function renderProjects(d) {
     h("section", { class: "proj-part" }, h("h3", { class: "sys-part" }, "Ideas"),
       open.length ? h("ul", { class: "proj-list" }, open.map(projCard))
         : h("div", { class: "empty" }, d.enough ? "No ideas waiting. Tap “Find new ideas”." : "Not enough to go on yet: talk with JARVIS a little, or tell it about your goals.")));
+}
+
+// ---------------------------------------------------------------- project board: projects JARVIS opens and plans here
+// What JARVIS makes for a project (plans, notes, code, pages) is kept on this page, never in Notes. Planning and
+// building go through Make a plan, so you approve before anything is saved. A page (e.g. an animation) plays only
+// when you turned Play animations on (Mac), inside a sealed frame: no network, no access to the dashboard or your data.
+const BOARD = { data: null, open: null, item: null, playing: false, notice: null, archived: false };
+async function loadBoard() {
+  const box = $("#board");
+  if (!box) return;
+  try { BOARD.data = await api(`/api/board${BOARD.archived ? "?archived=1" : ""}`); }
+  catch (e) { fill(box, h("div", { class: "empty" }, `Couldn't load your projects: ${e.message}`)); return; }
+  renderBoard();
+}
+async function boardAct(path, body = {}) {
+  try { await api(path, body); BOARD.notice = null; } catch (e) { BOARD.notice = e.name === "NotAllowedError" ? cancelled(e) : e.message; }
+  await loadBoard();
+}
+async function boardPlan(request) {
+  ui.lastFeed = "";
+  setMode("do");
+  try {
+    await api("/api/plan", { request });
+    location.hash = "#/home";
+    await refresh();
+  } catch (e) { BOARD.notice = `Could not start planning: ${e.message}`; renderBoard(); }
+}
+function planProject(p) {
+  const about = p.summary ? ` (${p.summary})` : "";
+  boardPlan(`Plan the project “${p.title}”${about}: write a clear step-by-step plan and save it as “Plan” to that project on the dashboard.`);
+}
+async function askForProject(p) {
+  const text = await ask(`What should JARVIS make for “${p.title}”? (e.g. "an animation of a bouncing ball", "a shopping list", "the code for…")`, { input: "", ok: "Make a plan" });
+  if (text && text.trim()) boardPlan(`${text.trim()} — for the project “${p.title}”: save the work to that project on the dashboard.`);
+}
+async function newProject() {
+  const title = await ask("Name the new project", { input: "", ok: "Open project" });
+  if (!title || !title.trim()) return;
+  const summary = await ask("In one sentence, what is it? (optional)", { input: "", ok: "Save" });
+  await boardAct("/api/board/projects", { title: title.trim(), summary: (summary || "").trim() });
+}
+async function openItem(id) {
+  BOARD.playing = false;
+  if (BOARD.item && BOARD.item.id === id) { BOARD.item = null; renderBoard(); return; }
+  try { BOARD.item = await api(`/api/board/items/${id}`); } catch (e) { BOARD.notice = e.message; }
+  renderBoard();
+}
+async function deleteItem(it) {
+  if (!(await ask(`Delete “${it.title}” from this project? This can't be undone.`, { ok: "Delete", danger: true }))) return;
+  BOARD.item = null;
+  await boardAct(`/api/board/items/${it.id}/delete`);
+}
+async function setPlay(on) {
+  if (on && !(await ask("Let pages JARVIS made (like animations) play on this page? Each plays sealed off: no internet, no access to the dashboard, your data or your sign-in. You can turn it off any time.", { ok: "Turn on" }))) return;
+  BOARD.playing = false;
+  try { await call("/api/settings/play", { on }); BOARD.notice = null; } catch (e) { BOARD.notice = e.name === "NotAllowedError" ? cancelled(e) : e.message; }
+  await loadBoard();
+}
+function itemViewer(it) {
+  const page = it.kind === "page";
+  const body = page && BOARD.playing
+    ? h("iframe", { class: "board-play", src: `/play/${it.id}`, sandbox: "allow-scripts", allow: "", referrerpolicy: "no-referrer",
+        title: `${it.title} (playing, sealed off from JARVIS)`, loading: "lazy" })
+    : h("pre", { class: `board-text${it.kind === "code" || page ? " code" : ""}` }, it.content);
+  const play = page ? (BOARD.data.play
+    ? h("button", { class: "btn btn-sm", type: "button", onclick: () => { BOARD.playing = !BOARD.playing; renderBoard(); } }, BOARD.playing ? "Stop / show code" : "▶ Play")
+    : h("span", { class: "d-why" }, BOARD.data.can_set_play ? "Turn on Play animations (above) to play it here." : "Play animations is off (turn it on from the Mac).")) : null;
+  return h("div", { class: "board-viewer" },
+    h("div", { class: "row" }, h("b", {}, it.title), h("small", {}, ` ${BOARD.data.kinds[it.kind] || it.kind} · saved ${new Date(it.updated_at).toLocaleString([], { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}`)),
+    body,
+    h("div", { class: "row mt" }, play,
+      h("button", { class: "btn btn-ghost btn-sm", type: "button", onclick: () => navigator.clipboard && navigator.clipboard.writeText(it.content) }, "Copy"),
+      h("button", { class: "btn btn-ghost btn-sm", type: "button", onclick: () => deleteItem(it) }, "Delete"),
+      h("button", { class: "btn btn-ghost btn-sm", type: "button", onclick: () => { BOARD.item = null; BOARD.playing = false; renderBoard(); } }, "Close")));
+}
+const BOARD_STATES = { planning: "Planning", active: "Active", done: "Done", archived: "Archived" };
+function boardCard(p) {
+  const items = p.items.length ? h("ul", { class: "board-items" }, p.items.map((it) => h("li", {},
+    h("button", { class: `board-item${BOARD.item && BOARD.item.id === it.id ? " on" : ""}`, type: "button", onclick: () => openItem(it.id) },
+      h("span", { class: `board-kind k-${it.kind}` }, BOARD.data.kinds[it.kind] || it.kind), " ", it.title))))
+    : h("p", { class: "d-why" }, "Nothing here yet. Ask JARVIS to plan it, or to make something for it.");
+  const viewer = BOARD.item && BOARD.item.project_id === p.id ? itemViewer(BOARD.item) : null;
+  const next = p.state === "archived" ? [["planning", "Bring back"]] : p.state === "done" ? [["active", "Reopen"], ["archived", "Archive"]]
+    : [[p.state === "planning" ? "active" : "planning", p.state === "planning" ? "Mark active" : "Back to planning"], ["done", "Mark done"], ["archived", "Archive"]];
+  return h("li", { class: `proj board ${p.state}` },
+    h("small", {}, [BOARD_STATES[p.state], plural(p.items.length, "thing"), p.created_by === "jarvis" ? "opened by JARVIS" : null].filter(Boolean).join(" · ")),
+    h("b", {}, p.title),
+    p.summary ? h("div", { class: "why" }, p.summary) : null,
+    items, viewer,
+    h("div", { class: "row mt" },
+      p.state === "archived" ? null : h("button", { class: "btn btn-approve btn-sm", type: "button", title: "JARVIS plans it and saves the plan here; you approve first", onclick: () => planProject(p) }, "Plan with JARVIS"),
+      p.state === "archived" ? null : h("button", { class: "btn btn-sm", type: "button", title: "Ask JARVIS to make something for this project; you approve before it's saved", onclick: () => askForProject(p) }, "Ask JARVIS to make…"),
+      next.map(([state, label]) => h("button", { class: "btn btn-ghost btn-sm", type: "button", onclick: () => boardAct(`/api/board/projects/${p.id}/state`, { state }) }, label))));
+}
+function renderBoard() {
+  const d = BOARD.data;
+  if (!d) return;
+  const playToggle = d.can_set_play
+    ? h("label", { class: "board-toggle", title: "Pages JARVIS made (like animations) play sealed off: no internet, no access to the dashboard or your data" },
+        h("input", { type: "checkbox", checked: d.play ? true : null, onchange: (e) => setPlay(e.target.checked) }), " Play animations")
+    : h("span", { class: "d-why" }, `Play animations: ${d.play ? "on" : "off"} (changed from the Mac)`);
+  fill($("#board"),
+    h("section", { class: "proj-part" },
+      h("h3", { class: "sys-part" }, "Your projects"),
+      h("p", { class: "d-why" }, "When you ask JARVIS to start, plan or build something, it keeps the work here: plans, notes, code and animations, one project each. Nothing goes to your Notes unless you ask for a file. You approve before anything is saved."),
+      BOARD.notice ? h("p", { class: "d-why", role: "status" }, BOARD.notice) : null,
+      h("div", { class: "row mt" },
+        h("button", { class: "btn btn-sm", type: "button", onclick: newProject }, "New project"),
+        playToggle,
+        h("button", { class: "btn btn-ghost btn-sm", type: "button", onclick: () => { BOARD.archived = !BOARD.archived; loadBoard(); } }, BOARD.archived ? "Hide archived" : "Show archived")),
+      d.projects.length ? h("ul", { class: "proj-list" }, d.projects.map(boardCard))
+        : h("div", { class: "empty" }, "No projects yet. Tap “New project”, start one of the ideas below, or ask JARVIS to start one.")));
 }
 
 // ---------------------------------------------------------------- cinematic mode (presentation only)

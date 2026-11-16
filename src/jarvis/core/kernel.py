@@ -107,6 +107,10 @@ class Kernel:
 
             registry = default_registry(self.home, searxng_url=self.model_config.searxng_url,
                                         permissions=self.permissions)
+        from ..board import Board
+        self.board = Board(self.db, self.audit)   # projects on the dashboard (the planner saves there, not in Notes)
+        if registry.action("projects", "save") is None:
+            registry.register(self.board.spec())
         self.registry = registry
         self.gateway = ToolGateway(self.registry, self.permissions, self.approvals, self.audit, self.killswitch)
         self.tasks = TaskStore(self.db, self.audit)
