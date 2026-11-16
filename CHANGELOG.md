@@ -2,6 +2,42 @@
 
 ## Unreleased — after 0.20.0 (Evolution 4.0, Stages 4–6; work branch `claude/funny-allen-ygy8kk`)
 
+### Stage 4 — Personal Knowledge Intelligence (schema v14)
+
+JARVIS's knowledge was in separate places that didn't know about each other. This connects them without copying
+anything, and shows why each thing was used.
+
+- **One retrieval, with reasons.** `knowledge.context()` reads memories, objectives and their missions, mission
+  history and how each ended, lessons, improvement proposals and your decisions on them, and (when you ask about
+  JARVIS itself) its own architecture, security and roadmap documents. Every item carries where it came from, when,
+  how sure it is, whether you stated it or JARVIS only noticed it, and the reason it was picked ("matched: garden,
+  project", "mission of an objective that matched"). Word matching plus one step along existing links; no model.
+- **Chat says what it used.** Balanced and Deep answers get up to four related items, and each reply has "Used N
+  things JARVIS knows" listing them with the reasons. Quick mode is unchanged (memories only), so it stays quick.
+- **Whole documents.** File search indexed only the first 20,000 characters of a file. It now indexes the whole
+  document (up to 200,000 characters, about 300 PDF pages) in ~1,500-character chunks cut at paragraph ends, so a
+  clause on page 180 is found; results say which part. Identical copies are recorded once and forgotten together.
+  File passages are now tried for any question when file search is on (a word match, not a model call).
+- **A document is data, never an instruction.** A file containing text that reads like instructions to an AI is
+  flagged, shown as such ("contains instruction-like text; not followed"), and the answering model is told not to
+  follow it. Nothing a document says can cause an action. Tested with a hostile file; now a release-gate item.
+- **Worth a look** (Memory page): memories that disagree (now also "I like X" / "I don't like X"), memories that say
+  the same thing, ones due for a check or never confirmed in over a year, objectives with no "done means", no
+  mission or a passed deadline, and requests that keep coming back. Findings only: nothing is settled for you.
+- **Connections.** Any memory, objective or mission opens to show what connects to it and why.
+- **Private memories.** Mark a memory private (Mac only; Face ID / Touch ID to change): it joins only an answer that
+  stays on this Mac, is held back from any answer that would leave (the reply says how many), and a paired iPhone is
+  told how many there are, not what they say.
+- **Forget is checked.** After forgetting, JARVIS searches every store again and reports what remains: "clean" only
+  when nothing does. Forget now also covers the project board, and the dashboard empties its lookup cache.
+- **Review dates and export.** "Check later" sets a date after which a memory is shown as due. `jarvis memory export`
+  now includes objectives, lessons and links, and the file is readable by you only.
+- **v14 adds only:** `memories.updated_at/privacy/review_after`, `links.confidence`, the `file_chunks` index and four
+  columns on `file_index_meta`. The old one-block file index (a rebuildable cache) is emptied and rebuilt in the
+  background. Rollback: restore the automatic pre-upgrade backup.
+- Not done here: semantic (embedding) search. Retrieval is still by words; "the planner is too slow" is not found by
+  asking about "speed". That needs the local embedding model you approved, and comes next.
+
 ### Spans of days are worked out by JARVIS (merged from `span-days-v2`, owner-approved)
 
 - **"The next three days", "this week", "next week", "this weekend" and "the week ahead" are now worked out from the

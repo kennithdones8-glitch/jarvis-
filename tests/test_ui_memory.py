@@ -32,7 +32,9 @@ def test_memory_requests_are_unchanged(dash):
         assert js.count(path) == 1, path
     forget = js.split("async function forgetMatching()")[1].split("\n}\n")[0]
     assert 'api("/api/memory/forget", { query: ui.memQ })' in forget  # preview first: deletes nothing
-    assert 'memAct("/api/memory/forget", { query: ui.memQ, confirm: true })' in forget  # only after you agree
+    confirmed = 'call("/api/memory/forget", { query: ui.memQ, confirm: true })'   # same request; the reply is now read
+    assert forget.count(confirmed) == 1 and forget.index("if (!await ask(") < forget.index(confirmed)  # only after you agree
+    assert "out.verified" in forget and "v.clean" in forget               # and the page says what the check found
     assert "deletions are applied again" in forget
 
 

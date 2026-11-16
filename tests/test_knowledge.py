@@ -197,3 +197,53 @@ def test_export_is_readable_and_complete(k):
     ex = k.memory.export()
     assert {"memories", "records", "objectives", "lessons", "links", "exported_at"} <= set(ex)
     assert ex["memories"][0]["privacy"] == "normal" and ex["objectives"][0]["outcome"] == "Drink more water"
+
+
+# ---- the Knowledge view's routes ------------------------------------------------------------------------------------
+def test_knowledge_routes_and_a_phone_never_sees_private_items(dash):
+    d, _, _ = dash
+    k = d.kernel
+    a = k.memory.remember("The garden project needs the fence fixed", by="user:dashboard")
+    b = k.memory.remember("My garden safe code hint is tulips", by="user:dashboard")
+    k.memory.set_privacy(b, True, by="user:dashboard")
+    r = json.loads(call(d, "/api/knowledge?q=garden")[2])
+    assert {f"memory:{a}", f"memory:{b}"} <= {i["id"] for i in r["items"]} and r["private_hidden"] == 0
+    item = json.loads(call(d, f"/api/knowledge/item?id=memory:{a}")[2])
+    assert item["item"]["id"] == f"memory:{a}" and call(d, "/api/knowledge/item?id=memory:nope")[0] == 404
+    assert "conflicts" in json.loads(call(d, "/api/knowledge/insights")[2])["insights"]
+    assert call(d, "/api/knowledge?q=garden", cookie=False)[0] == 401
+    # the same handlers, asked as a paired phone
+    import io
+
+    class H:
+        def __init__(self):
+            self.out, self.status = io.BytesIO(), None
+            self.wfile, self.headers = self.out, {}
+
+        def send_response(self, s):
+            self.status = s
+
+        def send_header(self, *a):
+            pass
+
+        def end_headers(self):
+            pass
+    from urllib.parse import urlsplit
+    h = H()
+    d._get(h, urlsplit("/api/knowledge?q=garden"), device={"id": "dev-1", "name": "iPhone"})
+    phone = json.loads(h.out.getvalue())
+    assert [i["id"] for i in phone["items"] if i["kind"] == "memory"] == [f"memory:{a}"] and phone["private_hidden"] == 1
+    h = H()
+    d._get(h, urlsplit("/api/memory?q=garden"), device={"id": "dev-1", "name": "iPhone"})
+    mem = json.loads(h.out.getvalue())
+    assert [m["id"] for m in mem["memories"]] == [a] and mem["private_hidden"] == 1
+
+
+def test_the_knowledge_view_draws_only_what_the_api_returned(dash):
+    d, _, _ = dash
+    status, headers, body = call(d, "/static/knowledge.js")
+    js = body.decode()
+    assert status == 200 and headers["Content-Type"].startswith("text/javascript")
+    assert "innerHTML" not in js and "fetch(" not in js and "Math.random" not in js       # page helpers only, nothing invented
+    html = call(d, "/")[2].decode()
+    assert 'id="memknow"' in html and 'id="meminsights"' in html and '/static/knowledge.js' in html

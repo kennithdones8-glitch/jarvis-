@@ -36,6 +36,7 @@ SECURITY: dict[str, tuple[str, list[str]]] = {
         "test_tools::task_with_real_tools_end_to_end", "test_documents::summarise_a_pdf_end_to_end",
         "test_bench::oracle_passes_every_task"]),
     "Prompt injection": ("Content from files, web pages, apps or models can't steer actions", [
+        "test_files_index::a_document_with_instructions_is_flagged_and_never_followed",
         "test_orchestrator::injected_instructions_in_data_cannot_change_the_plan",
         "test_bench::careless_model_fails_for_the_right_reasons",
         "test_tools::fetch_returns_untrusted_text_and_dials_the_validated_ip",
@@ -134,6 +135,10 @@ SECURITY: dict[str, tuple[str, list[str]]] = {
         "test_orchestrator::validator_rejects_oversized_and_forward_references"]),
     "Privacy and data disclosure": ("Private data leaves the Mac only with permission; logs hold no content", [
         "test_models::quality_floor_selects_cloud_but_private_data_needs_approval",
+        "test_knowledge::a_private_memory_never_reaches_a_cloud_answer",
+        "test_knowledge::private_memories_are_left_out_by_default_and_only_you_set_them",
+        "test_knowledge::knowledge_routes_and_a_phone_never_sees_private_items",
+        "test_knowledge::forget_is_verified_across_every_store_including_the_project_board",
         "test_board::animations_play_only_when_turned_on_and_only_sealed_off",
         "test_board::the_page_plays_in_a_sandboxed_frame_without_same_origin",
         "test_board::save_opens_the_project_replaces_by_title_and_retries_change_nothing",

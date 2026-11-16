@@ -1900,6 +1900,7 @@ async function loadMemory(force) {
     fill(fileBox, files.length ? h("div", { class: "job" }, h("b", {}, "In your files"),
       h("ul", { class: "files-hits" }, files.map((f) => h("li", {}, h("b", {}, f.name), h("small", {}, ` ${f.path}`), f.snippet ? h("div", { class: "d-why" }, f.snippet) : null)))) : null);
   }
+  if (window.JarvisKnowledge) JarvisKnowledge.load(ui.memQ, !!force);   // what else JARVIS's records hold, and why
   const conf = $("#memconflicts");
   if (conf) fill(conf, (res.conflicts || []).length ? h("div", { class: "job mem-conflicts" },
     h("b", {}, "These disagree: which is right?"),
@@ -1915,18 +1916,26 @@ async function loadMemory(force) {
     const day = (iso) => (iso || "").slice(0, 10);
     const reconfirmed = confirmed && m.verified_at && day(m.verified_at) !== day(m.created_at);
     return h("article", { class: `mem ${confirmed ? "confirmed" : "unconfirmed"}` },
-      h("div", { class: "mem-text" }, m.important ? h("span", { class: "mem-star", title: "Starred: always worth remembering" }, "★ ") : null, m.text),
+      h("div", { class: "mem-text" }, m.important ? h("span", { class: "mem-star", title: "Starred: always worth remembering" }, "★ ") : null, m.text,
+        m.privacy === "private" ? h("span", { class: "know-private", title: "Never leaves this Mac, whatever you approve" }, " · private") : null),
       h("div", { class: "mem-origin" }, confirmed
         ? reconfirmed ? ["✓ ", h("b", {}, "Confirmed by you"), " · noticed earlier, then confirmed"]
           : ["✓ ", h("b", {}, "Stated by you"), m.source_record ? " · in a conversation" : " · added here"]
         : ["? ", h("b", {}, "Inferred by JARVIS"), " from a conversation · already used in answers · confirm it or delete it"]),
-      h("div", { class: "mem-meta" }, `${m.kind} · added ${day(m.created_at)}` + (reconfirmed ? ` · confirmed ${day(m.verified_at)}` : "")),
+      h("div", { class: "mem-meta" }, `${m.kind} · added ${day(m.created_at)}` + (reconfirmed ? ` · confirmed ${day(m.verified_at)}` : "")
+        + (m.review_after ? ` · check after ${m.review_after}` : "")),
       h("div", { class: "row" },
         confirmed ? null : h("button", { class: "btn btn-sm", type: "button", onclick: () => memAct(`/api/memory/${m.id}/confirm`, {}) }, "Confirm"),
         h("button", { class: "btn btn-ghost btn-sm", type: "button", onclick: () => {
           ask("Correct this memory:", { input: m.text, ok: "Save" }).then((t) => { if (t && t.trim() && t !== m.text) memAct(`/api/memory/${m.id}/edit`, { text: t }); });
         } }, "Edit"),
         h("button", { class: "btn btn-ghost btn-sm", type: "button", onclick: () => memAct(`/api/memory/${m.id}/important`, { important: !m.important }) }, m.important ? "Unstar" : "Star"),
+        onPhone() ? null : h("button", { class: "btn btn-ghost btn-sm", type: "button", title: "Private memories never leave this Mac, whatever you approve",
+          onclick: () => memAct(`/api/memory/${m.id}/privacy`, { private: m.privacy !== "private" }) }, m.privacy === "private" ? "Make not private" : "Make private"),
+        h("button", { class: "btn btn-ghost btn-sm", type: "button", title: "A date after which JARVIS shows this as due for a check",
+          onclick: () => ask("Check this memory again after (YYYY-MM-DD; empty to clear):", { input: m.review_after || "", ok: "Save" })
+            .then((d) => { if (d !== null) memAct(`/api/memory/${m.id}/review`, { date: d.trim() || null }); }) }, "Check later"),
+        window.JarvisKnowledge ? h("button", { class: "btn btn-ghost btn-sm", type: "button", onclick: () => JarvisKnowledge.open(`memory:${m.id}`) }, "Connections") : null,
         h("button", { class: "btn btn-ghost btn-sm", type: "button", onclick: async () => (await ask("Delete this memory? JARVIS won't re-learn it.", { ok: "Delete", danger: true })) && memAct(`/api/memory/${m.id}/delete`, {}) }, "Delete")));
   });
   if (ui.memQ && (res.memories.length || res.records.length)) {
@@ -2611,9 +2620,19 @@ async function memAct(path, body) {
 
 async function forgetMatching() {
   const preview = await api("/api/memory/forget", { query: ui.memQ });
+  ui.forgetPreview = preview;
   const tasks = (preview.tasks || []).filter((t) => t.deletable).length;
   if (!await ask(`Permanently delete ${plural(preview.memories.length, "memory").replace("memorys", "memories")}, ${plural(preview.records.length, "conversation record")} and ${plural(tasks, "finished task")} about “${ui.memQ}”?\n\nThis can't be undone. If you later restore an older backup, these deletions are applied again, so nothing comes back.`, { ok: "Forget", danger: true })) return;
-  await memAct("/api/memory/forget", { query: ui.memQ, confirm: true });
+  // The forget is checked afterwards: every store is searched again and the page says what, if anything, remains.
+  let out = null;
+  try { out = await call("/api/memory/forget", { query: ui.memQ, confirm: true }); } catch (e) { note(cancelled(e)); }
+  const v = out && out.verified;
+  if (v) {
+    const left = Object.entries(v).filter(([k, n]) => k !== "clean" && n).map(([k, n]) => `${n} ${k.replace("_", " ")}`);
+    await ask(v.clean ? `Forgotten, and checked: nothing JARVIS keeps mentions “${ui.memQ}” any more (memories, conversations, missions, plans, objectives, projects, indexed files).`
+      : `Forgotten, but something still mentions “${ui.memQ}”: ${left.join(", ")}.${v.running_tasks ? " A mission that is still running is never deleted mid-run: forget again once it has finished." : ""}`, { ok: "OK" });
+  }
+  await refresh(); await loadMemory(true);
 }
 
 // ---------------------------------------------------------------- loop

@@ -1575,7 +1575,7 @@ class Dashboard:
                         "/static/avatar3d-worker.js", "/static/avatar3d-camera.js", "/static/avatar-presets.js",
                         "/static/avatar-events.js", "/static/avatar-sound.js",
                         "/static/avatar3d-transform.js", "/static/chess.js", "/static/chess-worker.js",
-                        "/static/games.js", "/static/games-worker.js", "/static/racer.js", "/static/racer.css",
+                        "/static/games.js", "/static/games-worker.js", "/static/knowledge.js", "/static/racer.js", "/static/racer.css",
                         "/static/racer-data.js", "/static/racer-career.js", "/static/racer-audio.js", "/static/racer-ui.js",
                         "/static/racer-render.js", "/static/racer-modes.js"):
             ctype = "text/javascript" if url.path.endswith(".js") else "text/css"
@@ -1598,12 +1598,40 @@ class Dashboard:
             q = parse_qs(url.query).get("q", [""])[0][:200]
             mem = self.kernel.memory
             items = mem.search(q) if q.strip() else mem.list(limit=50)
+            hidden = 0
+            if device is not None:   # private memories never leave this Mac: a paired phone sees how many, not what
+                hidden = sum(m.get("privacy") == "private" for m in items)
+                items = [m for m in items if m.get("privacy") != "private"]
             from ..memory.conflicts import find as find_conflicts
             conflicts = [{"subject": c["subject"], "a": {k: c["a"][k] for k in ("id", "text", "created_at")},
                           "b": {k: c["b"][k] for k in ("id", "text", "created_at")}}
                          for c in find_conflicts(mem.list(limit=500))][:5]
-            return self._json(h, 200, {"memories": items, "counts": mem.counts(), "conflicts": conflicts,
+            if device is not None:
+                private_ids = {r["id"] for r in self.kernel.db.query("SELECT id FROM memories WHERE privacy = 'private'")}
+                conflicts = [c for c in conflicts if c["a"]["id"] not in private_ids and c["b"]["id"] not in private_ids]
+            return self._json(h, 200, {"memories": items, "counts": mem.counts(), "conflicts": conflicts, "private_hidden": hidden,
                                        "records": mem.search_records(q, limit=10) if q.strip() else []})
+        if url.path in ("/api/knowledge", "/api/knowledge/item", "/api/knowledge/insights"):
+            # What JARVIS knows, with provenance and the reason for each item (read-only). On a paired phone, private
+            # items are left out (they never leave this Mac) and the reply says how many.
+            from .. import knowledge
+            qs = parse_qs(url.query)
+            keep = (lambda i: True) if device is None else (lambda i: not i.get("private"))
+            if url.path == "/api/knowledge":
+                found = knowledge.context(self.kernel, qs.get("q", [""])[0][:200], limit=12)
+                return self._json(h, 200, {"items": [i for i in found if keep(i)], "private_hidden": sum(not keep(i) for i in found)})
+            if url.path == "/api/knowledge/item":
+                try:
+                    r = knowledge.related(self.kernel, qs.get("id", [""])[0][:120])
+                except KeyError:
+                    raise HttpError(404, "JARVIS has no such item") from None
+                if not keep(r["item"]):
+                    raise HttpError(403, "that item is private: it can only be seen on the Mac")
+                return self._json(h, 200, {"item": r["item"], "related": [i for i in r["related"] if keep(i)]})
+            ins = knowledge.insights(self.kernel)
+            for group in ins.values():
+                group[:] = [f for f in group if all(keep(i) for i in f["items"])]
+            return self._json(h, 200, {"insights": ins})
         if m := re.fullmatch(r"/api/tasks/([\w-]+)/timeline", url.path):
             from ..flight import timeline
             return self._json(h, 200, timeline(self.kernel, m.group(1)))

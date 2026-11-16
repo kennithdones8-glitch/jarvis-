@@ -1696,3 +1696,14 @@ body[data-view="games"] .context-panel { display: none; }
 .msg .used summary { cursor: pointer; color: var(--muted, #b9aa91); min-height: 24px; }
 .msg .used ul { margin: 4px 0 0; padding-left: 18px; display: grid; gap: 3px; overflow-wrap: anywhere; }
 .msg .used small { color: var(--muted, #b9aa91); }
+
+/* Knowledge view on the Memory page: items with why / status / source, and what connects to them */
+.know { display: grid; gap: 8px; margin: 8px 0; }
+.know-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.know-item { border-left: 2px solid var(--gold-faint, rgba(255,255,255,.2)); padding: 2px 0 2px 10px; overflow-wrap: anywhere; }
+.know-item.inferred, .know-item.outdated { border-left-style: dashed; opacity: .9; }
+.know-item small { display: block; color: var(--muted, #b9aa91); font-size: 12.5px; }
+.know-related { padding-left: 14px; }
+.know-private { color: var(--amber, #f2a33a); font-size: 12.5px; }
+.know-group summary { cursor: pointer; min-height: 28px; }
+.know-finding { margin: 6px 0 10px 10px; }
