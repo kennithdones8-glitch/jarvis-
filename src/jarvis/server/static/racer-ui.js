@@ -51,7 +51,8 @@
       for (const [k, v] of Object.entries(attrs)) b.setAttribute(k, v);
       // menu sounds: Back steps down, a main action confirms, everything else clicks
       const snd = label === "Back" ? "back" : /\b(alt|small)\b/.test(cls) ? null : "confirm";
-      b.addEventListener("click", (e) => { if (audio) { if (snd && audio.ui) audio.ui(snd); else audio.click(); } fn(e); });
+      b.addEventListener("click", (e) => { if (save && save.settings.touchSteer === "tilt" && !view.tiltReady) view.enableTilt().then((r) => { if (!r.ok) { save.settings.touchSteer = "arrows"; view.applySettings(save.settings); persist(); toast(r.why, "warn"); } });
+        if (audio) { if (snd && audio.ui) audio.ui(snd); else audio.click(); } fn(e); });
       return b;
     };
     const chip = (text, cls = "") => el("span", "race-tag" + (cls ? " " + cls : ""), text);
@@ -830,10 +831,17 @@
           select("s-quality", "Graphics", S.quality, [["auto", "Auto (adapts)"], ["low", "Low"], ["medium", "Medium"], ["high", "High"]], (v) => { S.quality = v; apply(); show(settings, { replace: true }); }),
           select("s-camera", "Camera", S.camera, [["chase", "Chase (turns with your car)"], ["classic", "Classic (north up)"]], (v) => { S.camera = v; apply(); }),
           select("s-motion", "Reduced motion", S.reducedMotion === null ? "system" : S.reducedMotion ? "on" : "off", [["system", "Follow system"], ["on", "On"], ["off", "Off"]], (v) => { S.reducedMotion = v === "system" ? null : v === "on"; apply(); }),
+          select("s-sens", "Steering sensitivity", S.steerSens || "normal", [["gentle", "Gentle (more travel, slower)"], ["normal", "Normal"], ["quick", "Quick (less travel, faster)"]], (v) => { S.steerSens = v; apply(); }),
+          root.DeviceOrientationEvent ? select("s-touch", "Touch steering", S.touchSteer || "arrows", [["arrows", "Arrows (slide your thumb)"], ["tilt", "Tilt the phone"]], (v) => {
+            if (v !== "tilt") { S.touchSteer = v; apply(); return; }
+            view.enableTilt().then((r) => { S.touchSteer = r.ok ? "tilt" : "arrows"; apply(); if (r.ok) toast("Tilt steering on. Hold the phone how you like at the start: that's centre.", "info"); else toast(r.why, "warn"); show(settings, { replace: true }); });
+          }) : null,
+          select("s-side", "Touch layout", S.padSide || "right", [["right", "Pedals on the right"], ["left", "Pedals on the left"]], (v) => { S.padSide = v; apply(); }),
+          select("s-size", "Touch buttons", S.padSize || "normal", [["normal", "Normal"], ["large", "Large"]], (v) => { S.padSize = v; apply(); }),
           select("s-assist", "Slide assist", S.assist || "light", [["off", "Off (all you)"], ["light", "Light (a little countersteer)"], ["strong", "Strong (catches most slides)"]], (v) => { S.assist = v; apply(); }),
           select("s-diff", "Career AI", S.difficulty, [["easy", "Easy"], ["medium", "Medium"], ["hard", "Hard"]], (v) => { S.difficulty = v; apply(); }),
           select("s-damage", "Damage", S.damage, [["cosmetic", "Cosmetic only"], ["persistent", "Carries over (repairs cost money)"]], (v) => { S.damage = v; apply(); })),
-        el("div", "race-stack row", toggle("shake", "Camera shake"), toggle("ghost", "Ghost car"), toggle("line", "Driving line"), toggle("sound", "Sound"), toggle("music", "Music"), audio && audio.canSpeak === true ? toggle("announcer", "Announcer") : null),
+        el("div", "race-stack row", toggle("shake", "Camera shake"), toggle("ghost", "Ghost car"), toggle("line", "Driving line"), toggle("autoGas", "Auto-accelerate"), toggle("sound", "Sound"), toggle("music", "Music"), audio && audio.canSpeak === true ? toggle("announcer", "Announcer") : null),
         el("label", "race-field", el("span", "race-lbl", "Volume"), vol),
         el("p", "race-lbl", "Controls"),
         el("p", "race-note", "Arrows or WASD drive · Space or Shift: nitro · P or Esc: pause · Esc in menus: back. Touch: steering pads left, NOS, brake and gas right."),

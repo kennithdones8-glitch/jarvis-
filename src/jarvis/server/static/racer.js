@@ -124,8 +124,10 @@
       return { ...r, id: r.id || r.code, persona: PERSONA[r.personality] || PERSONA.balanced, spec, skill, acc: spec.acc * skill,
         x: s.x, y: s.y, a: s.a, vx: 0, vy: 0, fwd: 0, slip: 0, on: true, idx: s.i, prog: s.i - trk.N, laps: 0, lapStart: 0,
         lapTimes: [], done: false, finish: 0, out: false, outAt: 0, wander: rand() * 6, nitro: NITRO.start, boost: false,
-        aiBoost: false, laneCur: 0, side: 0, stuckT: 0, recoverT: 0, dmg: Math.max(0, Math.min(1, r.dmg || 0)), contacts: 0, brakeOn: false, steerIn: 0, latAcc: 0, spool: 0 };
+        aiBoost: false, laneCur: 0, side: 0, stuckT: 0, recoverT: 0, dmg: Math.max(0, Math.min(1, r.dmg || 0)), contacts: 0, brakeOn: false, steerIn: 0, latAcc: 0, spool: 0, rev: 0, launchF: 1, launchT: 0 };
     });
+    // the AI's launch: each driver revs to its own habit (most land in the window, a few over-rev)
+    for (const c of cars) c.revTo = c.ai ? 0.5 + (c.wander / 6) * 0.34 : 0.66;
     const weather = WEATHERS.includes(opts.weather) ? opts.weather : "dry", tod = TIMES.includes(opts.time) ? opts.time : "day";
     const ru = opts.rules || {}, rules = { nitro: ru.nitro !== false, collisions: ru.collisions !== false, damage: ru.damage !== false };
     if (!rules.nitro) for (const c of cars) c.nitro = 0;
@@ -168,7 +170,8 @@
     // power band: a torquey engine (band < 0) pulls harder low down, a revvy one (band > 0) harder near the top;
     // the effect fades out approaching top speed, so top speed itself doesn't change
     const fr = Math.min(1, Math.max(0, fwd) / top), bandF = 1 + (sp.band || 0) * 0.3 * (fr - 0.5) * (fr < 0.85 ? 1 : Math.max(0, (1 - fr) / 0.15));
-    if (inp.thr) fwd += c.acc * bandF * (c.accF === undefined ? 1 : c.accF) * (1 + sp.turbo * c.spool) * dt * (c.on ? 1 : Math.min(1, srf.acc + 0.3 * sp.offroad));
+    if (c.launchT > 0) c.launchT -= dt;
+    if (inp.thr) fwd += c.acc * (c.launchT > 0 ? c.launchF : 1) * bandF * (c.accF === undefined ? 1 : c.accF) * (1 + sp.turbo * c.spool) * dt * (c.on ? 1 : Math.min(1, srf.acc + 0.3 * sp.offroad));
     if (inp.brk) fwd -= (fwd > 15 ? sp.brake : 260) * dt;              // brake, then reverse
     if (hb) fwd -= 320 * dt;
     // drag (damage costs ≤4%; the slipstream behind another car takes up to 28% off), plus what the surface costs
@@ -208,7 +211,19 @@
     let lane = (c.lane || 0) + Math.sin(race.simT * 0.35 + (c.wander || 0)) * 16 + (P.wobble ? Math.sin(race.simT * 1.3 + (c.wander || 0) * 2) * P.wobble : 0);
     let lift = false;
     const room = TW / 2 - 24;
-    if (ahead && P.pass > 0 && (ahead.fwd || 0) < sp + 60) {
+    let straight = 0;
+    for (let k = 4; k <= 64; k += 6) straight = Math.max(straight, Math.abs(wrapA(t.ANG[(c.idx + k) % N] - t.ANG[c.idx])));
+    // Slipstream racecraft: on a straight, tuck in behind the car ahead to take its tow, then pull out about four car
+    // lengths back and slingshot past (with nitro if there's some). Measured over 16 six-car races: more passes come
+    // from the tow and there's slightly less contact. (A leader moving across to break the tow caused more crashes
+    // than it saved, so leaders keep their usual line.)
+    const onStraight = straight < 0.25 && sp > 260, tow = (c.draft || 0) > 0.3;
+    if (P.pass > 0 && ahead && onStraight && gapA > 4.5 && gapA < 10 && !c.sling) {
+      lane = latOff(t, ahead); c.side = 0;                                   // tuck in
+    } else if (P.pass > 0 && ahead && onStraight && tow && gapA <= 4.5) {
+      if (!c.sling) c.sling = latOff(t, ahead) > latOff(t, c) ? -1 : 1;      // pull out to the side with more room
+      lane = clamp(latOff(t, ahead) + c.sling * 50, -room, room);
+    } else if (ahead && P.pass > 0 && (ahead.fwd || 0) < sp + 60) {
       const oL = latOff(t, ahead);
       if (!c.side) c.side = oL > latOff(t, c) ? -1 : 1;
       lane = lane * (1 - P.pass) + clamp(oL + c.side * 46, -room, room) * P.pass;
@@ -217,6 +232,7 @@
       c.side = 0;
       if (behind && P.block > 0 && gapB < 8) lane = lane * (1 - P.block * 0.7) + latOff(t, behind) * P.block * 0.7;
     }
+    if (!onStraight || !ahead || gapA > 12) c.sling = 0;
     c.laneCur = (c.laneCur || 0) + (clamp(lane, -room, room) - (c.laneCur || 0)) * 0.03;
     const ti = (c.idx + Math.round(7 + sp / 45)) % N, [nx, ny] = t.nrm(ti);
     const diff = wrapA(Math.atan2(t.P[ti][1] + ny * c.laneCur - c.y, t.P[ti][0] + nx * c.laneCur - c.x) - c.a);
@@ -229,19 +245,17 @@
     const S = c.spec, ty = S.tyre ? S.tyre.dry * (1 - race.wetness) + S.tyre.wet * race.wetness : 1;
     const wetF = 1 - 0.26 * race.wetness, top = c.acc * (1 + (S.turbo || 0)) / S.drag, auth = S.steer * 0.9 * P.corner, B = S.brake * 0.5 * (1 - 0.2 * race.wetness);
     const aLat = S.grip * ty * (1 + 0.05 * (S.aero || 0)) * (1 - 0.06 * (S.slide || 0)) * LATG * wetF * 0.85 * P.corner;
-    let target = top * 0.99;
+    let target = top * 0.99 / (1 - 0.28 * (c.draft || 0));   // in a tow the car can run past its own top speed
     for (let k = 2; k <= 72; k += 3) {
       const kap = t.K[(c.idx + k) % N] + 1e-6, vmax = Math.min(auth / (kap + 0.42 * auth / 700), Math.sqrt(aLat / kap)), allow = Math.sqrt(vmax * vmax + 2 * B * k * SP);
       if (allow < target) target = allow;
     }
     target = Math.max(200, target);
-    let straight = 0;
-    for (let k = 4; k <= 64; k += 6) straight = Math.max(straight, Math.abs(wrapA(t.ANG[(c.idx + k) % N] - t.ANG[c.idx])));
     const want = { straight: straight < 0.18 && c.nitro > 0.45 && sp > 300, early: straight < 0.3 && c.nitro > 0.3 && sp > 260,
       exit: straight < 0.22 && c.nitro > 0.35 && sp > 250 && sp < target - 20, draft: (ahead && gapA < 9 && straight < 0.35 && c.nitro > 0.2) || (straight < 0.15 && c.nitro > 0.7),
       rare: straight < 0.12 && c.nitro > 0.9 }[P.nitro];
     if (c.aiBoost) c.aiBoost = straight < 0.3 && c.nitro > 0.02;
-    else c.aiBoost = race.aiNitro && !!want;
+    else c.aiBoost = race.aiNitro && (!!want || (c.sling && tow && c.nitro > 0.3 && straight < 0.2));   // the slingshot
     return { steer: clamp(diff * 3, -1, 1), thr: (sp < target || c.aiBoost) && !lift, brk: !c.aiBoost && sp > target + P.brake, nitro: c.aiBoost };
   }
 
@@ -327,7 +341,22 @@
     race.simT += dt;
     if (race.state === "lights") {
       race.lightsT += dt;
-      if (race.lightsT > 4.1) { race.state = "race"; race.events.push({ type: "go" }); }
+      // every race starts with a launch (the drag race has its own, with gears): hold the throttle to rev, and the
+      // revs you hold when the lights go decide the first second: in the window a strong getaway, over it wheelspin
+      if (race.mode !== "drag") for (const c of race.cars) {
+        if (c.parked || c.police) continue;
+        const on = c.ai || !you ? c.rev < c.revTo : !!you.thr;
+        c.rev = clamp(c.rev + (on ? 1.5 : -1.2) * dt, 0, 1);
+      }
+      if (race.lightsT > 4.1) {
+        race.state = "race"; race.events.push({ type: "go" });
+        if (race.mode !== "drag") for (const c of race.cars) {
+          if (c.parked || c.police) continue;
+          const r = c.rev, q = r > 0.9 ? "wheelspin" : r >= 0.55 && r <= 0.8 ? "perfect" : r >= 0.4 ? "good" : r >= 0.2 ? "bogged" : null;
+          c.launchF = { perfect: 1.14, good: 1.06, bogged: 0.97, wheelspin: 0.82 }[q] || 1; c.launchT = 1.3;
+          if (!c.ai && q) race.events.push({ type: "launch", q });
+        }
+      }
     }
     const moving = race.state !== "lights";
     if (moving && race.cars.some((c) => !c.done && !c.out)) race.t += dt;   // runs until every car is home

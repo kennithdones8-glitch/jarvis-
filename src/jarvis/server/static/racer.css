@@ -77,6 +77,12 @@
 .race-pad.gas { width: 80px; height: 80px; border-color: var(--r-gold); }
 .race-pad.nos { width: 54px; height: 54px; border-color: var(--r-amber); color: var(--r-amber); font-size: 13px; }
 .race-pad.hb { width: 54px; height: 54px; font-size: 12px; }
+/* controls: left-handed (pedals on the left), larger buttons, tilt (no arrows), auto-accelerate (no GAS) */
+.race-pads.left { flex-direction: row-reverse; }
+.race-pads.left .race-padgrp { flex-direction: row-reverse; }
+.race-pads.large .race-pad { transform: scale(1.22); transform-origin: bottom center; margin: 0 6px; }
+.race-pads.tilt .race-pad[data-k="left"], .race-pads.tilt .race-pad[data-k="right"] { display: none; }
+.race-pads.auto .race-pad[data-k="up"] { display: none; }
 .race-pad.active { background: rgba(255, 255, 255, .25); }
 .race-pad:focus-visible { outline: 2px solid var(--r-gold-hi); }
 .race-stage:has(.race-pads:not([hidden])) .race-speed { bottom: 150px; }

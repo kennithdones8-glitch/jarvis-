@@ -114,3 +114,45 @@ const alone = run(false), tow = run(true);
 console.log(JSON.stringify({ alone, tow }));""")
     assert r["tow"]["draft"] > 0.3 and r["alone"]["draft"] < 0.01
     assert r["tow"]["speed"] > r["alone"]["speed"] + 3
+
+
+def test_every_race_starts_with_a_launch():
+    r = js("""
+// hold the throttle on the grid to a level of revs, then flat out: speed after one second, and the launch called
+const start = (hold) => { const r = R.newRace({ track: 'kerbside', mode: 'circuit', laps: 1 }); const me = r.cars[0], ev = [];
+  while (r.state === 'lights') { R.step(r, 1 / 120, { steer: 0, thr: me.rev < hold, brk: false }); ev.push(...r.events.splice(0)); }
+  for (let k = 0; k < 120; k++) { R.step(r, 1 / 120, { steer: R.aiInput(r, me).steer, thr: true, brk: false }); ev.push(...r.events.splice(0)); }
+  return { v: me.fwd, call: (ev.find((e) => e.type === 'launch') || {}).q || null }; };
+const none = start(0), perfect = start(0.66), over = start(1.1);
+const ai = (() => { const r = R.newRace({ track: 'kerbside', mode: 'circuit', laps: 1, field: [{ code: 'A' }, { code: 'B' }, { code: 'C' }] }); while (r.state === 'lights') R.step(r, 1 / 120, null); return r.cars.slice(1).map((c) => c.launchF); })();
+const drag = (() => { const r = R.newRace({ track: 'harbour', mode: 'drag' }); while (r.state === 'lights') R.step(r, 1 / 120, { thr: true }); return r.cars[0].launchF; })();
+console.log(JSON.stringify({ none, perfect, over, ai, drag }));""")
+    assert r["none"]["call"] is None and r["perfect"]["call"] == "perfect" and r["over"]["call"] == "wheelspin"
+    assert r["perfect"]["v"] > r["none"]["v"] * 1.04 > r["over"]["v"] * 1.04       # a good launch gains, wheelspin loses
+    assert all(f >= 0.97 for f in r["ai"]) and r["drag"] == 1                     # the AI launch; drag keeps its own
+
+
+def test_the_ai_uses_the_slipstream_to_attack():
+    r = js("""
+// two AI cars on the Harbour straight: the follower tucks in behind the slightly slower car, pulls out and passes
+const r = R.newRace({ track: 'harbour', mode: 'circuit', laps: 2, field: [{ code: 'A' }, { code: 'B' }], playerSlot: 2 }); r.state = 'race'; r.t = 1;
+const t = r.trk, me = r.cars[0]; me.out = true; me.x = t.OX + 25; me.y = t.OY + 25;
+let s = 0; for (let i = 0; i < t.N; i++) { let ok = true; for (let k = 0; k <= 90; k++) if (Math.abs(R.wrapA(t.ANG[(i + k) % t.N] - t.ANG[i])) > 0.12) ok = false; if (ok) { s = i; break; } }
+const [lead, chase] = [r.cars[1], r.cars[2]], put = (c, i, lat) => { const [nx, ny] = t.nrm(i); c.idx = i; c.prog = i; c.x = t.P[i][0] + nx * lat; c.y = t.P[i][1] + ny * lat; c.a = t.ANG[i]; c.vx = Math.cos(c.a) * 420; c.vy = Math.sin(c.a) * 420; };
+put(lead, (s + 8) % t.N, 30); put(chase, s, -30); lead.acc *= 0.9; chase.nitro = 0; lead.nitro = 0;   // the lead car is a little slower
+const top = chase.acc / chase.spec.drag; let tucked = false, sling = false, maxV = 0, passed = false;
+for (let k = 0; k < 120 * 6; k++) { R.step(r, 1 / 120, null);
+  if (Math.abs(R.latOff(t, chase) - R.latOff(t, lead)) < 14 && chase.draft > 0.3) tucked = true; if (chase.sling) sling = true; maxV = Math.max(maxV, chase.fwd); if (chase.prog > lead.prog) passed = true; }
+console.log(JSON.stringify({ tucked, sling, overTop: maxV > top * 1.005, passed }));""")
+    assert r["tucked"] and r["sling"] and r["passed"]
+
+
+def test_control_settings_save_and_old_saves_get_defaults():
+    r = js("""
+const s = C.fresh(); const def = ["steerSens", "touchSteer", "padSide", "padSize", "autoGas"].map((k) => s.settings[k]);
+Object.assign(s.settings, { steerSens: "quick", touchSteer: "tilt", padSide: "left", padSize: "large", autoGas: true });
+const back = C.importSave(C.exportSave(s)).save.settings, junk = C.validate({ ...C.fresh(), settings: { steerSens: "max", touchSteer: "voice", padSide: 3, padSize: "huge", autoGas: "yes" } }).save.settings;
+console.log(JSON.stringify({ def, back: [back.steerSens, back.touchSteer, back.padSide, back.padSize, back.autoGas], junk: [junk.steerSens, junk.touchSteer, junk.padSide, junk.padSize, junk.autoGas] }));""")
+    assert r["def"] == ["normal", "arrows", "right", "normal", False]
+    assert r["back"] == ["quick", "tilt", "left", "large", True]
+    assert r["junk"] == ["normal", "arrows", "right", "normal", False]

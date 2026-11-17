@@ -1198,11 +1198,19 @@
     // Your steering: keys and pads ramp in (slower at speed) and settle back quickly; the touch strip is analog. Slide
     // assist (Settings) adds a little countersteer when the car's travel and its nose disagree. The AI is untouched.
     const ASSIST = { off: 0, light: 0.35, strong: 0.7 };
+    // Steering sensitivity (Settings → Controls): how fast keys ramp in, how far your thumb travels on the strip, and
+    // how far you tilt the phone for full lock.
+    const SENS = { gentle: { rate: 0.7, strip: 0.62, tilt: 32 }, normal: { rate: 1, strip: 0.5, tilt: 24 }, quick: { rate: 1.4, strip: 0.4, tilt: 17 } };
+    const sens = () => SENS[G.settings.steerSens] || SENS.normal;
+    const tiltLive = () => G.settings.touchSteer === "tilt" && G.tilt && G.tilt.ok && performance.now() - G.tilt.at < 1000;
     function steerInput(rdt) {
-      const k = G.keys, me = G.race.cars[0], tgt = G.steerAxis !== undefined ? G.steerAxis : (k.right ? 1 : 0) - (k.left ? 1 : 0);
+      const k = G.keys, me = G.race.cars[0], keys = (k.right ? 1 : 0) - (k.left ? 1 : 0);
+      if (tiltLive() && G.race.state === "lights") G.tilt.zero = G.tilt.raw;                  // hold the phone how you like: that's centre
+      const tilt = tiltLive() ? Math.max(-1, Math.min(1, (G.tilt.raw - (G.tilt.zero || 0)) / sens().tilt)) : undefined;
+      const tgt = G.steerAxis !== undefined ? G.steerAxis : keys || tilt === undefined ? keys : tilt;
       const fwd = me.fwd || 0, sf = Math.min(1, Math.abs(fwd) / 650), cur = G.st || 0;
       const back = Math.abs(tgt) < Math.abs(cur) || (tgt && cur && Math.sign(tgt) !== Math.sign(cur));
-      const rate = back ? 10 : 6.5 * (1 - 0.45 * sf), dt = Math.min(0.05, rdt);
+      const rate = (back ? 10 : 6.5 * (1 - 0.45 * sf)) * sens().rate * (tilt !== undefined && !keys ? 1.6 : 1), dt = Math.min(0.05, rdt);
       G.st = cur + Math.max(-rate * dt, Math.min(rate * dt, tgt - cur));
       let out = G.st;
       const A = ASSIST[G.settings.assist] === undefined ? ASSIST.light : ASSIST[G.settings.assist], sp = Math.hypot(me.vx, me.vy);
@@ -1492,6 +1500,13 @@
     }
     function modeHud(race, me) {
       const ui = G.ui, R2 = root.JarvisRacer;
+      // on the grid (every mode but drag, which has its own): the rev meter for the launch
+      const grid = race.state === "lights" && race.mode !== "drag" && race.mode !== "pursuit";
+      if (["circuit", "sprint", "rival"].includes(race.mode)) ui.modebox.hidden = !grid;   // these modes have no panel once racing
+      if (grid) {
+        text(ui.modeText, G.touch && !G.settings.autoGas ? "Hold GAS to rev · launch in the green" : G.touch ? "Revving · launch in the green" : "Hold the throttle to rev · launch in the green");
+        meters([{ cls: "rpm", label: "Revs", v: me.rev || 0, hot: me.rev >= 0.55 && me.rev <= 0.8 }]); return;
+      }
       if (race.mode === "pursuit") {
         const P = race.pursuit, dots = "●".repeat(P.heat) + "○".repeat(5 - P.heat);
         text(ui.modeText, `Heat ${dots}  ·  Bounty ${Math.round(P.bounty).toLocaleString()}${P.cover ? "  ·  in cover" : P.seen ? "" : "  ·  out of sight"}`);
@@ -1647,7 +1662,7 @@
       const dt = rdt * G.timeScale;
       if (G.mode === "race" && !G.paused && G.ui.overlay.hidden) {
         G.acc += dt;
-        const k = G.keys, you = { steer: steerInput(rdt), thr: !!k.up, brk: !!k.down, nitro: !!k.nitro, shift: !!k.shift, hb: !!k.hb };
+        const k = G.keys, you = { steer: steerInput(rdt), thr: !!k.up || (!!G.settings.autoGas && !k.down), brk: !!k.down, nitro: !!k.nitro, shift: !!k.shift, hb: !!k.hb };
         let n = 0;
         while (G.acc >= 1 / 120 && n++ < 12) { step(G.race, 1 / 120, you); G.acc -= 1 / 120; }
         record(G.race);
@@ -1670,7 +1685,7 @@
       if (G.audio) {
         const me = G.race.cars[0], t = G.race.trk, live = G.mode === "race" && !G.paused;
         const crowd = live ? clamp(1 - Math.hypot(me.x - t.P[0][0], me.y - t.P[0][1]) / 900, 0, 1) : 0;   // the grandstands are by the line
-        G.audio.update(live ? { speed: Math.max(0, me.fwd), top: me.acc / me.spec.drag, slip: me.on ? me.slip : 0, boost: me.boost, on: me.on, thr: !!me.thr, turbo: me.spec.turbo || 0,
+        G.audio.update(live ? { speed: G.race.state === "lights" && G.race.mode !== "drag" ? (me.rev || 0) * me.acc / me.spec.drag : Math.max(0, me.fwd), top: me.acc / me.spec.drag, slip: me.on ? me.slip : 0, boost: me.boost, on: me.on, thr: !!me.thr, turbo: me.spec.turbo || 0,
           gear: G.race.mode === "drag" ? me.gear : undefined, rpm: me.rpm, wet: G.race.wetness, tunnel: G.inTunnel, crowd, surf: me.surf } : null);
       }
       render(rdt);
@@ -1897,7 +1912,7 @@
     function unmount() {
       if (!G) return;
       root.cancelAnimationFrame(G.raf);
-      root.removeEventListener("keydown", onKey); root.removeEventListener("keyup", onKey);
+      root.removeEventListener("keydown", onKey); root.removeEventListener("keyup", onKey); root.removeEventListener("deviceorientation", onTilt);
       if (G.audio) G.audio.stop();
       if (G.ui_api && G.ui_api.detach) G.ui_api.detach();
       G = null;
@@ -1915,7 +1930,7 @@
       const lp = ui.pads.querySelector('[data-k="left"]'), rp = ui.pads.querySelector('[data-k="right"]'), steerPtr = new Map();
       const axis = () => { if (!G) return; if (!steerPtr.size) { G.steerAxis = undefined; return; }
         const a = lp.getBoundingClientRect(), b2 = rp.getBoundingClientRect(), cx = (a.right + b2.left) / 2, half = Math.max(20, (b2.right - a.left) / 2);
-        const x = [...steerPtr.values()].pop(); G.steerAxis = Math.max(-1, Math.min(1, (x - cx) / (half * 0.5))); };
+        const x = [...steerPtr.values()].pop(); G.steerAxis = Math.max(-1, Math.min(1, (x - cx) / (half * sens().strip))); };
       ui.pads.querySelectorAll(".race-pad").forEach((b) => {
         const k = b.dataset.k, held = new Set(), steer = k === "left" || k === "right";
         const set = () => { if (G) { G.keys[k] = held.size > 0; b.classList.toggle("active", held.size > 0); } };
@@ -1937,9 +1952,37 @@
       G.raf = root.requestAnimationFrame(frame);
       return ui.stage;
     }
+    // Tilt to steer: the phone's motion sensor, read as a steering wheel. iOS asks permission once per visit, and only
+    // from a tap, so the menus ask on your next tap when tilt is chosen. Resolves { ok, why }.
+    function onTilt(e) {
+      if (!G || e.gamma === null || e.gamma === undefined) return;
+      const ang = (root.screen && root.screen.orientation && root.screen.orientation.angle) || root.orientation || 0;
+      const raw = ang === 90 ? e.beta : ang === -90 || ang === 270 ? -e.beta : ang === 180 ? -e.gamma : e.gamma;
+      G.tilt = { ...(G.tilt || {}), ok: true, raw, at: performance.now() };
+    }
+    function enableTilt() {
+      const DOE = root.DeviceOrientationEvent;
+      if (!DOE) return Promise.resolve({ ok: false, why: "This device or browser has no motion sensor, so tilt steering isn't available." });
+      if (G && G.tiltListening) return Promise.resolve(waitTilt());
+      const listen = () => { root.addEventListener("deviceorientation", onTilt); if (G) G.tiltListening = true; return waitTilt(); };
+      if (typeof DOE.requestPermission === "function") {
+        return DOE.requestPermission().then((r) => r === "granted" ? listen() : { ok: false, why: "Tilt needs motion access. Allow it when Safari asks (or under Settings → Safari → Motion & Orientation Access)." },
+          () => ({ ok: false, why: "Tilt needs motion access, and it can only be asked for from a tap. Tap a button and try again." }));
+      }
+      return listen();
+    }
+    function waitTilt() {   // a real sensor reports within a moment; a desktop browser with the API but no sensor never does
+      return new Promise((res) => { const t0 = performance.now(), check = () => {
+        if (G && G.tilt && G.tilt.ok && G.tilt.at > t0 - 1000) return res({ ok: true });
+        if (performance.now() - t0 > 1500) return res({ ok: false, why: "No tilt sensor answered on this device, so steering stays on the arrows." });
+        setTimeout(check, 100); }; check(); });
+    }
     function applySettings(s) {
       if (!G) return;
       G.settings = { ...G.settings, ...s };
+      const pads = G.ui.pads;
+      pads.classList.toggle("left", G.settings.padSide === "left"); pads.classList.toggle("large", G.settings.padSize === "large");
+      pads.classList.toggle("tilt", G.settings.touchSteer === "tilt"); pads.classList.toggle("auto", !!G.settings.autoGas);
       G.reduce = G.settings.reducedMotion === true || (G.settings.reducedMotion !== false && reduceMotion());
       G.chase = G.settings.camera !== "classic" && !G.reduce;   // the turning camera is off with reduced motion
       G.autoQ = !G.settings.quality || G.settings.quality === "auto";
@@ -1951,6 +1994,7 @@
       get stage() { return G && G.ui.stage; }, get race() { return G && G.race; }, get quality() { return G && G.qName; },
       start: (cfg, hooks) => start(cfg, hooks), backdrop, overlay, applySettings, podium: () => G && podium(), pause: () => setPaused(true), resume: () => setPaused(false),
       restart: () => { if (G && G.cfg && G.cfg.track) start(G.cfg, G.hooks); }, setAudio: (a) => { if (G) G.audio = a; }, drawCar, status,
+      enableTilt, get tiltReady() { return !!(G && G.tilt && G.tilt.ok && performance.now() - G.tilt.at < 1500); },
       quit: () => { if (!G) return; G.paused = false; G.race.state = "retired"; setHud(false); if (G.audio) G.audio.pause(false); },
       // replay of the race just run (false if there's nothing recorded); onExit runs when the viewer closes
       replay: (onExit) => !!G && replay(onExit), get canReplay() { return !!(G && G.rec && G.rec.frames.length >= 20); },
