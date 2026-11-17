@@ -799,7 +799,7 @@ body.cinematic .cmd { position: sticky; bottom: calc(12px + env(safe-area-inset-
 body:not([data-view="workspace"]) .context-panel { display: none; }
 body[data-view="workspace"] .missions-panel, body[data-view="workspace"] .decision-panel, body[data-view="workspace"] .memory-panel,
 body[data-view="workspace"] .systems-panel, body[data-view="workspace"] .recent-panel, body[data-view="workspace"] .summary-panel,
-body[data-view="workspace"] .intel-panel, body[data-view="workspace"] .projects-panel, body[data-view="workspace"] .objectives-panel, body[data-view="workspace"] .games-panel { display: none !important; }
+body[data-view="workspace"] .intel-panel, body[data-view="workspace"] .projects-panel, body[data-view="workspace"] .objectives-panel, body[data-view="workspace"] .games-panel, body[data-view="workspace"] .weekly-panel { display: none !important; }
 body[data-view="workspace"] .hud > .center { display: flex !important; grid-area: auto; }
 body[data-view="workspace"] .matters { display: none; }
 body[data-view="workspace"] .hud > .center > .core-wrap { width: min(120px, 30vw); }
@@ -853,6 +853,17 @@ body[data-view="projects"] .missions-panel, body[data-view="projects"] .decision
 body[data-view="projects"] .memory-panel, body[data-view="projects"] .systems-panel, body[data-view="projects"] .intel-panel,
 body[data-view="projects"] .recent-panel, body[data-view="projects"] .summary-panel, body[data-view="projects"] .context-panel { display: none; }
 .proj-part { padding: 0 0 8px 10px; }
+#board + #projects .proj-part:first-child { border-top: 1px solid var(--gold-faint); margin-top: 14px; padding-top: 14px; }
+.board-items { list-style: none; margin: 4px 0 0; padding: 0; display: flex; flex-wrap: wrap; gap: 6px; }
+.board-item { background: rgba(0, 0, 0, .25); border: 1px solid var(--gold-faint); color: inherit; padding: 6px 10px; cursor: pointer; font: inherit; min-height: 36px; max-width: 100%; overflow-wrap: anywhere; text-align: left; }
+.board-item.on { border-color: var(--arc); }
+.board-kind { font-size: 12px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+.board-kind.k-page { color: var(--arc); }
+.board-viewer { display: grid; gap: 8px; margin-top: 8px; padding: 10px; border: 1px solid var(--gold-faint); background: rgba(0, 0, 0, .3); min-width: 0; }
+.board-text { margin: 0; max-height: 420px; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; font: inherit; }
+.board-text.code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 13px; white-space: pre; }
+.board-play { width: 100%; height: min(60vh, 480px); border: 1px solid var(--arc); background: #000; }
+.board-toggle { display: inline-flex; align-items: center; gap: 6px; min-height: 36px; }
 .proj-part + .proj-part { border-top: 1px solid var(--gold-faint); margin-top: 14px; padding-top: 14px; }
 .proj-list { list-style: none; margin: 8px 0 0; padding: 0; display: grid; gap: 12px; }
 .proj { display: grid; gap: 6px; padding: 12px 14px; border-left: 2px solid var(--arc); background: rgba(0, 0, 0, .22); min-width: 0; }
@@ -1614,6 +1625,11 @@ body[data-view="objectives"] .recent-panel, body[data-view="objectives"] .summar
 
 /* ---- games: chess with JARVIS ---- */
 body:not([data-view="games"]) .games-panel { display: none; }
+body:not([data-view="weekly"]) .weekly-panel { display: none; }
+body[data-view="weekly"] .missions-panel, body[data-view="weekly"] .decision-panel, body[data-view="weekly"] .projects-panel,
+body[data-view="weekly"] .objectives-panel, body[data-view="weekly"] .memory-panel, body[data-view="weekly"] .systems-panel,
+body[data-view="weekly"] .intel-panel, body[data-view="weekly"] .recent-panel, body[data-view="weekly"] .summary-panel,
+body[data-view="weekly"] .context-panel, body[data-view="weekly"] .games-panel { display: none; }
 body[data-view="games"] .missions-panel, body[data-view="games"] .decision-panel, body[data-view="games"] .projects-panel,
 body[data-view="games"] .objectives-panel, body[data-view="games"] .memory-panel, body[data-view="games"] .systems-panel,
 body[data-view="games"] .intel-panel, body[data-view="games"] .recent-panel, body[data-view="games"] .summary-panel,
@@ -1667,3 +1683,38 @@ body[data-view="games"] .context-panel { display: none; }
 .race { display: grid; gap: 14px; padding: 0 10px 8px; }
 @media (min-width: 1100px) { .race { grid-template-columns: minmax(0, 1fr) 260px; align-items: start; } }
 @media (max-width: 560px) { .race { padding: 0 0 8px; } }
+
+/* Your week (weekly review): counted from the records */
+.week-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; margin: 10px 0; }
+.week-grid .wk { border: 1px solid var(--line, rgba(255,255,255,.12)); border-radius: 8px; padding: 10px 12px; }
+.week-grid .wk b { display: block; font-size: 22px; }
+.week-grid .wk span { font-size: 13px; color: var(--muted, #b9aa91); }
+.week-list { margin: 6px 0; padding-left: 18px; font-size: 14px; }
+
+/* "Used N things JARVIS knows" under a reply: what was retrieved and why */
+.msg .used { margin-top: 6px; font-size: 12.5px; opacity: .9; }
+.msg .used summary { cursor: pointer; color: var(--muted, #b9aa91); min-height: 24px; }
+.msg .used ul { margin: 4px 0 0; padding-left: 18px; display: grid; gap: 3px; overflow-wrap: anywhere; }
+.msg .used small { color: var(--muted, #b9aa91); }
+
+/* Knowledge view on the Memory page: items with why / status / source, and what connects to them */
+.know { display: grid; gap: 8px; margin: 8px 0; }
+.know-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.know-item { border-left: 2px solid var(--gold-faint, rgba(255,255,255,.2)); padding: 2px 0 2px 10px; overflow-wrap: anywhere; }
+.know-item.inferred, .know-item.outdated { border-left-style: dashed; opacity: .9; }
+.know-item small { display: block; color: var(--muted, #b9aa91); font-size: 12.5px; }
+.know-related { padding-left: 14px; }
+.know-private { color: var(--amber, #f2a33a); font-size: 12.5px; }
+.know-group summary { cursor: pointer; min-height: 28px; }
+.know-finding { margin: 6px 0 10px 10px; }
+
+/* Laboratory (Evolution page): opportunities, packages, history */
+.lab-list, .lab-history { list-style: none; margin: 0; padding: 0 0 0 10px; display: grid; gap: 12px; }
+.lab-list > li { border: 1px solid var(--gold-faint, rgba(255,255,255,.14)); padding: 10px 12px; display: grid; gap: 4px; overflow-wrap: anywhere; }
+.lab-list small, .lab-history small { color: var(--muted, #b9aa91); font-size: 12.5px; }
+.lab-design { border-top: 1px solid var(--gold-faint, rgba(255,255,255,.14)); margin-top: 6px; padding-top: 6px; font-size: 13.5px; }
+.lab-design ul { margin: 2px 0 8px; padding-left: 18px; } .lab-design p { margin: 4px 0; }
+.lab-warn { color: var(--amber, #f2a33a) !important; }
+.lab-history { gap: 4px; font-size: 13.5px; }
+.lab-q { width: 100%; margin: 4px 0 8px 10px; max-width: 420px; min-height: 36px; padding: 6px 10px; font: inherit; color: inherit;
+  background: rgba(0, 0, 0, .35); border: 1px solid var(--gold-faint, rgba(255,255,255,.2)); }

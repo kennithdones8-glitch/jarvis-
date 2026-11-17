@@ -104,6 +104,15 @@ def candidates(kernel, *, health: dict[str, Any] | None = None, now: datetime | 
                              value=2, urgency=2, confidence=0.9, href="#/memory"))
     except Exception:  # noqa: BLE001
         pass
+    try:   # Sundays (and the next two days until you've looked): your week, if anything happened. Never strong
+        from . import weekly    # enough to notify you on its own.
+        if weekly.due(kernel, now=now):
+            r = weekly.review(kernel, now=now)
+            if not r["headline"].startswith("A quiet week"):
+                out.append(_item(f"weekly:{r['week']}", "weekly", "Your week", r["headline"],
+                                 value=1, urgency=1, confidence=1.0, href="#/weekly"))
+    except Exception:  # noqa: BLE001
+        pass
     try:
         from .objectives import feed_items
         out += feed_items(kernel)

@@ -266,6 +266,68 @@ def restore_backup(path: Path, home: Path, policy_path: Path, config_path: Path,
             "previous_files_kept_as": f"*.before-restore-{stamp}"}
 
 
+# ---- a second copy, off this Mac (an external drive, or a folder iCloud Drive syncs) ----------------------------
+# Backups are already encrypted, so the copy is the same file: someone holding the drive (or Apple, for iCloud
+# Drive) has the ciphertext only. The passphrase stays in this Mac's Keychain; keep your own copy of it too.
+COPY_META = "backup.copy_to"
+
+
+def check_copy_folder(path: str, home: Path, primary: Path) -> Path:
+    """The folder you chose for the second copy, checked: an absolute path to an existing, writable folder that
+    isn't JARVIS's own data folder or the main backup folder."""
+    p = Path(os.path.expanduser(str(path or "").strip()))
+    if not str(path or "").strip() or not p.is_absolute() or ".." in p.parts:
+        raise BackupError("choose a full folder path, e.g. /Volumes/MyDrive/JARVIS backups")
+    if not p.exists() and p.name == COPY_FOLDER and p.parent.is_dir():   # the suggested folder: made for you
+        p.mkdir(mode=0o700)
+    if not p.is_dir():
+        raise BackupError(f"{p} isn't a folder that exists right now (is the drive connected?)")
+    if not os.access(p, os.W_OK):
+        raise BackupError(f"JARVIS can't write to {p}")
+    rp, home_r, prim_r = p.resolve(), Path(home).resolve(), Path(primary).resolve()
+    if rp == prim_r or rp == home_r or home_r in rp.parents:
+        raise BackupError("choose a folder outside JARVIS's own data folder (the point is a second, separate copy)")
+    return p
+
+
+COPY_FOLDER = "JARVIS backups"
+
+
+def copy_places(volumes: Path = Path("/Volumes"), home: Path | None = None) -> list[dict[str, str]]:
+    """Where a second copy could go, as this Mac sees it now: connected drives (not the startup disk) and iCloud
+    Drive, if it's on. Each suggests a "JARVIS backups" folder inside it."""
+    out = []
+    try:
+        for v in sorted(volumes.iterdir()) if volumes.is_dir() else []:
+            if v.is_dir() and not v.name.startswith(".") and v.resolve() != Path("/") and os.access(v, os.W_OK):
+                out.append({"label": f"Drive “{v.name}”", "path": str(v / COPY_FOLDER)})
+    except OSError:
+        pass
+    icloud = (home or Path.home()) / "Library/Mobile Documents/com~apple~CloudDocs"
+    if icloud.is_dir():
+        out.append({"label": "iCloud Drive", "path": str(icloud / COPY_FOLDER)})
+    return out
+
+
+def copy_out(src: Path, dest_dir: Path, *, keep: int = KEEP_DEFAULT) -> Path:
+    """Copy one backup into ``dest_dir`` safely: written to a temporary name, flushed to disk, checked byte for byte
+    against the original, then renamed. Older copies beyond ``keep`` are removed from that folder only."""
+    src, dest_dir = Path(src), Path(dest_dir)
+    final, tmp = dest_dir / src.name, dest_dir / f".{src.name}.partial"
+    try:
+        with open(src, "rb") as fin, open(tmp, "wb") as fout:
+            shutil.copyfileobj(fin, fout, 1 << 20)
+            fout.flush()
+            os.fsync(fout.fileno())
+        if _sha(tmp) != _sha(src):
+            raise BackupError("the copy doesn't match the original (the drive may be failing)")
+        os.replace(tmp, final)
+    finally:
+        tmp.unlink(missing_ok=True)
+    prune(dest_dir, keep)
+    return final
+
+
 def list_backups(dest_dir: Path) -> list[Path]:
     return sorted(Path(dest_dir).glob("jarvis-*.jbak"), reverse=True) if Path(dest_dir).is_dir() else []
 

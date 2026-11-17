@@ -68,6 +68,11 @@ LOOKUP_ABILITY = ("look up the owner's calendar, reminders, Apple Notes and file
                   "the results appear in a <lookup> block; say plainly when nothing was found or a lookup failed)")
 CHANGE_ABILITY = ("when asked to add, change, send or move something, explain that you can't do it in chat but the owner "
                   "can tap Make a plan: JARVIS then plans it and asks for approval before doing anything")
+# The project board (dashboard): what you ask to start, plan or build is kept there, not in Notes.
+PROJECTS_ABILITY = ("keep projects on the dashboard's Projects page: when asked to start, plan or build a project (a plan, "
+                    "notes, code or an animation), say JARVIS will keep it there, as a project, if the owner taps Make a "
+                    "plan (they approve before anything is saved) or opens it on the Projects page; an animation can "
+                    "be played there once Play animations is on. Never tell the owner to look in Notes or a folder for it")
 # With lookups, calendar/reminders/files move from "can't" to "can read"; changing them still needs a plan.
 NOT_YET_WITH_LOOKUPS = ("sending email or messages", "changing your calendar, reminders, notes or files directly from chat",
                         "controlling Mac settings, volume, brightness or media", "browsing the web in this chat "
@@ -76,7 +81,7 @@ NOT_YET_WITH_LOOKUPS = ("sending email or messages", "changing your calendar, re
 
 def chat_abilities(memory_enabled: bool, lookups: bool = False) -> tuple[str, ...]:
     out = (*CHAT_ONLY_ABILITIES, MEMORY_ABILITY) if memory_enabled else CHAT_ONLY_ABILITIES
-    return (*out, LOOKUP_ABILITY, CHANGE_ABILITY) if lookups else out
+    return (*out, LOOKUP_ABILITY, CHANGE_ABILITY, PROJECTS_ABILITY) if lookups else out
 
 
 def priming_messages(abilities: tuple[str, ...] | list[str] = CHAT_ONLY_ABILITIES) -> list[Message]:

@@ -3,6 +3,14 @@
 // (never as HTML), so content from files or web pages cannot inject markup or scripts.
 
 const $ = (s) => document.querySelector(s);
+// The start-up assembly of the projection holds the panels back for ~4 s. It plays on the first visit of the day
+// only (avatar.js skips it when "jarvis-booted" is set for this browser session), so the page is there at once
+// every other time the browser opens.
+try {
+  const today = new Date().toISOString().slice(0, 10);
+  if (localStorage.getItem("jarvis-boot-day") === today) sessionStorage.setItem("jarvis-booted", "1");
+  else localStorage.setItem("jarvis-boot-day", today);
+} catch (e) { /* storage unavailable: the assembly plays as before */ }
 const ui = { mode: "ask", data: null, convo: [], chatBusy: false, online: true, open: new Set(), lastFeed: "",
              intel: "balanced", stage: null, abort: null, editIndex: null, copied: null,
              session: (crypto.randomUUID ? crypto.randomUUID() : String(Math.random()).slice(2)), memQ: "", memKey: "" };
@@ -61,8 +69,8 @@ const b64u = {
 // The fingerprint is for signing in. After that only the dangerous few ask again (must match the server's STEP_UP,
 // which enforces it regardless of what this page does): releasing the emergency stop, changing or forgetting
 // memories, removing a phone, plus approving a high-risk action (risk tier 4).
-const FACE_ID = [/^\/api\/release$/, /^\/api\/memory\/conflicts\/resolve$/, /^\/api\/memory\/[\w-]+\/(delete|edit)$/, /^\/api\/devices\/[\w-]+\/revoke$/];
-const TOUCH_ID = [...FACE_ID, /^\/api\/update\/start$/, /^\/api\/settings\/(coding|files)$/, /^\/api\/devices\/pair$/, /^\/api\/touchid\/enroll\/options$/, /^\/api\/touchid\/[\w-]+\/remove$/];
+const FACE_ID = [/^\/api\/release$/, /^\/api\/memory\/conflicts\/resolve$/, /^\/api\/memory\/[\w-]+\/(delete|edit|privacy)$/, /^\/api\/devices\/[\w-]+\/revoke$/];
+const TOUCH_ID = [...FACE_ID, /^\/api\/update\/start$/, /^\/api\/evolution\/decide$/, /^\/api\/settings\/(coding|files|backup-copy|stay-signed-in|play)$/, /^\/api\/devices\/pair$/, /^\/api\/touchid\/enroll\/options$/, /^\/api\/touchid\/[\w-]+\/remove$/];
 const HIGH_RISK = 4;
 const highRiskApproval = (path, body) => {
   const m = path.match(/^\/api\/approvals\/([\w-]+)$/);
@@ -117,6 +125,7 @@ async function call(path, body) {
 const clock = (ts) => new Date(typeof ts === "number" ? ts * 1000 : ts).toLocaleTimeString([], { hour12: false, hour: "2-digit", minute: "2-digit" });
 const base = (p) => (p || "").split("/").filter(Boolean).pop() || p || "";
 const folder = (p) => { const parts = (p || "").split("/").filter(Boolean); parts.pop(); return parts.length ? parts.slice(-2).join("/") : "/"; };
+const KNOW_KIND = { memory: "Memory", mission: "Mission", objective: "Objective", lesson: "Lesson", decision: "Your decision", doc: "JARVIS's docs", answer: "Answer" };
 const plural = (n, w) => `${n} ${w}${n === 1 ? "" : "s"}`;
 const STATE_WORDS = {
   queued: "Queued", running: "In progress", awaiting_approval: "Needs your decision", verifying: "Verifying",
@@ -527,7 +536,7 @@ async function sendChat(payload, endpoint = "/api/chat") {
       meta: [r.model.split("/").pop(), `${r.seconds}s`, `${r.searches.length} searches`, `${r.pages_read.length} pages read`,
              `${r.verified_sources}/${r.sources.length} sources verified`].join(" · ") });
     else if (r.error) ui.convo.push({ ...base, text: r.partial ? `${r.partial}\n\n— ${r.error}` : r.error, error: true, activity: r.activity });
-    else ui.convo.push({ ...base, text: r.text, checked: r.checked || [], plan: r.offer_plan ? payload.message : null, activity: r.activity,
+    else ui.convo.push({ ...base, text: r.text, checked: r.checked || [], used: r.used || [], heldBack: r.private_held_back || 0, plan: r.offer_plan ? payload.message : null, activity: r.activity,
       ref: r.record || `${ui.session}:${Date.now()}`, rmodel: r.location === "local" ? `local/${String(r.model).split("/").pop()}` : r.model, rmode: r.mode,
       meta: [r.model.split("/").pop(), r.location === "cloud" ? "cloud" : null, r.mode && r.mode !== "balanced" ? INTEL_LABEL[r.mode] : null,
       r.first ? `first words ${r.first.toFixed(2)}s` : null, `${r.seconds}s`,
@@ -633,6 +642,11 @@ function renderFeed(d) {
             h("a", { href: s.url, target: "_blank", rel: "noopener noreferrer" }, s.url.replace(/^https?:\/\//, "")),
             s.verified ? " ✓" : " — not seen by the research tools"))) : null,
         m.checked && m.checked.length ? h("div", { class: "checked" }, "Checked: ", m.checked.join(" · ")) : null,
+        // what JARVIS's own knowledge contributed, and why each item was picked (Knowledge, Stage 4)
+        (m.used && m.used.length) || m.heldBack ? h("details", { class: "used" },
+          h("summary", {}, `Used ${plural((m.used || []).length, "thing")} JARVIS knows${m.heldBack ? ` · ${plural(m.heldBack, "private memory").replace("memorys", "memories")} held back (this answer left the Mac)` : ""}`),
+          h("ul", {}, (m.used || []).map((u) => h("li", {}, h("b", {}, `${KNOW_KIND[u.kind] || u.kind}: `), u.text,
+            h("small", {}, ` — ${u.why.join("; ")}${u.status === "inferred" ? " · unconfirmed" : u.status === "outdated" ? " · may be out of date" : ""}`))))) : null,
         m.plan ? h("div", { class: "row mt" }, h("button", { class: "btn btn-sm", type: "button", onclick: () => makePlan(m) },
           "Make a plan")) : null,
         m.live && ui.stage ? h("div", { class: "stage-line", role: "status" }, stageLabel(ui.stage)) : null,
@@ -1717,7 +1731,15 @@ function renderSystems(d) {
     part("Health"), healthBlock || h("div", { class: "empty" }, "Checking…"),
     onPhone() ? null : h("div", { class: "row mt" },
       h("button", { class: "btn btn-ghost btn-sm", type: "button", onclick: () => act("/api/health/check", {}) }, "Check again"),
-      h("button", { class: "btn btn-ghost btn-sm", type: "button", onclick: () => act("/api/backup/now", {}) }, "Back up now")),
+      h("button", { class: "btn btn-ghost btn-sm", type: "button", onclick: () => act("/api/backup/now", {}) }, "Back up now"),
+      h("button", { class: "btn btn-ghost btn-sm", type: "button", onclick: testRestore, title: "Opens the newest backup (the second copy, if you have one) and checks every part of it; nothing is replaced" }, "Test restore")),
+    onPhone() ? null : backupCopyBlock(d.backup_copy),
+    onPhone() || !d.stay_signed_in ? null : h("div", { class: "devices mt" },
+      h("div", { class: "ro", title: "Off: this browser's sign-in ends when the browser quits. On: it lasts 30 days, so JARVIS can be your browser's start page. Touch ID, when set up, is still asked for as before." },
+        h("span", {}, "Stay signed in"),
+        h("button", { class: `btn btn-ghost btn-xs${d.stay_signed_in.on ? " on" : ""}`, type: "button",
+          onclick: () => act("/api/settings/stay-signed-in", { on: !d.stay_signed_in.on }) }, d.stay_signed_in.on ? "On · 30 days" : "Off")),
+      d.stay_signed_in.on ? h("div", { class: "d-why" }, `To open JARVIS when Chrome starts: Chrome → Settings → On startup → “Open a specific page or set of pages” → Add a new page → ${d.stay_signed_in.url}`) : null),
     onPhone() ? null : part("Updates"), onPhone() ? null : updateBlock(d.update),
     onPhone() ? null : part("Test this version"), onPhone() ? null : benchBlock(d.benchtest),
     h("div", { class: "lights" }, lights.length ? lights : h("div", { class: "empty" }, "No models configured")),
@@ -1731,7 +1753,7 @@ function renderSystems(d) {
       ro("Budget", `$${(m.budget.spent_this_month_usd || 0).toFixed(2)} of $${(m.budget.monthly_limit_usd || 0).toFixed(2)}`),
       ro("Audit log", chain ? (chain.ok ? `Intact · ${chain.checked}` : `Broken at #${chain.first_bad_seq}`) : "Checking…", chain ? (chain.ok ? "ok" : "bad") : null),
       ro("Folders", d.roots.length ? d.roots.map(base).join(", ") : "None approved"),
-      ...(onPhone() || !d.files ? [] : [h("div", { class: "ro", title: "Search inside the folders you've approved (Mac only; off deletes the index)" },
+      ...(onPhone() || !d.files ? [] : [h("div", { class: "ro", title: "Search inside the folders you've approved, and let chat answer from them (Mac only; off deletes the index)" },
         h("span", {}, "File search"),
         h("button", { class: `btn btn-ghost btn-xs${d.files.on ? " on" : ""}`, type: "button", disabled: d.files.folders.length ? null : true,
           title: d.files.folders.length ? null : "Approve a folder first", onclick: async () => {
@@ -1878,6 +1900,7 @@ async function loadMemory(force) {
     fill(fileBox, files.length ? h("div", { class: "job" }, h("b", {}, "In your files"),
       h("ul", { class: "files-hits" }, files.map((f) => h("li", {}, h("b", {}, f.name), h("small", {}, ` ${f.path}`), f.snippet ? h("div", { class: "d-why" }, f.snippet) : null)))) : null);
   }
+  if (window.JarvisKnowledge) JarvisKnowledge.load(ui.memQ, !!force);   // what else JARVIS's records hold, and why
   const conf = $("#memconflicts");
   if (conf) fill(conf, (res.conflicts || []).length ? h("div", { class: "job mem-conflicts" },
     h("b", {}, "These disagree: which is right?"),
@@ -1893,18 +1916,26 @@ async function loadMemory(force) {
     const day = (iso) => (iso || "").slice(0, 10);
     const reconfirmed = confirmed && m.verified_at && day(m.verified_at) !== day(m.created_at);
     return h("article", { class: `mem ${confirmed ? "confirmed" : "unconfirmed"}` },
-      h("div", { class: "mem-text" }, m.important ? h("span", { class: "mem-star", title: "Starred: always worth remembering" }, "★ ") : null, m.text),
+      h("div", { class: "mem-text" }, m.important ? h("span", { class: "mem-star", title: "Starred: always worth remembering" }, "★ ") : null, m.text,
+        m.privacy === "private" ? h("span", { class: "know-private", title: "Never leaves this Mac, whatever you approve" }, " · private") : null),
       h("div", { class: "mem-origin" }, confirmed
         ? reconfirmed ? ["✓ ", h("b", {}, "Confirmed by you"), " · noticed earlier, then confirmed"]
           : ["✓ ", h("b", {}, "Stated by you"), m.source_record ? " · in a conversation" : " · added here"]
         : ["? ", h("b", {}, "Inferred by JARVIS"), " from a conversation · already used in answers · confirm it or delete it"]),
-      h("div", { class: "mem-meta" }, `${m.kind} · added ${day(m.created_at)}` + (reconfirmed ? ` · confirmed ${day(m.verified_at)}` : "")),
+      h("div", { class: "mem-meta" }, `${m.kind} · added ${day(m.created_at)}` + (reconfirmed ? ` · confirmed ${day(m.verified_at)}` : "")
+        + (m.review_after ? ` · check after ${m.review_after}` : "")),
       h("div", { class: "row" },
         confirmed ? null : h("button", { class: "btn btn-sm", type: "button", onclick: () => memAct(`/api/memory/${m.id}/confirm`, {}) }, "Confirm"),
         h("button", { class: "btn btn-ghost btn-sm", type: "button", onclick: () => {
           ask("Correct this memory:", { input: m.text, ok: "Save" }).then((t) => { if (t && t.trim() && t !== m.text) memAct(`/api/memory/${m.id}/edit`, { text: t }); });
         } }, "Edit"),
         h("button", { class: "btn btn-ghost btn-sm", type: "button", onclick: () => memAct(`/api/memory/${m.id}/important`, { important: !m.important }) }, m.important ? "Unstar" : "Star"),
+        onPhone() ? null : h("button", { class: "btn btn-ghost btn-sm", type: "button", title: "Private memories never leave this Mac, whatever you approve",
+          onclick: () => memAct(`/api/memory/${m.id}/privacy`, { private: m.privacy !== "private" }) }, m.privacy === "private" ? "Make not private" : "Make private"),
+        h("button", { class: "btn btn-ghost btn-sm", type: "button", title: "A date after which JARVIS shows this as due for a check",
+          onclick: () => ask("Check this memory again after (YYYY-MM-DD; empty to clear):", { input: m.review_after || "", ok: "Save" })
+            .then((d) => { if (d !== null) memAct(`/api/memory/${m.id}/review`, { date: d.trim() || null }); }) }, "Check later"),
+        window.JarvisKnowledge ? h("button", { class: "btn btn-ghost btn-sm", type: "button", onclick: () => JarvisKnowledge.open(`memory:${m.id}`) }, "Connections") : null,
         h("button", { class: "btn btn-ghost btn-sm", type: "button", onclick: async () => (await ask("Delete this memory? JARVIS won't re-learn it.", { ok: "Delete", danger: true })) && memAct(`/api/memory/${m.id}/delete`, {}) }, "Delete")));
   });
   if (ui.memQ && (res.memories.length || res.records.length)) {
@@ -1939,6 +1970,67 @@ async function dismissSuggestion(it) {
   loadIntel();
 }
 const INITIATIVE_SOURCE = { mission: "Mission", health: "Problem", project: "Project", lesson: "Lesson", proposal: "Improvement" };
+// Your week: counted from the tasks, approvals, objectives and audit log of the last 7 days (nothing estimated)
+const MISSION_WORD = { completed: "completed", failed: "failed", cancelled: "stopped", awaiting_approval: "waiting for you" };
+// Second copy of the backups, off this Mac (Systems). The folder can only be chosen here, with Touch ID.
+function backupCopyBlock(c) {
+  if (!c) return null;
+  const choose = (folder) => act("/api/settings/backup-copy", { folder });
+  if (!c.set) {
+    return h("div", { class: "devices mt" },
+      h("div", { class: "ro" }, h("span", {}, "Second copy"), h("b", {}, "Off")),
+      h("div", { class: "d-why" }, "Also copy each encrypted backup to a drive or to iCloud Drive, so losing this Mac doesn't lose JARVIS. The copy is the same encrypted file; the passphrase stays in this Mac's Keychain (keep your own copy of it)."),
+      h("div", { class: "row" }, ...(c.places || []).map((pl) => h("button", { class: "btn btn-ghost btn-sm", type: "button", title: pl.path,
+        onclick: () => choose(pl.path) }, `Use ${pl.label}`)),
+        h("button", { class: "btn btn-ghost btn-sm", type: "button", onclick: async () => {
+          const f = await ask("Folder for the second copy (full path):", { input: "/Volumes/", ok: "Use this folder" });
+          if (f) choose(f);
+        } }, "Other folder…")));
+  }
+  const age = c.last_age_hours;
+  const when = age === null ? (c.connected ? "no copy yet" : "not connected") : age >= 48 ? `last copy ${Math.round(age / 24)} days ago` : `last copy ${Math.round(age)}h ago`;
+  return h("div", { class: "devices mt" },
+    h("div", { class: "ro" }, h("span", {}, "Second copy"), h("b", { class: age !== null && age < 168 ? "ok" : null }, `${c.folder} · ${when}${c.count ? ` · ${plural(c.count, "backup")}` : ""}`)),
+    c.connected ? null : h("div", { class: "d-why" }, "The folder isn't reachable right now (drive unplugged?). JARVIS catches up the next time it is."),
+    h("button", { class: "btn btn-ghost btn-sm", type: "button", onclick: async () => {
+      if (await ask("Stop making a second copy? Copies already there are left as they are.", { ok: "Stop copying" })) choose("");
+    } }, "Stop copying"));
+}
+async function testRestore() {
+  note("Testing the newest backup…");
+  let r;
+  try { r = await api("/api/backup/test", {}); } catch (e) { note(`Test restore: ${e.message}`); return; }
+  if (!r.ok) { await ask(`The backup on ${r.where} (${r.file}) did NOT pass: ${r.error}\n\nMake a new backup now and test again.`, { ok: "OK" }); return; }
+  const c = r.counts || {};
+  await ask(`The backup on ${r.where} opens and checks out.\n\n${r.file} · made ${new Date(r.created).toLocaleString()}\n${c.tasks ?? 0} tasks, ${c.memories ?? 0} memories, ${r.audit_entries} audit entries (chain intact).\n\nNothing was replaced: this only opened a temporary copy.`, { ok: "OK" });
+}
+
+async function loadWeekly() {
+  const box = $("#weekly");
+  box.replaceChildren(h("div", { class: "empty" }, "Loading…"));
+  let r;
+  try { r = await api("/api/weekly"); } catch (e) { box.replaceChildren(h("div", { class: "empty" }, `Couldn't build your week: ${e.message}`)); return; }
+  const day = (iso) => new Date(iso).toLocaleDateString([], { weekday: "short", day: "numeric", month: "short" });
+  const tile = (n, label) => h("div", { class: "wk" }, h("b", {}, String(n)), h("span", {}, label));
+  const m = r.missions, dc = r.decisions, s = r.safety, u = r.upkeep;
+  $("#weeksum").textContent = `${day(r.from)} – ${day(r.to)}`;
+  box.replaceChildren(...[
+    r.audit_ok ? null : h("div", { class: "brief-sec alert" }, h("h3", {}, "Audit log problem"), h("p", {}, "The audit log's chain doesn't verify, so these counts may be incomplete. See Trust.")),
+    h("div", { class: "job-title" }, r.headline),
+    h("div", { class: "week-grid" },
+      tile(m.started, "missions started"), tile(m.completed, `completed (${m.verified} verified)`), tile(m.failed, "failed"), tile(m.open, "still open"),
+      tile(dc.asked, "decisions asked"), tile(dc.approved, "approved"), tile(dc.rejected, "declined"),
+      tile(r.models.on_mac, "model calls on this Mac"), tile(r.models.claude, "sent to Claude"),
+      tile(s.refused_by_rules, "refused by your rules"), tile(s.kept_private, "kept private"),
+      tile(r.memory.added, "memories added"), tile(u.backups, `backups${u.backup_failures ? ` (${u.backup_failures} failed)` : ""}`)),
+    m.list.length ? h("div", { class: "brief-sec" }, h("h3", {}, "Missions"), h("ul", { class: "week-list" },
+      m.list.map((t) => h("li", {}, `${t.goal} — ${MISSION_WORD[t.state] || t.state.replace("_", " ")}`)))) : null,
+    r.objectives.length ? h("div", { class: "brief-sec" }, h("h3", {}, "Objectives"), h("ul", { class: "week-list" },
+      r.objectives.map((o) => h("li", {}, `${o.outcome} (${o.state}): ${plural(o.missions_moved, "mission")} moved, ${o.missions_done} done`)))) : null,
+    h("p", { class: "hl-sub" }, "Counted from JARVIS's own records for the last 7 days: the missions table, your decisions, your objectives and the audit log. Nothing here is estimated or written by a model.")].filter(Boolean));
+  api("/api/weekly/seen", {}).catch(() => {});
+}
+
 async function loadIntel() {
   const box = $("#intel");
   box.replaceChildren(h("div", { class: "empty" }, "Loading…"));
@@ -1995,6 +2087,7 @@ async function loadProjects(entering = false) {
     try { await api("/api/projects/generate", {}); d.running = true; } catch (e) { /* the button still works */ }
   }
   renderProjects(d);
+  if (entering || !BOARD.data) loadBoard();
   clearTimeout(PROJ.timer);
   if (d.running && document.body.dataset.view === "projects") PROJ.timer = setTimeout(() => loadProjects(), 2000);
 }
@@ -2004,6 +2097,7 @@ async function projAct(path, body = {}) {
   try { await api(path, body); } catch (e) { PROJ.notice = e.message; }
   PROJ.busy = false;
   await loadProjects();
+  if (/\/accept$/.test(path)) loadBoard();   // starting an idea opens it on the board
 }
 async function polishProjects() {
   PROJ.notice = "Asking Claude…";
@@ -2084,6 +2178,118 @@ function renderProjects(d) {
     h("section", { class: "proj-part" }, h("h3", { class: "sys-part" }, "Ideas"),
       open.length ? h("ul", { class: "proj-list" }, open.map(projCard))
         : h("div", { class: "empty" }, d.enough ? "No ideas waiting. Tap “Find new ideas”." : "Not enough to go on yet: talk with JARVIS a little, or tell it about your goals.")));
+}
+
+// ---------------------------------------------------------------- project board: projects JARVIS opens and plans here
+// What JARVIS makes for a project (plans, notes, code, pages) is kept on this page, never in Notes. Planning and
+// building go through Make a plan, so you approve before anything is saved. A page (e.g. an animation) plays only
+// when you turned Play animations on (Mac), inside a sealed frame: no network, no access to the dashboard or your data.
+const BOARD = { data: null, open: null, item: null, playing: false, notice: null, archived: false };
+async function loadBoard() {
+  const box = $("#board");
+  if (!box) return;
+  try { BOARD.data = await api(`/api/board${BOARD.archived ? "?archived=1" : ""}`); }
+  catch (e) { fill(box, h("div", { class: "empty" }, `Couldn't load your projects: ${e.message}`)); return; }
+  renderBoard();
+}
+async function boardAct(path, body = {}) {
+  try { await api(path, body); BOARD.notice = null; } catch (e) { BOARD.notice = e.name === "NotAllowedError" ? cancelled(e) : e.message; }
+  await loadBoard();
+}
+async function boardPlan(request) {
+  ui.lastFeed = "";
+  setMode("do");
+  try {
+    await api("/api/plan", { request });
+    location.hash = "#/home";
+    await refresh();
+  } catch (e) { BOARD.notice = `Could not start planning: ${e.message}`; renderBoard(); }
+}
+function planProject(p) {
+  const about = p.summary ? ` (${p.summary})` : "";
+  boardPlan(`Plan the project “${p.title}”${about}: write a clear step-by-step plan and save it as “Plan” to that project on the dashboard.`);
+}
+async function askForProject(p) {
+  const text = await ask(`What should JARVIS make for “${p.title}”? (e.g. "an animation of a bouncing ball", "a shopping list", "the code for…")`, { input: "", ok: "Make a plan" });
+  if (text && text.trim()) boardPlan(`${text.trim()} — for the project “${p.title}”: save the work to that project on the dashboard.`);
+}
+async function newProject() {
+  const title = await ask("Name the new project", { input: "", ok: "Open project" });
+  if (!title || !title.trim()) return;
+  const summary = await ask("In one sentence, what is it? (optional)", { input: "", ok: "Save" });
+  await boardAct("/api/board/projects", { title: title.trim(), summary: (summary || "").trim() });
+}
+async function openItem(id) {
+  BOARD.playing = false;
+  if (BOARD.item && BOARD.item.id === id) { BOARD.item = null; renderBoard(); return; }
+  try { BOARD.item = await api(`/api/board/items/${id}`); } catch (e) { BOARD.notice = e.message; }
+  renderBoard();
+}
+async function deleteItem(it) {
+  if (!(await ask(`Delete “${it.title}” from this project? This can't be undone.`, { ok: "Delete", danger: true }))) return;
+  BOARD.item = null;
+  await boardAct(`/api/board/items/${it.id}/delete`);
+}
+async function setPlay(on) {
+  if (on && !(await ask("Let pages JARVIS made (like animations) play on this page? Each plays sealed off: no internet, no access to the dashboard, your data or your sign-in. You can turn it off any time.", { ok: "Turn on" }))) return;
+  BOARD.playing = false;
+  try { await call("/api/settings/play", { on }); BOARD.notice = null; } catch (e) { BOARD.notice = e.name === "NotAllowedError" ? cancelled(e) : e.message; }
+  await loadBoard();
+}
+function itemViewer(it) {
+  const page = it.kind === "page";
+  const body = page && BOARD.playing
+    ? h("iframe", { class: "board-play", src: `/play/${it.id}`, sandbox: "allow-scripts", allow: "", referrerpolicy: "no-referrer",
+        title: `${it.title} (playing, sealed off from JARVIS)`, loading: "lazy" })
+    : h("pre", { class: `board-text${it.kind === "code" || page ? " code" : ""}` }, it.content);
+  const play = page ? (BOARD.data.play
+    ? h("button", { class: "btn btn-sm", type: "button", onclick: () => { BOARD.playing = !BOARD.playing; renderBoard(); } }, BOARD.playing ? "Stop / show code" : "▶ Play")
+    : h("span", { class: "d-why" }, BOARD.data.can_set_play ? "Turn on Play animations (above) to play it here." : "Play animations is off (turn it on from the Mac).")) : null;
+  return h("div", { class: "board-viewer" },
+    h("div", { class: "row" }, h("b", {}, it.title), h("small", {}, ` ${BOARD.data.kinds[it.kind] || it.kind} · saved ${new Date(it.updated_at).toLocaleString([], { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}`)),
+    body,
+    h("div", { class: "row mt" }, play,
+      h("button", { class: "btn btn-ghost btn-sm", type: "button", onclick: () => navigator.clipboard && navigator.clipboard.writeText(it.content) }, "Copy"),
+      h("button", { class: "btn btn-ghost btn-sm", type: "button", onclick: () => deleteItem(it) }, "Delete"),
+      h("button", { class: "btn btn-ghost btn-sm", type: "button", onclick: () => { BOARD.item = null; BOARD.playing = false; renderBoard(); } }, "Close")));
+}
+const BOARD_STATES = { planning: "Planning", active: "Active", done: "Done", archived: "Archived" };
+function boardCard(p) {
+  const items = p.items.length ? h("ul", { class: "board-items" }, p.items.map((it) => h("li", {},
+    h("button", { class: `board-item${BOARD.item && BOARD.item.id === it.id ? " on" : ""}`, type: "button", onclick: () => openItem(it.id) },
+      h("span", { class: `board-kind k-${it.kind}` }, BOARD.data.kinds[it.kind] || it.kind), " ", it.title))))
+    : h("p", { class: "d-why" }, "Nothing here yet. Ask JARVIS to plan it, or to make something for it.");
+  const viewer = BOARD.item && BOARD.item.project_id === p.id ? itemViewer(BOARD.item) : null;
+  const next = p.state === "archived" ? [["planning", "Bring back"]] : p.state === "done" ? [["active", "Reopen"], ["archived", "Archive"]]
+    : [[p.state === "planning" ? "active" : "planning", p.state === "planning" ? "Mark active" : "Back to planning"], ["done", "Mark done"], ["archived", "Archive"]];
+  return h("li", { class: `proj board ${p.state}` },
+    h("small", {}, [BOARD_STATES[p.state], plural(p.items.length, "thing"), p.created_by === "jarvis" ? "opened by JARVIS" : null].filter(Boolean).join(" · ")),
+    h("b", {}, p.title),
+    p.summary ? h("div", { class: "why" }, p.summary) : null,
+    items, viewer,
+    h("div", { class: "row mt" },
+      p.state === "archived" ? null : h("button", { class: "btn btn-approve btn-sm", type: "button", title: "JARVIS plans it and saves the plan here; you approve first", onclick: () => planProject(p) }, "Plan with JARVIS"),
+      p.state === "archived" ? null : h("button", { class: "btn btn-sm", type: "button", title: "Ask JARVIS to make something for this project; you approve before it's saved", onclick: () => askForProject(p) }, "Ask JARVIS to make…"),
+      next.map(([state, label]) => h("button", { class: "btn btn-ghost btn-sm", type: "button", onclick: () => boardAct(`/api/board/projects/${p.id}/state`, { state }) }, label))));
+}
+function renderBoard() {
+  const d = BOARD.data;
+  if (!d) return;
+  const playToggle = d.can_set_play
+    ? h("label", { class: "board-toggle", title: "Pages JARVIS made (like animations) play sealed off: no internet, no access to the dashboard or your data" },
+        h("input", { type: "checkbox", checked: d.play ? true : null, onchange: (e) => setPlay(e.target.checked) }), " Play animations")
+    : h("span", { class: "d-why" }, `Play animations: ${d.play ? "on" : "off"} (changed from the Mac)`);
+  fill($("#board"),
+    h("section", { class: "proj-part" },
+      h("h3", { class: "sys-part" }, "Your projects"),
+      h("p", { class: "d-why" }, "When you ask JARVIS to start, plan or build something, it keeps the work here: plans, notes, code and animations, one project each. Nothing goes to your Notes unless you ask for a file. You approve before anything is saved."),
+      BOARD.notice ? h("p", { class: "d-why", role: "status" }, BOARD.notice) : null,
+      h("div", { class: "row mt" },
+        h("button", { class: "btn btn-sm", type: "button", onclick: newProject }, "New project"),
+        playToggle,
+        h("button", { class: "btn btn-ghost btn-sm", type: "button", onclick: () => { BOARD.archived = !BOARD.archived; loadBoard(); } }, BOARD.archived ? "Hide archived" : "Show archived")),
+      d.projects.length ? h("ul", { class: "proj-list" }, d.projects.map(boardCard))
+        : h("div", { class: "empty" }, "No projects yet. Tap “New project”, start one of the ideas below, or ask JARVIS to start one.")));
 }
 
 // ---------------------------------------------------------------- cinematic mode (presentation only)
@@ -2414,9 +2620,19 @@ async function memAct(path, body) {
 
 async function forgetMatching() {
   const preview = await api("/api/memory/forget", { query: ui.memQ });
+  ui.forgetPreview = preview;
   const tasks = (preview.tasks || []).filter((t) => t.deletable).length;
   if (!await ask(`Permanently delete ${plural(preview.memories.length, "memory").replace("memorys", "memories")}, ${plural(preview.records.length, "conversation record")} and ${plural(tasks, "finished task")} about “${ui.memQ}”?\n\nThis can't be undone. If you later restore an older backup, these deletions are applied again, so nothing comes back.`, { ok: "Forget", danger: true })) return;
-  await memAct("/api/memory/forget", { query: ui.memQ, confirm: true });
+  // The forget is checked afterwards: every store is searched again and the page says what, if anything, remains.
+  let out = null;
+  try { out = await call("/api/memory/forget", { query: ui.memQ, confirm: true }); } catch (e) { note(cancelled(e)); }
+  const v = out && out.verified;
+  if (v) {
+    const left = Object.entries(v).filter(([k, n]) => k !== "clean" && n).map(([k, n]) => `${n} ${k.replace("_", " ")}`);
+    await ask(v.clean ? `Forgotten, and checked: nothing JARVIS keeps mentions “${ui.memQ}” any more (memories, conversations, missions, plans, objectives, projects, indexed files).`
+      : `Forgotten, but something still mentions “${ui.memQ}”: ${left.join(", ")}.${v.running_tasks ? " A mission that is still running is never deleted mid-run: forget again once it has finished." : ""}`, { ok: "OK" });
+  }
+  await refresh(); await loadMemory(true);
 }
 
 // ---------------------------------------------------------------- loop
@@ -2704,13 +2920,14 @@ async function loadEvolution() {
       h("div", { class: "row" }, PROJ_MODULES.map(([m, label]) => h("button", { class: "btn btn-sm", type: "button",
         onclick: () => { location.hash = "#/home"; setTimeout(() => openProjectionModule(m), 300); } }, label))),
       h("p", { class: "hl-sub" }, "Intensity, particles, animation, quality and the rest are under Projection controls in the focus view (click the avatar).")));
+  if (window.JarvisLab) JarvisLab.load();   // the Laboratory section (lab.js): opportunities, packages, history
 }
 const PROJ_MODULES = [["workflow", "Workflow map"], ["architecture", "Software architecture"], ["neural", "Knowledge network"], ["globe", "Globe"],
   ["data", "Data"], ["timeline", "Timeline"], ["security", "Security shield"], ["simulation", "Simulation"], ["research", "Research sources"]];
 
 // ---------------------------------------------------------------- shell: sections, badges, sidebar, drafts
 // Sections are views of the same live page: switching never pauses, resumes or changes anything.
-const VIEWS = ["home", "command", "workspace", "missions", "objectives", "decisions", "games", "memory", "systems", "evolution", "intelligence", "projects"];
+const VIEWS = ["home", "command", "workspace", "missions", "objectives", "decisions", "games", "memory", "systems", "evolution", "intelligence", "weekly", "projects"];
 function viewFromHash() {
   const m = location.hash.match(/^#\/(\w+)/);
   return m && VIEWS.includes(m[1]) ? m[1] : null;
@@ -2723,7 +2940,7 @@ function setView(view) {
   document.querySelectorAll("#sidenav a[data-view]").forEach((a) => {
     if (a.dataset.view === view) a.setAttribute("aria-current", "page"); else a.removeAttribute("aria-current");
   });
-  if (changed) { window.scrollTo(0, 0); if (ui.data) renderMissions(ui.data.tasks); if (view === "intelligence") loadIntel(); if (view === "evolution") loadEvolution(); if (view === "projects") loadProjects(true); if (view === "games") openGames(); if (view === "command" && ui.data) { ui.ccKey = ""; renderCommand(ui.data); } }
+  if (changed) { window.scrollTo(0, 0); if (ui.data) renderMissions(ui.data.tasks); if (view === "intelligence") loadIntel(); if (view === "evolution") loadEvolution(); if (view === "projects") loadProjects(true); if (view === "games") openGames(); if (view === "weekly") loadWeekly(); if (view === "command" && ui.data) { ui.ccKey = ""; renderCommand(ui.data); } }
 }
 function badge(name, n) {
   const el = $(`#badge-${name}`);

@@ -200,8 +200,8 @@ class MemoryStore:
 
     def confirm(self, memory_id: str, *, by: str) -> None:
         with self.db.tx() as c:
-            if c.execute("UPDATE memories SET origin = 'explicit', confidence = 1.0, verified_at = ? WHERE id = ?",
-                         (now_iso(), memory_id)).rowcount != 1:
+            if c.execute("UPDATE memories SET origin = 'explicit', confidence = 1.0, verified_at = ?, updated_at = ? WHERE id = ?",
+                         (now_iso(), now_iso(), memory_id)).rowcount != 1:
                 raise KeyError(memory_id)
             self.audit.record("memory.confirmed", actor=by, memory_id=memory_id)
 
@@ -214,8 +214,8 @@ class MemoryStore:
         with self.db.tx() as c:
             c.execute("INSERT OR IGNORE INTO tombstones (hash, created_at) VALUES (?, ?)",
                       (sha256_hex(normalise(old["text"])), now_iso()))
-            c.execute("UPDATE memories SET text = ?, origin = 'explicit', confidence = 1.0, verified_at = ? WHERE id = ?",
-                      (text, now_iso(), memory_id))
+            c.execute("UPDATE memories SET text = ?, origin = 'explicit', confidence = 1.0, verified_at = ?, updated_at = ? WHERE id = ?",
+                      (text, now_iso(), now_iso(), memory_id))
             c.execute("DELETE FROM memories_fts WHERE id = ?", (memory_id,))
             c.execute("INSERT INTO memories_fts (id, text) VALUES (?, ?)", (memory_id, text))
             self.audit.record("memory.edited", actor=by, memory_id=memory_id, chars=len(text))
@@ -225,6 +225,26 @@ class MemoryStore:
             if c.execute("UPDATE memories SET important = ? WHERE id = ?", (int(important), memory_id)).rowcount != 1:
                 raise KeyError(memory_id)
             self.audit.record("memory.important", actor=by, memory_id=memory_id, important=important)
+
+    def set_privacy(self, memory_id: str, private: bool, *, by: str) -> None:
+        """Private: this memory never leaves this Mac, whatever you would approve for one request. Only you set it."""
+        if not by.startswith("user"):
+            raise PermissionError("only you can change what is private")
+        with self.db.tx() as c:
+            if c.execute("UPDATE memories SET privacy = ?, updated_at = ? WHERE id = ?",
+                         ("private" if private else "normal", now_iso(), memory_id)).rowcount != 1:
+                raise KeyError(memory_id)
+            self.audit.record("memory.privacy", actor=by, memory_id=memory_id, private=private)
+
+    def set_review(self, memory_id: str, date: str | None, *, by: str) -> None:
+        """A date (YYYY-MM-DD) after which this memory is shown as due for a check; None clears it."""
+        if date is not None:
+            from datetime import date as _date
+            _date.fromisoformat(date)   # ValueError for anything else
+        with self.db.tx() as c:
+            if c.execute("UPDATE memories SET review_after = ?, updated_at = ? WHERE id = ?", (date, now_iso(), memory_id)).rowcount != 1:
+                raise KeyError(memory_id)
+            self.audit.record("memory.review_date", actor=by, memory_id=memory_id, set=date is not None)
 
     def delete(self, memory_id: str, *, by: str) -> None:
         old = self.get(memory_id)
@@ -266,8 +286,14 @@ class MemoryStore:
                 "records": [{"id": r["id"], "snippet": r["snippet"], "created_at": r["created_at"]} for r in recs]}
 
     def export(self) -> dict[str, Any]:
+        """Everything JARVIS knows about you, readable: memories (with privacy, confidence and where each came from),
+        the conversations they came from, your objectives, lessons learned, and the connections between them."""
+        q = lambda sql: [dict(r) for r in self.db.query(sql)]  # noqa: E731
         return {"exported_at": now_iso(), "memories": self.list(limit=100_000),
-                "records": [dict(r) for r in self.db.query("SELECT * FROM records ORDER BY created_at")]}
+                "records": q("SELECT * FROM records ORDER BY created_at"),
+                "objectives": q("SELECT * FROM objectives ORDER BY created_at"),
+                "lessons": q("SELECT id, subject, statement, kind, confidence, first_seen, last_seen, state FROM lessons"),
+                "links": q("SELECT src, dst, rel, source, confidence, created_at FROM links ORDER BY created_at")}
 
     def counts(self) -> dict[str, int]:
         return {"memories": self.db.one("SELECT COUNT(*) FROM memories")[0],
@@ -275,15 +301,17 @@ class MemoryStore:
                 "records": self.db.one("SELECT COUNT(*) FROM records")[0]}
 
     # ---- recall for prompts ------------------------------------------------------------
-    def recall(self, query: str) -> list[dict[str, Any]]:
+    def recall(self, query: str, *, include_private: bool = False) -> list[dict[str, Any]]:
         """Your profile (who you are, what you prefer) plus memories matching the words of ``query``.
-        The profile is included even when the words don't overlap: "greet me" should know you're Ken."""
+        The profile is included even when the words don't overlap: "greet me" should know you're Ken.
+        Memories you marked private are left out unless the caller asks for them (``include_private``) and then
+        keeps them on this Mac itself: the default is the safe one, so a new caller can't leak them by accident."""
         if not self.settings.enabled:
             return []
         out = {m["id"]: m for m in self.profile()}
         for m in self.search(query, limit=self.settings.recall_limit):
             out.setdefault(m["id"], m)
-        return list(out.values())
+        return [m for m in out.values() if include_private or m.get("privacy") != "private"]
 
     def everything_else(self, recalled: list[dict[str, Any]]) -> list[dict[str, Any]]:
         """When the store is small (SMALL_STORE or fewer), every other memory, oldest first so changes read in order;

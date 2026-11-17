@@ -26,7 +26,7 @@ MAX_OUTSTANDING = 256  # sign-in challenges can be requested before sign-in; kee
 # one tap (owner's choice). These dangerous few still need a fresh passkey assertion bound to the exact request:
 STEP_UP = (
     r"/api/release",                      # release the emergency stop
-    r"/api/memory/[\w-]+/(delete|edit)",
+    r"/api/memory/[\w-]+/(delete|edit|privacy)",   # privacy: what may leave this Mac
     r"/api/memory/forget",
     r"/api/memory/conflicts/resolve",     # deletes one of two memories, like delete
     r"/api/devices/[\w-]+/revoke",

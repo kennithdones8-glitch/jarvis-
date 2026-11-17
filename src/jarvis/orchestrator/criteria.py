@@ -41,6 +41,9 @@ def criterion(tool: str, action: str, args: dict[str, Any], description: str = "
     key = (tool, action)
     if key == ("fs", "write"):
         return {"check": "file", "text": f"the file {_short(args.get('path'))} exists with exactly what was written"}
+    if key == ("projects", "save"):
+        return {"check": "board", "text": f"“{_short(args.get('title'))}” is saved in the project "
+                f"“{_short(args.get('project'))}” on the dashboard exactly as written"}
     if key in READ_BACK:
         title = args.get("title")
         named = isinstance(title, str) and "{{" not in title
@@ -60,8 +63,9 @@ def criteria_for(steps) -> list[dict[str, Any]]:
     return out
 
 
-def make_verifier(registry, files_check):
-    """``files_check``: the existing file/citation verifier (``writes_verified``). Returns the mission verifier."""
+def make_verifier(registry, files_check, board=None):
+    """``files_check``: the existing file/citation verifier (``writes_verified``); ``board``: the project board, to read
+    back what a projects.save step saved. Returns the mission verifier."""
     from ..core.tools import RECONCILE_DONE, RECONCILE_NOT_DONE
 
     def mission_verified(task: dict[str, Any], steps: list[dict[str, Any]]) -> Verification:
@@ -91,6 +95,13 @@ def make_verifier(registry, files_check):
                 except Exception:  # noqa: BLE001 - the app didn't answer: unconfirmed, never verified
                     found = "unknown"
                 status = "verified" if found == RECONCILE_DONE else "failed" if found == RECONCILE_NOT_DONE else "unconfirmed"
+            elif c["check"] == "board":
+                result = s["result"] if isinstance(s["result"], dict) else {}
+                try:
+                    item = board.item(result["item_id"]) if board is not None and result.get("item_id") else None
+                except KeyError:
+                    item = None
+                status = "verified" if item and item["sha256"] == result.get("sha256") else "failed"
             elif c["check"] == "reported":
                 status = "reported"
             checks.append({**c, "status": status})

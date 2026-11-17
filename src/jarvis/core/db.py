@@ -336,6 +336,77 @@ MIGRATIONS: list[str] = [
         indexed_at  TEXT NOT NULL
     );
     """,
+    # v13: the project board — projects JARVIS opens and plans on the dashboard (instead of files in Notes), and what
+    # it made for each: plans, notes, code and pages (animations play only if you turn that on, in a sealed frame).
+    """
+    CREATE TABLE board_projects (
+        id          TEXT PRIMARY KEY,
+        title_key   TEXT NOT NULL UNIQUE,          -- the title, lower-cased and trimmed: one project per name
+        title       TEXT NOT NULL,
+        summary     TEXT NOT NULL DEFAULT '',
+        state       TEXT NOT NULL DEFAULT 'planning' CHECK (state IN ('planning', 'active', 'done', 'archived')),
+        created_by  TEXT NOT NULL,
+        created_at  TEXT NOT NULL,
+        updated_at  TEXT NOT NULL
+    );
+    CREATE TABLE board_items (
+        id          TEXT PRIMARY KEY,
+        project_id  TEXT NOT NULL REFERENCES board_projects(id),
+        title_key   TEXT NOT NULL,
+        title       TEXT NOT NULL,
+        kind        TEXT NOT NULL CHECK (kind IN ('plan', 'note', 'code', 'page')),
+        content     TEXT NOT NULL,
+        sha256      TEXT NOT NULL,
+        task_id     TEXT,
+        created_at  TEXT NOT NULL,
+        updated_at  TEXT NOT NULL,
+        UNIQUE (project_id, title_key)
+    );
+    """,
+    # v14: knowledge intelligence (Evolution 4.0, Stage 4). Additions only; nothing existing is rewritten.
+    # - memories: when one was last changed, a privacy class ('private' never leaves this Mac, whatever you approve),
+    #   and an optional date after which it should be checked again.
+    # - links: how sure the connection is (1.0 = stated or structural; lower = worked out by word overlap).
+    # - file search: whole documents in chunks (was: the first 20,000 characters as one block), a content hash for
+    #   duplicate detection, and a flag for text that reads like instructions to an AI. The old one-block index is a
+    #   rebuildable cache, so it is emptied here and rebuilt in the background from your approved folders.
+    """
+    ALTER TABLE memories ADD COLUMN updated_at TEXT;
+    ALTER TABLE memories ADD COLUMN privacy TEXT NOT NULL DEFAULT 'normal';
+    ALTER TABLE memories ADD COLUMN review_after TEXT;
+    ALTER TABLE links ADD COLUMN confidence REAL NOT NULL DEFAULT 1.0;
+    CREATE VIRTUAL TABLE file_chunks USING fts5(path UNINDEXED, chunk UNINDEXED, name, body, tokenize='porter unicode61');
+    ALTER TABLE file_index_meta ADD COLUMN sha256 TEXT;
+    ALTER TABLE file_index_meta ADD COLUMN chunks INTEGER NOT NULL DEFAULT 0;
+    ALTER TABLE file_index_meta ADD COLUMN duplicate_of TEXT;
+    ALTER TABLE file_index_meta ADD COLUMN flagged INTEGER NOT NULL DEFAULT 0;
+    CREATE INDEX file_index_sha ON file_index_meta(sha256);
+    DELETE FROM file_index;
+    DELETE FROM file_index_meta;
+    """,
+    # v15: the evolution history (Evolution 4.0, Stage 5): one append-only line for every opportunity JARVIS found,
+    # every experiment design and result, every improvement package, and every decision you made about one. Like the
+    # audit log, a row can be added but never changed or removed (the database refuses), so a failed or rejected
+    # idea stays on the record. It holds names, counts and references only, never your own words. Experiments learn
+    # which opportunity they belong to and how many times each side was run.
+    """
+    CREATE TABLE evolution (
+        seq      INTEGER PRIMARY KEY AUTOINCREMENT,
+        ts       TEXT NOT NULL,
+        kind     TEXT NOT NULL CHECK (kind IN ('opportunity', 'design', 'experiment', 'package', 'decision', 'applied', 'rolled_back')),
+        subject  TEXT NOT NULL,
+        title    TEXT NOT NULL,
+        body     TEXT NOT NULL,
+        actor    TEXT NOT NULL
+    );
+    CREATE INDEX evolution_subject ON evolution(subject, seq);
+    CREATE TRIGGER evolution_append_only_update BEFORE UPDATE ON evolution
+    BEGIN SELECT RAISE(ABORT, 'the evolution history is append-only'); END;
+    CREATE TRIGGER evolution_append_only_delete BEFORE DELETE ON evolution
+    BEGIN SELECT RAISE(ABORT, 'the evolution history is append-only'); END;
+    ALTER TABLE experiments ADD COLUMN opportunity TEXT;
+    ALTER TABLE experiments ADD COLUMN runs INTEGER NOT NULL DEFAULT 1;
+    """,
 ]
 
 

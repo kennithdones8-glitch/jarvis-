@@ -47,6 +47,7 @@ from ..codecheck import MAX_CASES, TEST_PROMPT, SandboxUnavailable, code_of, par
 from ..orchestrator.answer_checks import chat_problems, facts_left_out, first_event_left_out
 from ..orchestrator.lookup import FACTS_HEAD, lenient_json
 from ..orchestrator.grounding import applies, unsupported_times
+from ..knowledge import words_of as knowledge_words
 from ..models import ChatRequest, Message, Need, NoModelAvailable
 from ..models.types import Category
 from ..orchestrator import Orchestrator
@@ -56,6 +57,7 @@ from ..status import models_status
 
 STATIC = Path(__file__).parent / "static"
 COOKIE = "jarvis_session"
+STAY_SIGNED_IN = "signin.stay"   # meta key: "1" when you chose to stay signed in on this Mac's browser
 TOUCHID_COOKIE = "jarvis_touchid"
 TOUCHID_SIGNIN = "Touch ID sign-in required"
 # Reachable before Touch ID sign-in (once it is set up): the page shell and its files, signing in, and the
@@ -325,6 +327,8 @@ class Dashboard:
         self.jobs: dict[str, dict[str, Any]] = {}
         self._autoplanned: dict[str, float] = {}   # objective id → when autopilot last asked for a plan
         self._lock = threading.Lock()
+        self._copy_lock = threading.Lock()
+        self._kept_ready = time.time()   # start-up warms every model; the first keep-ready is 20 minutes later
         self._inflight: set[str] = set()
         self._pool = cf.ThreadPoolExecutor(max_workers=workers, thread_name_prefix="jarvis-runner")
         self._stop = threading.Event()
@@ -394,6 +398,13 @@ class Dashboard:
             self.httpd.serve_forever(poll_interval=0.25)
         finally:
             self.shutdown()
+
+    def keep_model_ready(self) -> str | None:
+        """Every 20 minutes, keep the fastest local model loaded so a reply starts at once (see ModelService.keep_ready)."""
+        if time.time() - self._kept_ready < 1200:
+            return None
+        self._kept_ready = time.time()
+        return self.kernel.models.keep_ready()
 
     def _warm_models(self) -> None:
         if self._stop.wait(2.0):
@@ -486,7 +497,48 @@ class Dashboard:
     def backup_settings(self) -> dict[str, Any]:
         cfg = self.kernel.model_config.backup
         folder = Path(os.path.expanduser(cfg["dir"])) if cfg.get("dir") else self.kernel.home / "backups"
-        return {"auto": bool(cfg.get("auto", True)), "keep": int(cfg.get("keep", 14)), "dir": folder}
+        from ..backup import COPY_META
+        row = self.kernel.db.one("SELECT value FROM meta WHERE key = ?", (COPY_META,))
+        return {"auto": bool(cfg.get("auto", True)), "keep": int(cfg.get("keep", 14)), "dir": folder,
+                "copy_to": Path(row["value"]) if row and row["value"] else None}
+
+    def sync_offsite(self) -> dict[str, Any] | None:
+        """Second copy: every backup (up to your keep count) that isn't in the folder you chose yet goes there. A
+        drive that isn't connected is simply skipped (and caught up when it's back); Health says how old the copy is."""
+        with self._copy_lock:   # the maintenance loop and "Back up now" may both get here: one copy at a time
+            return self._sync_offsite()
+
+    def _sync_offsite(self) -> dict[str, Any] | None:
+        from ..backup import BackupError, copy_out, list_backups
+        b = self.backup_settings()
+        dest = b["copy_to"]
+        if dest is None or not dest.is_dir():
+            return None
+        missing = [p for p in list_backups(b["dir"])[:b["keep"]] if not (dest / p.name).exists()][::-1]  # oldest first
+        if not missing:
+            return None
+        copied = []
+        for src in missing:
+            try:
+                copy_out(src, dest, keep=b["keep"])
+            except (BackupError, OSError) as exc:
+                self.kernel.audit.record("backup.copy_failed", error=str(exc)[:300])
+                return {"ok": False, "error": str(exc), "copied": copied}
+            copied.append(src.name)
+        self.kernel.audit.record("backup.copied", files=len(copied), newest=copied[-1])
+        return {"ok": True, "copied": copied}
+
+    def backup_copy_status(self) -> dict[str, Any]:
+        from ..backup import last_backup
+        b = self.backup_settings()
+        dest = b["copy_to"]
+        if dest is None:
+            from ..backup import copy_places
+            return {"set": False, "places": [{**pl, "path": tilde(pl["path"])} for pl in copy_places()]}
+        reachable = dest.is_dir()
+        last = last_backup(dest) if reachable else None
+        return {"set": True, "folder": tilde(str(dest)), "connected": reachable,
+                "last_age_hours": last["age_hours"] if last else None, "count": last["count"] if last else 0}
 
     def check_health(self) -> dict[str, Any]:
         from ..backup import get_passphrase, last_backup
@@ -525,6 +577,13 @@ class Dashboard:
             add("Backups", False, "no backups yet")
         else:
             add("Backups", last["age_hours"] < 48, f"last {last['age_hours']:.0f}h ago · {last['count']} kept")
+        cp = self.backup_copy_status()
+        if cp["set"]:   # a week without a second copy is worth knowing about (a drive left unplugged, say)
+            age = cp["last_age_hours"]
+            add("Second copy", age is not None and age < 24 * 7,
+                f"{cp['folder']}: last copy {age / 24:.0f} days ago" if age is not None and age >= 48 else
+                f"{cp['folder']}: last copy {age:.0f}h ago" if age is not None else
+                f"{cp['folder']}: " + ("no copy yet" if cp["connected"] else "not connected"))
         return {"items": items, "ok": all(i["ok"] for i in items), "checked": time.time(),
                 "service": os.environ.get("JARVIS_SERVICE") == "1"}
 
@@ -651,6 +710,8 @@ class Dashboard:
         while not self._stop.is_set():
             try:
                 self.maybe_backup()
+                self.sync_offsite()
+                self.keep_model_ready()
                 before = self._health.get("ok")
                 self._health = self.check_health()
                 if before is not None and before != self._health["ok"]:
@@ -976,11 +1037,20 @@ class Dashboard:
         if found.checked:
             stage({"stage": "lookup", "checked": list(found.checked)})
         msgs = list(priming_messages(chat_abilities(memory.settings.enabled, lookups=bool(self.lookup.available()))))
-        recalled = memory.recall(message)
-        if context := memory.context_message(recalled):
-            msgs.append(context)
+        recalled = memory.recall(message, include_private=True)   # split just below: private ones never leave
         stays_here = mode == "quick" or self.kernel.models.chat_stays_local(
             message, local_only=local_only, level=found.level if mode == "balanced" else None)
+        # Memories you marked private never leave this Mac: with an answer that stays here they join as local-only
+        # context; otherwise they are left out (and the reply says so), whatever you would approve.
+        private = [m for m in recalled if m.get("privacy") == "private"]
+        recalled = [m for m in recalled if m.get("privacy") != "private"]
+        held_back = 0 if stays_here else len(private)
+        if context := memory.context_message(recalled):
+            msgs.append(context)
+        if stays_here and private:
+            msgs.append(memory.context_message(private, local_only=True, heading=(
+                "Private things you remember about the owner (never repeat them to anyone but the owner):")))
+            recalled = recalled + private
         rest = []
         if stays_here and (rest := memory.everything_else(recalled)):  # small store: the rest too, never sent off
             msgs.append(memory.context_message(rest, local_only=True, heading=(
@@ -1000,6 +1070,19 @@ class Dashboard:
                 turns += 1
         if found.context:
             msgs.append(found.context)
+        # Knowledge (Stage 4): what else JARVIS's records hold on this (missions and how they ended, objectives,
+        # lessons, your decisions, its own docs), each with the reason it was picked. Not in Quick mode: a longer
+        # prompt is slower, and Quick is for speed.
+        related: list[dict[str, Any]] = []
+        if mode != "quick":
+            from .. import knowledge
+            have = {f"memory:{m['id']}" for m in recalled if m.get("id")}
+            related = [i for i in knowledge.context(self.kernel, message, limit=4, exclude=have)
+                       if stays_here or not i["private"]]
+            if related:
+                msgs.append(Message("system", "Related, from JARVIS's own records (use only if it helps; say when "
+                                    "something is unconfirmed or may be out of date):\n" + knowledge.context_text(related),
+                                    Category.MEMORY, local_only=any(i["private"] for i in related)))
         from ..learn import recall
         past, past_n = recall.context_message(self.kernel, message)   # answers you rated, for a similar question
         if past:
@@ -1111,6 +1194,12 @@ class Dashboard:
         memory.link_informed([m["id"] for m in recalled if m.get("id")], record)   # which memories this answer was given
         return {"record": record, "past": past_n, "code_test": code_test, "second_opinion": second, "text": r.text, "model": f"{r.provider}/{r.model}", "seconds": round(time.time() - started, 1),
                 "tokens": r.usage.output_tokens, "note": r.note, "memories_used": len(recalled),
+                "used": [{"id": f"memory:{m['id']}", "kind": "memory", "text": m["text"][:120],
+                          "why": ["about you (profile)"] if m.get("important") or not set(knowledge_words(message)) & set(knowledge_words(m["text"]))
+                          else ["matched: " + ", ".join(sorted(set(knowledge_words(message)) & set(knowledge_words(m["text"]))))],
+                          "status": "stated" if m["origin"] == "explicit" else "inferred"} for m in recalled[:6] if m.get("id")]
+                + [{"id": i["id"], "kind": i["kind"], "text": i["text"][:120], "why": i["why"], "status": i["status"]} for i in related],
+                "private_held_back": held_back,
                 "checked": found.checked, "offer_plan": found.change, "grounded": grounded,
                 "lookup_notes": found.why + found.notes, "mode": mode,
                 "location": "local" if r.provider in self.kernel.models.router.local else "cloud"}
@@ -1258,6 +1347,8 @@ class Dashboard:
             "objectives": _objectives(k),
             "whatsnew": _whatsnew(k),
             "files": None if device else _files_status(k),
+            "backup_copy": None if device else self.backup_copy_status(),
+            "stay_signed_in": None if device else {"on": self.stay_signed_in(), "url": f"http://localhost:{self.port}/"},
             "coding": {"self_test": bool(k.model_config.coding.get("self_test")), "compute": bool(k.model_config.coding.get("compute")),
                        "sandbox": sys.platform == "darwin"},
             "briefing": {"last_date": _last_briefing(k)},
@@ -1308,6 +1399,17 @@ class Dashboard:
                 return value
         return None
 
+    def stay_signed_in(self) -> bool:
+        row = self.kernel.db.one("SELECT value FROM meta WHERE key = ?", (STAY_SIGNED_IN,))
+        return bool(row and row["value"] == "1")
+
+    def _session_cookie(self) -> str:
+        """This Mac's browser sign-in. By default it ends when the browser quits. With "Stay signed in" (your choice,
+        off by default) it lasts 30 days, so JARVIS can be the browser's start page. Either way it is HttpOnly,
+        same-site, only ever sent to localhost, and Touch ID (when set up) is still asked for as before."""
+        keep = "; Max-Age=2592000" if self.stay_signed_in() else ""
+        return f"{COOKIE}={self.token}; HttpOnly; SameSite=Strict; Path=/{keep}"
+
     def _authed(self, h: BaseHTTPRequestHandler) -> bool:
         for part in (h.headers.get("Cookie") or "").split(";"):
             name, _, value = part.strip().partition("=")
@@ -1335,8 +1437,7 @@ class Dashboard:
             if method == "GET" and url.path == "/":
                 token = parse_qs(url.query).get("token", [""])[0]
                 if token and hmac.compare_digest(token, self.token):
-                    cookie = f"{COOKIE}={self.token}; HttpOnly; SameSite=Strict; Path=/"
-                    return self._send(h, 303, b"", "text/plain", {"Location": "/", "Set-Cookie": cookie})
+                    return self._send(h, 303, b"", "text/plain", {"Location": "/", "Set-Cookie": self._session_cookie()})
                 if not self._authed(h):
                     page = (b"<!doctype html><meta charset=utf-8><title>JARVIS</title><body style='font-family:"
                             b"system-ui;background:#05080d;color:#cfe3f0;padding:3rem'><h1>JARVIS</h1><p>Open the link "
@@ -1361,6 +1462,8 @@ class Dashboard:
             if url.path == "/api/touchid/signin":
                 return self._touchid_signin(h, body)
             result = self._post_local(url.path, body)
+            if url.path == "/api/settings/stay-signed-in":   # re-issue this browser's cookie with or without an expiry
+                return self._json(h, 200, result, {"Set-Cookie": self._session_cookie()})
             if url.path == "/api/touchid/enroll/finish" and not self.mac.signed_in(self._cookie(h, TOUCHID_COOKIE)):
                 # you just used Touch ID to set it up: that counts as signing in on this browser
                 return self._json(h, 200, result, {"Set-Cookie": self._touchid_cookie(self.mac.new_session())})
@@ -1472,7 +1575,7 @@ class Dashboard:
                         "/static/avatar3d-worker.js", "/static/avatar3d-camera.js", "/static/avatar-presets.js",
                         "/static/avatar-events.js", "/static/avatar-sound.js",
                         "/static/avatar3d-transform.js", "/static/chess.js", "/static/chess-worker.js",
-                        "/static/games.js", "/static/games-worker.js", "/static/racer.js", "/static/racer.css",
+                        "/static/games.js", "/static/games-worker.js", "/static/knowledge.js", "/static/lab.js", "/static/racer.js", "/static/racer.css",
                         "/static/racer-data.js", "/static/racer-career.js", "/static/racer-audio.js", "/static/racer-ui.js",
                         "/static/racer-render.js", "/static/racer-modes.js"):
             ctype = "text/javascript" if url.path.endswith(".js") else "text/css"
@@ -1495,12 +1598,40 @@ class Dashboard:
             q = parse_qs(url.query).get("q", [""])[0][:200]
             mem = self.kernel.memory
             items = mem.search(q) if q.strip() else mem.list(limit=50)
+            hidden = 0
+            if device is not None:   # private memories never leave this Mac: a paired phone sees how many, not what
+                hidden = sum(m.get("privacy") == "private" for m in items)
+                items = [m for m in items if m.get("privacy") != "private"]
             from ..memory.conflicts import find as find_conflicts
             conflicts = [{"subject": c["subject"], "a": {k: c["a"][k] for k in ("id", "text", "created_at")},
                           "b": {k: c["b"][k] for k in ("id", "text", "created_at")}}
                          for c in find_conflicts(mem.list(limit=500))][:5]
-            return self._json(h, 200, {"memories": items, "counts": mem.counts(), "conflicts": conflicts,
+            if device is not None:
+                private_ids = {r["id"] for r in self.kernel.db.query("SELECT id FROM memories WHERE privacy = 'private'")}
+                conflicts = [c for c in conflicts if c["a"]["id"] not in private_ids and c["b"]["id"] not in private_ids]
+            return self._json(h, 200, {"memories": items, "counts": mem.counts(), "conflicts": conflicts, "private_hidden": hidden,
                                        "records": mem.search_records(q, limit=10) if q.strip() else []})
+        if url.path in ("/api/knowledge", "/api/knowledge/item", "/api/knowledge/insights"):
+            # What JARVIS knows, with provenance and the reason for each item (read-only). On a paired phone, private
+            # items are left out (they never leave this Mac) and the reply says how many.
+            from .. import knowledge
+            qs = parse_qs(url.query)
+            keep = (lambda i: True) if device is None else (lambda i: not i.get("private"))
+            if url.path == "/api/knowledge":
+                found = knowledge.context(self.kernel, qs.get("q", [""])[0][:200], limit=12)
+                return self._json(h, 200, {"items": [i for i in found if keep(i)], "private_hidden": sum(not keep(i) for i in found)})
+            if url.path == "/api/knowledge/item":
+                try:
+                    r = knowledge.related(self.kernel, qs.get("id", [""])[0][:120])
+                except KeyError:
+                    raise HttpError(404, "JARVIS has no such item") from None
+                if not keep(r["item"]):
+                    raise HttpError(403, "that item is private: it can only be seen on the Mac")
+                return self._json(h, 200, {"item": r["item"], "related": [i for i in r["related"] if keep(i)]})
+            ins = knowledge.insights(self.kernel)
+            for group in ins.values():
+                group[:] = [f for f in group if all(keep(i) for i in f["items"])]
+            return self._json(h, 200, {"insights": ins})
         if m := re.fullmatch(r"/api/tasks/([\w-]+)/timeline", url.path):
             from ..flight import timeline
             return self._json(h, 200, timeline(self.kernel, m.group(1)))
@@ -1508,6 +1639,9 @@ class Dashboard:
             return self._json(h, 200, self.kernel.audit.entries(task_id=m.group(1), limit=300))
         if url.path == "/api/briefing":
             return self._json(h, 200, self.briefing())
+        if url.path == "/api/weekly":   # the last 7 days, counted from the records (read-only)
+            from .. import weekly
+            return self._json(h, 200, weekly.review(self.kernel))
         if url.path == "/api/objectives":
             return self._json(h, 200, {"objectives": _objectives(self.kernel)})
         if url.path == "/api/files/search":   # your approved folders, if file search is on (Mac only)
@@ -1530,9 +1664,34 @@ class Dashboard:
             return self._send(h, 200, (STATIC / "proposals.html").read_bytes(), "text/html; charset=utf-8")
         if url.path == "/api/projects":
             return self._json(h, 200, {"ideas": self.projects.list(), **self.projects.status()})
+        if url.path == "/api/board":   # the project board: projects JARVIS opened and what it made (no contents)
+            from ..board import KIND_LABELS, play_enabled
+            archived = parse_qs(url.query).get("archived", [""])[0] == "1"
+            return self._json(h, 200, {"projects": self.kernel.board.overview(include_archived=archived),
+                                       "kinds": KIND_LABELS, "play": play_enabled(self.kernel),
+                                       "can_set_play": device is None})
+        if m := re.fullmatch(r"/api/board/items/([\w-]+)", url.path):
+            try:
+                return self._json(h, 200, self.kernel.board.item(m.group(1)))
+            except KeyError:
+                raise HttpError(404, "no such item") from None
+        if m := re.fullmatch(r"/play/([\w-]+)", url.path):
+            # A page JARVIS made, played in a sealed frame (see board.PLAY_HEADERS). Only when you turned it on.
+            from ..board import PLAY_HEADERS, play_enabled
+            if not play_enabled(self.kernel):
+                raise HttpError(403, "playing animations is off (Projects page → Play animations, on the Mac)")
+            try:
+                item = self.kernel.board.item(m.group(1))
+            except KeyError:
+                raise HttpError(404, "no such item") from None
+            if item["kind"] != "page":
+                raise HttpError(404, "only pages can be played")
+            return self._send(h, 200, item["content"].encode("utf-8"), "text/html; charset=utf-8", PLAY_HEADERS)
         if url.path == "/api/proposals":
             if time.monotonic() - self._proposals_checked > 600:  # look for new findings at most every 10 minutes
                 self.proposals.refresh()
+                from ..learn import evolution   # new opportunities join the evolution history (same "propose" autonomy)
+                evolution.opportunities(self.kernel, refresh=True)
                 self._proposals_checked = time.monotonic()
             return self._json(h, 200, {"proposals": self.proposals.list()})
         if url.path == "/api/learn":
@@ -1543,6 +1702,12 @@ class Dashboard:
                                        "adjustments": autopilot.adjustments(self.kernel),
                                        "experiments": analysis.Lab(self.kernel).list(), "kinds": analysis.KINDS,
                                        "discoveries": analysis.discover(self.kernel, self._discovery_facts())})
+        if url.path == "/api/evolution":   # the laboratory: opportunities, packages and the searchable history (read-only)
+            from ..learn import evolution
+            q = parse_qs(url.query).get("q", [""])[0][:120]
+            return self._json(h, 200, {"opportunities": evolution.opportunities(self.kernel)[:20],
+                                       "packages": evolution.packages(self.kernel),
+                                       "history": evolution.history(self.kernel, q=q, limit=60), "max_runs": evolution.MAX_RUNS})
         if url.path == "/api/learn/tournament":
             from ..learn import analysis
             return self._json(h, 200, analysis.tournament(self.kernel))
@@ -1629,7 +1794,7 @@ class Dashboard:
             actor = f"user:phone:{device['name']}"
             if any(re.fullmatch(p, path) for p in LOCAL_ONLY):
                 raise HttpError(403, "only possible from the Mac")
-            if path == "/api/experiments" and body.get("kind") in ("trial", "draft"):   # runs code: never from the phone
+            if path == "/api/experiments" and body.get("kind") in ("trial", "draft", "contest"):   # runs code: never from the phone
                 self.kernel.audit.record("device.denied", path=path, reason="change trials can only be started from the Mac")
                 raise HttpError(403, "change trials can only be started from the Mac")
             if path == "/api/stepup/options":
@@ -1719,9 +1884,21 @@ class Dashboard:
         if path == "/api/memory/remember":
             mid = self.kernel.memory.remember(text("text", 500), origin="explicit", by=actor)
             return {"id": mid, "stored": mid is not None}
-        if m := re.fullmatch(r"/api/memory/([\w-]+)/(confirm|delete|important|edit)", path):
+        if m := re.fullmatch(r"/api/memory/([\w-]+)/(confirm|delete|important|edit|privacy|review)", path):
             mem, op = self.kernel.memory, m.group(2)
-            if op == "confirm":
+            if op == "privacy":   # private = never leaves this Mac; making one un-private asks for Face ID / Touch ID
+                if not isinstance(body.get("private"), bool):
+                    raise HttpError(400, "'private' must be true or false")
+                mem.set_privacy(m.group(1), body["private"], by=actor)
+            elif op == "review":
+                date = body.get("date")
+                if date is not None and not (isinstance(date, str) and re.fullmatch(r"\d{4}-\d{2}-\d{2}", date)):
+                    raise HttpError(400, "'date' must be YYYY-MM-DD, or null to clear it")
+                try:
+                    mem.set_review(m.group(1), date, by=actor)
+                except ValueError:
+                    raise HttpError(400, "that isn't a real date") from None
+            elif op == "confirm":
                 mem.confirm(m.group(1), by=actor)
             elif op == "delete":
                 mem.delete(m.group(1), by=actor)
@@ -1746,6 +1923,7 @@ class Dashboard:
             if not dry and query.strip():   # the dashboard's own copy of saved plans goes too
                 with self._lock:
                     self.jobs = {i: j for i, j in self.jobs.items() if query.strip().lower() not in j["request"].lower()}
+                self.lookup._cache.clear()   # looked-up text kept for two minutes for a re-sent question
             return out
         if path == "/api/feedback":
             from .. import learn
@@ -1785,13 +1963,42 @@ class Dashboard:
             from ..learn import analysis
             try:
                 kind = text("kind", 40)
-                if kind in ("trial", "draft") and not actor.startswith("user:dashboard"):   # second check: only the Mac's own dashboard
+                if kind in ("trial", "draft", "contest") and not actor.startswith("user:dashboard"):   # second check: only the Mac's own dashboard
                     raise HttpError(403, "change trials can only be started from the Mac")
+                runs = body.get("runs", 1)
                 return {"id": analysis.Lab(k).start(kind, by=actor, ref=body.get("ref") if isinstance(body.get("ref"), str) else None,
                                                     baseline=body.get("baseline") if isinstance(body.get("baseline"), str) else "HEAD",
-                                                    problem=body.get("problem") if isinstance(body.get("problem"), str) else None)}
+                                                    problem=body.get("problem") if isinstance(body.get("problem"), str) else None,
+                                                    runs=runs if isinstance(runs, int) and not isinstance(runs, bool) else 0,
+                                                    refs=body.get("refs") if isinstance(body.get("refs"), list) else None,
+                                                    opportunity=body.get("opportunity") if isinstance(body.get("opportunity"), str) else None)}
             except analysis.LabError as exc:
                 raise HttpError(409, str(exc)) from None
+        if path.startswith("/api/evolution/"):   # Mac only (LOCAL_ONLY). Nothing here changes JARVIS's code or settings.
+            from ..learn import evolution
+            op = path.rsplit("/", 1)[1]
+            try:
+                if op == "refresh":
+                    return {"opportunities": evolution.opportunities(k, refresh=True, by=actor)}
+                if op == "design":
+                    runs = body.get("runs", 3)
+                    return evolution.design(k, text("subject", 200), runs=runs if isinstance(runs, int) and not isinstance(runs, bool) else 3, by=actor)
+                if op == "package":
+                    return evolution.package(k, text("experiment", 80), by=actor)
+                seq = body.get("package")
+                if not isinstance(seq, int) or isinstance(seq, bool):
+                    raise HttpError(400, "'package' must be the package's number")
+                if op == "decide":      # Touch ID when set up (MAC_STEP_UP): your decision on a change to JARVIS itself
+                    evolution.decide(k, seq, text("decision", 20), by=actor)
+                elif op == "mark":
+                    evolution.mark(k, seq, text("what", 20), by=actor)
+                else:
+                    raise HttpError(404, "not found")
+                return {"packages": evolution.packages(k)}
+            except evolution.EvolutionError as exc:
+                raise HttpError(409, str(exc)) from None
+            except KeyError:
+                raise HttpError(404, "no such experiment or package") from None
         if path == "/api/command":   # a direct Mac command (Music, system), through the permission engine
             return self.mac_command(body)
         if path == "/api/route":   # which kind of message: rules, then a model on this Mac (never the cloud)
@@ -1803,6 +2010,18 @@ class Dashboard:
                 return {"task_id": self.run_plan(m.group(1))}
             self.jobs.pop(m.group(1), None)
             self._forget_job(m.group(1))
+            return {"ok": True}
+        if path == "/api/settings/stay-signed-in":   # Mac only, Touch ID when set up
+            if not isinstance(body.get("on"), bool):
+                raise HttpError(400, "'on' must be true or false")
+            with k.db.tx() as c:
+                c.execute("INSERT INTO meta (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+                          (STAY_SIGNED_IN, "1" if body["on"] else "0"))
+            k.audit.record("signin.stay_signed_in", actor=actor, on=body["on"])
+            return {"on": body["on"], "url": f"http://localhost:{self.port}/"}
+        if path == "/api/weekly/seen":
+            from .. import weekly
+            weekly.mark_seen(k)
             return {"ok": True}
         if path == "/api/whatsnew/seen":
             from .. import whatsnew
@@ -1822,8 +2041,43 @@ class Dashboard:
                 k.audit.record("backup.failed", error=str(exc)[:300])
                 raise HttpError(400, f"backup failed: {exc}") from None
             k.audit.record("backup.created", actor=actor, file=r.path.name, bytes=r.bytes, verified=r.verified)
+            self.sync_offsite()
+            dest = self.backup_settings()["copy_to"]
             self._health = self.check_health()
-            return {"ok": True, "file": r.path.name}
+            return {"ok": True, "file": r.path.name, "copied": bool(dest and (dest / r.path.name).exists())}
+        if path == "/api/backup/test":   # Mac only: open the newest backup (the second copy, if you have one) and check it
+            from ..backup import BackupError, list_backups, verify_backup
+            b = self.backup_settings()
+            where = "second copy" if b["copy_to"] is not None and list_backups(b["copy_to"]) else "this Mac"
+            found = list_backups(b["copy_to"] if where == "second copy" else b["dir"])
+            if not found:
+                raise HttpError(400, "no backup to test yet")
+            try:
+                v = verify_backup(found[0])
+            except (BackupError, OSError, ValueError) as exc:
+                k.audit.record("backup.tested", actor=actor, where=where, ok=False)
+                return {"ok": False, "where": where, "file": found[0].name, "error": str(exc)[:300]}
+            k.audit.record("backup.tested", actor=actor, where=where, ok=True)
+            return {"ok": True, "where": where, "file": found[0].name, "created": v["created"], "counts": v["counts"],
+                    "audit_entries": v["audit_entries"]}
+        if path == "/api/settings/backup-copy":   # Mac only, Touch ID when set up: where the second copy goes
+            from ..backup import COPY_META, BackupError, check_copy_folder
+            raw = body.get("folder")
+            if raw in (None, ""):
+                folder = ""
+            else:
+                try:
+                    folder = str(check_copy_folder(str(raw)[:500], k.home, self.backup_settings()["dir"]))
+                except BackupError as exc:
+                    raise HttpError(400, str(exc)) from None
+            with k.db.tx() as c:
+                c.execute("INSERT INTO meta (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+                          (COPY_META, folder))
+            k.audit.record("backup.copy_folder", actor=actor, on=bool(folder))
+            if folder:
+                self.sync_offsite()
+            self._health = self.check_health()
+            return self.backup_copy_status()
         if path == "/api/objectives":
             from .. import objectives
             try:
@@ -1942,7 +2196,39 @@ class Dashboard:
                 self.projects.decide(m.group(1), state, by=actor)
             except KeyError:
                 raise HttpError(404, "no such idea") from None
+            if state == "active":   # starting an idea opens it on the project board, with its first plan
+                idea = next((x for x in self.projects.list(include_closed=True) if x["id"] == m.group(1)), None)
+                if idea:
+                    plan = "\n".join(f"{i + 1}. {st['text']}" for i, st in enumerate(idea.get("steps") or []))
+                    k.board.save(idea["title"], "Plan", plan or idea["title"], "plan", by=actor,
+                                 summary=idea.get("why") or "")
             return {"ok": True, "state": state}
+        if path == "/api/board/projects":   # you open a project yourself; JARVIS plans it when you ask
+            from ..board import BoardError
+            try:
+                p = k.board.open(body.get("title"), body.get("summary") or "", by=actor)
+            except BoardError as exc:
+                raise HttpError(400, str(exc)) from None
+            return {"project": p}
+        if m := re.fullmatch(r"/api/board/projects/([\w-]+)/state", path):
+            from ..board import BoardError
+            try:
+                return {"project": k.board.set_state(m.group(1), str(body.get("state")), by=actor)}
+            except BoardError as exc:
+                raise HttpError(400, str(exc)) from None
+            except KeyError:
+                raise HttpError(404, "no such project") from None
+        if m := re.fullmatch(r"/api/board/items/([\w-]+)/delete", path):
+            try:
+                k.board.delete_item(m.group(1), by=actor)
+            except KeyError:
+                raise HttpError(404, "no such item") from None
+            return {"ok": True}
+        if path == "/api/settings/play":   # Mac only, Touch ID when set up: lets pages JARVIS made play (sealed)
+            from ..board import set_play
+            if not isinstance(body.get("on"), bool):
+                raise HttpError(400, "on must be true or false")
+            return set_play(k, body["on"], by=actor)
         if m := re.fullmatch(r"/api/projects/([\w-]+)/steps/(\d+)", path):
             if not isinstance(body.get("done"), bool):
                 raise HttpError(400, "done must be true or false")

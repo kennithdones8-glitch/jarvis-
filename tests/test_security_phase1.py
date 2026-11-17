@@ -134,8 +134,23 @@ def test_on_a_mac_the_suite_runs_inside_the_sandbox_or_not_at_all(tmp_path, monk
 
 
 def test_the_lab_passes_the_data_folder_to_trials():
+    """Every trial the Lab starts (single, repeated, drafted or a contest) goes through one call, and that call names
+    JARVIS's data folder so the sandbox denies it."""
     src = (SRC / "learn" / "analysis.py").read_text()
-    assert 'trial.run(args[0], args[1], work=Path(self.kernel.home) / "trials", data=Path(self.kernel.home))' in src
+    assert src.count("trial.run(") == 1                                            # one call site, in Lab._trials
+    assert 'home = Path(self.kernel.home)' in src
+    assert 'trial.run(cand, base, work=home / "trials", data=home,' in src
+
+
+def test_lab_trials_really_receive_the_data_folder(make_kernel, monkeypatch):
+    from jarvis.learn import analysis
+    k = make_kernel()
+    seen = []
+    monkeypatch.setattr(trial, "run", lambda cand, base, **kw: seen.append(kw) or {"ran": True})
+    analysis.Lab(k)._trials("HEAD", "HEAD", 3)
+    analysis.Lab(k)._trials("HEAD", "HEAD", 1, patch="x")
+    assert len(seen) == 4 and all(kw["data"] == k.home and kw["work"] == k.home / "trials" for kw in seen)
+    assert seen[-1]["patch"] == "x"
 
 
 # ---- 3. forgetting removes ratings and their comments ---------------------------------------------------------------
@@ -242,3 +257,24 @@ def test_socket_rules_deny_home_then_allow_the_trial(tmp_path):
     deny_home = next(i for i, x in enumerate(p) if "unix-socket (path-regex" in x and "docker" not in x)
     allow_trial = next(i for i, x in enumerate(p) if x.startswith("(allow network-outbound (remote unix-socket"))
     assert deny_home < allow_trial          # the trial folder lives inside home: its allow must come after (last wins)
+
+
+def test_without_a_sandbox_trials_are_refused_unless_the_developer_flag_is_set(monkeypatch, tmp_path):
+    """Fail closed (Evolution 4.0, Stage 5): where JARVIS has no sandbox (anything but macOS), a trial doesn't run.
+    Only an environment flag set by the person developing JARVIS overrides, and the flag can't unsandbox a Mac."""
+    monkeypatch.setattr(trial.sys, "platform", "linux")
+    monkeypatch.delenv("JARVIS_TRIAL_UNSANDBOXED", raising=False)
+    with pytest.raises(trial.TrialError, match="no sandbox"):
+        trial.isolation()
+    with pytest.raises(trial.TrialError, match="no sandbox"):       # refused before anything is checked out
+        trial.run("HEAD", work=tmp_path / "work")
+    assert not (tmp_path / "work").exists()
+    monkeypatch.setenv("JARVIS_TRIAL_UNSANDBOXED", "yes")           # only exactly "1" counts
+    with pytest.raises(trial.TrialError):
+        trial.isolation()
+    monkeypatch.setenv("JARVIS_TRIAL_UNSANDBOXED", "1")
+    assert trial.isolation() == "environment only"
+    monkeypatch.setattr(trial.sys, "platform", "darwin")            # on a Mac the flag changes nothing
+    monkeypatch.setattr(trial.Path, "exists", lambda self: False if str(self) == "/usr/bin/sandbox-exec" else os.path.exists(self))
+    with pytest.raises(trial.TrialError, match="sandbox"):
+        trial.isolation()

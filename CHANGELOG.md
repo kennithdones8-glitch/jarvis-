@@ -1,10 +1,170 @@
 # Changelog
 
-## Unreleased — after 0.19.4 (work branch `claude/funny-allen-ygy8kk`, not yet released)
+## Unreleased — after 0.20.0 (Evolution 4.0, Stages 4–6; work branch `claude/funny-allen-ygy8kk`)
+
+### Stage 5 — Self-Evolution Laboratory (schema v15)
+
+JARVIS could already try a change in a sandbox and draft a fix. This adds the loop around it: find what's weak, design
+a fair test, judge it on repeated evidence, and hand you a package. It still never changes itself.
+
+- **Opportunities, ranked with the numbers shown.** From evidence JARVIS already has (tools that keep failing or
+  timing out, answers that fail their check, your ratings, benchmark drops, stuck missions). Each shows benefit,
+  confidence, complexity, risk and how reversible it is, and the formula for its priority.
+- **Experiment designs.** For any opportunity: problem, evidence, proposed solution, alternatives, what success
+  means, what could regress, the test plan, the budget (runs, time limit, no network, $0) and how to roll back.
+  Built by rules from the evidence, not by a model.
+- **One good run is not a winner.** Trials and drafted fixes can be run 1–5 times, each in fresh sandboxed copies. A
+  change "holds" only if every run agrees. A test that fails in some runs and not others (on either side) is
+  reported as flaky and gives no verdict.
+- **Contests.** Two or three candidate branches against the same baseline, the same number of runs, the same
+  criteria in a fixed order (holds; tests fixed in every run; suite time beyond a 10% margin). No winner on a tie.
+- **Improvement packages**, only from an experiment that held: the weakness, before and after, the evidence, a
+  second model's review, security implications (it names security-sensitive files), files, whether a database change
+  is involved, and the exact commands to apply and to roll back. Status: awaiting your decision → approved or
+  rejected → applied → rolled back.
+- **Only you decide.** Approving a package is Mac-only with Touch ID and changes nothing by itself. "I applied it" and
+  "I rolled it back" are notes you add; JARVIS never applies, commits, merges or pushes.
+- **Evolution history.** One searchable, append-only record of opportunities, designs, experiments (including failed
+  and flaky ones), packages and your decisions. The database refuses to change or delete a line. It holds names,
+  counts and references, not your words. A failed attempt lowers an idea's priority but keeps it.
+- **Guardrails, tested and in the release gate:** the laboratory writes only to its own history; it cannot touch the
+  autonomy, permission or approval tables; nobody but you can record a decision; a phone can't start anything that
+  runs code; everything still sits under autonomy levels 4–6, which are off unless you turn them on.
+- **v15 adds only:** the `evolution` table and two columns on `experiments`.
+- Not done here: experiments compare tests, the linter and suite time. They don't run the answer-quality benchmark
+  inside a trial, so a package says so. Trials still need your Mac's sandbox (`sandbox-exec`, which Apple has
+  deprecated but still ships).
+
+### Stage 4 — Personal Knowledge Intelligence (schema v14)
+
+JARVIS's knowledge was in separate places that didn't know about each other. This connects them without copying
+anything, and shows why each thing was used.
+
+- **One retrieval, with reasons.** `knowledge.context()` reads memories, objectives and their missions, mission
+  history and how each ended, lessons, improvement proposals and your decisions on them, and (when you ask about
+  JARVIS itself) its own architecture, security and roadmap documents. Every item carries where it came from, when,
+  how sure it is, whether you stated it or JARVIS only noticed it, and the reason it was picked ("matched: garden,
+  project", "mission of an objective that matched"). Word matching plus one step along existing links; no model.
+- **Chat says what it used.** Balanced and Deep answers get up to four related items, and each reply has "Used N
+  things JARVIS knows" listing them with the reasons. Quick mode is unchanged (memories only), so it stays quick.
+- **Whole documents.** File search indexed only the first 20,000 characters of a file. It now indexes the whole
+  document (up to 200,000 characters, about 300 PDF pages) in ~1,500-character chunks cut at paragraph ends, so a
+  clause on page 180 is found; results say which part. Identical copies are recorded once and forgotten together.
+  File passages are now tried for any question when file search is on (a word match, not a model call).
+- **A document is data, never an instruction.** A file containing text that reads like instructions to an AI is
+  flagged, shown as such ("contains instruction-like text; not followed"), and the answering model is told not to
+  follow it. Nothing a document says can cause an action. Tested with a hostile file; now a release-gate item.
+- **Worth a look** (Memory page): memories that disagree (now also "I like X" / "I don't like X"), memories that say
+  the same thing, ones due for a check or never confirmed in over a year, objectives with no "done means", no
+  mission or a passed deadline, and requests that keep coming back. Findings only: nothing is settled for you.
+- **Connections.** Any memory, objective or mission opens to show what connects to it and why.
+- **Private memories.** Mark a memory private (Mac only; Face ID / Touch ID to change): it joins only an answer that
+  stays on this Mac, is held back from any answer that would leave (the reply says how many), and a paired iPhone is
+  told how many there are, not what they say.
+- **Forget is checked.** After forgetting, JARVIS searches every store again and reports what remains: "clean" only
+  when nothing does. Forget now also covers the project board, and the dashboard empties its lookup cache.
+- **Review dates and export.** "Check later" sets a date after which a memory is shown as due. `jarvis memory export`
+  now includes objectives, lessons and links, and the file is readable by you only.
+- **v14 adds only:** `memories.updated_at/privacy/review_after`, `links.confidence`, the `file_chunks` index and four
+  columns on `file_index_meta`. The old one-block file index (a rebuildable cache) is emptied and rebuilt in the
+  background. Rollback: restore the automatic pre-upgrade backup.
+- Not done here: semantic (embedding) search. Retrieval is still by words; "the planner is too slow" is not found by
+  asking about "speed". That needs the local embedding model you approved, and comes next.
+
+### Spans of days are worked out by JARVIS (merged from `span-days-v2`, owner-approved)
+
+- **"The next three days", "this week", "next week", "this weekend" and "the week ahead" are now worked out from the
+  Mac's clock**, like "tomorrow" already was. If the small model's calendar lookup doesn't cover that span, JARVIS
+  widens it and says so ("calendar dates corrected to cover …"). "Next N days" means today plus the N days after it.
+- **Why:** on the work branch (e923810, `20261110-001353-local`) planning-clash went from 5/5 to 0/5. Asked on
+  Tue 10 Nov about clashes "in the next three days", the small model looked up Sat 07–Mon 09, past days. It saw
+  nothing and said there were no clashes. Main has the same weakness: the lookup code is the same on both, so the
+  fix is general and goes on main.
+- Tests: `test_spans_of_days_come_from_the_clock`, `test_a_lookup_of_past_days_is_corrected_to_the_span_asked_about`
+  (both fail without the change) and `test_a_lookup_that_already_covers_the_span_is_left_alone`.
+- **Not yet measured on the Mac.** Merge rule still applies: net ≥ +2 tasks, no new failures, ≥5 runs, on exactly the
+  tested commit.
+
+### Projects live on the dashboard, and animations can play there (merged from `made-page-v1`, owner-approved)
+
+You asked: when you tell JARVIS to start a project, keep it on the dashboard instead of sending you to your Notes.
+
+- **Projects page.** The top of the page now shows *Your projects*: projects JARVIS opened, or that you opened
+  yourself with **New project**. Each one holds what JARVIS made for it: plans, notes, code and pages. Tap an item to
+  read it, then copy or delete it. **Plan with JARVIS** and **Ask JARVIS to make…** start the usual Make-a-plan flow.
+  Starting one of the suggested ideas opens it here too, with its first plan.
+- **The planner saves project work to the dashboard** (`projects.save`, a routine change, so you approve it first).
+  If you name a file (e.g. "save it as summary.md"), JARVIS still writes that file to your notes folder. Otherwise
+  project work no longer goes to files or Apple Notes. Each save is checked by reading it back (`board` criterion).
+  The reply says where the work is, and the chat persona no longer tells you to look in Notes.
+- **Play animations (off by default; Mac only; Touch ID when set up).** A page JARVIS made, such as an HTML
+  animation, plays inside the Projects page in a sealed frame. The frame is sandboxed with scripts allowed and
+  same-origin left out, so the page gets an empty origin of its own. It has no network (`connect-src 'none'`), and
+  no forms, popups, top-level navigation, camera or microphone. It can't read the dashboard, its cookies or your data,
+  even when its URL is opened on its own. Turning the switch off stops every page at once. Checked in Chromium: the
+  page could not read the dashboard, cookies, storage, the JARVIS API or the internet.
+- **Schema v13:** `board_projects` and `board_items`. Older code can't open a v13 database. Use a fresh bench folder.
+- Tests: `tests/test_board.py` (15). The player-sealing tests are now gate security items (Permission bypass,
+  Privacy).
+
+## 0.20.0 — Evolution 4.0: safe updates, objectives, games, file search, voice conversation, your week, off-Mac backups (2026-11-16)
+
+Database schema v12 (from v9/v10/v11; an encrypted backup is made before the upgrade). Not yet verified on the
+owner's Mac and iPhone: see the checklist in the pull request.
 
 - **Merged 0.19.4 from `main`** (careful answers on the 7B, the calendar premise check, contradictions asked about
   before planning, nothing left out, retries routed by the question, the first-event check). Both sides kept; one
   conflict: `Orchestrator.plan` runs main's premise check first and keeps this branch's replan history.
+
+### Trials fail closed where there is no sandbox (Stage 5 groundwork)
+
+- A level-6 trial (and "Draft a fix", which uses one) used to run with a bare environment only on anything that isn't
+  macOS. It now refuses there: no sandbox, no trial. Your Mac is unchanged (sandbox required, as before). Only an
+  environment flag set by the person developing JARVIS (`JARVIS_TRIAL_UNSANDBOXED=1`, used by the test suite on
+  Linux) overrides, and the flag cannot unsandbox a Mac. Added to the release gate's security items.
+
+### Faster to answer, and there when the browser opens
+
+- **The fastest model stays loaded all day.** Ollama unloads a model after 30 idle minutes, and reloading costs
+  10-30 seconds on an Intel Mac before the first word. Every 20 minutes JARVIS now re-loads the fastest everyday model
+  (only that one, a couple of GB; nothing is generated), so a Quick answer starts at once. Skipped while the
+  emergency stop is on.
+- **The page is there at once.** The projection's start-up assembly held the panels back for about 4 seconds on
+  every browser start; it now plays on the first visit of the day only.
+- **Stay signed in** (Systems, Mac only, Touch ID to switch, off by default). Off: this browser's sign-in ends when
+  the browser quits, as before. On: it lasts 30 days, so JARVIS can be Chrome's start page (Chrome → Settings → On
+  startup → Open a specific page → `http://localhost:8765/`). The cookie stays HttpOnly and same-site, and every
+  Touch ID check is unchanged.
+
+### Backups: a second copy off this Mac, and Test restore
+
+- **Second copy** (Systems, Mac only, Touch ID to choose). Each encrypted backup is also copied to a folder you
+  pick: a connected drive or iCloud Drive (offered as buttons, with a "JARVIS backups" folder made for you), or any
+  folder you type. Each copy is written to a temporary name, flushed, checked byte for byte, then renamed; old copies
+  beyond your keep count are removed there too. An unplugged drive is skipped and caught up when it's back. Health
+  shows "Second copy" and warns after a week without one. It's the same encrypted file; the passphrase stays in
+  this Mac's Keychain (keep your own copy of it). Choosing a folder inside JARVIS's data folder is refused.
+- **Test restore** (Systems). Opens the newest backup (the second copy, if you have one) in a temporary folder and
+  checks it the same way a new backup is checked: decrypts, file checksums, database integrity, audit chain. It
+  shows what's inside and replaces nothing. A damaged backup is reported plainly.
+
+### Your week
+
+- **Weekly review** ("Your week" in the menu). The last seven days on one page: missions started, completed (and how
+  many verified), failed and still open; the decisions you made; how your objectives moved; model calls on this Mac
+  and to Claude; what your rules refused or kept private; memories added; backups, updates and tool errors. All
+  counted from JARVIS's own records (tasks, approvals, objectives, the audit log); nothing estimated or written by a
+  model. If the audit log's chain doesn't verify, it says so first. On Sundays (and until Tuesday if you haven't
+  looked) "Your week" appears in Worth your attention.
+
+### Ask about your files
+
+- **Chat answers from your files** when file search is on: "What does my lease say about pets?" finds the files that
+  contain every meaningful word of the question (lease, pets) with a plain word match (no model), takes the best
+  ~700-character passage of each (at most three), and gives them to the answering model as private file content.
+  "Checked: Your files: lease.md" under the reply says which files were used. Each file is re-checked by the
+  permission engine at that moment, so a folder you've since removed stays out. If the answer would go to Claude,
+  the privacy gate asks first, as for any file. Planning doesn't use it.
 
 ### Talk with JARVIS hands-free
 

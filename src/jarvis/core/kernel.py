@@ -107,6 +107,10 @@ class Kernel:
 
             registry = default_registry(self.home, searxng_url=self.model_config.searxng_url,
                                         permissions=self.permissions)
+        from ..board import Board
+        self.board = Board(self.db, self.audit)   # projects on the dashboard (the planner saves there, not in Notes)
+        if registry.action("projects", "save") is None:
+            registry.register(self.board.spec())
         self.registry = registry
         self.gateway = ToolGateway(self.registry, self.permissions, self.approvals, self.audit, self.killswitch)
         self.tasks = TaskStore(self.db, self.audit)
@@ -144,6 +148,12 @@ class Kernel:
         out["plans"] = len(plans)
         from ..objectives import forget as forget_objectives
         from ..files_index import forget as forget_files
+        # the project board: items whose title or text mentions it, and whole projects whose title or summary does
+        board_projects = [r["id"] for r in self.db.query("SELECT id, title, summary FROM board_projects")
+                          if q and (q in r["title"].lower() or q in r["summary"].lower())]
+        board_items = [r["id"] for r in self.db.query("SELECT id, project_id, title, content FROM board_items")
+                       if q and (r["project_id"] in board_projects or q in r["title"].lower() or q in r["content"].lower())]
+        out["board"] = len(board_items) + len(board_projects)
         out["objectives"] = forget_objectives(self, query, by=by, dry_run=True)
         out["indexed_files"] = forget_files(self, query, dry_run=True)
         if not dry_run:
@@ -158,10 +168,30 @@ class Kernel:
                         c.execute("DELETE FROM feedback WHERE target = 'task' AND ref = ?", (t["id"],))
                 c.executemany("DELETE FROM feedback WHERE id = ?", [(i,) for i in rated])
                 c.executemany("DELETE FROM plan_jobs WHERE id = ?", [(i,) for i in plans])
+                c.executemany("DELETE FROM board_items WHERE id = ?", [(i,) for i in board_items])
+                c.executemany("DELETE FROM board_projects WHERE id = ?", [(i,) for i in board_projects])
             if rated:
                 self.audit.record("memory.ratings_forgotten", actor=by, count=len(rated))
+            if board_items or board_projects:
+                self.audit.record("board.forgotten", actor=by, items=len(board_items), projects=len(board_projects))
             self.db.checkpoint()  # with secure_delete, no copy of the deleted text is left in the files
+            out["verified"] = self.forget_check(query)
         return out
+
+    def forget_check(self, query: str) -> dict:
+        """After a forget: search every store again and report what, if anything, still mentions ``query``. "clean"
+        only when nothing does; running tasks (never deleted mid-run) are named as the reason when they remain. The
+        dashboard also empties its two-minute lookup cache when you forget from there."""
+        left = self.forget(query, by="system:verify", dry_run=True)
+        running = [t["id"] for t in left["tasks"] if not t["deletable"]]
+        counts = {"memories": len(left["memories"]), "records": len(left["records"]),
+                  "tasks": len([t for t in left["tasks"] if t["deletable"]]), "running_tasks": len(running),
+                  "ratings": left["ratings"], "plans": left["plans"], "board": left["board"],
+                  "objectives": left["objectives"], "indexed_files": left["indexed_files"]}
+        remaining = sum(v for k, v in counts.items() if k != "running_tasks")
+        self.audit.record("memory.forget_verified", clean=remaining == 0 and not running, remaining=remaining,
+                          running_tasks=len(running))
+        return {**counts, "clean": remaining == 0 and not running}
 
     def start(self) -> list[str]:
         """Record startup and recover tasks interrupted by a previous crash or shutdown."""
