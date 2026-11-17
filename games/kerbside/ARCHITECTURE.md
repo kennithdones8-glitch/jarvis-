@@ -206,3 +206,32 @@ four cameras and highlights, photo mode with a filter and a real PNG download â€
 - Pursuit and mode balance are bot-measured, not human-felt.
 - Replays live in memory for the session (not saved), up to ten minutes per race.
 - `save.team.rep` grows with contracts and seasons but nothing spends it yet.
+
+## 8. Quality overhaul (phases 1â€“7)
+
+Section 7 describes the next generation; this section is the current state after the overhaul.
+
+### Files
+| File | Lines | What changed |
+|---|---|---|
+| `static/racer-data.js` | 930 | 39 cars (38 drivable: C 6, B 15, A 10, S 7; the police Interceptor) with an `IDENTITY` per car (handling, power `band`, `voice`, `art`, `factory` livery); body parts with `fits`; earned looks; cast faces; Victor Harlan; 11 character stories (`ARCS`, 17 missions); 22 turning points; grudges; team levels; achievement rewards; `WORLD_NEWS`, `REP_TITLES`, `MATTERS`, `TONIGHT`; 34 side events (some open or close on story flags) |
+| `static/racer-career.js` | 1,113 | signature cars, `resolve` (story variants by flag), refused choices you can't afford, arc missions, team levels, ratings, prize breakdown, collection; the living world: `tonight`, `rankings`, showdowns, `matters` / `settle`, `repTitle` |
+| `static/racer.js` | 451 | the power band in the physics |
+| `static/racer-render.js` | 1,905 | car bodies from outlines, lamps, details, damage; track furniture; rooftops; reflections; grid intro; announcer and crowd hooks on race events |
+| `static/racer-audio.js` | 241 | per-car voices (cylinders, rasp, lope, supercharger, electric); `say` (speech synthesis, throttled by priority), `crowd`, `ui` |
+| `static/racer-ui.js` | 865 | dialogue scenes with portraits, character stories, garage tabs for parts, ratings, team levels, garage matters, tonight-only panel, street rankings, announcer setting |
+
+Save: still v4 under `kerbside-save-v3`. New fields (`world.ranks`, `world.matters`, `world.tonightWins`,
+`world.showdown`, `settings.announcer`, the new look keys) are validated and default safely on older saves. Story
+state lives in boolean flags, so no migration was needed.
+
+### Tests (105 for the game)
+Added: `test_racer_phase1.py` 5 (graphics, with a browser test), `test_racer_cars.py` 7, `test_racer_story2.py` 5,
+`test_racer_progress.py` 4, `test_racer_city.py` 5, `test_racer_sound.py` 5 (with a browser race that records the
+announcer). The browser tests skip themselves where Playwright isn't installed.
+
+### Known limits
+- The announcer uses whatever voice the device offers; it was checked with a stub in headless Chromium, not heard.
+- Performance: Medium holds 60 fps in the worst scene in 3 of 4 runs on a CPU-only headless browser; High runs at
+  30 fps there. Not measured on a GPU or a phone.
+- Not yet played on a real iPhone.

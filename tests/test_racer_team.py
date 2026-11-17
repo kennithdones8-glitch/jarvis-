@@ -57,7 +57,7 @@ const s = C.fresh(); let season = null, earned = 0;
 for (let i = 0; i < 4; i++) race(s, {}, "quick");                                           // practice: no season days
 const m0 = s.money;
 const days0 = s.team.days;
-for (let i = 0; i < 10; i++) { const o = race(s, {}); earned += o.money; if (o.season) season = o.season; }
+for (let i = 0; i < 10; i++) { const o = race(s, {}); earned += o.money + o.achievements.reduce((t, id) => t + ((D.ACH_REWARDS[id] || {}).money || 0), 0); if (o.season) season = o.season; }   // achievement rewards aside
 const loser = C.fresh(); let lost = null; for (let i = 0; i < 10; i++) { const o = race(loser, { place: 4, order: ["pip", "otto", "dex", "YOU"], beat: [] }); if (o.season) lost = o.season; }
 console.log(JSON.stringify({ days0, season, prize: s.money - m0 - earned, after: [s.team.season, s.team.days, s.team.points, s.team.titles], ach: Object.keys(s.achievements).includes("team_champ"),
   lost: lost && [lost.place, lost.prize, lost.table[0].you], news: s.world.news.some((x) => x.text.includes("team championship")) }));""")

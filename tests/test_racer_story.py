@@ -30,10 +30,11 @@ const s = C.fresh();
 const dirty = race(s, { rivals: { dex: { passedThem: 1, passedYou: 0, contacts: 3, youHit: 3, theyHit: 0, gap: 2, close: false } } });
 const close = race(s, { beat: [], order: ['dex', 'YOU'], place: 2, rivals: { dex: { passedThem: 2, passedYou: 3, contacts: 0, youHit: 0, theyHit: 0, gap: -0.04, close: true } } });
 const many = race(s, { rivals: { dex: { passedThem: 4, passedYou: 1, contacts: 0, youHit: 0, theyHit: 0, gap: 5, close: false } } });
-console.log(JSON.stringify({ mem: s.rivals.dex, dirty: dirty.reactions[0], close: close.reactions[0], many: many.reactions[0] }));""")
+console.log(JSON.stringify({ mem: s.rivals.dex, dirty: dirty.reactions.find((x) => x.kind === "dirty"), grudge: dirty.reactions[0], close: close.reactions[0], many: many.reactions[0] }));""")
     m = r["mem"]
     assert (m["races"], m["wins"], m["losses"], m["passedThem"], m["passedYou"], m["youHit"], m["close"]) == (3, 2, 1, 7, 4, 3, 1)
     assert r["dirty"]["kind"] == "dirty" and "3 times" in r["dirty"]["text"]          # quotes the real count
+    assert r["grudge"]["kind"] == "grudge" and "3 times we've traded paint, and 3 of them were you" in r["grudge"]["text"]   # and calls you out
     assert r["close"]["kind"] == "closeLoss" and r["many"]["kind"] == "passedMany" and "4 times" in r["many"]["text"]
 
 

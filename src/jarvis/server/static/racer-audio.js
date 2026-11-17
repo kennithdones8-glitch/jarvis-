@@ -27,11 +27,12 @@
     gt: { idle: 48, span: 130, sub: 0.5, drive: 0.4, gears: 6, cut: 3200 },
     super: { idle: 60, span: 170, sub: 0.35, drive: 0.35, gears: 7, cut: 4200 },
     proto: { idle: 68, span: 190, sub: 0.25, drive: 0.2, gears: 7, cut: 4800, whine: 0.04 },
+    truck: { idle: 36, span: 84, sub: 0.75, drive: 0.6, gears: 5, cut: 1700 },
   };
   function create(settings = {}) {
     const AC = root.AudioContext || root.webkitAudioContext;
     if (!AC) return NOOP;
-    let ac = null, nodes = null, set = { sound: true, music: true, volume: 0.7, ...settings }, musicTimer = null, step = 0, paused = false;
+    let ac = null, nodes = null, set = { sound: true, music: true, announcer: true, volume: 0.7, ...settings }, musicTimer = null, step = 0, paused = false;
     let mood = "menu", intensity = 0, voice = VOICES.open, lastGear = 0, shiftDip = 0, spool = 0, lastThr = false;
     const safe = (fn) => (...a) => { try { return fn(...a); } catch { return undefined; } };
     function init() {
@@ -43,8 +44,12 @@
       const o1 = ac.createOscillator(), o2 = ac.createOscillator(), o3 = ac.createOscillator(), sub = ac.createGain(), mix = ac.createGain();
       const shaper = ac.createWaveShaper(), lp = ac.createBiquadFilter(), eg = ac.createGain();
       o1.type = "sawtooth"; o2.type = "square"; o3.type = "sine"; lp.type = "lowpass"; lp.Q.value = 3; eg.gain.value = 0;
-      o1.connect(mix); o2.connect(mix); o3.connect(sub); sub.connect(mix); mix.connect(shaper); shaper.connect(lp); lp.connect(eg); eg.connect(sfx);
-      o1.start(); o2.start(); o3.start();
+      // a peak for exhaust rasp, and a slow wobble in the volume for a V8's lumpy idle (the lope)
+      const pk = ac.createBiquadFilter(), amp = ac.createGain(), lfo2 = ac.createOscillator(), lope = ac.createGain();
+      pk.type = "peaking"; pk.frequency.value = 1800; pk.Q.value = 2; pk.gain.value = 0; amp.gain.value = 1; lfo2.frequency.value = 6; lope.gain.value = 0;
+      lfo2.connect(lope); lope.connect(amp.gain);
+      o1.connect(mix); o2.connect(mix); o3.connect(sub); sub.connect(mix); mix.connect(shaper); shaper.connect(pk); pk.connect(lp); lp.connect(amp); amp.connect(eg); eg.connect(sfx);
+      o1.start(); o2.start(); o3.start(); lfo2.start();
       // turbo whistle and the prototype's motor whine
       const tw = ac.createOscillator(), twg = ac.createGain(); tw.type = "sine"; tw.frequency.value = 2200; twg.gain.value = 0; tw.connect(twg); twg.connect(sfx); tw.start();
       // noise for tyres, nitro, crowd and rain
@@ -58,7 +63,7 @@
       const sr = ac.createOscillator(), srg = ac.createGain(), lfo = ac.createOscillator(), lfoG = ac.createGain();
       sr.type = "triangle"; sr.frequency.value = 950; lfo.frequency.value = 0.42; lfoG.gain.value = 380; srg.gain.value = 0;
       lfo.connect(lfoG); lfoG.connect(sr.frequency); sr.connect(srg); srg.connect(amb); sr.start(); lfo.start();
-      nodes = { master, sfx, music, amb, o1, o2, o3, sub, shaper, lp, eg, tw, twg, tyre, nitro, crowd, rain, sr, srg, lfo, buf };
+      nodes = { master, sfx, music, amb, o1, o2, o3, sub, shaper, pk, lp, amp, lfo2, lope, eg, tw, twg, tyre, nitro, crowd, rain, sr, srg, lfo, buf };
       setVoice("open");
       apply();
       return true;
@@ -68,10 +73,16 @@
       for (let i = 0; i < n; i++) { const x = i / (n - 1) * 2 - 1; c[i] = Math.tanh(x * (1 + k * 6)) / Math.tanh(1 + k * 6); }
       return c;
     }
-    function setVoice(shape) {
-      voice = VOICES[shape] || VOICES.open;
+    // A car's voice: its body style's voice with the car's own settings on top (cylinders, revs, lope, rasp, whine).
+    function setVoice(shape, own) {
+      voice = { ...(VOICES[shape] || VOICES.open), ...(own || {}) };
       if (!nodes) return;
       nodes.shaper.curve = curve(voice.drive); nodes.sub.gain.value = voice.sub;
+      nodes.pk.gain.value = (voice.rasp || 0) * 12;
+      // the second oscillator sets the character: an octave down for fours and V8s, a fifth for sixes, an octave up (smooth) for V10s and V12s
+      if (voice.electric) { voice.gears = 1; voice.whine = 0.06; voice.drive = 0.05; voice.sub = 0.1; voice.cut = 6000; nodes.shaper.curve = curve(0.05); nodes.sub.gain.value = 0.1; }
+      const cyl = voice.cyl || 4; voice.ratio = cyl >= 10 ? 2 : cyl === 6 || cyl === 5 ? 1.5 : cyl === 3 ? 0.75 : 0.5;
+      nodes.o2.type = cyl >= 10 ? "sawtooth" : "square";
     }
     function apply() {
       if (!nodes) return;
@@ -122,10 +133,42 @@
         step++; nextT += sixteenth;
       }
     }
+    // The race announcer: the browser's own speech synthesis (free, offline on most devices). Lines are short and
+    // throttled; a more important line interrupts a less important one. Silent where speech isn't available.
+    const SP = typeof speechSynthesis !== "undefined" && typeof SpeechSynthesisUtterance !== "undefined" ? speechSynthesis : null;
+    let sayUntil = 0, sayPri = 0, sayVoice;
+    function say(text, pri = 1) {
+      if (!SP || !set.sound || !set.announcer || paused || !text) return false;
+      const now = Date.now();
+      if (now < sayUntil && pri <= sayPri) return false;
+      if (now < sayUntil) SP.cancel();
+      if (sayVoice === undefined) { const vs = SP.getVoices ? SP.getVoices() : []; sayVoice = vs.find((v) => /^en[-_]GB/i.test(v.lang)) || vs.find((v) => /^en/i.test(v.lang)) || null; if (!vs.length) sayVoice = undefined; }
+      const u = new SpeechSynthesisUtterance(text); if (sayVoice) u.voice = sayVoice;
+      u.rate = 1.12; u.pitch = 0.9; u.volume = Math.max(0, Math.min(1, set.volume * 1.3));
+      SP.speak(u); sayUntil = now + 900 + text.length * 70; sayPri = pri;
+      return true;
+    }
+    // The crowd: shaped noise. A cheer swells and fades, a gasp is a sharp intake, an "ooh" rises and falls.
+    function crowd(kind) {
+      if (!nodes) return;
+      if (kind === "cheer") { burst("bandpass", 500, 1400, 1.8, 0.16, "amb", 0.6); burst("bandpass", 900, 2200, 1.4, 0.1, "amb", 0.9, 0.15); }
+      else if (kind === "gasp") { burst("highpass", 2600, 1200, 0.35, 0.14, "amb", 0.7); burst("bandpass", 700, 400, 0.6, 0.08, "amb", 1.2, 0.08); }
+      else if (kind === "ooh") { burst("bandpass", 380, 760, 0.5, 0.1, "amb", 4, 0); burst("bandpass", 760, 340, 0.8, 0.1, "amb", 4, 0.45); }
+    }
+    // Menu sounds: each action has its own.
+    function ui(kind) {
+      if (!nodes) return;
+      if (kind === "confirm") { blip(880, 0.06, "square", 0.08); blip(1320, 0.09, "square", 0.07, null, "sfx", 0.06); }
+      else if (kind === "back") { blip(700, 0.06, "square", 0.07); blip(470, 0.09, "square", 0.06, null, "sfx", 0.05); }
+      else if (kind === "buy") { blip(1568, 0.07, "triangle", 0.14); blip(2093, 0.18, "triangle", 0.14, null, "sfx", 0.08); burst("highpass", 6000, 9000, 0.12, 0.06, "sfx", 1, 0.08); }
+      else if (kind === "error") { blip(150, 0.16, "sawtooth", 0.1); blip(140, 0.16, "sawtooth", 0.1, null, "sfx", 0.18); }
+      else if (kind === "unlock") [523, 659, 784, 1047, 1319].forEach((f, i) => blip(f, 0.22, "triangle", 0.12, null, "sfx", i * 0.07));
+      else if (kind === "achievement") { [784, 988, 1175].forEach((f, i) => blip(f, 0.16, "square", 0.07, null, "sfx", i * 0.09)); blip(1568, 0.5, "triangle", 0.14, null, "sfx", 0.3); }
+    }
     const api = {
       unlock: safe(() => { init(); if (ac.state === "suspended") ac.resume(); }),
-      settings: safe((s) => { set = { ...set, ...s }; apply(); }),
-      voice: safe((shape) => setVoice(shape)),
+      settings: safe((s) => { set = { ...set, ...s }; if (SP && (!set.sound || !set.announcer)) { SP.cancel(); sayUntil = 0; } apply(); }),
+      voice: safe((shape, own) => setVoice(shape, own)),
       // p: { speed, top, slip, boost, on, thr, turbo (0..1 of the car's turbo), gear and rpm (drag: real gears), wet, tunnel, crowd }
       update: safe((p) => {
         if (!nodes) return;
@@ -142,17 +185,22 @@
         if (gear !== lastGear) { if (gear > lastGear) { shiftDip = 0.12; blip(V.idle * 0.8, 0.05, "square", 0.05); } lastGear = gear; }
         shiftDip = Math.max(0, shiftDip - 1 / 60);
         const f = V.idle + V.span * (0.25 + 0.75 * within) * (1 + gear * 0.04);
-        nodes.o1.frequency.setTargetAtTime(f, t, 0.03); nodes.o2.frequency.setTargetAtTime(f / 2, t, 0.03); nodes.o3.frequency.setTargetAtTime(f / 4, t, 0.03);
+        nodes.o1.frequency.setTargetAtTime(f, t, 0.03); nodes.o2.frequency.setTargetAtTime(f * (V.ratio || 0.5), t, 0.03); nodes.o3.frequency.setTargetAtTime(f / 4, t, 0.03);
+        nodes.lfo2.frequency.setTargetAtTime(Math.max(3, f / 5), t, 0.05); nodes.lope.gain.setTargetAtTime((V.lope || 0) * 0.6 * Math.max(0, 1 - r * 1.6), t, 0.08);
         nodes.lp.frequency.setTargetAtTime(350 + V.cut * (0.25 + 0.75 * Math.min(1, r)) * (p.thr === false ? 0.6 : 1), t, 0.05);
-        nodes.eg.gain.setTargetAtTime((0.05 + 0.1 * Math.min(1, r)) * (shiftDip > 0 ? 0.35 : 1) * (p.thr === false ? 0.75 : 1), t, 0.03);
-        nodes.tyre.g.gain.setTargetAtTime(p.on && p.slip > 90 ? Math.min(0.12, (p.slip - 90) / 900) : 0, t, 0.04);
+        nodes.eg.gain.setTargetAtTime((V.electric ? 0.012 : (0.05 + 0.1 * Math.min(1, r)) * (shiftDip > 0 ? 0.35 : 1)) * (p.thr === false ? 0.75 : 1), t, 0.03);
+        // tyres: a squeal when sliding; on a kerb a low rumble, on grass a hiss, on gravel a crunch
+        const SURF = { kerb: [170, 0.07, 3], grass: [700, 0.035, 1.2], gravel: [420, 0.08, 1.5] }[p.surf], mv = Math.min(1, (p.speed || 0) / 300);
+        if (SURF && mv > 0.1) { nodes.tyre.f.frequency.setTargetAtTime(SURF[0], t, 0.03); nodes.tyre.f.Q.setTargetAtTime(SURF[2], t, 0.03); nodes.tyre.g.gain.setTargetAtTime(SURF[1] * mv, t, 0.03); }
+        else { nodes.tyre.f.frequency.setTargetAtTime(1800, t, 0.05); nodes.tyre.f.Q.setTargetAtTime(6, t, 0.05); nodes.tyre.g.gain.setTargetAtTime(p.on && p.slip > 90 ? Math.min(0.12, (p.slip - 90) / 900) : 0, t, 0.04); }
         nodes.nitro.g.gain.setTargetAtTime(p.boost ? 0.09 : 0, t, 0.06);
         // turbo: whistles as it spools, blows off when you lift
         const tb = p.turbo || 0;
         spool = Math.max(0, Math.min(1, spool + (p.thr ? 0.035 : -0.08)));
-        nodes.tw.frequency.setTargetAtTime(1600 + 2400 * spool, t, 0.05);
-        nodes.twg.gain.setTargetAtTime(tb > 0 ? 0.012 * tb * spool * (p.thr ? 1 : 0.3) : V.whine ? V.whine * Math.min(1, r) : 0, t, 0.05);
-        if (tb > 0 && lastThr && !p.thr && spool > 0.5) burst("bandpass", 3800, 900, 0.35, 0.12 * Math.min(1, tb * 2), "sfx", 2);
+        // a supercharger whines with the revs; a turbo whistles with the boost
+        nodes.tw.frequency.setTargetAtTime(V.electric ? 600 + 5200 * Math.min(1, r) : V.sc ? 1800 + 3000 * within : 1600 + 2400 * spool, t, 0.05);
+        nodes.twg.gain.setTargetAtTime(V.sc ? V.sc * Math.min(1, r * 1.4) : tb > 0 ? 0.012 * tb * spool * (p.thr ? 1 : 0.3) : V.whine ? V.whine * Math.min(1, r) : 0, t, 0.05);
+        if ((tb > 0 || V.whoosh) && lastThr && !p.thr && spool > 0.5) burst("bandpass", 3800, 900, 0.35, 0.12 * Math.min(1, Math.max(tb, 0.25) * 2), "sfx", 2);
         lastThr = !!p.thr;
         // the world around you
         nodes.crowd.g.gain.setTargetAtTime(0.05 * Math.min(1, p.crowd || 0), t, 0.3);
@@ -177,11 +225,15 @@
       }),
       finish: safe((win) => { const notes = win ? [523, 659, 784, 1047] : [523, 494, 440]; notes.forEach((f, i) => blip(f, 0.35, "triangle", 0.2, null, "sfx", i * 0.14)); if (win) burst("bandpass", 700, 500, 2.2, 0.14, "amb", 0.7); }),
       click: safe(() => blip(1200, 0.05, "square", 0.08)),
+      say: safe((text, pri) => say(text, pri)),
+      canSpeak: !!SP,
+      crowd: safe((k) => crowd(k)),
+      ui: safe((k) => ui(k)),
       pause: safe((p) => {
-        paused = p;
+        paused = p; if (p && SP) { SP.cancel(); sayUntil = 0; }
         if (p && nodes) { const t = ac.currentTime; for (const g of [nodes.eg.gain, nodes.tyre.g.gain, nodes.nitro.g.gain, nodes.twg.gain, nodes.srg.gain, nodes.crowd.g.gain, nodes.rain.g.gain]) g.setTargetAtTime(0, t, 0.05); }
       }),
-      stop: safe(() => { if (musicTimer) clearInterval(musicTimer); musicTimer = null; if (ac) ac.close(); ac = null; nodes = null; }),
+      stop: safe(() => { if (SP) SP.cancel(); if (musicTimer) clearInterval(musicTimer); musicTimer = null; if (ac) ac.close(); ac = null; nodes = null; }),
       get ready() { return !!(ac && ac.state === "running"); },
     };
     return api;

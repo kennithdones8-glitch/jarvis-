@@ -35,6 +35,34 @@
   an older Intel Mac. It recommends the richest level that stays smooth (40 ms a frame or less); nothing changes
   unless you press Use, and your setting is restored after the check. Auto still adjusts on its own.
 
+### Games: Kerbside Grand Prix, quality overhaul
+
+- **Graphics you see while racing.** Thirteen car bodies drawn from their own outlines (kei car to pickup truck),
+  each with its own lamps, glass and details; damage shows as scratches, dents, a cracked windscreen and a hanging
+  bumper. Kerbs only on bends, gravel traps, Armco (concrete walls in town), road patches, drains and rubber on the
+  racing line; rooftops with detail; wet roads reflect the lights (High); a grid intro before the start.
+- **38 drivable cars, each its own car.** Ten new ones (Japanese tuners, a drift car, European exotics, American
+  muscle, a pickup truck, an electric car, a classic). Every car has its own handling (a test keeps any two apart),
+  power band (torque cars launch, rev cars pull through the middle; same top speed), engine voice (cylinders, rasp,
+  supercharger whine, V8 lope, electric motor), factory livery and look. Body parts (bumpers, bonnets, tyres) fit
+  only the cars they suit. New cars are bought or earned (achievements, medals, a crew member, a pursuit heat, the
+  story). Rivals bring their signature cars when it gets serious.
+- **A story with consequences.** A villain (Victor Harlan), eleven character stories with 17 missions, 22 turning
+  points with costs you have to afford, grudge matches that quote what happened on track, staged dialogue scenes
+  with drawn portraits, a finale and endings that remember what you did.
+- **Garage and progression.** Team levels with real perks, a performance rating for every car and a suggested
+  rating for every event, prize money that explains itself (bonuses for racing clean and for overtakes),
+  achievements that pay out or unlock looks you can't buy, a collection with achievements.
+- **A living world.** Your decisions open and close events across the city and make the news; tonight-only events
+  rotate every three race days; rivals' off-screen races feed street rankings and close losses become showdowns you
+  can gatecrash; crew members argue at HQ and you settle it; the city gives you a title.
+- **Sound.** A race announcer using the browser's built-in speech (switch it off in Settings; hidden where the
+  browser can't speak), crowd cheers, gasps and "ooh"s, and a distinct sound for confirm, back, buy, error, unlock
+  and achievement. Still no audio files.
+- Saves: old saves load without losing anything; new fields get safe defaults. 105 game tests. Checked in headless
+  Chromium on desktop and iPhone emulation; not yet played on a real iPhone, and the announcer's real voice depends
+  on the device.
+
 ### Games: Kerbside Grand Prix, next generation
 
 - **Police pursuit**, a mode of its own apart from the Grand Prix. Heat 1–5; units follow your line, pin you when you

@@ -92,10 +92,11 @@ console.log(JSON.stringify({ sprintLaps: sprint.laps, sprintDone: sprint.cars[0]
 
 def test_drift_points_bank_and_are_lost_on_the_grass():
     r = js("""
-// a corner-committing driver scores; the score only grows when a chain banks
+// a corner-committing driver scores; the score only grows when a chain banks. Like the campaign test's drifter it
+// lifts when the slide gets too big (flat out at full lock in the rain it just slides into the barriers)
 const r = R.newRace({ track: "kerbside", mode: "drift", laps: 2, weather: "rain" });
 const banks = [], lost = [];
-drive(r, 200, (rr) => { const a = R.aiInput(rr, rr.cars[0]); return { steer: Math.abs(a.steer) > 0.2 ? Math.sign(a.steer) : a.steer, thr: true, brk: false, nitro: false }; });
+drive(r, 200, (rr) => { const a = R.aiInput(rr, rr.cars[0]); return { steer: Math.abs(a.steer) > 0.2 ? Math.sign(a.steer) : a.steer, thr: rr.cars[0].slip < 160, brk: false, nitro: false }; });
 for (const e of r.events) { if (e.type === "drift-bank") banks.push(e.pts); if (e.type === "drift-lost") lost.push(e.pts); }
 console.log(JSON.stringify({ score: r.drift.score, banks: banks.reduce((a, b) => a + b, 0), n: banks.length, maxMult: Math.max(...r.events.filter((e) => e.type === "drift-bank").map((e) => e.mult)), done: r.cars[0].done }));""")
     assert r["done"] and r["score"] > 0 and r["score"] == r["banks"] and r["n"] > 3 and r["maxMult"] >= 2
