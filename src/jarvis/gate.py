@@ -45,6 +45,10 @@ SECURITY: dict[str, tuple[str, list[str]]] = {
     "Permission bypass": ("Every change passes the permission engine and, where needed, your approval", [
         "test_settle_steps::settling_from_the_phone_is_one_tap_once_signed_in",
         "test_board::saving_is_a_routine_change_that_asks_first_and_reading_does_not",
+        "test_evolution::only_you_can_decide_or_mark_and_the_order_is_enforced",
+        "test_evolution::the_laboratory_cannot_touch_its_own_limits",
+        "test_evolution::routes_are_mac_only_decisions_need_touch_id_and_a_phone_cannot_start_code",
+        "test_evolution::history_cannot_be_changed_or_deleted_and_is_searchable",
         "test_board::the_switch_is_mac_only_with_touch_id",
         "test_learn::autonomy_tiers_pauses_and_the_emergency_stop", "test_learn::autonomy_is_mac_only",
         "test_trial::trials_need_tier_6_from_the_terminal", "test_trial::refs_are_validated",
@@ -60,6 +64,7 @@ SECURITY: dict[str, tuple[str, list[str]]] = {
         "test_security_phase1::mac_check_calls_only_read_actions",
         "test_security_phase1::every_server_path_that_runs_a_tool_uses_the_gateway",
         "test_security_phase1::a_trial_runs_with_no_secrets_and_a_throwaway_home",
+        "test_security_phase1::lab_trials_really_receive_the_data_folder",
         "test_security_phase1::without_a_sandbox_trials_are_refused_unless_the_developer_flag_is_set",
         "test_security_phase1::the_macos_sandbox_rules_deny_network_writes_and_private_reads",
         "test_security_phase1::on_a_mac_the_suite_runs_inside_the_sandbox_or_not_at_all",
@@ -178,6 +183,8 @@ SECURITY: dict[str, tuple[str, list[str]]] = {
         "test_telemetry_evolution::network_check_returns_no_address",
         "test_telemetry_evolution::dashboard_state_carries_real_telemetry_evolution_and_model_timings"]),
     "Honest reporting": ("Failures and unverified results are reported as such", [
+        "test_evolution::one_good_run_is_not_a_winner", "test_evolution::a_package_needs_a_change_that_held_in_every_run",
+        "test_evolution::contests_use_the_same_criteria_and_name_no_winner_on_a_tie",
         "test_tasks::failed_verification_is_not_reported_as_complete", "test_tasks::rejection_fails_task_honestly",
         "test_mission_control::a_tool_that_returned_but_left_nothing_fails_the_mission",
         "test_mission_control::a_check_that_cannot_run_is_unconfirmed_never_verified",

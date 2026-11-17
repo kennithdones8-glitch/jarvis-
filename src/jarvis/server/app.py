@@ -1575,7 +1575,7 @@ class Dashboard:
                         "/static/avatar3d-worker.js", "/static/avatar3d-camera.js", "/static/avatar-presets.js",
                         "/static/avatar-events.js", "/static/avatar-sound.js",
                         "/static/avatar3d-transform.js", "/static/chess.js", "/static/chess-worker.js",
-                        "/static/games.js", "/static/games-worker.js", "/static/knowledge.js", "/static/racer.js", "/static/racer.css",
+                        "/static/games.js", "/static/games-worker.js", "/static/knowledge.js", "/static/lab.js", "/static/racer.js", "/static/racer.css",
                         "/static/racer-data.js", "/static/racer-career.js", "/static/racer-audio.js", "/static/racer-ui.js",
                         "/static/racer-render.js", "/static/racer-modes.js"):
             ctype = "text/javascript" if url.path.endswith(".js") else "text/css"
@@ -1690,6 +1690,8 @@ class Dashboard:
         if url.path == "/api/proposals":
             if time.monotonic() - self._proposals_checked > 600:  # look for new findings at most every 10 minutes
                 self.proposals.refresh()
+                from ..learn import evolution   # new opportunities join the evolution history (same "propose" autonomy)
+                evolution.opportunities(self.kernel, refresh=True)
                 self._proposals_checked = time.monotonic()
             return self._json(h, 200, {"proposals": self.proposals.list()})
         if url.path == "/api/learn":
@@ -1700,6 +1702,12 @@ class Dashboard:
                                        "adjustments": autopilot.adjustments(self.kernel),
                                        "experiments": analysis.Lab(self.kernel).list(), "kinds": analysis.KINDS,
                                        "discoveries": analysis.discover(self.kernel, self._discovery_facts())})
+        if url.path == "/api/evolution":   # the laboratory: opportunities, packages and the searchable history (read-only)
+            from ..learn import evolution
+            q = parse_qs(url.query).get("q", [""])[0][:120]
+            return self._json(h, 200, {"opportunities": evolution.opportunities(self.kernel)[:20],
+                                       "packages": evolution.packages(self.kernel),
+                                       "history": evolution.history(self.kernel, q=q, limit=60), "max_runs": evolution.MAX_RUNS})
         if url.path == "/api/learn/tournament":
             from ..learn import analysis
             return self._json(h, 200, analysis.tournament(self.kernel))
@@ -1786,7 +1794,7 @@ class Dashboard:
             actor = f"user:phone:{device['name']}"
             if any(re.fullmatch(p, path) for p in LOCAL_ONLY):
                 raise HttpError(403, "only possible from the Mac")
-            if path == "/api/experiments" and body.get("kind") in ("trial", "draft"):   # runs code: never from the phone
+            if path == "/api/experiments" and body.get("kind") in ("trial", "draft", "contest"):   # runs code: never from the phone
                 self.kernel.audit.record("device.denied", path=path, reason="change trials can only be started from the Mac")
                 raise HttpError(403, "change trials can only be started from the Mac")
             if path == "/api/stepup/options":
@@ -1955,13 +1963,42 @@ class Dashboard:
             from ..learn import analysis
             try:
                 kind = text("kind", 40)
-                if kind in ("trial", "draft") and not actor.startswith("user:dashboard"):   # second check: only the Mac's own dashboard
+                if kind in ("trial", "draft", "contest") and not actor.startswith("user:dashboard"):   # second check: only the Mac's own dashboard
                     raise HttpError(403, "change trials can only be started from the Mac")
+                runs = body.get("runs", 1)
                 return {"id": analysis.Lab(k).start(kind, by=actor, ref=body.get("ref") if isinstance(body.get("ref"), str) else None,
                                                     baseline=body.get("baseline") if isinstance(body.get("baseline"), str) else "HEAD",
-                                                    problem=body.get("problem") if isinstance(body.get("problem"), str) else None)}
+                                                    problem=body.get("problem") if isinstance(body.get("problem"), str) else None,
+                                                    runs=runs if isinstance(runs, int) and not isinstance(runs, bool) else 0,
+                                                    refs=body.get("refs") if isinstance(body.get("refs"), list) else None,
+                                                    opportunity=body.get("opportunity") if isinstance(body.get("opportunity"), str) else None)}
             except analysis.LabError as exc:
                 raise HttpError(409, str(exc)) from None
+        if path.startswith("/api/evolution/"):   # Mac only (LOCAL_ONLY). Nothing here changes JARVIS's code or settings.
+            from ..learn import evolution
+            op = path.rsplit("/", 1)[1]
+            try:
+                if op == "refresh":
+                    return {"opportunities": evolution.opportunities(k, refresh=True, by=actor)}
+                if op == "design":
+                    runs = body.get("runs", 3)
+                    return evolution.design(k, text("subject", 200), runs=runs if isinstance(runs, int) and not isinstance(runs, bool) else 3, by=actor)
+                if op == "package":
+                    return evolution.package(k, text("experiment", 80), by=actor)
+                seq = body.get("package")
+                if not isinstance(seq, int) or isinstance(seq, bool):
+                    raise HttpError(400, "'package' must be the package's number")
+                if op == "decide":      # Touch ID when set up (MAC_STEP_UP): your decision on a change to JARVIS itself
+                    evolution.decide(k, seq, text("decision", 20), by=actor)
+                elif op == "mark":
+                    evolution.mark(k, seq, text("what", 20), by=actor)
+                else:
+                    raise HttpError(404, "not found")
+                return {"packages": evolution.packages(k)}
+            except evolution.EvolutionError as exc:
+                raise HttpError(409, str(exc)) from None
+            except KeyError:
+                raise HttpError(404, "no such experiment or package") from None
         if path == "/api/command":   # a direct Mac command (Music, system), through the permission engine
             return self.mac_command(body)
         if path == "/api/route":   # which kind of message: rules, then a model on this Mac (never the cloud)

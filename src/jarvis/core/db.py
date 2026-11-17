@@ -384,6 +384,29 @@ MIGRATIONS: list[str] = [
     DELETE FROM file_index;
     DELETE FROM file_index_meta;
     """,
+    # v15: the evolution history (Evolution 4.0, Stage 5): one append-only line for every opportunity JARVIS found,
+    # every experiment design and result, every improvement package, and every decision you made about one. Like the
+    # audit log, a row can be added but never changed or removed (the database refuses), so a failed or rejected
+    # idea stays on the record. It holds names, counts and references only, never your own words. Experiments learn
+    # which opportunity they belong to and how many times each side was run.
+    """
+    CREATE TABLE evolution (
+        seq      INTEGER PRIMARY KEY AUTOINCREMENT,
+        ts       TEXT NOT NULL,
+        kind     TEXT NOT NULL CHECK (kind IN ('opportunity', 'design', 'experiment', 'package', 'decision', 'applied', 'rolled_back')),
+        subject  TEXT NOT NULL,
+        title    TEXT NOT NULL,
+        body     TEXT NOT NULL,
+        actor    TEXT NOT NULL
+    );
+    CREATE INDEX evolution_subject ON evolution(subject, seq);
+    CREATE TRIGGER evolution_append_only_update BEFORE UPDATE ON evolution
+    BEGIN SELECT RAISE(ABORT, 'the evolution history is append-only'); END;
+    CREATE TRIGGER evolution_append_only_delete BEFORE DELETE ON evolution
+    BEGIN SELECT RAISE(ABORT, 'the evolution history is append-only'); END;
+    ALTER TABLE experiments ADD COLUMN opportunity TEXT;
+    ALTER TABLE experiments ADD COLUMN runs INTEGER NOT NULL DEFAULT 1;
+    """,
 ]
 
 

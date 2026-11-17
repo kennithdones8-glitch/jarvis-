@@ -70,7 +70,7 @@ const b64u = {
 // which enforces it regardless of what this page does): releasing the emergency stop, changing or forgetting
 // memories, removing a phone, plus approving a high-risk action (risk tier 4).
 const FACE_ID = [/^\/api\/release$/, /^\/api\/memory\/conflicts\/resolve$/, /^\/api\/memory\/[\w-]+\/(delete|edit|privacy)$/, /^\/api\/devices\/[\w-]+\/revoke$/];
-const TOUCH_ID = [...FACE_ID, /^\/api\/update\/start$/, /^\/api\/settings\/(coding|files|backup-copy|stay-signed-in|play)$/, /^\/api\/devices\/pair$/, /^\/api\/touchid\/enroll\/options$/, /^\/api\/touchid\/[\w-]+\/remove$/];
+const TOUCH_ID = [...FACE_ID, /^\/api\/update\/start$/, /^\/api\/evolution\/decide$/, /^\/api\/settings\/(coding|files|backup-copy|stay-signed-in|play)$/, /^\/api\/devices\/pair$/, /^\/api\/touchid\/enroll\/options$/, /^\/api\/touchid\/[\w-]+\/remove$/];
 const HIGH_RISK = 4;
 const highRiskApproval = (path, body) => {
   const m = path.match(/^\/api\/approvals\/([\w-]+)$/);
@@ -2920,6 +2920,7 @@ async function loadEvolution() {
       h("div", { class: "row" }, PROJ_MODULES.map(([m, label]) => h("button", { class: "btn btn-sm", type: "button",
         onclick: () => { location.hash = "#/home"; setTimeout(() => openProjectionModule(m), 300); } }, label))),
       h("p", { class: "hl-sub" }, "Intensity, particles, animation, quality and the rest are under Projection controls in the focus view (click the avatar).")));
+  if (window.JarvisLab) JarvisLab.load();   // the Laboratory section (lab.js): opportunities, packages, history
 }
 const PROJ_MODULES = [["workflow", "Workflow map"], ["architecture", "Software architecture"], ["neural", "Knowledge network"], ["globe", "Globe"],
   ["data", "Data"], ["timeline", "Timeline"], ["security", "Security shield"], ["simulation", "Simulation"], ["research", "Research sources"]];

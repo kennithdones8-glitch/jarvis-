@@ -1707,3 +1707,14 @@ body[data-view="games"] .context-panel { display: none; }
 .know-private { color: var(--amber, #f2a33a); font-size: 12.5px; }
 .know-group summary { cursor: pointer; min-height: 28px; }
 .know-finding { margin: 6px 0 10px 10px; }
+
+/* Laboratory (Evolution page): opportunities, packages, history */
+.lab-list, .lab-history { list-style: none; margin: 0; padding: 0 0 0 10px; display: grid; gap: 12px; }
+.lab-list > li { border: 1px solid var(--gold-faint, rgba(255,255,255,.14)); padding: 10px 12px; display: grid; gap: 4px; overflow-wrap: anywhere; }
+.lab-list small, .lab-history small { color: var(--muted, #b9aa91); font-size: 12.5px; }
+.lab-design { border-top: 1px solid var(--gold-faint, rgba(255,255,255,.14)); margin-top: 6px; padding-top: 6px; font-size: 13.5px; }
+.lab-design ul { margin: 2px 0 8px; padding-left: 18px; } .lab-design p { margin: 4px 0; }
+.lab-warn { color: var(--amber, #f2a33a) !important; }
+.lab-history { gap: 4px; font-size: 13.5px; }
+.lab-q { width: 100%; margin: 4px 0 8px 10px; max-width: 420px; min-height: 36px; padding: 6px 10px; font: inherit; color: inherit;
+  background: rgba(0, 0, 0, .35); border: 1px solid var(--gold-faint, rgba(255,255,255,.2)); }

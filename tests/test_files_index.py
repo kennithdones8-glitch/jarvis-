@@ -29,7 +29,7 @@ def _seed(root):
 
 
 def test_schema_has_the_index():
-    assert SCHEMA_VERSION >= 14
+    assert SCHEMA_VERSION >= 15
 
 
 def test_off_by_default_and_only_you_turn_it_on(k, root):

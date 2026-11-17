@@ -134,8 +134,23 @@ def test_on_a_mac_the_suite_runs_inside_the_sandbox_or_not_at_all(tmp_path, monk
 
 
 def test_the_lab_passes_the_data_folder_to_trials():
+    """Every trial the Lab starts (single, repeated, drafted or a contest) goes through one call, and that call names
+    JARVIS's data folder so the sandbox denies it."""
     src = (SRC / "learn" / "analysis.py").read_text()
-    assert 'trial.run(args[0], args[1], work=Path(self.kernel.home) / "trials", data=Path(self.kernel.home))' in src
+    assert src.count("trial.run(") == 1                                            # one call site, in Lab._trials
+    assert 'home = Path(self.kernel.home)' in src
+    assert 'trial.run(cand, base, work=home / "trials", data=home,' in src
+
+
+def test_lab_trials_really_receive_the_data_folder(make_kernel, monkeypatch):
+    from jarvis.learn import analysis
+    k = make_kernel()
+    seen = []
+    monkeypatch.setattr(trial, "run", lambda cand, base, **kw: seen.append(kw) or {"ran": True})
+    analysis.Lab(k)._trials("HEAD", "HEAD", 3)
+    analysis.Lab(k)._trials("HEAD", "HEAD", 1, patch="x")
+    assert len(seen) == 4 and all(kw["data"] == k.home and kw["work"] == k.home / "trials" for kw in seen)
+    assert seen[-1]["patch"] == "x"
 
 
 # ---- 3. forgetting removes ratings and their comments ---------------------------------------------------------------

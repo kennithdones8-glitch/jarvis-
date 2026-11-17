@@ -2,6 +2,39 @@
 
 ## Unreleased — after 0.20.0 (Evolution 4.0, Stages 4–6; work branch `claude/funny-allen-ygy8kk`)
 
+### Stage 5 — Self-Evolution Laboratory (schema v15)
+
+JARVIS could already try a change in a sandbox and draft a fix. This adds the loop around it: find what's weak, design
+a fair test, judge it on repeated evidence, and hand you a package. It still never changes itself.
+
+- **Opportunities, ranked with the numbers shown.** From evidence JARVIS already has (tools that keep failing or
+  timing out, answers that fail their check, your ratings, benchmark drops, stuck missions). Each shows benefit,
+  confidence, complexity, risk and how reversible it is, and the formula for its priority.
+- **Experiment designs.** For any opportunity: problem, evidence, proposed solution, alternatives, what success
+  means, what could regress, the test plan, the budget (runs, time limit, no network, $0) and how to roll back.
+  Built by rules from the evidence, not by a model.
+- **One good run is not a winner.** Trials and drafted fixes can be run 1–5 times, each in fresh sandboxed copies. A
+  change "holds" only if every run agrees. A test that fails in some runs and not others (on either side) is
+  reported as flaky and gives no verdict.
+- **Contests.** Two or three candidate branches against the same baseline, the same number of runs, the same
+  criteria in a fixed order (holds; tests fixed in every run; suite time beyond a 10% margin). No winner on a tie.
+- **Improvement packages**, only from an experiment that held: the weakness, before and after, the evidence, a
+  second model's review, security implications (it names security-sensitive files), files, whether a database change
+  is involved, and the exact commands to apply and to roll back. Status: awaiting your decision → approved or
+  rejected → applied → rolled back.
+- **Only you decide.** Approving a package is Mac-only with Touch ID and changes nothing by itself. "I applied it" and
+  "I rolled it back" are notes you add; JARVIS never applies, commits, merges or pushes.
+- **Evolution history.** One searchable, append-only record of opportunities, designs, experiments (including failed
+  and flaky ones), packages and your decisions. The database refuses to change or delete a line. It holds names,
+  counts and references, not your words. A failed attempt lowers an idea's priority but keeps it.
+- **Guardrails, tested and in the release gate:** the laboratory writes only to its own history; it cannot touch the
+  autonomy, permission or approval tables; nobody but you can record a decision; a phone can't start anything that
+  runs code; everything still sits under autonomy levels 4–6, which are off unless you turn them on.
+- **v15 adds only:** the `evolution` table and two columns on `experiments`.
+- Not done here: experiments compare tests, the linter and suite time. They don't run the answer-quality benchmark
+  inside a trial, so a package says so. Trials still need your Mac's sandbox (`sandbox-exec`, which Apple has
+  deprecated but still ships).
+
 ### Stage 4 — Personal Knowledge Intelligence (schema v14)
 
 JARVIS's knowledge was in separate places that didn't know about each other. This connects them without copying

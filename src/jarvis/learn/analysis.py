@@ -81,6 +81,8 @@ KINDS = {
     "bench_compare": "Benchmark comparison: compare your two latest benchmark runs (results already on disk).",
     "trial": "Change trial (tier 6): run the full test suite and linter on a branch or commit in a throwaway copy of "
              "JARVIS and compare with your current code. Never merges or pushes.",
+    "contest": "Contest (tier 6): two or three candidate branches against the same baseline, each run several times "
+               "in the sandbox and judged on the same criteria. Names a winner only if one is strictly ahead.",
     "draft": "Draft a fix (tier 6): JARVIS writes a patch for a problem you describe (its own src/ and tests/ only), "
              "tests it in the sandbox against your current code, and a second model reviews it. Never applies it.",
 }
@@ -105,9 +107,15 @@ class Lab:
         return [{**dict(r), "results": json.loads(r["results"]) if r["results"] else None} for r in rows]
 
     def start(self, kind: str, *, by: str, background: bool = True, ref: str | None = None, baseline: str = "HEAD",
-              problem: str | None = None) -> str:
+              problem: str | None = None, runs: int = 1, refs: list[str] | None = None, opportunity: str | None = None) -> str:
+        """``runs``: how many times each side's suite is run (1–5). A change only "holds" when every run agrees.
+        ``refs``: the candidates of a contest. ``opportunity``: the evolution-history subject this tests."""
+        from .evolution import MAX_RUNS
         if kind not in KINDS:
             raise LabError("unknown experiment kind")
+        if not isinstance(runs, int) or isinstance(runs, bool) or not 1 <= runs <= MAX_RUNS:
+            raise LabError(f"runs must be a whole number from 1 to {MAX_RUNS}")
+        self._args = None
         if not Autonomy(self.kernel).can("experiment"):
             raise LabError("experiments are paused or not allowed (autonomy settings or the emergency stop)")
         if kind == "draft":
@@ -120,7 +128,23 @@ class Lab:
                 raise LabError(why)
             if not problem or len(problem.strip()) < 10:
                 raise LabError("describe the problem in a sentence or two")
-            self._args = (problem.strip()[:2000],)
+            self._args = (problem.strip()[:2000], runs)
+        if kind == "contest":
+            from . import trial
+            if not Autonomy(self.kernel).can("execute"):
+                raise LabError("contests need autonomy tier 6, which can only be switched on from the Mac's terminal "
+                               "(`jarvis autonomy enable 6`)")
+            if why := trial.available():
+                raise LabError(why)
+            names = [r for r in (refs or []) if isinstance(r, str)]
+            if not 2 <= len(names) <= 3 or len(set(names)) != len(names):
+                raise LabError("a contest needs two or three different candidates")
+            try:
+                for r in (*names, baseline):
+                    trial.resolve(r)
+            except trial.TrialError as exc:
+                raise LabError(str(exc)) from None
+            self._args = (tuple(names), baseline, runs)
         if kind == "trial":
             from . import trial
             if not Autonomy(self.kernel).can("execute"):
@@ -133,16 +157,17 @@ class Lab:
                 trial.resolve(baseline)
             except trial.TrialError as exc:
                 raise LabError(str(exc)) from None
-            self._args = (ref, baseline)
+            self._args = (ref, baseline, runs)
         if self.db.one("SELECT COUNT(*) FROM experiments WHERE state = 'running'")[0]:
             raise LabError("one experiment at a time: another one is running")
         spec = self._spec(kind, getattr(self, "_args", None))
         eid = new_id("exp")
         now = now_iso()
         with self.db.tx() as c:
-            c.execute("INSERT INTO experiments (id, kind, objective, hypothesis, baseline, criteria, environment, state, created_at, updated_at) "
-                      "VALUES (?,?,?,?,?,?,?, 'running', ?, ?)", (eid, kind, spec["objective"], spec["hypothesis"], spec["baseline"],
-                                                                   spec["criteria"], spec["environment"], now, now))
+            c.execute("INSERT INTO experiments (id, kind, objective, hypothesis, baseline, criteria, environment, state, created_at, "
+                      "updated_at, opportunity, runs) VALUES (?,?,?,?,?,?,?, 'running', ?, ?, ?, ?)",
+                      (eid, kind, spec["objective"], spec["hypothesis"], spec["baseline"], spec["criteria"], spec["environment"],
+                       now, now, (opportunity or None) and str(opportunity)[:200], runs))
         self.kernel.audit.record("lab.started", actor=by, experiment=eid, kind=kind)
         if background:
             threading.Thread(target=self._run, args=(eid, kind, getattr(self, "_args", None)), name=f"jarvis-lab-{eid}", daemon=True).start()
@@ -157,12 +182,19 @@ class Lab:
                     "baseline": "HEAD (your current committed code)",
                     "criteria": "Patch applies; no test newly failing; linter clean; a second model's review.",
                     "environment": "A throwaway copy in the hardened sandbox; the patch is never applied to your JARVIS."}
+        if kind == "contest":
+            names, base, runs = args
+            return {"objective": f"Find which of {', '.join(names)} is the better change, if any.",
+                    "hypothesis": "At least one candidate holds in every run, and one is strictly ahead of the others.",
+                    "baseline": f"{base} (committed code; the same for every candidate)",
+                    "criteria": f"Each candidate {runs} run(s): holds in every run; then tests fixed in every run; then suite time beyond a 10% margin.",
+                    "environment": "Throwaway git worktrees in the hardened sandbox, removed afterwards."}
         if kind == "trial":
-            ref, base = args
+            ref, base, runs = args
             return {"objective": f"Find out whether {ref} is safe to merge.",
                     "hypothesis": f"{ref} passes every test that passes on {base}, and the linter stays clean.",
                     "baseline": f"{base} (committed code; uncommitted edits are not included)",
-                    "criteria": "No test newly failing, no errors, linter clean.",
+                    "criteria": "No test newly failing, no errors, linter clean" + (f", in every one of {runs} runs." if runs > 1 else "."),
                     "environment": "Two throwaway git worktrees under JARVIS's data folder, removed afterwards."}
         if kind == "replay":
             return {"objective": "Find which model gives the most reliable chat answers on your own recorded questions.",
@@ -182,6 +214,33 @@ class Lab:
             c.execute("UPDATE experiments SET state = ?, results = ?, recommendation = ?, updated_at = ? WHERE id = ?",
                       (state, json.dumps(results, default=str)[:20000], recommendation, now_iso(), eid))
         self.kernel.audit.record("lab.finished", experiment=eid, state=state)
+        if (ev := results.get("evaluation")) is not None:   # change experiments join the evolution history, pass or fail
+            from . import evolution
+            row = self.db.one("SELECT kind, opportunity, runs FROM experiments WHERE id = ?", (eid,))
+            evolution.record(self.kernel, "experiment", row["opportunity"] or f"experiment:{eid}",
+                             f"{row['kind'].capitalize()} experiment: {ev['verdict']}",
+                             {"experiment": eid, "kind": row["kind"], "verdict": ev["verdict"], "why": ev["why"], "runs": ev["runs"],
+                              "regressions": len(ev.get("regressions", [])), "flaky": len(ev.get("flaky", []) + ev.get("flaky_on_baseline", [])),
+                              "winner": results.get("winner_ref")}, actor="system:lab")
+
+    def _trials(self, cand: str, base: str, runs: int, patch: str | None = None) -> list[dict[str, Any]]:
+        """The same trial ``runs`` times, each in its own fresh pair of worktrees (so one run can't help another)."""
+        from . import trial
+        home = Path(self.kernel.home)
+        return [trial.run(cand, base, work=home / "trials", data=home, **({"patch": patch} if patch is not None else {}))
+                for _ in range(runs)]
+
+    @staticmethod
+    def _verdict_text(ev: dict[str, Any], what: str) -> str:
+        tail = " JARVIS never merges, applies or pushes: that stays your decision."
+        if ev["verdict"] == "holds":
+            fixed = f" It fixes {len(ev['fixed_every_run'])} failing test(s) in every run." if ev["fixed_every_run"] else ""
+            return f"{what} holds: {ev['why']}.{fixed} You can open an improvement package for it.{tail}"
+        if ev["verdict"] == "flaky":
+            return f"No verdict on {what}: {ev['why']}. Flaky: {', '.join((ev['flaky'] + ev['flaky_on_baseline'])[:3])}."
+        if ev["verdict"] == "fails":
+            return f"Don't use {what} yet: {ev['why']}" + (f" ({', '.join(ev['regressions'][:3])})." if ev["regressions"] else ".")
+        return f"{what}: {ev['why']}."
 
     def _run(self, eid: str, kind: str, args: tuple | None = None) -> None:
         try:
@@ -190,21 +249,42 @@ class Lab:
                 d = drafts.draft(self.kernel.models, args[0])
                 path = drafts.save(self.kernel.home, eid, d["patch"])
                 review = drafts.code_review(self.kernel.models, d["problem"], d["patch"], author=d["model"])
+                from . import evolution
                 try:
-                    r = trial.run("HEAD", "HEAD", work=Path(self.kernel.home) / "trials", data=Path(self.kernel.home),
-                                  patch=d["patch"])
+                    all_runs = self._trials("HEAD", "HEAD", args[1], patch=d["patch"])
                     err = None
                 except trial.TrialError as exc:
-                    r, err = None, str(exc)
+                    all_runs, err = [], str(exc)
+                r = all_runs[0] if all_runs else None
+                ev = evolution.evaluate(all_runs)
                 results = {"draft": {k: d[k] for k in ("picked", "files", "sensitive", "model", "sha256")},
-                           "patch": d["patch"][:12000], "patch_file": str(path), "review": review, "trial": r}
-                ok = bool(r and r["ok"])
+                           "patch": d["patch"][:12000], "patch_file": str(path), "review": review, "trial": r,
+                           "runs": [{k: x[k] for k in ("newly_failing", "newly_passing", "ok", "ran")} for x in all_runs], "evaluation": ev}
+                ok = ev["verdict"] == "holds"
+                note = "" if len(all_runs) <= 1 else f" Across {len(all_runs)} runs: {ev['why']}."
                 return self._finish(eid, "done" if ok else "failed", results,
-                                    drafts.recommendation(r, review, d, path, error=err))
+                                    drafts.recommendation(r, review, d, path, error=err) + note)
             if kind == "trial":
-                from . import trial
-                r = trial.run(args[0], args[1], work=Path(self.kernel.home) / "trials", data=Path(self.kernel.home))
-                return self._finish(eid, "done" if r["ok"] else "failed", r, trial.recommendation(r))
+                from . import evolution, trial
+                all_runs = self._trials(args[0], args[1], args[2])
+                ev = evolution.evaluate(all_runs)
+                r = {**all_runs[0], "runs": all_runs if len(all_runs) > 1 else [all_runs[0]], "evaluation": ev,
+                     "files": _changed_files(args[1], args[0])}
+                text = trial.recommendation(all_runs[0]) if len(all_runs) == 1 else self._verdict_text(ev, args[0])
+                return self._finish(eid, "done" if ev["verdict"] == "holds" else "failed", r, text)
+            if kind == "contest":
+                from . import evolution
+                names, base, runs = args
+                evs = {n: evolution.evaluate(self._trials(n, base, runs)) for n in names}
+                cmp_ = evolution.compare(evs)
+                win = cmp_["winner"]
+                ev = evs[win] if win else {"verdict": "fails" if all(e["verdict"] == "fails" for e in evs.values()) else "flaky",
+                                           "why": cmp_["why"], "runs": runs, "regressions": [], "flaky": [], "flaky_on_baseline": []}
+                results = {"candidates": evs, "comparison": cmp_, "winner_ref": win, "evaluation": ev,
+                           "files": _changed_files(base, win) if win else []}
+                return self._finish(eid, "done" if win else "failed", results,
+                                    (f"{win} is ahead: {cmp_['why']}. You can open an improvement package for it." if win else
+                                     f"No winner: {cmp_['why']}.") + " JARVIS never merges or pushes.")
             if kind == "replay":
                 from . import Pipeline
                 Pipeline(self.kernel).ingest()   # bring outcomes up to date with the audit log first
@@ -239,6 +319,14 @@ class Lab:
 
 
 # ---- capability discovery -------------------------------------------------------------------------------------------
+def _changed_files(base: str, cand: str) -> list[str]:
+    from . import trial
+    try:
+        return trial._git("diff", "--name-only", f"{base}...{cand}").splitlines()[:200]
+    except trial.TrialError:
+        return []
+
+
 def discover(kernel, facts: dict[str, Any] | None = None) -> list[dict[str, Any]]:
     """What JARVIS could already do here but doesn't use. Recommendations only: nothing is installed or switched on."""
     cfg = kernel.model_config
