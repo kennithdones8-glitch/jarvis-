@@ -19,9 +19,16 @@ from typing import Any, Callable
 Result = tuple[bool | None, str]
 
 
+# A hyphen inside a word is spelling, not meaning: "stand-up" is the same word as "standup", "e-mail" as "email".
+# Removed on both sides (the answer and the expected words), so it can't make a check stricter or looser in any other
+# way. Dashes between numbers ("09:00–09:30") and hyphens next to spaces are left alone. Owner-approved, 2026-11-19:
+# planning-free failed 4/5 on answers that said "the stand-up meeting at 09:00" for the event "Standup".
+_IN_WORD_HYPHEN = re.compile(r"(?<=[^\W\d_])[-\u2010\u2011](?=[^\W\d_])")
+
+
 def norm(text: str) -> str:
     text = (text or "").replace("\u2019", "'").replace("\u2018", "'").replace("\u201c", '"').replace("\u201d", '"')
-    return " ".join(text.lower().split())
+    return _IN_WORD_HYPHEN.sub("", " ".join(text.lower().split()))
 
 
 def _contains_all(o: dict, c: dict) -> Result:

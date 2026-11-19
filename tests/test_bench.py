@@ -483,3 +483,16 @@ def test_compare_notes_a_busy_run(tmp_path):
     (b / "results.json").write_text(json.dumps(data))
     text = as_text(compare(load(a), load(b)))
     assert "the Mac was busy during 2-b" in text and "1-a" not in text.split("Note:")[1]
+
+
+def test_a_hyphen_inside_a_word_is_spelling_not_meaning():
+    # Real case (planning-free, 4/5 failed): "the stand-up meeting at 09:00" for the calendar event "Standup".
+    from jarvis.bench.scoring import CHECKS
+    o = {"answer": "Your first commitment tomorrow is the stand-up meeting at 09:00. You are free."}
+    assert CHECKS["contains_all"](o, {"values": ["standup"]})[0] is True
+    assert CHECKS["contains_any"]({"answer": "You're double-booked"}, {"values": ["double-booked"]})[0] is True
+    assert CHECKS["not_contains"]({"answer": "Re-book the dentist"}, {"values": ["rebook"]})[0] is False  # both ways
+    # nothing else gets looser: numbers, dashes between times and spaced hyphens stay as they were
+    assert CHECKS["contains_all"]({"answer": "09:00–09:30"}, {"values": ["0900"]})[0] is False
+    assert CHECKS["contains_all"]({"answer": "well - known"}, {"values": ["wellknown"]})[0] is False
+    assert CHECKS["contains_all"]({"answer": "stand up"}, {"values": ["standup"]})[0] is False

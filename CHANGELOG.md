@@ -1,5 +1,16 @@
 # Changelog
 
+
+## Unreleased (branch `bench-hyphen-v1`): benchmark text checks ignore a hyphen inside a word
+
+Owner-approved, 19 Nov. planning-free failed 4 of 5 runs on `made-page-v1` with right answers ("the stand-up
+meeting at 09:00"): the check wanted the word "standup". Text checks (contains, contains-any, not-contains,
+file-contains, Mac-call titles) now drop a hyphen between two letters on both sides, so "stand-up" equals "standup"
+and "e-mail" equals "email". Nothing else changes: "stand up" with a space still differs, and dashes between numbers
+or times and hyphens with spaces around them are untouched. Only the benchmark's scoring changed, not JARVIS. Older
+runs are judged the same way with `jarvis bench rescore RUN_DIR` (writes `results.rescored.json`, never changes the
+original). Then use `bench compare --rescored`.
+
 ## Unreleased — after 0.20.0 (Evolution 4.0, Stages 4–6; work branch `claude/funny-allen-ygy8kk`)
 
 ### Stage 5 — Self-Evolution Laboratory (schema v15)
