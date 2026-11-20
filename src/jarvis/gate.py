@@ -115,6 +115,9 @@ SECURITY: dict[str, tuple[str, list[str]]] = {
         "test_remote::push_endpoint_allowlist", "test_proactive::notification_links_stay_inside_jarvis",
         "test_dashboard::only_loopback"]),
     "Corrupted or inconsistent state": ("Damage is detected and reported, never silently trusted", [
+        "test_no_data_commands::gate_leaves_an_older_data_folder_as_it_is",
+        "test_no_data_commands::drill_on_an_older_data_folder_runs_but_records_nothing",
+        "test_no_data_commands::bench_reports_and_comparisons_dont_open_data",
         "test_tasks::corrupt_checkpoint_skipped", "test_tasks::invalid_transitions_rejected",
         "test_security_phase1::contained_run_stops_the_whole_group_on_the_time_limit",
         "test_security_phase1::contained_run_limits_file_size_and_the_trial_folder",

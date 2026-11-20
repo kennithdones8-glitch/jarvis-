@@ -1,6 +1,23 @@
 # Changelog
 
 
+
+## Unreleased (branch `safe-upgrade-v1`): commands that don't need your data never open it
+
+Owner-approved, 20 Nov. On 16 Nov, `jarvis gate` was run in the Projects-page branch's folder without `--home`. It
+opened the real data folder, and opening the data with a newer JARVIS upgrades its database: v12 became v13, which
+the installed v12 code then refused to open. (The usual encrypted backup was made first, in
+`backups/before-upgrade/`.)
+
+- `gate` no longer opens any data folder, and doesn't even create one.
+- `bench list | compare | rescore | report | baseline | score-baseline` read results files only.
+- `drill` runs its drills on throwaway copies as before. It notes a full run for the reliability milestone only when
+  your data is already at this code's version. Otherwise it says so and leaves the data as it is.
+- When the data is newer than the code, the error now names the backup made just before that upgrade (and says to
+  ask before restoring it).
+- Tests: `tests/test_no_data_commands.py` (6; 5 fail on the old code). Three of them are gate security items
+  (Corrupted or inconsistent state).
+
 ## Unreleased (branch `bench-hyphen-v1`): benchmark text checks ignore a hyphen inside a word
 
 Owner-approved, 19 Nov. planning-free failed 4 of 5 runs on `made-page-v1` with right answers ("the stand-up

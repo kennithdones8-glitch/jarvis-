@@ -170,6 +170,19 @@ def main(argv: list[str] | None = None) -> int:
         if responding(args.port):  # before opening the data: a command that does nothing changes nothing
             print(f"JARVIS is already running on port {args.port} (the background service?). Open it with `jarvis open`.")
             return 0
+    # Commands that don't use your data never open it: opening a data folder with a different version of JARVIS
+    # upgrades its database (real case, 16 Nov: `jarvis gate` in a branch's folder upgraded the real data v12 -> v13).
+    if args.cmd == "gate":
+        from . import gate
+
+        print("Running the full test suite and linter (about a minute)…", file=sys.stderr)
+        result = gate.run()
+        print(gate.as_json(result) if args.json else gate.report(result))
+        return 0 if result.passed else 1
+    if args.cmd == "bench" and args.op in BENCH_WITHOUT_DATA:
+        return _bench(None, args)
+    if args.cmd == "drill":
+        return _drill(args)
     try:
         kernel = Kernel(args.home)
     except Exception as exc:  # settings or database unreadable: say which file, never a traceback
@@ -257,24 +270,6 @@ def main(argv: list[str] | None = None) -> int:
 
             t = flight.timeline(kernel, args.task_id)
             print(json.dumps(t, indent=2, default=str) if args.json else flight.as_text(t))
-        elif args.cmd == "drill":
-            from . import drill
-
-            print("Running recovery drills on a throwaway JARVIS (your real data is not touched)…", file=sys.stderr)
-            results = drill.run(args.only or None)
-            print(drill.as_json(results) if args.json else drill.report(results))
-            ok = bool(results) and all(r.passed for r in results)
-            if not args.only:   # a full run counts toward the projection's reliability milestone
-                from .evolution import record_check
-                record_check(kernel, "drill", ok)
-            return 0 if ok else 1
-        elif args.cmd == "gate":
-            from . import gate
-
-            print("Running the full test suite and linter (about a minute)…", file=sys.stderr)
-            result = gate.run()
-            print(gate.as_json(result) if args.json else gate.report(result))
-            return 0 if result.passed else 1
         elif args.cmd == "bench":
             return _bench(kernel, args)
         elif args.cmd == "mac":
@@ -407,7 +402,11 @@ def _startup_problem(exc: Exception, home) -> str:
     if isinstance(exc, UpgradeBlocked):
         return f"error: {exc}"
     if isinstance(exc, SchemaTooNew):
-        return f"error: {exc}. This copy of JARVIS is older than your data: run `git pull && uv sync`."
+        from .core.kernel import UPGRADE_BACKUPS
+        saved = sorted((folder / "backups" / UPGRADE_BACKUPS).glob("*.jbak"))
+        back = (f"\nIf that upgrade was a mistake (e.g. a branch opened your data), the backup made just before it is "
+                f"{saved[-1]}: ask before restoring it.") if saved else ""
+        return f"error: {exc}. This copy of JARVIS is older than your data: run `git pull && uv sync`.{back}"
     if isinstance(exc, sqlite3.Error):
         return (f"error: JARVIS's database in {folder} couldn't be opened ({exc}). If another JARVIS is starting up, "
                 "wait a moment and try again; otherwise restore a backup (`jarvis backup list`).")
@@ -909,14 +908,47 @@ def _proposals(kernel: Kernel, args) -> int:
     return 0
 
 
-def _bench(kernel: Kernel, args) -> int:
+BENCH_WITHOUT_DATA = ("list", "compare", "rescore", "report", "baseline", "score-baseline")
+
+
+def _data_home(home) -> Path:
+    from .core.kernel import default_home
+    return Path(home).expanduser() if home else default_home()
+
+
+def _drill(args) -> int:
+    """Drills run on throwaway JARVIS copies. A full run is noted for the reliability milestone only when your data is
+    already at this code's version: recording it must never be what upgrades your database."""
+    from . import drill
+    from .core.db import SCHEMA_VERSION, schema_of
+
+    print("Running recovery drills on a throwaway JARVIS (your real data is not touched)…", file=sys.stderr)
+    results = drill.run(args.only or None)
+    print(drill.as_json(results) if args.json else drill.report(results))
+    ok = bool(results) and all(r.passed for r in results)
+    if not args.only:   # a full run counts toward the projection's reliability milestone
+        db = _data_home(args.home) / "jarvis.db"
+        if schema_of(db) == SCHEMA_VERSION:
+            from .evolution import record_check
+            kernel = Kernel(args.home)
+            try:
+                record_check(kernel, "drill", ok)
+            finally:
+                kernel.close()
+        elif db.exists():
+            print(f"(Not noted in your JARVIS: its data is at v{schema_of(db)}, this code is v{SCHEMA_VERSION}. "
+                  "Your data was left as it is.)", file=sys.stderr)
+    return 0 if ok else 1
+
+
+def _bench(kernel: Kernel | None, args) -> int:
     import json as _json
 
     from .bench import TaskError, load_tasks
     from .bench.baseline import score_file, template
     from .bench.runner import BenchError, report, run_suite, summary_part
 
-    out = kernel.home / "bench-results"
+    out = (kernel.home if kernel is not None else _data_home(args.home)) / "bench-results"
     try:
         if args.op == "list":
             for t in load_tasks(which=args.set):
