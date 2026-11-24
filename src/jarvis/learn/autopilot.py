@@ -16,6 +16,12 @@
 
 It never changes code, configuration files, permissions or money, and stops with tier 7 off, experiments paused, or
 the emergency stop on.
+
+**Propose-only (owner's rule, 24 Nov 2026):** JARVIS doesn't change how it routes on its own. Items 2 and 3 *suggest*
+an adjustment; it counts only after you approve it (Evolution center), and one you reject is never suggested again for
+the same lesson. When the evidence behind an approved adjustment fades, JARVIS suggests undoing it but leaves it in
+place until you do. A suggestion nobody approved yet simply lapses. The nightly self-checks stay automatic: they run
+in the sandbox and change nothing.
 """
 
 from __future__ import annotations
@@ -76,14 +82,13 @@ def act_on_lessons(kernel) -> list[dict[str, Any]]:
         if r["key"] in known:
             continue
         model = r["subject"].split("/", 1)[-1]
-        adj = {"lesson": r["key"], "model": model, "bonus": BONUS[r["polarity"]], "active": True, "why": r["statement"],
-               "at": now_iso()}
+        adj = {"lesson": r["key"], "model": model, "bonus": BONUS[r["polarity"]], "active": False, "proposed": True,
+               "why": r["statement"], "at": now_iso()}
         have.append(adj)
         added.append(adj)
-        kernel.audit.record("autopilot.adjust", model=model, bonus=adj["bonus"], lesson=r["key"])
+        kernel.audit.record("autopilot.propose", model=model, bonus=adj["bonus"], lesson=r["key"])
     if added:
         _put(kernel.db, KEY, json.dumps(have))
-        apply_to_router(kernel)
     return added
 
 
@@ -100,27 +105,57 @@ def act_on_tournament(kernel) -> list[dict[str, Any]]:
     if rec:
         (best, nb), (worst, nw) = list(rec["evidence"].items())[0], list(rec["evidence"].items())[1]
         wanted = {f"tournament:best:{best}": (best, BONUS[1], nb), f"tournament:worst:{worst}": (worst, BONUS[-1], nw)}
-    for a in have:   # the evidence no longer shows this gap: withdraw (not an owner undo, so it may return later)
-        if a["lesson"].startswith("tournament:") and a["active"] and a["lesson"] not in wanted:
-            a["active"], a["withdrawn_at"] = False, now_iso()
+    for a in have:   # the evidence no longer shows this gap (not an owner undo, so it may be suggested again later)
+        if not a["lesson"].startswith("tournament:") or a["lesson"] in wanted:
+            continue
+        if a.get("proposed"):          # never approved: the suggestion lapses
+            a["proposed"], a["withdrawn_at"] = False, now_iso()
             changed.append(a)
             kernel.audit.record("autopilot.withdraw", model=a["model"], lesson=a["lesson"])
+        elif a["active"] and not a.get("withdraw_suggested"):   # approved by you: suggest undoing, change nothing
+            a["withdraw_suggested"] = now_iso()
+            changed.append(a)
+            kernel.audit.record("autopilot.suggest_undo", model=a["model"], lesson=a["lesson"])
     known = {a["lesson"]: a for a in have}
     for key, (model, bonus, n) in wanted.items():
         old = known.get(key)
-        if old and (old["active"] or old.get("undone_by")):
-            continue   # already applied, or you undid it: never re-applied
-        adj = {"lesson": key, "model": model.split("/", 1)[-1], "bonus": bonus, "active": True, "why": rec["text"],
-               "evidence": {"answers_checked": n, "source": "intelligence tournament"}, "at": now_iso()}
+        if old and (old["active"] or old.get("proposed") or old.get("undone_by") or old.get("rejected_by")):
+            continue   # already suggested or approved, or you undid or rejected it: never suggested again
+        adj = {"lesson": key, "model": model.split("/", 1)[-1], "bonus": bonus, "active": False, "proposed": True,
+               "why": rec["text"], "evidence": {"answers_checked": n, "source": "intelligence tournament"}, "at": now_iso()}
         if old:
             have.remove(old)
         have.append(adj)
         changed.append(adj)
-        kernel.audit.record("autopilot.adjust", model=adj["model"], bonus=bonus, lesson=key)
+        kernel.audit.record("autopilot.propose", model=adj["model"], bonus=bonus, lesson=key)
     if changed:
         _put(kernel.db, KEY, json.dumps(have))
-        apply_to_router(kernel)
     return changed
+
+
+def approve(kernel, lesson: str, *, by: str) -> None:
+    """You approve a suggested adjustment: only now does it change how routing ranks models."""
+    if not by.startswith("user"):
+        raise PermissionError("only you can approve a routing adjustment")
+    have = adjustments(kernel)
+    hit = next((a for a in have if a["lesson"] == lesson and a.get("proposed")), None)
+    if hit is None:
+        raise KeyError("no such suggestion")
+    hit.update(proposed=False, active=True, approved_by=by, approved_at=now_iso())
+    _put(kernel.db, KEY, json.dumps(have))
+    apply_to_router(kernel)
+    kernel.audit.record("autopilot.adjust", actor=by, model=hit["model"], bonus=hit["bonus"], lesson=lesson)
+
+
+def reject(kernel, lesson: str, *, by: str) -> None:
+    """You reject a suggestion: nothing changes, and it isn't suggested again for the same lesson."""
+    have = adjustments(kernel)
+    hit = next((a for a in have if a["lesson"] == lesson and a.get("proposed")), None)
+    if hit is None:
+        raise KeyError("no such suggestion")
+    hit.update(proposed=False, rejected_by=by, rejected_at=now_iso())
+    _put(kernel.db, KEY, json.dumps(have))
+    kernel.audit.record("autopilot.reject", actor=by, model=hit["model"], lesson=lesson)
 
 
 def undo(kernel, lesson: str, *, by: str) -> None:
@@ -158,8 +193,15 @@ def digest(kernel, *, hours: int = 24) -> list[str]:
     out = []
     for e in kernel.db.query("SELECT event, payload FROM audit WHERE ts >= ? AND event LIKE 'autopilot.%' ORDER BY seq", (since,)):
         p = json.loads(e["payload"])
-        if e["event"] == "autopilot.adjust":
-            out.append(f"Routing: {'favouring' if p['bonus'] > 0 else 'ranking down'} {p['model']} (from what it learned). Undo in the Evolution center.")
+        if e["event"] == "autopilot.propose":
+            out.append(f"Suggestion: {'favour' if p['bonus'] > 0 else 'rank down'} {p['model']} (from what it learned). "
+                       "Nothing changes unless you approve it in the Evolution center.")
+        elif e["event"] == "autopilot.adjust":
+            out.append(f"Routing: you approved {'favouring' if p['bonus'] > 0 else 'ranking down'} {p['model']}. Undo in the Evolution center.")
+        elif e["event"] == "autopilot.reject":
+            out.append(f"You rejected a suggestion about {p['model']}.")
+        elif e["event"] == "autopilot.suggest_undo":
+            out.append(f"Suggestion: undo the adjustment for {p['model']} (the evidence no longer supports it). It stays until you do.")
         elif e["event"] == "autopilot.selfcheck":
             for x in kernel.db.query(f"SELECT kind, state, recommendation FROM experiments WHERE id IN ({','.join('?' * len(p['experiments']))})",
                                      tuple(p["experiments"])) if p["experiments"] else []:
@@ -167,5 +209,5 @@ def digest(kernel, *, hours: int = 24) -> list[str]:
         elif e["event"] == "autopilot.undo":
             out.append("You undid a routing adjustment.")
         elif e["event"] == "autopilot.withdraw":
-            out.append(f"Routing: withdrew the adjustment for {p['model']} (the evidence no longer supports it).")
+            out.append(f"Withdrew the suggestion about {p['model']} (the evidence no longer supports it).")
     return out

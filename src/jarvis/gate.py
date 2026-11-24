@@ -45,6 +45,9 @@ SECURITY: dict[str, tuple[str, list[str]]] = {
     "Permission bypass": ("Every change passes the permission engine and, where needed, your approval", [
         "test_settle_steps::settling_from_the_phone_is_one_tap_once_signed_in",
         "test_board::saving_is_a_routine_change_that_asks_first_and_reading_does_not",
+        "test_autopilot::strong_lessons_only_suggest_until_you_approve_and_can_be_undone_for_good",
+        "test_autopilot::a_rejected_suggestion_changes_nothing_and_never_comes_back",
+        "test_intelligence_wiring::an_unapproved_tournament_suggestion_lapses_when_the_gap_closes",
         "test_evolution::only_you_can_decide_or_mark_and_the_order_is_enforced",
         "test_evolution::the_laboratory_cannot_touch_its_own_limits",
         "test_evolution::routes_are_mac_only_decisions_need_touch_id_and_a_phone_cannot_start_code",

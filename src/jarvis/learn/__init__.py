@@ -37,8 +37,9 @@ TIERS = {
     5: ("Propose", "Turn findings into improvement proposals for you to approve or reject."),
     6: ("Approved execution", "Try a change you name (a branch or commit) in a throwaway copy of JARVIS: run every test and the "
                               "linter there and compare with your current code. Never merges, pushes or changes the running code."),
-    7: ("Verified operation", "On its own, always: nightly sandboxed self-checks, and small, undoable routing nudges from "
-                              "well-supported lessons (only among models already allowed). Reported in the morning briefing."),
+    7: ("Verified operation", "On its own: nightly sandboxed self-checks (they change nothing). From well-supported lessons it "
+                              "suggests small routing nudges (only among models already allowed); each counts only after you "
+                              "approve it. Reported in the morning briefing."),
 }
 DEFAULT_TIERS = {1: True, 2: True, 3: True, 4: True, 5: True, 6: False, 7: False}
 PAUSES = ("learning", "experiments", "initiative")

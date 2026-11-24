@@ -2,6 +2,8 @@
 
 from datetime import datetime
 
+import pytest
+
 from test_learn import replies
 from test_models import model_kernel, servers  # noqa: F401 - fixtures
 
@@ -23,16 +25,22 @@ def test_nothing_happens_without_tier_7(make_kernel):
     assert autopilot.nightly(k, now=datetime(2026, 1, 1, 4).astimezone()) == []
 
 
-def test_strong_lessons_nudge_routing_and_can_be_undone_for_good(make_kernel):
+def test_strong_lessons_only_suggest_until_you_approve_and_can_be_undone_for_good(make_kernel):
     k = make_kernel()
     tier7(k)
     replies(k, "haiku", 8, still=1)
     Pipeline(k).run()
     [adj] = autopilot.act_on_lessons(k)
-    assert adj["model"] == "haiku" and adj["bonus"] == -3.0
+    assert adj["model"] == "haiku" and adj["bonus"] == -3.0 and adj["proposed"] and not adj["active"]
     autopilot.apply_to_router(k)
+    assert k.models.router.adjust == {} and autopilot.router_bonus(k) == {}        # a suggestion changes nothing
+    assert any(line.startswith("Suggestion: rank down haiku") for line in autopilot.digest(k))
+    assert autopilot.act_on_lessons(k) == []                                        # suggested once, not again
+    with pytest.raises(PermissionError):
+        autopilot.approve(k, adj["lesson"], by="jarvis:autopilot")                  # JARVIS can't approve itself
+    autopilot.approve(k, adj["lesson"], by="user:dashboard")
     assert k.models.router.adjust == {"haiku": -3.0}
-    autopilot.undo(k, adj["lesson"], by="t")
+    autopilot.undo(k, adj["lesson"], by="user:dashboard")
     assert k.models.router.adjust == {} and autopilot.act_on_lessons(k) == []      # never re-applied for that lesson
     assert "You undid a routing adjustment." in autopilot.digest(k)
     k.killswitch.engage(by="t", reason="x")
@@ -66,3 +74,31 @@ def test_nightly_self_checks_run_once_a_day_after_3am(make_kernel):
     assert set(states) == {"replay", "drill", "bench_compare"} and "running" not in states.values()
     assert autopilot.nightly(k, now=datetime(2026, 1, 1, 23).astimezone()) == []     # once a day
     assert any(line.startswith("Self-check drill") for line in autopilot.digest(k, hours=24 * 365 * 10))
+
+
+def test_a_rejected_suggestion_changes_nothing_and_never_comes_back(make_kernel):
+    k = make_kernel()
+    tier7(k)
+    replies(k, "haiku", 8, still=1)
+    Pipeline(k).run()
+    [adj] = autopilot.act_on_lessons(k)
+    autopilot.reject(k, adj["lesson"], by="user:dashboard")
+    assert autopilot.router_bonus(k) == {} and autopilot.act_on_lessons(k) == []
+    with pytest.raises(KeyError):
+        autopilot.approve(k, adj["lesson"], by="user:dashboard")                  # a rejected one can't be approved later
+
+
+def test_the_dashboard_approves_and_rejects_only_real_suggestions(dash):
+    import json
+
+    from test_dashboard import call
+    d, *_ = dash
+    k = d.kernel
+    tier7(k)
+    autopilot._put(k.db, autopilot.KEY, json.dumps([
+        {"lesson": "reply-quality:a", "model": "a:7b", "bonus": 2.0, "active": False, "proposed": True, "why": "x", "at": "t"},
+        {"lesson": "reply-quality:b", "model": "b:7b", "bonus": -3.0, "active": False, "proposed": True, "why": "y", "at": "t"}]))
+    assert call(d, "/api/adjustments/approve", {"lesson": "nope"})[0] == 404
+    assert call(d, "/api/adjustments/approve", {"lesson": "reply-quality:a"})[0] == 200
+    assert call(d, "/api/adjustments/reject", {"lesson": "reply-quality:b"})[0] == 200
+    assert autopilot.router_bonus(k) == {"a:7b": 2.0}

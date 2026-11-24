@@ -2,6 +2,23 @@
 
 
 
+
+## Unreleased (branch `tier7-propose-v1`): tier 7 is propose-only
+
+Owner-approved, 24 Nov. This follows the owner's rule: every change to how JARVIS behaves is approved first.
+
+- Tier 7 no longer changes routing on its own. A strong lesson, or a clear gap in the intelligence tournament, now
+  produces a **suggestion** in the Evolution center, with **Approve** and **Reject**. The router only uses approved
+  adjustments.
+- Only you can approve; JARVIS can't approve its own suggestions. A rejected suggestion is never made again for the
+  same lesson.
+- When the evidence fades, an unapproved suggestion lapses. An approved adjustment stays, and JARVIS suggests undoing
+  it, until you press **Undo**.
+- The nightly sandboxed self-checks stay automatic; they change nothing.
+- The morning briefing lists suggestions, approvals, rejections and suggested undos.
+- Tests: updated `test_autopilot.py` and `test_intelligence_wiring.py`, and added 3 new tests. The new tests are gate
+  security items (Permission bypass).
+
 ## Unreleased (branch `safe-upgrade-v1`): commands that don't need your data never open it
 
 Owner-approved, 20 Nov. On 16 Nov, `jarvis gate` was run in the Projects-page branch's folder without `--home`. It

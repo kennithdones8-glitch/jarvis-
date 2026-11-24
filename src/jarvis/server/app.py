@@ -1959,6 +1959,13 @@ class Dashboard:
             from ..learn import autopilot
             autopilot.undo(k, text("lesson", 200), by=actor)
             return {"adjustments": autopilot.adjustments(k)}
+        if path in ("/api/adjustments/approve", "/api/adjustments/reject"):   # tier 7 is propose-only: you decide
+            from ..learn import autopilot
+            try:
+                (autopilot.approve if path.endswith("approve") else autopilot.reject)(k, text("lesson", 200), by=actor)
+            except KeyError:
+                raise HttpError(404, "no such suggestion") from None
+            return {"adjustments": autopilot.adjustments(k)}
         if path == "/api/experiments":
             from ..learn import analysis
             try:

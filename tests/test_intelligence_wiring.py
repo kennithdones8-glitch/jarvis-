@@ -43,9 +43,12 @@ def test_the_tournament_moves_routing_only_at_tier_7_and_within_limits(make_kern
     added = autopilot.act_on_tournament(k)
     assert {(a["model"], a["bonus"]) for a in added} == {("good:7b", 2.0), ("weak:3b", -3.0)}
     assert all(a["evidence"]["source"] == "intelligence tournament" and a["evidence"]["answers_checked"] == 10 for a in added)
+    assert all(a["proposed"] and not a["active"] for a in added) and k.models.router.adjust == {}   # suggestions only
+    assert autopilot.act_on_tournament(k) == []                                     # suggested once, not again
+    for a in added:
+        autopilot.approve(k, a["lesson"], by="user:dashboard")
     assert k.models.router.adjust == {"good:7b": 2.0, "weak:3b": -3.0}               # the router clamps ±3 anyway
-    assert autopilot.act_on_tournament(k) == []                                     # applied once, not again
-    assert any(e["event"] == "autopilot.adjust" for e in k.audit.entries(limit=20))
+    assert any(e["event"] == "autopilot.adjust" and e["actor"] == "user:dashboard" for e in k.audit.entries(limit=20))
 
 
 def test_an_undone_adjustment_stays_undone_and_a_closed_gap_is_withdrawn(make_kernel):
@@ -53,16 +56,31 @@ def test_an_undone_adjustment_stays_undone_and_a_closed_gap_is_withdrawn(make_ke
     tier7(k)
     outcomes(k, "ollama/good:7b", 9, 1)
     outcomes(k, "ollama/weak:3b", 4, 6)
-    autopilot.act_on_tournament(k)
+    for a in autopilot.act_on_tournament(k):
+        autopilot.approve(k, a["lesson"], by="user:dashboard")
     autopilot.undo(k, "tournament:best:ollama/good:7b", by="user:dashboard")
     autopilot.act_on_tournament(k)
-    assert "good:7b" not in k.models.router.adjust                                 # you undid it: never re-applied
+    assert "good:7b" not in k.models.router.adjust                                 # you undid it: never suggested again
     with k.db.tx() as c:                                                           # the weak model catches up
         c.execute("UPDATE outcomes SET verdict = 'verified' WHERE model = 'ollama/weak:3b'")
     changed = autopilot.act_on_tournament(k)
-    assert [a["lesson"] for a in changed] == ["tournament:worst:ollama/weak:3b"] and changed[0]["active"] is False
-    assert k.models.router.adjust == {}
-    assert any("withdrew the adjustment for weak:3b" in line for line in autopilot.digest(k))
+    assert [a["lesson"] for a in changed] == ["tournament:worst:ollama/weak:3b"] and changed[0]["withdraw_suggested"]
+    assert k.models.router.adjust == {"weak:3b": -3.0}                             # you approved it: it stays until you undo
+    assert any("Suggestion: undo the adjustment for weak:3b" in line for line in autopilot.digest(k))
+    assert autopilot.act_on_tournament(k) == []                                    # suggested once
+
+
+def test_an_unapproved_tournament_suggestion_lapses_when_the_gap_closes(make_kernel):
+    k = make_kernel()
+    tier7(k)
+    outcomes(k, "ollama/good:7b", 9, 1)
+    outcomes(k, "ollama/weak:3b", 4, 6)
+    autopilot.act_on_tournament(k)
+    with k.db.tx() as c:
+        c.execute("UPDATE outcomes SET verdict = 'verified' WHERE model = 'ollama/weak:3b'")
+    changed = autopilot.act_on_tournament(k)
+    assert {a["lesson"] for a in changed} == {"tournament:best:ollama/good:7b", "tournament:worst:ollama/weak:3b"}
+    assert not any(a.get("proposed") or a["active"] for a in autopilot.adjustments(k)) and k.models.router.adjust == {}
 
 
 def test_a_lesson_and_the_tournament_add_up_for_one_model(make_kernel):
