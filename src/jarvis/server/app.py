@@ -1070,6 +1070,14 @@ class Dashboard:
                 turns += 1
         if found.context:
             msgs.append(found.context)
+        # Date arithmetic done by code (the day before a remembered date, the 10th of "every 3rd day", weekdays): the
+        # model answers from exact dates instead of counting. Built only from the message and the memories already
+        # in this prompt, so it reveals nothing new; private ones stay local exactly as above.
+        from ..orchestrator.datecalc import facts as date_facts
+        if dates := date_facts(message, [m["text"] for m in recalled if m.get("text")]):
+            msgs.append(Message("system", dates, Category.CONVERSATION,
+                                local_only=any(m.get("privacy") == "private" for m in recalled)))
+            careful = True
         # Knowledge (Stage 4): what else JARVIS's records hold on this (missions and how they ended, objectives,
         # lessons, your decisions, its own docs), each with the reason it was picked. Not in Quick mode: a longer
         # prompt is slower, and Quick is for speed.

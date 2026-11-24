@@ -3,6 +3,37 @@
 
 
 
+
+## Unreleased (branch `date-math-v1`): date arithmetic is done by code, not by the model
+
+Owner-approved, 24 Nov. On the hard set (20 Nov), two tasks kept failing on date arithmetic:
+
+- **hard-reasoning-weekday (2/5):** asked for the 10th meeting, every 3rd day from Monday 2 March 2026, the 7B
+  counted by hand and slipped a day.
+- **hard-memory-combine (0/5):** asked which day the cat goes to mum's ("the day before I travel", with the flight
+  date in memory), it used today's or a calendar date instead.
+
+The fix: chat now gets a short "Dates worked out by JARVIS's code" block, the same way calendar facts are passed in.
+Code does the arithmetic and the model answers from its results. It covers three things:
+
+- **Repeats:** "every N days or weeks" from a start date, giving the occurrence asked for (the largest "Nth"
+  mentioned, not "that is the 1st"), with the list in order.
+- **Offsets:** "the day before", "3 days after", "2 weeks before". These are applied to every written-out date in the
+  message and in the memories already in the prompt. Each result is labelled with the sentence it came from, so the
+  model picks the right one; code doesn't guess which.
+- **Weekdays** of the dates in a "what day / weekday" question.
+
+Limits and safeguards:
+
+- It only runs when the question itself is about a date or a day; a memory that mentions "the day before" isn't
+  enough.
+- Examples in quotes ("End with a line like "Tuesday 5 May"") are ignored.
+- A date without a year is this year's if it was at most 60 days ago, otherwise the next one.
+- It reveals nothing new: it uses only the message and memories already in the prompt, and private memories keep the
+  whole block on the Mac.
+- When the block is used, the careful (strongest local) model answers.
+- Tests: `tests/test_datecalc.py` (6), including the two real cases and the "leave it alone" cases.
+
 ## Unreleased (branch `tier7-propose-v1`): tier 7 is propose-only
 
 Owner-approved, 24 Nov. This follows the owner's rule: every change to how JARVIS behaves is approved first.
